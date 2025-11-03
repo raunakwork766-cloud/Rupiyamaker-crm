@@ -1,0 +1,60 @@
+# Python virtual environment
+backend/venv/
+venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Large media files
+backend/media/
+
+# Compressed archives
+*.zip
+*.tar.gz
+*.rar
+
+# Node modules
+node_modules/
+rupiyamaker-UI/crm/node_modules/
+
+# Logs
+*.log
+nohup.out
+backend/nohup.out
+logs/
+backend.log
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Build outputs
+dist/
+build/
+*.pyc
+__pycache__/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SSL certificates (sensitive)
+ssl.crt
+ssl.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+test_*.py
+try.py
