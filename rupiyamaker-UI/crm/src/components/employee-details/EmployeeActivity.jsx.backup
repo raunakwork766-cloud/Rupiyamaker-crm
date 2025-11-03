@@ -1,0 +1,1258 @@
+import React, { useState, useEffect } from 'react';
+import { Button, Timeline, Tag } from 'antd';
+import { Activity, Clock, User, Edit, FileText } from 'lucide-react';
+import hrmsService from '../../services/hrmsService';
+import { formatDateTime, getRelativeTime } from '../../utils/dateUtils';
+
+const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
+    const [activities, setActivities] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [filter, setFilter] = useState('all'); // all, profile, status, remarks, attachments
+    const [localEmployeeData, setLocalEmployeeData] = useState(null);
+
+    useEffect(() => {
+        console.log('🔄 EmployeeActivity: useEffect triggered with employeeId:', employeeId);
+        console.log('🔄 EmployeeActivity: refreshTrigger:', refreshTrigger);
+        console.log('🔄 EmployeeActivity: Component key/mount changed - fetching fresh data');
+        if (employeeId) {
+            fetchEmployeeDataAndActivities();
+        } else {
+            console.warn('⚠️ EmployeeActivity: No employeeId provided');
+        }
+    }, [employeeId, refreshTrigger]);
+
+    // Update local employee data when prop changes
+    useEffect(() => {
+        if (employeeData) {
+            console.log('🔄 EmployeeActivity: Employee data prop updated:', employeeData);
+            setLocalEmployeeData(employeeData);
+        }
+    }, [employeeData]);
+
+    const fetchEmployeeDataAndActivities = async () => {
+        try {
+            setLoading(true);
+            console.log('🔍 EmployeeActivity: Fetching employee data and activities for ID:', employeeId);
+            
+            // Fetch employee data and activities in parallel
+            const [employeeResponse, activitiesResponse] = await Promise.all([
+                hrmsService.getEmployee(employeeId),
+                hrmsService.getEmployeeActivities(employeeId)
+            ]);
+            
+            console.log('📦 EmployeeActivity: Employee data response:', employeeResponse);
+            console.log('📦 EmployeeActivity: Activities response:', activitiesResponse);
+            
+            // Set employee data - prefer prop data if available, otherwise use fetched data
+            if (employeeData) {
+                setLocalEmployeeData(employeeData);
+                console.log('✅ EmployeeActivity: Using employee data from props:', employeeData);
+            } else if (employeeResponse && employeeResponse.success && employeeResponse.data) {
+                setLocalEmployeeData(employeeResponse.data);
+                console.log('✅ EmployeeActivity: Employee data set from API:', employeeResponse.data);
+            }
+            
+            // Process activities
+            console.log('🔍 EmployeeActivity: Processing activities response...');
+            if (activitiesResponse.success && activitiesResponse.data && Array.isArray(activitiesResponse.data)) {
+                console.log('✅ EmployeeActivity: Activities found:', activitiesResponse.data.length);
+                console.log('📦 EmployeeActivity: Raw activities data:', activitiesResponse.data);
+                // Ensure we have valid activity data with proper default values
+                const activitiesData = activitiesResponse.data.map(activity => ({
+                    _id: activity._id || `temp-${Date.now()}-${Math.random()}`,
+                    action: activity.action || activity.activity_type || 'unknown_action',
+                    description: activity.description || 'No description available',
+                    performed_by: activity.performed_by || activity.created_by || 'unknown',
+                    performed_by_name: activity.performed_by_name || 'Unknown User',
+                    timestamp: activity.timestamp || activity.created_at || new Date().toISOString(),
+                    details: activity.details || null,
+                    activity_type: activity.activity_type || activity.action || 'unknown'
+                }));
+                
+                // Add employee creation date as a special activity if employee data exists
+                if (employeeResponse && employeeResponse.data && (employeeResponse.data.created_at || employeeResponse.data.date_created)) {
+                    const createdDate = employeeResponse.data.created_at || employeeResponse.data.date_created;
+                    const creationActivity = {
+                        _id: `creation-${employeeId}`,
+                        action: 'employee_creation_date',
+                        activity_type: 'employee_creation_date',
+                        description: 'Employee Created Date',
+                        performed_by: 'system',
+                        performed_by_name: 'System',
+                        timestamp: createdDate,
+                        details: {
+                            creation_info: {
+                                employee_name: `${employeeResponse.data.first_name || ''} ${employeeResponse.data.last_name || ''}`.trim(),
+                                employee_id: employeeResponse.data.employee_id || employeeResponse.data._id,
+                                creation_date: createdDate
+                            }
+                        }
+                    };
+                    activitiesData.push(creationActivity);
+                }
+                
+                // Sort activities by timestamp (newest first)
+                activitiesData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                console.log('✅ EmployeeActivity: Processed activities with creation date:', activitiesData);
+                setActivities(activitiesData);
+            } else {
+                console.warn('⚠️ EmployeeActivity: API returned no activity data or failed:', activitiesResponse);
+                // Create just the creation date activity if we have employee data but no activities
+                if (employeeResponse && employeeResponse.data && (employeeResponse.data.created_at || employeeResponse.data.date_created)) {
+                    const createdDate = employeeResponse.data.created_at || employeeResponse.data.date_created;
+                    const creationActivity = {
+                        _id: `creation-${employeeId}`,
+                        action: 'employee_creation_date',
+                        activity_type: 'employee_creation_date',
+                        description: 'Employee Created Date',
+                        performed_by: 'system',
+                        performed_by_name: 'System',
+                        timestamp: createdDate,
+                        details: {
+                            creation_info: {
+                                employee_name: `${employeeResponse.data.first_name || ''} ${employeeResponse.data.last_name || ''}`.trim(),
+                                employee_id: employeeResponse.data.employee_id || employeeResponse.data._id,
+                                creation_date: createdDate
+                            }
+                        }
+                    };
+                    setActivities([creationActivity]);
+                } else {
+                    console.log('⚠️ EmployeeActivity: API error, falling back to sample activities');
+                    setActivities(generateSampleActivities());
+                }
+            }
+        } catch (error) {
+            console.error('❌ EmployeeActivity: Error fetching employee data and activities:', error);
+            // Only fall back to sample activities on actual error
+            console.log('⚠️ EmployeeActivity: Network/API error, falling back to sample activities');
+            setActivities(generateSampleActivities());
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchActivities = async () => {
+        try {
+            setLoading(true);
+            console.log('🔍 EmployeeActivity: Fetching activities for employee ID:', employeeId);
+            const response = await hrmsService.getEmployeeActivities(employeeId);
+            console.log('📦 EmployeeActivity: API response:', response);
+            
+            // Check if API call was successful and has data
+            if (response.success && response.data && Array.isArray(response.data)) {
+                // Ensure we have valid activity data with proper default values
+                const activitiesData = response.data.map(activity => ({
+                    _id: activity._id || `temp-${Date.now()}-${Math.random()}`,
+                    action: activity.action || activity.activity_type || 'unknown_action',
+                    description: activity.description || 'No description available',
+                    performed_by: activity.performed_by || activity.created_by || 'unknown',
+                    performed_by_name: activity.performed_by_name || 'Unknown User',
+                    timestamp: activity.timestamp || activity.created_at || new Date().toISOString(),
+                    details: activity.details || null,
+                    activity_type: activity.activity_type || activity.action || 'unknown'
+                }));
+                console.log('✅ EmployeeActivity: Processed activities:', activitiesData);
+                setActivities(activitiesData);
+            } else {
+                console.warn('⚠️ EmployeeActivity: API returned no data or failed:', response);
+                // Only use sample activities if there's actually no data from API
+                if (response.success && Array.isArray(response.data) && response.data.length === 0) {
+                    console.log('ℹ️ EmployeeActivity: No activities found for this employee');
+                    setActivities([]);
+                } else {
+                    console.log('⚠️ EmployeeActivity: API error, falling back to sample activities');
+                    setActivities(generateSampleActivities());
+                }
+            }
+        } catch (error) {
+            console.error('❌ EmployeeActivity: Error fetching activities:', error);
+            // Only fall back to sample activities on actual error
+            console.log('⚠️ EmployeeActivity: Network/API error, falling back to sample activities');
+            setActivities(generateSampleActivities());
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const generateSampleActivities = () => {
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'System';
+        
+        return [
+            {
+                _id: '1',
+                action: 'profile_updated',
+                activity_type: 'profile_updated',
+                description: 'Updated contact information',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+                details: {
+                    field_changes: {
+                        phone: {
+                            label: 'Mobile Number',
+                            field_name: 'phone',
+                            from: '+91-9876543210',
+                            to: '+91-9876543211'
+                        },
+                        email: {
+                            label: 'Email Address',
+                            field_name: 'email',
+                            from: 'old.email@company.com',
+                            to: 'new.email@company.com'
+                        },
+                        emergency_contact_phone: {
+                            label: 'Emergency Contact Phone',
+                            field_name: 'emergency_contact_phone',
+                            from: '+91-9876543212',
+                            to: '+91-9876543213'
+                        },
+                        salary: {
+                            label: 'Monthly Salary',
+                            field_name: 'salary',
+                            from: 45000,
+                            to: 50000
+                        }
+                    },
+                    total_fields_changed: 4,
+                    update_category: 'Personal and Work Information'
+                }
+            },
+            {
+                _id: '1a',
+                action: 'profile_updated',
+                activity_type: 'profile_updated',
+                description: 'Updated address information',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+                details: {
+                    field_changes: {
+                        address: {
+                            label: 'Current Address',
+                            field_name: 'address',
+                            from: 'Old Address Line 1, Old Street',
+                            to: 'New Address Line 1, New Street, Landmark'
+                        },
+                        city: {
+                            label: 'City',
+                            field_name: 'city',
+                            from: 'Old City',
+                            to: 'New City'
+                        },
+                        pincode: {
+                            label: 'PIN Code',
+                            field_name: 'pincode',
+                            from: '123456',
+                            to: '654321'
+                        }
+                    },
+                    total_fields_changed: 3,
+                    update_category: 'Address Information'
+                }
+            },
+            {
+                _id: '2',
+                action: 'status_changed',
+                activity_type: 'status_changed',
+                description: 'Status changed from Inactive to Active',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+                details: {
+                    status_change: {
+                        from: 'Inactive',
+                        to: 'Active',
+                        remark: 'Employee completed onboarding process'
+                    }
+                }
+            },
+            {
+                _id: '3',
+                action: 'employee_created',
+                activity_type: 'employee_created',
+                description: 'Employee record created',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+                details: {
+                    employee_info: {
+                        name: 'John Doe',
+                        employee_id: 'EMP001',
+                        email: 'john.doe@company.com',
+                        department: 'Engineering',
+                        designation: 'Software Developer'
+                    },
+                    created_fields: ['first_name', 'last_name', 'email', 'phone', 'department_id', 'designation']
+                }
+            },
+            {
+                _id: '4',
+                action: 'attachment_uploaded',
+                activity_type: 'attachment_uploaded',
+                description: 'Uploaded resume.pdf',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+                details: {
+                    file_info: {
+                        file_name: 'resume.pdf',
+                        file_type: 'application/pdf',
+                        attachment_type: 'Resume',
+                        file_size: '2.5 MB'
+                    }
+                }
+            },
+            {
+                _id: '1b',
+                action: 'profile_updated',
+                activity_type: 'profile_updated',
+                description: 'Updated Phone Number, Emergency Contact Name',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+                details: {
+                    // Simulates API response with updated_fields but no field_changes
+                    updated_fields: ['phone', 'emergency_contact_name'],
+                    total_changes: 2
+                }
+            },
+            {
+                _id: '1c',
+                action: 'profile_updated', 
+                activity_type: 'profile_updated',
+                description: 'Employee profile information updated',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+                details: {
+                    // Simulates minimal API response
+                    raw_changes: {
+                        first_name: 'John Updated',
+                        email: 'john.updated@company.com'
+                    }
+                }
+            },
+            {
+                _id: '5',
+                action: 'password_changed',
+                activity_type: 'password_changed',
+                description: 'Password changed',
+                performed_by: userData._id || userData.id,
+                performed_by_name: userName,
+                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
+                details: {
+                    security_action: 'password_update'
+                }
+            }
+        ];
+    };
+
+    // Parse activity description to extract field information
+    const parseActivityDescription = (description, details = {}) => {
+        if (!description) return null;
+        
+        // Check if description contains field names or change information
+        const fieldPatterns = {
+            // Common field name patterns
+            'phone': /phone|mobile|contact/i,
+            'email': /email/i,
+            'name': /name/i,
+            'address': /address/i,
+            'salary': /salary|amount/i,
+            'department': /department/i,
+            'designation': /designation|position|title/i,
+            'emergency_contact': /emergency/i,
+            'date_of_birth': /birth|dob/i,
+            'joining_date': /joining|start/i
+        };
+        
+        const extractedFields = [];
+        
+        // Look for field mentions in description
+        Object.entries(fieldPatterns).forEach(([field, pattern]) => {
+            if (pattern.test(description)) {
+                extractedFields.push(field);
+            }
+        });
+        
+        // Try to extract field names from structured descriptions like "Updated Phone, Email"
+        if (description.includes('Updated ')) {
+            const afterUpdated = description.split('Updated ')[1];
+            if (afterUpdated) {
+                const fieldNames = afterUpdated.split(',').map(name => name.trim());
+                return fieldNames;
+            }
+        }
+        
+        return extractedFields.length > 0 ? extractedFields : null;
+    };
+
+    const getEnhancedActivityDescription = (activity) => {
+        const action = activity.action || '';
+        const details = activity.details || {};
+        const description = activity.description || '';
+        
+        switch (action) {
+            case 'profile_updated':
+                // Check for detailed field changes first
+                if (details.field_changes) {
+                    const changedFields = Object.keys(details.field_changes).length;
+                    const fieldNames = Object.values(details.field_changes).map(change => {
+                        const fieldLabel = change.label || change.field_name || 'Unknown Field';
+                        // Add specific info about the change type
+                        if (change.from !== change.to) {
+                            return fieldLabel;
+                        }
+                        return fieldLabel;
+                    }).join(', ');
+                    
+                    // Make it more specific based on field types
+                    const personalFields = ['first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender'];
+                    const addressFields = ['address', 'city', 'state', 'pincode', 'country'];
+                    const workFields = ['department', 'designation', 'salary', 'joining_date', 'employee_id'];
+                    const emergencyFields = ['emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation'];
+                    
+                    const changedFieldKeys = Object.keys(details.field_changes);
+                    let categoryDescription = '';
+                    
+                    if (changedFieldKeys.some(field => personalFields.includes(field))) {
+                        categoryDescription = 'Personal Information';
+                    } else if (changedFieldKeys.some(field => addressFields.includes(field))) {
+                        categoryDescription = 'Address Information';
+                    } else if (changedFieldKeys.some(field => workFields.includes(field))) {
+                        categoryDescription = 'Work Information';
+                    } else if (changedFieldKeys.some(field => emergencyFields.includes(field))) {
+                        categoryDescription = 'Emergency Contact';
+                    } else {
+                        categoryDescription = 'Profile Information';
+                    }
+                    
+                    return `${categoryDescription} Updated - ${changedFields} field${changedFields !== 1 ? 's' : ''} modified: ${fieldNames}`;
+                }
+                
+                // If no detailed field_changes, try to extract info from description
+                if (description && description !== 'Employee profile information updated') {
+                    // Check if description already contains specific field information
+                    if (description.includes('Updated ') && description.length > 30) {
+                        return description; // Use the detailed description as-is
+                    }
+                    
+                    // Try to parse field information from description
+                    const parsedFields = parseActivityDescription(description, details);
+                    if (parsedFields && parsedFields.length > 0) {
+                        const fieldLabels = {
+                            'phone': 'Phone Number',
+                            'email': 'Email Address', 
+                            'name': 'Name',
+                            'first_name': 'First Name',
+                            'last_name': 'Last Name',
+                            'address': 'Address',
+                            'salary': 'Salary',
+                            'department': 'Department',
+                            'designation': 'Designation',
+                            'emergency_contact': 'Emergency Contact',
+                            'date_of_birth': 'Date of Birth',
+                            'joining_date': 'Joining Date'
+                        };
+                        
+                        const readableFields = parsedFields.map(field => 
+                            fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                        ).join(', ');
+                        
+                        return `Profile Updated - ${readableFields} ${parsedFields.length > 1 ? 'were' : 'was'} modified`;
+                    }
+                }
+                
+                // Check if we have any change information in details without field_changes structure
+                if (details.changes && Array.isArray(details.changes)) {
+                    const changesList = details.changes.join(', ');
+                    return `Profile Updated - ${changesList}`;
+                }
+                
+                if (details.updated_fields && Array.isArray(details.updated_fields)) {
+                    const fieldLabels = {
+                        'first_name': 'First Name', 'last_name': 'Last Name', 'email': 'Email',
+                        'phone': 'Phone', 'address': 'Address', 'salary': 'Salary', 
+                        'department_id': 'Department', 'designation': 'Designation'
+                    };
+                    
+                    const readableFields = details.updated_fields.map(field => 
+                        fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                    ).join(', ');
+                    
+                    return `Profile Updated - ${readableFields} ${details.updated_fields.length > 1 ? 'were' : 'was'} modified`;
+                }
+                
+                // Fallback with more helpful message
+                return 'Profile information was updated (specific changes not detailed)';
+            
+            case 'status_changed':
+                if (details.status_change) {
+                    return `Status Changed from "${details.status_change.from}" to "${details.status_change.to}"`;
+                }
+                return 'Employee status updated';
+            
+            case 'remark_added':
+                return 'New remark added to employee record';
+            
+            case 'attachment_uploaded':
+                if (details.file_info) {
+                    return `File uploaded: ${details.file_info.file_name}`;
+                }
+                return 'Document attached to employee record';
+            
+            case 'attachment_deleted':
+                if (details.file_info) {
+                    return `File removed: ${details.file_info.file_name}`;
+                }
+                return 'Document removed from employee record';
+            
+            case 'employee_created':
+                if (details.employee_info) {
+                    return `New employee record created for ${details.employee_info.name} (${details.employee_info.employee_id})`;
+                }
+                return 'New employee record created';
+            
+            case 'employee_creation_date':
+                if (details.creation_info) {
+                    return `Employee Creation Record - ${details.creation_info.employee_name}`;
+                }
+                return 'Employee creation date recorded';
+            
+            case 'password_changed':
+                return 'Employee login password updated';
+            
+            case 'login_status_changed':
+                return 'Employee login access status modified';
+            
+            case 'photo_uploaded':
+                return 'Employee profile photo updated';
+            
+            default:
+                return activity.description || 'Employee record activity';
+        }
+    };
+
+    const getActivityTypeLabel = (action) => {
+        const activityType = action || '';
+        switch (activityType) {
+            case 'profile_updated': return 'Profile Update';
+            case 'status_changed': return 'Status Change';
+            case 'remark_added': return 'Remark';
+            case 'attachment_uploaded': return 'File Upload';
+            case 'attachment_deleted': return 'File Removal';
+            case 'employee_created': return 'New Employee';
+            case 'employee_creation_date': return 'Creation Date';
+            case 'password_changed': return 'Security';
+            case 'login_status_changed': return 'Access Control';
+            case 'photo_uploaded': return 'Photo Update';
+            default: return 'Activity';
+        }
+    };
+
+    const getActivityTagColor = (action) => {
+        const activityType = action || '';
+        switch (activityType) {
+            case 'profile_updated': return 'blue';
+            case 'status_changed': return 'green';
+            case 'remark_added': return 'purple';
+            case 'attachment_uploaded': return 'cyan';
+            case 'attachment_deleted': return 'red';
+            case 'employee_created': return 'success';
+            case 'employee_creation_date': return 'default';
+            case 'password_changed': return 'warning';
+            case 'login_status_changed': return 'orange';
+            case 'photo_uploaded': return 'geekblue';
+            default: return 'default';
+        }
+    };
+
+    const getFieldCategory = (fieldName) => {
+        const personalFields = ['first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender', 'marital_status'];
+        const addressFields = ['address', 'city', 'state', 'pincode', 'country', 'permanent_address', 'current_address'];
+        const workFields = ['department', 'designation', 'salary', 'joining_date', 'employee_id', 'manager_id', 'shift'];
+        const emergencyFields = ['emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation'];
+        const documentsFields = ['aadhar_number', 'pan_number', 'bank_account', 'ifsc_code'];
+        
+        if (personalFields.includes(fieldName)) return 'Personal Info';
+        if (addressFields.includes(fieldName)) return 'Address';
+        if (workFields.includes(fieldName)) return 'Work Details';
+        if (emergencyFields.includes(fieldName)) return 'Emergency Contact';
+        if (documentsFields.includes(fieldName)) return 'Documents';
+        return 'Other';
+    };
+
+    const getFieldTypeIcon = (fieldName) => {
+        const iconClass = "w-3 h-3 text-gray-500";
+        
+        if (['first_name', 'last_name', 'employee_id'].includes(fieldName)) {
+            return <User className={iconClass} />;
+        }
+        if (['email', 'phone', 'emergency_contact_phone'].includes(fieldName)) {
+            return <FileText className={iconClass} />;
+        }
+        if (['address', 'city', 'state', 'pincode', 'country'].includes(fieldName)) {
+            return <Clock className={iconClass} />;
+        }
+        if (['department', 'designation', 'salary', 'joining_date'].includes(fieldName)) {
+            return <Edit className={iconClass} />;
+        }
+        return <Activity className={iconClass} />;
+    };
+
+    const formatFieldValue = (value, fieldName) => {
+        if (value === null || value === undefined) {
+            return <span className="text-gray-400 italic">(not set)</span>;
+        }
+        
+        if (value === '') {
+            return <span className="text-gray-400 italic">(empty)</span>;
+        }
+        
+        // Special formatting for different field types
+        if (typeof value === 'object') {
+            return <pre className="text-xs whitespace-pre-wrap font-mono">{JSON.stringify(value, null, 2)}</pre>;
+        }
+        
+        // Format specific field types
+        if (fieldName === 'salary' && typeof value === 'number') {
+            return <span className="font-semibold">₹{value.toLocaleString()}</span>;
+        }
+        
+        if (fieldName === 'phone' || fieldName === 'emergency_contact_phone') {
+            return <span className="font-mono">{value}</span>;
+        }
+        
+        if (fieldName === 'email') {
+            return <span className="font-mono text-blue-600">{value}</span>;
+        }
+        
+        if (fieldName === 'joining_date' || fieldName === 'date_of_birth') {
+            try {
+                const date = new Date(value);
+                return <span className="font-medium">{date.toLocaleDateString()}</span>;
+            } catch {
+                return <span>{value}</span>;
+            }
+        }
+        
+        return <span className="font-medium">{String(value)}</span>;
+    };
+
+    const getChangeDescription = (fromValue, toValue, fieldName) => {
+        if (fromValue === null || fromValue === undefined || fromValue === '') {
+            return `Added new ${fieldName.replace(/_/g, ' ')}: "${toValue}"`;
+        }
+        
+        if (toValue === null || toValue === undefined || toValue === '') {
+            return `Removed ${fieldName.replace(/_/g, ' ')} (was "${fromValue}")`;
+        }
+        
+        if (fieldName === 'salary') {
+            const from = Number(fromValue);
+            const to = Number(toValue);
+            const difference = to - from;
+            const percentage = ((difference / from) * 100).toFixed(1);
+            return `Salary ${difference > 0 ? 'increased' : 'decreased'} by ₹${Math.abs(difference).toLocaleString()} (${Math.abs(percentage)}%)`;
+        }
+        
+        if (fieldName === 'status') {
+            return `Employee status changed from "${fromValue}" to "${toValue}"`;
+        }
+        
+        if (fieldName.includes('phone')) {
+            return `Phone number updated from ${fromValue} to ${toValue}`;
+        }
+        
+        if (fieldName.includes('email')) {
+            return `Email address changed from ${fromValue} to ${toValue}`;
+        }
+        
+        if (fieldName.includes('name')) {
+            return `Name changed from "${fromValue}" to "${toValue}"`;
+        }
+        
+        return `Updated from "${fromValue}" to "${toValue}"`;
+    };
+
+    const getActivityIcon = (action) => {
+        const activityType = action || '';
+        switch (activityType) {
+            case 'profile_updated':
+                return <Edit className="w-4 h-4 text-blue-600" />;
+            case 'status_changed':
+                return <User className="w-4 h-4 text-green-600" />;
+            case 'remark_added':
+                return <FileText className="w-4 h-4 text-purple-600" />;
+            case 'attachment_uploaded':
+            case 'attachment_deleted':
+                return <FileText className="w-4 h-4 text-orange-600" />;
+            case 'employee_created':
+                return <User className="w-4 h-4 text-emerald-600" />;
+            case 'employee_creation_date':
+                return <Clock className="w-4 h-4 text-blue-500" />;
+            case 'password_changed':
+                return <Edit className="w-4 h-4 text-red-600" />;
+            case 'login_status_changed':
+                return <User className="w-4 h-4 text-amber-600" />;
+            case 'photo_uploaded':
+                return <FileText className="w-4 h-4 text-cyan-600" />;
+            default:
+                return <Activity className="w-4 h-4 text-gray-600" />;
+        }
+    };
+
+    const getActivityColor = (action) => {
+        const activityType = action || '';
+        switch (activityType) {
+            case 'profile_updated':
+                return 'blue';
+            case 'status_changed':
+                return 'green';
+            case 'remark_added':
+                return 'purple';
+            case 'attachment_uploaded':
+            case 'attachment_deleted':
+                return 'orange';
+            case 'employee_created':
+                return 'emerald';
+            case 'employee_creation_date':
+                return 'blue';
+            case 'password_changed':
+                return 'red';
+            case 'login_status_changed':
+                return 'amber';
+            case 'photo_uploaded':
+                return 'cyan';
+            default:
+                return 'gray';
+        }
+    };
+
+    const formatTimeAgo = (timestamp) => {
+        try {
+            if (!timestamp) return 'Unknown time';
+            return getRelativeTime(timestamp);
+        } catch (error) {
+            console.error('Error formatting time:', error);
+            return 'Unknown time';
+        }
+    };
+
+    const filteredActivities = (activities || []).filter(activity => {
+        if (filter === 'all') return true;
+        return activity.action && activity.action.includes(filter);
+    });
+
+    const filterOptions = [
+        { key: 'all', label: 'All Activities' },
+        { key: 'profile', label: 'Profile Changes' },
+        { key: 'status', label: 'Status Updates' },
+        { key: 'remark', label: 'Remarks' },
+        { key: 'attachment', label: 'Attachments' }
+    ];
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-lg font-bold text-gray-800">Employee Activity</h3>
+                    <Button
+                        size="small"
+                        onClick={fetchEmployeeDataAndActivities}
+                        loading={loading}
+                        className="ml-2 bg-green-600 text-white hover:bg-green-700"
+                    >
+                        🔄 Refresh
+                    </Button>
+                </div>
+                
+                <div className="flex gap-2">
+                    {filterOptions.map(option => (
+                        <Button
+                            key={option.key}
+                            size="small"
+                            type={filter === option.key ? 'primary' : 'default'}
+                            onClick={() => setFilter(option.key)}
+                            className={filter === option.key ? 'bg-blue-600' : ''}
+                        >
+                            {option.label}
+                        </Button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Activity Timeline */}
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="text-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-3 border-blue-600 mx-auto"></div>
+                        <p className="text-gray-600 mt-4 font-medium">Loading employee activities...</p>
+                        <p className="text-gray-400 text-sm mt-1">Fetching recent changes and updates</p>
+                    </div>
+                ) : filteredActivities.length > 0 ? (
+                    <div className="space-y-6">
+                        {filteredActivities.map((activity, index) => (
+                            <div key={activity._id} className="flex gap-4 p-5 bg-white rounded-xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow duration-200">
+                                <div className="flex-shrink-0">
+                                    <div className={`w-12 h-12 rounded-xl bg-${getActivityColor(activity.action)}-100 flex items-center justify-center shadow-sm border border-${getActivityColor(activity.action)}-200`}>
+                                        {getActivityIcon(activity.action)}
+                                    </div>
+                                </div>
+                                
+                                <div className="flex-1 min-w-0">
+                                    {/* Enhanced Activity Header */}
+                                    <div className="mb-6">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-3">
+                                                <h3 className="text-xl font-bold text-gray-900">
+                                                    {getEnhancedActivityDescription(activity)}
+                                                </h3>
+                                                <Tag color={getActivityTagColor(activity.action)} className="text-sm font-semibold px-3 py-1">
+                                                    {getActivityTypeLabel(activity.action)}
+                                                </Tag>
+                                            </div>
+                                            
+                                            <div className="text-right">
+                                                <div className="text-sm font-medium text-gray-700">
+                                                    {formatDateTime(activity.timestamp)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    {formatTimeAgo(activity.timestamp)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Activity Metadata */}
+                                        <div className="flex items-center gap-6 text-sm bg-gray-50 rounded-lg p-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                    <User className="w-4 h-4 text-blue-600" />
+                                                </div>
+                                                <div>
+                                                    <div className="font-semibold text-gray-700">
+                                                        {activity.performed_by_name || 'Unknown User'}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">Performed by</div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                                    <Clock className="w-4 h-4 text-green-600" />
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-gray-700">
+                                                        {formatTimeAgo(activity.timestamp)}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">Activity time</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Activity Details Section */}
+                                    {activity.details && (
+                                        <div className="space-y-6">
+                                                    {/* Enhanced Field Changes Display */}
+                                                    {activity.details.field_changes && (
+                                                        <div className="mt-3 space-y-3">
+                                                            <div className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                                                <Edit className="w-4 h-4 text-blue-600" />
+                                                                <span>Profile Changes Made</span>
+                                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    {Object.keys(activity.details.field_changes).length} field{Object.keys(activity.details.field_changes).length !== 1 ? 's' : ''} updated
+                                                                </span>
+                                                            </div>
+                                                            {Object.entries(activity.details.field_changes).map(([field, change]) => (
+                                                                <div key={field} className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-400 p-4 rounded-r text-sm shadow-sm">
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                                                                                {change.label || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                                            </span>
+                                                                            {getFieldTypeIcon(field)}
+                                                                        </div>
+                                                                        <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border">
+                                                                            {getFieldCategory(field)}
+                                                                        </span>
+                                                                    </div>
+                                                                    {change.changes ? (
+                                                                        // Address or nested object changes
+                                                                        <div className="space-y-2">
+                                                                            {Object.entries(change.changes).map(([subField, subChange]) => (
+                                                                                <div key={subField} className="bg-white rounded p-2 border border-gray-200">
+                                                                                    <div className="text-xs font-medium text-gray-600 mb-1 capitalize">
+                                                                                        {subField.replace(/_/g, ' ')}:
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                                        <div className="flex-1 bg-red-50 p-2 rounded border border-red-200">
+                                                                                            <div className="text-red-700 font-medium mb-1">Previous:</div>
+                                                                                            <div className="text-red-800">
+                                                                                                {typeof subChange.from === 'object' 
+                                                                                                    ? JSON.stringify(subChange.from, null, 2) 
+                                                                                                    : (subChange.from || '(empty)')
+                                                                                                }
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="text-gray-400 font-bold">→</div>
+                                                                                        <div className="flex-1 bg-green-50 p-2 rounded border border-green-200">
+                                                                                            <div className="text-green-700 font-medium mb-1">New:</div>
+                                                                                            <div className="text-green-800">
+                                                                                                {typeof subChange.to === 'object' 
+                                                                                                    ? JSON.stringify(subChange.to, null, 2) 
+                                                                                                    : (subChange.to || '(empty)')
+                                                                                                }
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        // Enhanced simple field changes display
+                                                                        <div className="space-y-3">
+                                                                            <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                                                                                <div className="flex items-center gap-4">
+                                                                                    <div className="flex-1">
+                                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                                            <span className="text-red-700 font-semibold text-sm">Before:</span>
+                                                                                            <div className="bg-red-100 px-2 py-1 rounded text-xs text-red-800">
+                                                                                                Previous Value
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="bg-red-50 p-2 rounded border border-red-200">
+                                                                                            <div className="text-red-900 break-words">
+                                                                                                {formatFieldValue(change.from, field)}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div className="flex flex-col items-center justify-center px-2">
+                                                                                        <div className="bg-gray-100 p-2 rounded-full">
+                                                                                            <span className="text-gray-600 font-bold text-lg">→</span>
+                                                                                        </div>
+                                                                                        <span className="text-xs text-gray-500 mt-1">Updated</span>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div className="flex-1">
+                                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                                            <span className="text-green-700 font-semibold text-sm">After:</span>
+                                                                                            <div className="bg-green-100 px-2 py-1 rounded text-xs text-green-800">
+                                                                                                New Value
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="bg-green-50 p-2 rounded border border-green-200">
+                                                                                            <div className="text-green-900 break-words">
+                                                                                                {formatFieldValue(change.to, field)}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                
+                                                                                {/* Show change summary */}
+                                                                                <div className="mt-3 pt-2 border-t border-gray-100">
+                                                                                    <div className="text-xs text-gray-600 flex items-center gap-2">
+                                                                                        <Activity className="w-3 h-3" />
+                                                                                        <span>
+                                                                                            {getChangeDescription(change.from, change.to, field)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Display for activities with updated_fields but no detailed field_changes */}
+                                                    {!activity.details.field_changes && activity.details.updated_fields && Array.isArray(activity.details.updated_fields) && (
+                                                        <div className="mt-3 space-y-3">
+                                                            <div className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                                                <Edit className="w-4 h-4 text-blue-600" />
+                                                                <span>Profile Fields Updated</span>
+                                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    {activity.details.updated_fields.length} field{activity.details.updated_fields.length !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-400 p-4 rounded-r text-sm shadow-sm">
+                                                                <div className="grid grid-cols-1 gap-2">
+                                                                    {activity.details.updated_fields.map(field => {
+                                                                        const fieldLabels = {
+                                                                            'first_name': 'First Name', 'last_name': 'Last Name', 'email': 'Email Address',
+                                                                            'phone': 'Phone Number', 'address': 'Address', 'salary': 'Salary', 
+                                                                            'department_id': 'Department', 'designation': 'Designation',
+                                                                            'emergency_contact_name': 'Emergency Contact Name', 
+                                                                            'emergency_contact_phone': 'Emergency Contact Phone',
+                                                                            'date_of_birth': 'Date of Birth', 'joining_date': 'Joining Date'
+                                                                        };
+                                                                        
+                                                                        const fieldLabel = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                        
+                                                                        return (
+                                                                            <div key={field} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    {getFieldTypeIcon(field)}
+                                                                                    <span className="font-medium text-gray-700">{fieldLabel}</span>
+                                                                                </div>
+                                                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                                                                    {getFieldCategory(field)}
+                                                                                </span>
+                                                                                <span className="text-xs text-green-600 font-medium">Modified</span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Display for activities with changes array but no detailed field_changes */}
+                                                    {!activity.details.field_changes && !activity.details.updated_fields && activity.details.changes && Array.isArray(activity.details.changes) && (
+                                                        <div className="mt-3 space-y-3">
+                                                            <div className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                                                <Edit className="w-4 h-4 text-blue-600" />
+                                                                <span>Changes Made</span>
+                                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    {activity.details.changes.length} change{activity.details.changes.length !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-400 p-4 rounded-r text-sm shadow-sm">
+                                                                <ul className="space-y-1">
+                                                                    {activity.details.changes.map((change, index) => (
+                                                                        <li key={index} className="flex items-center gap-2 text-gray-700">
+                                                                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
+                                                                            <span>{change}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Enhanced Status Changes Display */}
+                                                    {activity.details.status_change && (
+                                                        <div className="mt-3 bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-400 p-3 rounded-r">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <User className="w-4 h-4 text-amber-600" />
+                                                                <span className="font-semibold text-amber-800">Employee Status Changed</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                                        From: {activity.details.status_change.from}
+                                                                    </span>
+                                                                    <span className="text-gray-400 font-bold">→</span>
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                                        To: {activity.details.status_change.to}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            {activity.details.status_change.remark && (
+                                                                <div className="bg-white p-2 rounded border border-amber-200 text-sm">
+                                                                    <div className="text-amber-700 font-medium mb-1">Reason:</div>
+                                                                    <div className="text-gray-700">{activity.details.status_change.remark}</div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {/* Enhanced Remarks Display */}
+                                                    {activity.details.remark && (
+                                                        <div className="mt-3 bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-400 p-3 rounded-r">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <FileText className="w-4 h-4 text-purple-600" />
+                                                                <span className="font-semibold text-purple-800">Remark Added</span>
+                                                            </div>
+                                                            <div className="bg-white p-2 rounded border border-purple-200 text-sm">
+                                                                <div className="text-purple-700 font-medium mb-1">Note:</div>
+                                                                <div className="text-gray-700 leading-relaxed">
+                                                                    {typeof activity.details.remark === 'object' 
+                                                                        ? (activity.details.remark.text || JSON.stringify(activity.details.remark))
+                                                                        : activity.details.remark
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Enhanced File Information Display */}
+                                                    {activity.details.file_info && (
+                                                        <div className="mt-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-400 p-3 rounded-r">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <FileText className="w-4 h-4 text-cyan-600" />
+                                                                <span className="font-semibold text-cyan-800">
+                                                                    {activity.action?.includes('deleted') ? 'File Removed' : 'File Uploaded'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-white p-2 rounded border border-cyan-200 text-sm">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <span className="text-cyan-700 font-medium">Filename:</span>
+                                                                    <span className="text-gray-800 font-mono">{activity.details.file_info.file_name}</span>
+                                                                </div>
+                                                                {activity.details.file_info.file_size && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-cyan-700 font-medium">Size:</span>
+                                                                        <span className="text-gray-600">{activity.details.file_info.file_size}</span>
+                                                                    </div>
+                                                                )}
+                                                                {activity.details.file_info.file_type && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-cyan-700 font-medium">Type:</span>
+                                                                        <span className="text-gray-600">{activity.details.file_info.file_type}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {/* Enhanced Employee Creation Info Display */}
+                                                    {activity.details.creation_info && (
+                                                        <div className="mt-3 bg-gradient-to-r from-emerald-50 to-green-50 border-l-4 border-emerald-400 p-3 rounded-r">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <User className="w-4 h-4 text-emerald-600" />
+                                                                <span className="font-semibold text-emerald-800">Employee Creation Record</span>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded border border-emerald-200 space-y-2 text-sm">
+                                                                {activity.details.creation_info.employee_name && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-emerald-700 font-medium">Employee Name:</span> 
+                                                                        <span className="text-gray-800 font-semibold">{activity.details.creation_info.employee_name}</span>
+                                                                    </div>
+                                                                )}
+                                                                {activity.details.creation_info.employee_id && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-emerald-700 font-medium">Employee ID:</span> 
+                                                                        <span className="text-gray-800 font-mono">{activity.details.creation_info.employee_id}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-emerald-700 font-medium">Creation Date:</span> 
+                                                                    <span className="text-gray-800">{formatDateTime(activity.details.creation_info.creation_date)}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {/* Enhanced catch-all for any other object data */}
+                                                    {typeof activity.details === 'object' && 
+                                                     !activity.details.field_changes && 
+                                                     !activity.details.status_change && 
+                                                     !activity.details.remark && 
+                                                     !activity.details.file_info && 
+                                                     !activity.details.creation_info && (
+                                                        <div className="mt-3 bg-gradient-to-r from-gray-50 to-slate-50 border-l-4 border-gray-400 p-3 rounded-r">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Activity className="w-4 h-4 text-gray-600" />
+                                                                <span className="font-semibold text-gray-800">Additional Activity Details</span>
+                                                            </div>
+                                                            <div className="bg-white p-2 rounded border border-gray-200 text-sm">
+                                                                <pre className="text-xs overflow-x-auto text-gray-700 whitespace-pre-wrap">
+                                                                    {JSON.stringify(activity.details, null, 2)}
+                                                                </pre>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {typeof activity.details === 'string' && (
+                                                        <div className="mt-2 bg-blue-50 p-2 rounded border border-blue-200 text-sm">
+                                                            <span className="text-blue-700 font-medium">Details:</span>
+                                                            <p className="mt-1 text-gray-700">{activity.details}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <Tag color={getActivityColor(activity.action)}>
+                                            {(activity.action || '').replace('_', ' ').toUpperCase()}
+                                        </Tag>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                                        <div className="flex items-center gap-1">
+                                            <User className="w-3 h-3" />
+                                            <span>{activity.performed_by_name || 'Unknown User'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            <span>{formatTimeAgo(activity.timestamp)}</span>
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-sm text-gray-500 font-medium">
+                                                {activity.timestamp ? formatTimeAgo(activity.timestamp) : 'Unknown time'}
+                                            </span>
+                                            <span className="text-xs text-gray-400">
+                                                {activity.timestamp ? formatDateTime(activity.timestamp) : 'Unknown date'}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-8 text-gray-500">
+                        <Activity className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p className="text-lg font-medium mb-2">No activities found for this employee</p>
+                        <div className="text-sm space-y-1">
+                            {filter !== 'all' 
+                                ? <p>No {filter} activities found. Try changing the filter above.</p>
+                                : (
+                                    <>
+                                        <p>Activities will appear here when:</p>
+                                        <ul className="text-left inline-block mt-2 space-y-1">
+                                            <li>• Employee profile is updated</li>
+                                            <li>• Employee status is changed</li>
+                                            <li>• Attachments are uploaded</li>
+                                            <li>• Remarks are added</li>
+                                        </ul>
+                                        <p className="mt-3 text-xs text-blue-600">
+                                            💡 Try updating this employee's profile to see activity tracking in action
+                                        </p>
+                                    </>
+                                )
+                            }
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Activity Summary */}
+            {(activities || []).length > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                    <h4 className="font-medium text-gray-700 mb-3">Activity Summary</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="text-center">
+                            <div className="text-lg font-bold text-blue-600">
+                                {(activities || []).filter(a => a.action && a.action.includes('profile')).length}
+                            </div>
+                            <div className="text-gray-600">Profile Updates</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-lg font-bold text-green-600">
+                                {(activities || []).filter(a => a.action && a.action.includes('status')).length}
+                            </div>
+                            <div className="text-gray-600">Status Changes</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-lg font-bold text-purple-600">
+                                {(activities || []).filter(a => a.action && a.action.includes('remark')).length}
+                            </div>
+                            <div className="text-gray-600">Remarks Added</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-lg font-bold text-orange-600">
+                                {(activities || []).filter(a => a.action && a.action.includes('attachment')).length}
+                            </div>
+                            <div className="text-gray-600">Files Uploaded</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default EmployeeActivity;

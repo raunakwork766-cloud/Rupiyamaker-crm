@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  rupiyamaker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rupiyamaker
+    ports:
+      # Custom ports since 80/443 are already in use
+      - "5902:5902"   # Frontend Development Server (Vite)
+      - "8049:8049"   # Backend API port
+      # HTTPS port removed since we're using development mode
+    volumes:
+      # SSL certificates (using existing ssl.crt and ssl.key)
+      - ./ssl.crt:/etc/ssl/certs/ssl.crt:ro
+      - ./ssl.key:/etc/ssl/private/ssl.key:ro
+      
+      # Application data persistence
+      - media_data:/app/media
+      - logs_data:/var/log/rupiyamaker
+      - nginx_logs:/var/log/nginx
+      
+      # Optional: Mount local development files (uncomment for development)
+      # - ./backend:/app/backend
+      # - ./rupiyamaker-UI/crm/dist:/app/frontend/dist
+      
+    environment:
+      - NODE_ENV=development
+      - PYTHONPATH=/app/backend
+      - DOMAIN=crm.rupiyamakercrm.online
+      - SSL_EMAIL=admin@soheru.me
+      - HTTP_PORT=5902
+      - BACKEND_PORT=8049
+      - USE_EXISTING_SSL=true
+      
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5902"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+          
+    networks:
+      - rupiyamaker_network
+
+volumes:
+  media_data:
+    driver: local
+  logs_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  rupiyamaker_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

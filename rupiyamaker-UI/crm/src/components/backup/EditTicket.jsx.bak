@@ -1,0 +1,229 @@
+import React, { useState, useEffect } from "react";
+import { X } from 'lucide-react';
+
+const STATUS_OPTIONS = [
+  "OPEN",
+  "CLOSED"
+];
+
+export default function EditTicket({ ticket, onClose, onSave }) {
+  const [ticketForm, setTicketForm] = useState({
+    id: ticket?.id || "",
+    subject: ticket?.subject || "",
+    message: ticket?.message || "",
+    status: ticket?.status || "OPEN",
+    createdBy: ticket?.createdBy || "",
+    assign: ticket?.assign || ""
+  });
+  
+  const [formError, setFormError] = useState("");
+  const [currentUser, setCurrentUser] = useState("");
+  const [newAttachments, setNewAttachments] = useState([]);
+
+  // Get current user from localStorage
+  const getCurrentLoggedInUser = () => {
+    try {
+      const userName = localStorage.getItem('userName');
+      const userFirstName = localStorage.getItem('userFirstName');
+      const userLastName = localStorage.getItem('userLastName');
+      
+      // Check for userName first as it's likely the most complete format
+      if (userName) return userName;
+      
+      // Check for first and last name combination
+      if (userFirstName && userLastName) return `${userFirstName} ${userLastName}`;
+      if (userFirstName) return userFirstName;
+      
+      // Check for a full user object
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          // Return user info in order of most likely to contain a full name
+          if (parsedUser.name) return parsedUser.name;
+          if (parsedUser.fullName) return parsedUser.fullName;
+          if (parsedUser.firstName && parsedUser.lastName) 
+            return `${parsedUser.firstName} ${parsedUser.lastName}`;
+          if (parsedUser.firstName) return parsedUser.firstName;
+          if (parsedUser.username) return parsedUser.username;
+          if (parsedUser.email) return parsedUser.email;
+        } catch (parseError) {
+          console.log("Error parsing user data:", parseError);
+        }
+      }
+      
+      return "Current User";
+    } catch (error) {
+      console.log("Error getting current user:", error);
+      return "Current User";
+    }
+  };
+
+  useEffect(() => {
+    // Initialize with ticket data and ensure created by is set properly
+    if (!ticketForm.createdBy) {
+      const currentUserName = getCurrentLoggedInUser();
+      setCurrentUser(currentUserName);
+      setTicketForm(prev => ({ ...prev, createdBy: currentUserName }));
+    } else {
+      setCurrentUser(ticketForm.createdBy);
+    }
+  }, []);
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setTicketForm(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    setNewAttachments(files);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!ticketForm.subject) {
+      setFormError("Subject is required");
+      return;
+    }
+    if (!ticketForm.message) {
+      setFormError("Message is required");
+      return;
+    }
+    
+    // Send updated ticket data
+    onSave({
+      ...ticketForm,
+      createdBy: ticketForm.createdBy || currentUser
+    });
+  };
+  
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className="bg-[#181e29] border border-[#323a46] rounded-xl shadow-lg p-6 text-white">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-bold text-[#08B8EA]">Edit Ticket #{ticketForm.id}</h3>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <X size={24} />
+        </button>
+      </div>
+      
+      {formError && (
+        <div className="bg-red-900 text-red-200 p-3 rounded mb-4 text-sm">
+          {formError}
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Meta Information */}
+        <div className="grid grid-cols-2 gap-4 bg-[#0d131e] p-3 rounded border border-[#323a46] mb-4">
+          <div>
+            <p className="text-xs text-gray-400">Created By</p>
+            <p className="text-sm text-white">{ticketForm.createdBy}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Created At</p>
+            <p className="text-sm text-white">{formatDate(ticketForm.createdAt)}</p>
+          </div>
+        </div>
+        
+        {/* Hidden field for created_by */}
+        <input type="hidden" name="created_by" value={ticketForm.createdBy} />
+        
+        {/* Status Selection */}
+        <div className="mb-4">
+          <label className="block text-[#08B8EA] mb-2">Status</label>
+          <select
+            name="status"
+            value={ticketForm.status}
+            onChange={handleFormChange}
+            className="w-full p-2 rounded bg-[#0d131e] border border-[#323a46] text-white"
+          >
+            {STATUS_OPTIONS.map(option => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        {/* Subject */}
+        <div className="mb-4">
+          <label className="block text-[#08B8EA] mb-2">Subject <span className="text-red-500">*</span></label>
+          <input
+            type="text"
+            name="subject"
+            placeholder="Enter ticket subject"
+            value={ticketForm.subject}
+            onChange={handleFormChange}
+            required
+            className="w-full p-2 rounded bg-[#0d131e] border border-[#323a46] text-white"
+          />
+        </div>
+        
+
+        
+        {/* Message */}
+        <div className="mb-4">
+          <label className="block text-[#08B8EA] mb-2">Message <span className="text-red-500">*</span></label>
+          <textarea
+            name="message"
+            rows={4}
+            placeholder="Enter ticket message"
+            value={ticketForm.message}
+            onChange={handleFormChange}
+            required
+            className="w-full p-2 rounded bg-[#0d131e] border border-[#323a46] text-white"
+          ></textarea>
+        </div>
+        
+        {/* Assign To */}
+        <div className="mb-4">
+          <label className="block text-[#08B8EA] mb-2">Assign To</label>
+          <input
+            type="text"
+            name="assign"
+            placeholder="Enter assignee name"
+            value={ticketForm.assign}
+            onChange={handleFormChange}
+            className="w-full p-2 rounded bg-[#0d131e] border border-[#323a46] text-white"
+          />
+        </div>
+        
+
+        
+        {/* Action Buttons */}
+        <div className="flex justify-end space-x-3 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 rounded-lg border border-[#323a46] text-white hover:bg-[#323a46] transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-5 py-2 rounded-lg bg-[#08B8EA] text-white hover:bg-[#0da2ce] transition"
+          >
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

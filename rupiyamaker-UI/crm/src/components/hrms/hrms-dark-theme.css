@@ -1,0 +1,165 @@
+/* HRMS Dark Theme Styles */
+
+/* Common dark theme elements */
+.hrms-dark-theme .ant-card,
+.hrms-dark-theme .ant-form,
+.hrms-dark-theme .ant-modal-content,
+.hrms-dark-theme .ant-modal-header {
+  background-color: #000;
+  color: white;
+}
+
+.hrms-dark-theme .ant-modal-title,
+.hrms-dark-theme .ant-form-item-label > label,
+.hrms-dark-theme .ant-typography {
+  color: white !important;
+}
+
+/* Input fields */
+.hrms-dark-theme .ant-input,
+.hrms-dark-theme .ant-input-number,
+.hrms-dark-theme .ant-input-affix-wrapper,
+.hrms-dark-theme .ant-picker,
+.hrms-dark-theme .ant-select-selector,
+.hrms-dark-theme .ant-input-number-input,
+.hrms-dark-theme .ant-textarea {
+  background-color: #181818 !important;
+  color: white !important;
+  border-color: #333 !important;
+}
+
+.hrms-dark-theme .ant-input-number-handler-wrap {
+  background-color: #181818;
+}
+
+.hrms-dark-theme .ant-input-number-handler {
+  color: white;
+}
+
+/* Select dropdown */
+.ant-select-dropdown {
+  background-color: #181818 !important;
+}
+
+.ant-select-item {
+  color: white !important;
+}
+
+.ant-select-item-option-selected {
+  background-color: #111 !important;
+}
+
+.ant-select-item-option-active {
+  background-color: #252525 !important;
+}
+
+/* DatePicker */
+.ant-picker-dropdown {
+  background-color: #181818 !important;
+}
+
+.ant-picker-panel-container {
+  background-color: #181818 !important;
+}
+
+.ant-picker-header {
+  color: white !important;
+  border-bottom: 1px solid #333 !important;
+}
+
+.ant-picker-header button {
+  color: white !important;
+}
+
+.ant-picker-cell {
+  color: #a9a9a9 !important;
+}
+
+.ant-picker-cell-in-view {
+  color: white !important;
+}
+
+.ant-picker-cell-selected .ant-picker-cell-inner {
+  background-color: #03B0F5 !important;
+}
+
+/* Upload */
+.hrms-dark-theme .ant-upload-list {
+  color: white;
+}
+
+.hrms-dark-theme .ant-upload.ant-upload-select-picture-card {
+  background-color: #181818;
+  border-color: #333;
+}
+
+/* Switch */
+.hrms-dark-theme .ant-switch {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.hrms-dark-theme .ant-switch-checked {
+  background-color: #03B0F5;
+}
+
+/* Divider */
+.hrms-dark-theme .ant-divider {
+  border-color: #333;
+}
+
+.hrms-dark-theme .ant-divider-inner-text {
+  color: white;
+}
+
+/* Modal footer */
+.hrms-dark-theme .ant-modal-footer {
+  border-top: 1px solid #333;
+}
+
+/* Icons */
+.hrms-dark-theme .anticon {
+  color: white;
+}
+
+/* Button hover in dark mode */
+.hrms-dark-theme .ant-btn:not(.ant-btn-primary):not(.ant-btn-link):hover {
+  border-color: #03B0F5;
+  color: #03B0F5;
+}
+
+/* Menu dropdown styling */
+.ant-dropdown-menu {
+  background-color: #181818 !important;
+  color: white !important;
+  border: 1px solid #333 !important;
+}
+
+.ant-dropdown-menu-item,
+.ant-dropdown-menu-submenu-title {
+  color: white !important;
+}
+
+.ant-dropdown-menu-item:hover,
+.ant-dropdown-menu-submenu-title:hover {
+  background-color: #252525 !important;
+}
+
+.ant-dropdown-menu-item .anticon,
+.ant-dropdown-menu-submenu-title .anticon {
+  color: #03B0F5 !important;
+}
+
+/* Menu divider */
+.ant-dropdown-menu-item-divider {
+  background-color: #333 !important;
+}
+
+/* Empty data */
+.ant-empty-description {
+  color: #a9a9a9 !important;
+}
+
+/* Ant table cell hover */
+.ant-table-cell-row-hover {
+  background-color: #1a1a1a !important;
+}

@@ -1,0 +1,2106 @@
+import { useState, useEffect } from "react";
+import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
+
+// API base URL - Use proxy in development
+const API_BASE_URL = '/api'; // Always use proxy
+
+// AssignPopup component for selecting assignees
+function AssignPopup({ onClose, onSelect, assignableUsers = [] }) {
+  const [assigneeName, setAssigneeName] = useState("");
+
+  // Use the assignableUsers from API, fallback to dummy data if empty
+  const dummyAssignees = [
+  ];
+
+  // Create a list of users with both ID, name, and designation from API data, or use dummy data
+  const availableUsers = assignableUsers.length > 0 
+    ? assignableUsers.map(user => ({
+        id: user.id || user._id || user.user_id,
+        name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.id,
+        designation: user.designation || user.title || user.role || ''
+      }))
+    : dummyAssignees;
+
+  const [filteredAssignees, setFilteredAssignees] = useState(availableUsers);
+
+  useEffect(() => {
+    // If assigneeName is empty, show all available users
+    if (assigneeName.trim() === "") {
+      setFilteredAssignees(availableUsers);
+    } else {
+      // Otherwise, filter based on input (search both name and designation)
+      setFilteredAssignees(
+        availableUsers.filter((user) =>
+          user.name.toLowerCase().includes(assigneeName.toLowerCase()) ||
+          (user.designation && user.designation.toLowerCase().includes(assigneeName.toLowerCase()))
+        )
+      );
+    }
+  }, [assigneeName, assignableUsers]); // Depend on assigneeName and assignableUsers to re-filter
+
+  const handleAssign = () => {
+    if (assigneeName) {
+      // Find the user object that matches the typed name
+      const selectedUser = availableUsers.find(user => 
+        user.name.toLowerCase() === assigneeName.toLowerCase()
+      );
+      if (selectedUser) {
+        onSelect(selectedUser);
+      } else {
+        // If no exact match found, create a user object with the typed name
+        onSelect({ id: assigneeName.toLowerCase().replace(/\s+/g, '_'), name: assigneeName });
+      }
+    }
+    // Optionally, clear the input after assigning
+    setAssigneeName("");
+    onClose(); // Close the popup after assigning
+  };
+
+  const selectAssignee = (selectedUser) => {
+    setAssigneeName(selectedUser.name); // Set the selected name in the input
+    onSelect(selectedUser); // Pass the selected user object to the parent
+    onClose(); // Close the popup
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent">
+      <div className="bg-white backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[90%] max-w-md mx-auto relative">
+        <div className="flex items-center mb-4 p-3">
+          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          </div>
+          <h3 className="font-bold text-lg text-black">Assign Lead</h3>
+        </div>
+
+        <div className="mb-4 p-3">
+          <label className="block font-bold text-gray-700 mb-2">
+            Assign to
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </div>
+            <input
+              type="text"
+              className="w-full pl-10 pr-3 py-2 border border-cyan-400 rounded text-black font-bold"
+              value={assigneeName}
+              onChange={(e) => setAssigneeName(e.target.value)}
+              placeholder="Search by name or designation"
+            />
+            {assigneeName && (
+              <button
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                onClick={() => setAssigneeName("")}
+                type="button"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Always show the list, filtered or full */}
+        <ul className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg">
+          {filteredAssignees.length > 0 ? (
+            filteredAssignees.map((user) => (
+              <li
+                key={user.id || user.name}
+                className="p-3 border-b last:border-b-0 cursor-pointer text-black transition hover:bg-gray-100 flex items-center"
+                onClick={() => selectAssignee(user)}
+              >
+                {/* Profile icon with initials or avatar */}
+                <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 flex-shrink-0">
+                  {user.name.split(' ')
+                    .map(part => part[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium">{user.name}</div>
+                  {user.designation && (
+                    <div className="text-sm text-gray-500 font-normal">{user.designation}</div>
+                  )}
+                </div>
+              </li>
+            ))
+          ) : (
+            assigneeName.trim() !== "" && ( // Only show "No results" if user typed something and no results
+              <li className="p-3 text-gray-500 text-center">No matching assignees found.</li>
+            )
+          )}
+        </ul>
+
+        <div className="flex justify-end gap-4 mt-4 p-3">
+          <button
+            className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition"
+            onClick={handleAssign}
+          >
+            Assign
+          </button>
+          <button
+            className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </div>
+
+        <button
+          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function AboutSection({ lead, onSave, canEdit = true }) {
+  // For dummy data, ensure lead has default values to prevent errors
+  const safetyLead = lead || {};
+  
+  // State for dropdown options
+  const [loanTypes, setLoanTypes] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [dataCodes, setDataCodes] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  // User permissions state
+  const [canEditAlternateNumber, setCanEditAlternateNumber] = useState(false);
+  const [isUserSuperAdmin, setIsUserSuperAdmin] = useState(false);
+  
+  // Auto-save feedback state
+  const [saveStatus, setSaveStatus] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Label styling (matching LoginFormSection)
+  const labelClass = "block font-bold mb-2 uppercase";
+  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
+  
+  // Validation states
+  const [validationErrors, setValidationErrors] = useState({});
+  const [isValidatingPincode, setIsValidatingPincode] = useState(false);
+  
+  // Duplicate checking states
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [duplicateCheckResult, setDuplicateCheckResult] = useState(null);
+  
+  // Assigned To and Assign TL states and popups
+  const [assignedTo, setAssignedTo] = useState([]);
+  const [assignReportTo, setAssignReportTo] = useState([]);
+  const [showAssignReportToPopup, setShowAssignReportToPopup] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState([]);
+  
+  // Dropdown search functionality states
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
+  const [showDataCodeDropdown, setShowDataCodeDropdown] = useState(false);
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [campaignSearchTerm, setCampaignSearchTerm] = useState('');
+  const [dataCodeSearchTerm, setDataCodeSearchTerm] = useState('');
+  const [citySearchTerm, setCitySearchTerm] = useState('');
+  
+  // Helper function to safely extract field values from lead data
+  const extractFieldValue = (fieldName) => {
+    if (!lead) return "";
+    
+    switch (fieldName) {
+      case 'id':
+        return lead.custom_lead_id || lead.id || "";
+      
+      case 'productName':
+        return lead.loan_type_name || lead.loan_type || lead.productName || "";
+      
+      case 'loanTypeId':
+        return lead.loan_type_id || "";
+      
+      case 'loan_type':
+        return lead.loan_type || "";
+      
+      case 'loan_type_id':
+        return lead.loan_type_id || "";
+      
+      case 'loan_type_name':
+        return lead.loan_type_name || lead.loan_type || "";
+      
+      case 'campaignName':
+        return lead.campaign_name || lead.campaignName || "";
+      
+      case 'dataCode':
+        return lead.data_code || lead.dataCode || "";
+      
+      case 'customerName':
+        // Try multiple sources for customer name
+        if (lead.name) return lead.name;
+        const firstName = lead.first_name || '';
+        const lastName = lead.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        return fullName || lead.customerName || "";
+      
+      case 'mobileNumber':
+        return lead.mobile_number || lead.phone || lead.mobileNumber || "";
+      
+      case 'pinCode':
+        // Try multiple sources for pincode
+        return lead.dynamic_fields?.address?.pincode || 
+               lead.pincode || 
+               lead.pin_code || 
+               lead.pinCode || "";
+      
+      case 'city':
+        // Try multiple sources for city
+        return lead.dynamic_fields?.address?.city || 
+               lead.city || 
+               lead.City || "";
+      
+      case 'alternateNumber':
+        return lead.alternative_phone || 
+               lead.alternate_phone || 
+               lead.alternateNumber || 
+               lead.alternate_number || "";
+      
+      default:
+        return "";
+    }
+  };
+
+  // Initialize fields state with a lazy initializer to avoid calling extractFieldValue before it's defined
+  const [fields, setFields] = useState(() => ({
+    id: lead?.custom_lead_id || lead?.id || "",
+    productName: lead?.loan_type_name || lead?.loan_type || lead?.productName || "",
+    loanTypeId: lead?.loan_type_id || "",
+    loan_type: lead?.loan_type || "",
+    loan_type_id: lead?.loan_type_id || "",
+    loan_type_name: lead?.loan_type_name || lead?.loan_type || "",
+    campaignName: lead?.campaign_name || lead?.campaignName || "",
+    dataCode: lead?.data_code || lead?.dataCode || "",
+    customerName: (() => {
+      if (lead?.name) return lead.name;
+      const firstName = lead?.first_name || '';
+      const lastName = lead?.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      return fullName || lead?.customerName || "";
+    })(),
+    mobileNumber: lead?.mobile_number || lead?.phone || lead?.mobileNumber || "",
+    pinCode: lead?.dynamic_fields?.address?.pincode || lead?.pincode || lead?.pin_code || lead?.pinCode || "",
+    city: lead?.dynamic_fields?.address?.city || lead?.city || lead?.City || "",
+    alternateNumber: lead?.alternative_phone || lead?.alternate_phone || lead?.alternateNumber || lead?.alternate_number || "",
+  }));
+  
+  // Update local state if the lead prop changes from parent
+  useEffect(() => {
+    // For dummy data, ensure we don't crash if lead prop is undefined
+    if (lead) {
+      console.log('📊 AboutSection: Updating fields from lead data:', lead);
+      
+      setFields({
+        id: extractFieldValue('id'),
+        productName: extractFieldValue('productName'),
+        loanTypeId: extractFieldValue('loanTypeId'),
+        loan_type: extractFieldValue('loan_type'),
+        loan_type_id: extractFieldValue('loan_type_id'),
+        loan_type_name: extractFieldValue('loan_type_name'),
+        campaignName: extractFieldValue('campaignName'),
+        dataCode: extractFieldValue('dataCode'),
+        customerName: extractFieldValue('customerName'),
+        mobileNumber: extractFieldValue('mobileNumber'),
+        pinCode: extractFieldValue('pinCode'),
+        city: extractFieldValue('city'),
+        alternateNumber: extractFieldValue('alternateNumber'),
+      });
+      
+      console.log('📊 AboutSection: Fields updated to:', {
+        id: extractFieldValue('id'),
+        productName: extractFieldValue('productName'),
+        campaignName: extractFieldValue('campaignName'),
+        dataCode: extractFieldValue('dataCode'),
+        customerName: extractFieldValue('customerName'),
+        mobileNumber: extractFieldValue('mobileNumber'),
+        pinCode: extractFieldValue('pinCode'),
+        city: extractFieldValue('city'),
+        alternateNumber: extractFieldValue('alternateNumber'),
+      });
+      
+      // 🔍 Detailed debugging for campaign_name and data_code
+      console.log('🔍 Campaign Name Debug:', {
+        'lead.campaign_name': lead.campaign_name,
+        'lead.campaignName': lead.campaignName,
+        'extracted': extractFieldValue('campaignName')
+      });
+      console.log('🔍 Data Code Debug:', {
+        'lead.data_code': lead.data_code,
+        'lead.dataCode': lead.dataCode,
+        'extracted': extractFieldValue('dataCode')
+      });
+      
+      // Parse assigned to data
+      if (lead.assigned_to) {
+        let assignedToData = [];
+        try {
+          console.log('Raw assigned_to data:', lead.assigned_to);
+          
+          if (typeof lead.assigned_to === 'string') {
+            // Try to parse as JSON first
+            try {
+              assignedToData = JSON.parse(lead.assigned_to);
+            } catch {
+              // If not JSON, treat as comma-separated string
+              assignedToData = lead.assigned_to.split(',').map(name => ({
+                id: name.trim().toLowerCase().replace(/\s+/g, '_'),
+                name: name.trim()
+              }));
+            }
+          } else if (Array.isArray(lead.assigned_to)) {
+            // For array of strings or IDs
+            assignedToData = lead.assigned_to.map(user => {
+              if (typeof user === 'string') {
+                // If it's just an ID, look it up in assignableUsers if available
+                const foundUser = assignableUsers.find(u => 
+                  u.id === user || u._id === user || u.user_id === user
+                );
+                
+                if (foundUser) {
+                  return {
+                    id: foundUser.id || foundUser._id || foundUser.user_id,
+                    name: foundUser.name || foundUser.username || 
+                          `${foundUser.first_name || ''} ${foundUser.last_name || ''}`.trim()
+                  };
+                }
+                
+                // If not found, just use the ID as both id and name
+                return {
+                  id: user,
+                  name: user
+                };
+              } else if (typeof user === 'object') {
+                // If it's already an object, just format it consistently
+                return {
+                  id: user.id || user._id || user.user_id || user.name?.toLowerCase().replace(/\s+/g, '_'),
+                  name: user.name || user.username || 
+                        `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.id || 'Unknown User'
+                };
+              }
+              
+              // Fallback
+              return {
+                id: String(user),
+                name: String(user)
+              };
+            });
+          }
+        } catch (error) {
+          console.error('Error parsing assigned_to data:', error);
+          assignedToData = [];
+        }
+        
+        console.log('Processed assignedToData:', assignedToData);
+        setAssignedTo(assignedToData);
+        
+        // Initialize assignReportTo with assign_report_to data from lead
+        let assignReportToData = [];
+        try {
+          if (lead.assign_report_to) {
+            console.log('Raw assign_report_to data:', lead.assign_report_to);
+            
+            if (typeof lead.assign_report_to === 'string') {
+              try {
+                // Try to parse as JSON
+                assignReportToData = JSON.parse(lead.assign_report_to);
+              } catch {
+                // If not JSON, treat as comma-separated string
+                assignReportToData = lead.assign_report_to.split(',').map(name => ({
+                  id: name.trim().toLowerCase().replace(/\s+/g, '_'),
+                  name: name.trim()
+                }));
+              }
+            } else if (Array.isArray(lead.assign_report_to)) {
+              // For array of strings or IDs
+              assignReportToData = lead.assign_report_to.map(user => {
+                if (typeof user === 'string') {
+                  // If it's just an ID, look it up in assignableUsers if available
+                  const foundUser = assignableUsers.find(u => 
+                    u.id === user || u._id === user || u.user_id === user
+                  );
+                  
+                  if (foundUser) {
+                    return {
+                      id: foundUser.id || foundUser._id || foundUser.user_id,
+                      name: foundUser.name || foundUser.username || 
+                            `${foundUser.first_name || ''} ${foundUser.last_name || ''}`.trim()
+                    };
+                  }
+                  
+                  // If not found, just use the ID as both id and name
+                  return {
+                    id: user,
+                    name: user
+                  };
+                } else if (typeof user === 'object') {
+                  // If it's already an object, just format it consistently
+                  return {
+                    id: user.id || user._id || user.user_id || user.name?.toLowerCase().replace(/\s+/g, '_'),
+                    name: user.name || user.username || 
+                          `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.id || 'Unknown User'
+                  };
+                }
+                
+                // Fallback
+                return {
+                  id: String(user),
+                  name: String(user)
+                };
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing assign_report_to data:', error);
+          assignReportToData = [];
+        }
+        
+        console.log('Processed assignReportToData:', assignReportToData);
+        setAssignReportTo(assignReportToData);
+        
+        // Try to update with proper names if we have user IDs but missing names
+        if (assignableUsers.length > 0) {
+          updateAssignedUsersWithNames(lead.assigned_to, lead.assign_report_to, assignableUsers);
+        }
+      }
+    }
+  }, [lead]);
+
+  // Fetch dropdown data on component mount
+  useEffect(() => {
+    fetchLoanTypes();
+    fetchCampaigns();
+    fetchDataCodes();
+    fetchAssignableUsers();
+    checkUserPermissions();
+  }, []);
+
+  // Fetch cities when pincode changes
+  useEffect(() => {
+    if (fields.pinCode && fields.pinCode.length === 6) {
+      fetchCitiesByPincode(fields.pinCode);
+    } else if (fields.pinCode && fields.pinCode.length > 0 && fields.pinCode.length < 6) {
+      // Clear cities and set validation error for incomplete pincode
+      setCities([]);
+      setValidationErrors(prev => ({
+        ...prev,
+        pinCode: `Pincode must be 6 digits (${fields.pinCode.length} digits entered)`
+      }));
+    } else if (!fields.pinCode || fields.pinCode.length === 0) {
+      // Clear everything when pincode is empty
+      setCities([]);
+      setValidationErrors(prev => ({ ...prev, pinCode: null }));
+    }
+  }, [fields.pinCode]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.dropdown-container')) {
+        setShowProductDropdown(false);
+        setShowCampaignDropdown(false);
+        setShowDataCodeDropdown(false);
+        setShowCityDropdown(false);
+        setProductSearchTerm('');
+        setCampaignSearchTerm('');
+        setDataCodeSearchTerm('');
+        setCitySearchTerm('');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Fetch user details by IDs
+  const fetchUserDetailsByIds = async (userIds) => {
+    if (!userIds || userIds.length === 0) return [];
+    
+    try {
+      const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      
+      // Convert to array if not already
+      const idsArray = Array.isArray(userIds) ? userIds : [userIds];
+      
+      // Make a request to get user details
+      const response = await fetch(`${API_BASE_URL}/users/details`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_ids: idsArray,
+          requesting_user_id: userId
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('User details fetched:', data);
+        return data.users || [];
+      }
+      
+      console.warn('Failed to fetch user details:', await response.text());
+      return [];
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+      return [];
+    }
+  };
+  
+  // Fetch assignable users from API (using users-one-level-above for hierarchy)
+  const fetchAssignableUsers = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`${API_BASE_URL}/roles/users-one-level-above/${userId}?requesting_user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Senior users fetched for Assigned TL:', data);
+        
+        // The API returns an array of users directly
+        const users = Array.isArray(data) ? data : [];
+        
+        // Format users to include name and designation
+        const formattedUsers = users.map(user => ({
+          id: user._id || user.id,
+          _id: user._id || user.id,
+          name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Unknown User',
+          username: user.username,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          designation: user.designation,
+          role_name: user.role_name,
+          email: user.email,
+          phone: user.phone
+        }));
+        
+        setAssignableUsers(formattedUsers);
+        
+        // After getting assignable users, refresh the assigned users with proper names
+        if (lead) {
+          updateAssignedUsersWithNames(lead.assigned_to, lead.assign_report_to, formattedUsers);
+        }
+      } else {
+        console.warn('Failed to fetch senior users, response:', await response.text());
+        setAssignableUsers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching senior users:', error);
+      // Set empty array if API fails
+      setAssignableUsers([]);
+    }
+  };
+  
+  // Function to update assigned users with proper names from the available users list
+  const updateAssignedUsersWithNames = async (assignedToData, assignReportToData, availableUsers) => {
+    if (!assignedToData && !assignReportToData) return;
+    
+    try {
+      // Extract unique IDs that need to be looked up
+      const assignedIds = Array.isArray(assignedToData) ? 
+        assignedToData.filter(id => typeof id === 'string') : [];
+        
+      const reportToIds = Array.isArray(assignReportToData) ? 
+        assignReportToData.filter(id => typeof id === 'string') : [];
+        
+      const allIds = [...new Set([...assignedIds, ...reportToIds])];
+      
+      // First try to match IDs with available users
+      const idToUserMap = {};
+      for (const user of availableUsers) {
+        const userId = user.id || user._id || user.user_id;
+        if (userId) {
+          idToUserMap[userId] = user;
+        }
+      }
+      
+      // For IDs not found in available users, fetch from API
+      const missingIds = allIds.filter(id => !idToUserMap[id]);
+      if (missingIds.length > 0) {
+        const fetchedUsers = await fetchUserDetailsByIds(missingIds);
+        for (const user of fetchedUsers) {
+          const userId = user.id || user._id || user.user_id;
+          if (userId) {
+            idToUserMap[userId] = user;
+          }
+        }
+      }
+      
+      // Update assignedTo state if needed
+      if (Array.isArray(assignedToData) && assignedToData.length > 0) {
+        const updatedAssignedTo = assignedToData.map(user => {
+          if (typeof user === 'string') {
+            if (idToUserMap[user]) {
+              // Use the mapped user
+              return {
+                id: user,
+                name: idToUserMap[user].name || 
+                      `${idToUserMap[user].first_name || ''} ${idToUserMap[user].last_name || ''}`.trim() || 
+                      user
+              };
+            }
+            return { id: user, name: user }; // Fallback
+          }
+          return user; // Already an object
+        });
+        
+        setAssignedTo(updatedAssignedTo);
+      }
+      
+      // Update assignReportTo state if needed
+      if (Array.isArray(assignReportToData) && assignReportToData.length > 0) {
+        const updatedAssignReportTo = assignReportToData.map(user => {
+          if (typeof user === 'string') {
+            if (idToUserMap[user]) {
+              // Use the mapped user
+              return {
+                id: user,
+                name: idToUserMap[user].name || 
+                      `${idToUserMap[user].first_name || ''} ${idToUserMap[user].last_name || ''}`.trim() || 
+                      user
+              };
+            }
+            return { id: user, name: user }; // Fallback
+          }
+          return user; // Already an object
+        });
+        
+        setAssignReportTo(updatedAssignReportTo);
+      }
+    } catch (error) {
+      console.error('Error updating assigned users with names:', error);
+    }
+  };
+
+  // Check user permissions for alternate number editing and superadmin status
+  const checkUserPermissions = () => {
+    const userRole = localStorage.getItem('userRole');
+    const userDepartment = localStorage.getItem('userDepartment');
+    const userPermissions = getUserPermissions();
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    
+    // Check if user is superadmin with specific permissions
+    let isSuperAdminUser = false;
+    
+    // Check for Super Admin role with wildcard permissions
+    if (userData.role_name === 'Super Admin' || userRole === 'Super Admin') {
+      isSuperAdminUser = true;
+    }
+    
+    // Check for wildcard permissions (page: "*", actions: "*")
+    if (userPermissions && Array.isArray(userPermissions)) {
+      const hasSuperAdminPermissions = userPermissions.some(perm => 
+        perm.page === "*" && perm.actions === "*"
+      );
+      if (hasSuperAdminPermissions) {
+        isSuperAdminUser = true;
+      }
+    }
+    
+    // Check role-based permissions in userData
+    if (userData.permissions && Array.isArray(userData.permissions)) {
+      const hasSuperAdminPermissions = userData.permissions.some(perm => 
+        perm.page === "*" && perm.actions === "*"
+      );
+      if (hasSuperAdminPermissions) {
+        isSuperAdminUser = true;
+      }
+    }
+    
+    setIsUserSuperAdmin(isSuperAdminUser);
+    
+    // Only Super Admin can edit mobile number and alternate number
+    if (isSuperAdminUser) {
+      setCanEditAlternateNumber(true);
+      return;
+    }
+    
+    // For non-super admin users, alternate number can only be edited if it's empty in ORIGINAL data
+    const originalAlternateNumber = getOriginalValue('alternateNumber') || '';
+    const isOriginalAlternateNumberEmpty = !originalAlternateNumber || 
+                                   originalAlternateNumber.trim() === '' || 
+                                   originalAlternateNumber.toLowerCase() === 'none' ||
+                                   originalAlternateNumber.toLowerCase() === 'null';
+    
+    setCanEditAlternateNumber(isOriginalAlternateNumberEmpty);
+  };
+
+  // Fetch loan types from API
+  const fetchLoanTypes = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`${API_BASE_URL}/loan-types?user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setLoanTypes(data.items || data.loan_types || data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching loan types:', error);
+    }
+  };
+
+  // Fetch campaigns from API
+  const fetchCampaigns = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`${API_BASE_URL}/settings/campaign-names?user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCampaigns(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      // Set some default campaigns if API fails
+      setCampaigns([
+        { _id: '1', name: 'Digital Marketing' },
+        { _id: '2', name: 'Social Media' },
+        { _id: '3', name: 'Email Campaign' },
+        { _id: '4', name: 'Referral Program' }
+      ]);
+    }
+  };
+
+  // Fetch data codes from API
+  const fetchDataCodes = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`${API_BASE_URL}/settings/data-codes?user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDataCodes(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data codes:', error);
+      // Set some default data codes if API fails
+      setDataCodes([
+        { _id: '1', name: 'DC001' },
+        { _id: '2', name: 'DC002' },
+        { _id: '3', name: 'DC003' },
+        { _id: '4', name: 'DC004' }
+      ]);
+    }
+  };
+  
+  // Check mobile number for duplicates
+  const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) return null;
+
+      let url = `/api/leads/check-phone/${encodeURIComponent(mobileNumber)}?user_id=${userId}`;
+
+      // Add loan type parameter if provided
+      if (loanTypeName) {
+        url += `&loan_type_name=${encodeURIComponent(loanTypeName)}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // If leads are found, check reassignment eligibility for the first lead
+      if (data && data.found && data.leads && data.leads.length > 0) {
+        try {
+          const leadId = data.leads[0].id;
+          const eligibilityUrl = `/api/leads/${leadId}/reassignment-eligibility?user_id=${userId}`;
+          
+          const eligibilityResponse = await fetch(eligibilityUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          
+          if (eligibilityResponse.ok) {
+            const eligibilityData = await eligibilityResponse.json();
+            
+            // Add reassignment eligibility data to the response
+            data.can_reassign = eligibilityData.can_reassign;
+            data.reassignment_reason = eligibilityData.reason;
+            data.days_elapsed = eligibilityData.days_elapsed;
+            data.reassignment_period = eligibilityData.reassignment_period;
+            data.days_remaining = eligibilityData.days_remaining;
+            data.is_manager_permission_required = eligibilityData.is_manager_permission_required;
+            
+            // If eligibility response includes lead data, merge it with existing lead data
+            if (eligibilityData.lead) {
+              data.leads[0] = { ...data.leads[0], ...eligibilityData.lead };
+            }
+          }
+        } catch (eligibilityError) {
+          console.error('Error checking reassignment eligibility:', eligibilityError);
+        }
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error checking mobile number for duplicates:', error);
+      return null;
+    }
+  };
+
+  // Fetch cities by pincode using the provided API structure
+  const fetchCitiesByPincode = async (pincode) => {
+    try {
+      setLoading(true);
+      setIsValidatingPincode(true);
+      
+      // Clear previous validation errors
+      setValidationErrors(prev => ({ ...prev, pinCode: null }));
+      
+      // Using Indian Postal API or similar service
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0] && data[0].Status === 'Success' && data[0].PostOffice) {
+          const cityList = data[0].PostOffice.map(office => ({
+            name: office.Name,
+            district: office.District,
+            state: office.State,
+            pincode: office.Pincode
+          }));
+          setCities(cityList);
+          
+          // Clear pincode error if validation successful
+          setValidationErrors(prev => ({ ...prev, pinCode: null }));
+        } else {
+          setCities([]);
+          // Set validation error for invalid pincode
+          setValidationErrors(prev => ({ 
+            ...prev, 
+            pinCode: 'Invalid pincode.' 
+          }));
+        }
+      } else {
+        setCities([]);
+        setValidationErrors(prev => ({ 
+          ...prev, 
+          pinCode: '' 
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      setCities([]);
+      setValidationErrors(prev => ({ 
+        ...prev, 
+        pinCode: 'Error validating pincode. Please try again.' 
+      }));
+    } finally {
+      setLoading(false);
+      setIsValidatingPincode(false);
+    }
+  };
+
+  // Filter functions for dropdown search
+  const getFilteredLoanTypes = () => {
+    if (!productSearchTerm) return loanTypes;
+    return loanTypes.filter(loanType => 
+      loanType.name.toLowerCase().includes(productSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredCampaigns = () => {
+    if (!campaignSearchTerm) return campaigns;
+    return campaigns.filter(campaign => 
+      campaign.name.toLowerCase().includes(campaignSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredDataCodes = () => {
+    if (!dataCodeSearchTerm) return dataCodes;
+    return dataCodes.filter(dataCode => 
+      dataCode.name.toLowerCase().includes(dataCodeSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredCities = () => {
+    if (!citySearchTerm) return cities;
+    return cities.filter(city => 
+      city.name.toLowerCase().includes(citySearchTerm.toLowerCase()) ||
+      city.district.toLowerCase().includes(citySearchTerm.toLowerCase())
+    );
+  };
+
+  // Function to check number duplicates
+  const checkNumberDuplicate = async (number, fieldType) => {
+    // Skip duplicate check if we're editing the same lead's existing number
+    if ((fieldType === 'mobileNumber' && number === lead?.mobile_number) ||
+        (fieldType === 'alternateNumber' && number === lead?.alternative_phone)) {
+      return;
+    }
+
+    try {
+      setIsCheckingDuplicate(true);
+      const duplicateCheck = await checkMobileNumber(number, fields.loan_type || fields.productName);
+      
+      if (duplicateCheck && duplicateCheck.found) {
+        setDuplicateCheckResult(duplicateCheck);
+        
+        const leadCount = duplicateCheck.leads ? duplicateCheck.leads.length : 0;
+        const firstLead = leadCount > 0 ? duplicateCheck.leads[0] : null;
+        
+        let errorMessage = `⚠️ This number is already registered`;
+        if (firstLead) {
+          errorMessage += ` (Lead ID: ${firstLead.custom_lead_id || firstLead.id})`;
+          if (firstLead.name) {
+            errorMessage += ` - ${firstLead.name}`;
+          }
+        }
+        
+        setValidationErrors(prev => ({
+          ...prev,
+          [fieldType]: errorMessage
+        }));
+        
+        // Show warning in save status
+        setSaveStatus(`⚠️ Duplicate ${fieldType === 'mobileNumber' ? 'mobile' : 'alternate'} number found`);
+        setTimeout(() => setSaveStatus(''), 5000);
+        
+      } else {
+        // Clear any existing duplicate errors
+        setValidationErrors(prev => ({ ...prev, [fieldType]: null }));
+        setDuplicateCheckResult(null);
+      }
+    } catch (error) {
+      console.error(`Error checking ${fieldType} for duplicates:`, error);
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
+  };
+
+  const handleChange = (field, value) => {
+    console.log(`📝 AboutSection: Input changed - ${field}: ${value}`);
+    
+    // Convert text fields to uppercase (exclude numeric fields)
+    let processedValue = value;
+    
+    // Handle specific field validations
+    if (field === 'alternateNumber') {
+      // Only allow numbers, limit to 10 digits
+      processedValue = value.replace(/\D/g, '').slice(0, 10);
+      
+      // Check if alternate number is the same as mobile number
+      if (processedValue && processedValue === fields.mobileNumber) {
+        setValidationErrors(prev => ({
+          ...prev,
+          alternateNumber: 'Alternate number cannot be the same as mobile number'
+        }));
+        return; // Don't update the field if it matches mobile number
+      }
+      
+      // Only validate when field is complete (10 digits) - no real-time validation during typing
+      if (processedValue.length === 10) {
+        setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
+        
+        // Check for duplicates if number is valid and complete
+        checkNumberDuplicate(processedValue, 'alternateNumber');
+      } else if (processedValue.length === 0) {
+        // Clear errors when field is empty
+        setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
+      }
+    } else if (field === 'mobileNumber') {
+      // Only allow numbers, limit to 10 digits
+      processedValue = value.replace(/\D/g, '').slice(0, 10);
+      
+      // Validate mobile number format
+      const mobileValidation = validateMobileNumber(processedValue);
+      if (!mobileValidation.isValid) {
+        setValidationErrors(prev => ({
+          ...prev,
+          mobileNumber: mobileValidation.error
+        }));
+      } else {
+        setValidationErrors(prev => ({ ...prev, mobileNumber: null }));
+        
+        // Check for duplicates if number is valid and complete
+        if (processedValue.length === 10) {
+          checkNumberDuplicate(processedValue, 'mobileNumber');
+        }
+      }
+      
+      // If mobile number changes and matches alternate number, clear alternate number
+      if (processedValue && processedValue === fields.alternateNumber) {
+        setFields(prev => ({ ...prev, alternateNumber: '' }));
+        setValidationErrors(prev => ({           ...prev, 
+          alternateNumber: 'Alternate number cleared as it matched mobile number' 
+        }));
+        // Clear the validation error after 3 seconds
+        setTimeout(() => {
+          setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
+        }, 3000);
+      }
+      
+      // Re-validate alternate number if mobile number changes
+      if (fields.alternateNumber && processedValue === fields.alternateNumber) {
+        setValidationErrors(prev => ({
+          ...prev,
+          alternateNumber: 'Alternate number cannot be the same as mobile number'
+        }));
+      } else if (fields.alternateNumber && processedValue !== fields.alternateNumber) {
+        // Clear the error if they're now different
+        setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
+      }
+    } else if (field === 'pinCode') {
+      // Only allow numbers, limit to 6 digits
+      processedValue = value.replace(/\D/g, '').slice(0, 6);
+      
+      // Clear cities when pincode is not 6 digits
+      if (processedValue.length !== 6) {
+        setCities([]);
+        if (processedValue.length > 0) {
+          setValidationErrors(prev => ({
+            ...prev,
+            pinCode: `Pincode must be 6 digits (${processedValue.length} digits entered)`
+          }));
+        } else {
+          setValidationErrors(prev => ({ ...prev, pinCode: null }));
+        }
+      }
+    } else if (typeof value === 'string' && !['mobileNumber', 'alternateNumber', 'pinCode'].includes(field)) {
+      processedValue = value.toUpperCase();
+    }
+    
+    // Update local state immediately for responsive UI
+    const updatedFields = { ...fields, [field]: processedValue };
+    
+    // Handle loan type selection - update all loan type related fields
+    if (field === 'productName') {
+      const selectedLoanType = loanTypes.find(lt => lt.name === processedValue);
+      if (selectedLoanType) {
+        console.log(`📝 AboutSection: Loan type selected, updating all loan type fields`);
+        updatedFields.loanTypeId = selectedLoanType._id;
+        
+        // Update all three fields in the state
+        setFields({
+          ...updatedFields,
+          loan_type: value,           // Update loan_type
+          loan_type_id: selectedLoanType._id,  // Update loan_type_id
+          loan_type_name: value       // Update loan_type_name
+        });
+        
+        // Also add the loan_type fields to the updatedFields for the parent component
+        updatedFields.loan_type = value;
+        updatedFields.loan_type_id = selectedLoanType._id;
+        updatedFields.loan_type_name = value;
+        
+        return; // Exit early as we've already set the fields
+      }
+    }
+    
+    setFields(updatedFields);
+    
+    // Note: We only save to backend/parent on blur, not on every keystroke
+    // This ensures responsive UI while preventing excessive API calls
+  };
+  
+  // Enhanced auto-save function that triggers when a field loses focus (onBlur)
+  const handleBlur = async (field, value) => {
+    console.log(`🔍 AboutSection: handleBlur called for field: ${field}, value: ${value}`);
+    console.log(`🔍 Current field value: ${fields[field]}`);
+    console.log(`🔍 Original lead value: ${getOriginalValue(field)}`);
+    
+    // Get the original value from the lead data to compare against
+    const originalValue = getOriginalValue(field);
+    
+    // Additional validation before saving
+    if (field === 'alternateNumber') {
+      // Check if alternate number is the same as mobile number
+      if (value && value === fields.mobileNumber) {
+        setValidationErrors(prev => ({
+          ...prev,
+          alternateNumber: 'Alternate number cannot be the same as mobile number'
+        }));
+        setSaveStatus('❌ Save failed: Duplicate number');
+        setTimeout(() => setSaveStatus(''), 3000);
+        return;
+      }
+      
+      // Check if alternate number is valid (10 digits starting with 6-9)
+      if (value && (value.length !== 10 || !/^[6-9]/.test(value))) {
+        setValidationErrors(prev => ({
+          ...prev,
+          alternateNumber: 'Alternate number must be 10 digits starting with 6, 7, 8, or 9'
+        }));
+        setSaveStatus('❌ Save failed: Invalid number format');
+        setTimeout(() => setSaveStatus(''), 3000);
+        return;
+      }
+    }
+    
+    // Check for duplicate number errors before saving
+    if ((field === 'mobileNumber' || field === 'alternateNumber') && 
+        validationErrors[field] && 
+        validationErrors[field].includes('already registered')) {
+      setSaveStatus('❌ Save failed: Duplicate number detected');
+      setTimeout(() => setSaveStatus(''), 3000);
+      return;
+    }
+    
+    // Only save if the value has actually changed from the original
+    if (value === originalValue) {
+      console.log(`⏭️ AboutSection: No change detected for ${field}, skipping save`);
+      return;
+    }
+    
+    console.log(`💾 AboutSection: Change detected for ${field}, saving...`);
+    setIsSaving(true);
+    setSaveStatus('💾 Saving...');
+    
+    try {
+      // Update local state first to ensure UI reflects change immediately
+      setFields(prev => ({ ...prev, [field]: value }));
+      
+      // Save to API if lead ID is available
+      let apiSaveSuccess = false;
+      if (lead?._id) {
+        console.log(`📡 AboutSection: Saving ${field} to API...`);
+        apiSaveSuccess = await saveToAPI(field, value);
+      }
+      
+      // Create a complete updated lead object
+      const updatedLead = {
+        ...lead,
+        [field]: value
+      };
+
+      // Handle customerName field - include split first_name and last_name in updatedLead
+      if (field === 'customerName') {
+        const nameParts = value.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
+        updatedLead.name = value;
+        updatedLead.first_name = firstName;
+        updatedLead.last_name = lastName;
+      }
+
+      // Handle loan type fields update when product name changes
+      if (field === 'productName') {
+        const selectedLoanType = loanTypes.find(lt => lt.name === value);
+        if (selectedLoanType) {
+          // Update all three fields in the updatedLead object
+          updatedLead.loan_type_id = selectedLoanType._id;
+          updatedLead.loan_type = value;
+          updatedLead.loan_type_name = value;
+          
+          console.log(`📡 AboutSection: Also updating all loan type fields`);
+          await saveToAPI('loanTypeId', selectedLoanType._id);
+          await saveToAPI('loan_type', value);
+          await saveToAPI('loan_type_name', value);
+        }
+      }
+      
+      // Call the parent's onSave function to update the lead data (if provided)
+      if (onSave) {
+        console.log(`📤 AboutSection: Calling parent onSave for ${field}`);
+        
+        // Handle both promise and non-promise returns from onSave
+        const result = onSave(updatedLead);
+        if (result instanceof Promise) {
+          await result;
+        }
+        
+        console.log(`✅ AboutSection: Successfully saved ${field}`);
+      } else {
+        console.log(`⚠️ AboutSection: No onSave function provided`);
+      }
+      
+      // Show success message
+      setSaveStatus('✅ Saved successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+      
+    } catch (error) {
+      console.error(`❌ AboutSection: Error saving ${field}:`, error);
+      setSaveStatus('❌ Save failed');
+      setTimeout(() => setSaveStatus(''), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Helper function to validate mobile numbers
+  const validateMobileNumber = (number) => {
+    if (!number) return { isValid: true, error: null }; // Empty is allowed
+    
+    // Check if it's exactly 10 digits
+    if (number.length !== 10) {
+      return { 
+        isValid: false, 
+        error: `Number must be 10 digits (${number.length} digits entered)` 
+      };
+    }
+    
+    // Check if it starts with 6, 7, 8, or 9
+    if (!/^[6-9]/.test(number)) {
+      return { 
+        isValid: false, 
+        error: 'Number must start with 6, 7, 8, or 9' 
+      };
+    }
+    
+    return { isValid: true, error: null };
+  };
+
+  // Helper function to get the original value from lead data
+  const getOriginalValue = (field) => {
+    // Use the same extraction logic as extractFieldValue
+    return extractFieldValue(field);
+  };
+
+  // Enhanced function to save about data to backend API
+  const saveToAPI = async (field, value) => {
+    if (!lead?._id) {
+      console.warn('AboutSection: No lead ID available, cannot save to API');
+      return false;
+    }
+
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        console.warn('AboutSection: No user ID available');
+        return false;
+      }
+
+      const apiUrl = `/api/leads/${lead._id}?user_id=${userId}`;
+      
+      // Map fields to appropriate API fields
+      const apiFieldMap = {
+        id: 'custom_lead_id',
+        productName: 'loan_type',
+        loanTypeId: 'loan_type_id',
+        campaignName: 'campaign_name',
+        dataCode: 'data_code',
+        customerName: 'name',
+        mobileNumber: 'mobile_number',
+        pinCode: 'dynamic_fields.address.pincode',
+        city: 'dynamic_fields.address.city',
+        alternateNumber: 'alternative_phone'
+      };
+
+      const apiField = apiFieldMap[field] || field;
+      let updateData = {};
+
+      // Handle customerName field - split into first_name and last_name
+      if (field === 'customerName') {
+        const nameParts = value.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
+        updateData = {
+          name: value,
+          first_name: firstName,
+          last_name: lastName
+        };
+        
+        console.log(`📝 AboutSection: Splitting customer name "${value}" into first: "${firstName}", last: "${lastName}"`);
+        
+        // Immediately update local lead object to reflect changes in UI
+        if (lead) {
+          lead.name = value;
+          lead.first_name = firstName;
+          lead.last_name = lastName;
+        }
+        
+        // Also update local fields state to ensure UI reflects the change immediately
+        setFields(prev => ({
+          ...prev,
+          customerName: value,
+          // Also add first_name and last_name if they're used elsewhere in UI
+          first_name: firstName,
+          last_name: lastName
+        }));
+      }
+      // Handle nested fields
+      else if (apiField.includes('.')) {
+        const parts = apiField.split('.');
+        if (parts[0] === 'dynamic_fields') {
+          updateData = {
+            dynamic_fields: {
+              ...lead.dynamic_fields,
+              [parts[1]]: {
+                ...lead.dynamic_fields?.[parts[1]],
+                [parts[2]]: value
+              }
+            }
+          };
+        }
+      } else {
+        updateData = { [apiField]: value };
+      }
+
+      console.log(`📡 AboutSection: Making API call to update ${field}:`, updateData);
+
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const responseData = await response.json();
+      console.log(`✅ AboutSection: Successfully saved ${field} to API:`, responseData);
+      
+      // Fetch updated lead data to refresh the UI
+      try {
+        const refreshResponse = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (refreshResponse.ok) {
+          const updatedLeadData = await refreshResponse.json();
+          console.log('Fetched updated lead data after field update:', updatedLeadData);
+          
+          // Update any related fields in local state with fresh data from backend
+          if (field === 'productName' || field === 'loanTypeId' || field === 'loan_type' || field === 'loan_type_id' || field === 'loan_type_name') {
+            setFields(prevFields => ({
+              ...prevFields,
+              productName: updatedLeadData.loan_type || prevFields.productName,
+              loanTypeId: updatedLeadData.loan_type_id || prevFields.loanTypeId,
+              loan_type: updatedLeadData.loan_type || prevFields.loan_type,
+              loan_type_id: updatedLeadData.loan_type_id || prevFields.loan_type_id,
+              loan_type_name: updatedLeadData.loan_type_name || updatedLeadData.loan_type || prevFields.loan_type_name
+            }));
+          }
+        }
+      } catch (refreshError) {
+        console.error(`Error refreshing lead data after updating ${field}:`, refreshError);
+      }
+      
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ AboutSection: Error saving ${field} to API:`, error);
+      return false;
+    }
+  };
+
+  // Function to remove an assignee from Assigned TL field
+  const handleRemoveAssignReportTo = (userToRemove) => {
+    const updatedAssignReportTo = assignReportTo.filter((user) => 
+      (typeof user === 'object' ? user.id : user) !== (typeof userToRemove === 'object' ? userToRemove.id : userToRemove)
+    );
+    setAssignReportTo(updatedAssignReportTo);
+    
+    // Auto-save the updated assignment
+    saveAssignedToAPI(assignedTo, updatedAssignReportTo);
+  };
+  
+  // Function to add an assignee to Assigned TL field
+  const handleAddAssignReportTo = (newAssigneeUser) => {
+    const newUserId = typeof newAssigneeUser === 'object' ? newAssigneeUser.id : newAssigneeUser;
+    const newUserName = typeof newAssigneeUser === 'object' ? newAssigneeUser.name : newAssigneeUser;
+    
+    // Check if user is already assigned
+    const isAlreadyAssigned = assignReportTo.some(assignedUser => {
+      if (typeof assignedUser === 'object' && typeof newAssigneeUser === 'object') {
+        return assignedUser.id === newAssigneeUser.id;
+      } else if (typeof assignedUser === 'string' && typeof newAssigneeUser === 'string') {
+        return assignedUser === newAssigneeUser;
+      } else {
+        // Mixed types - compare by name
+        const assignedName = typeof assignedUser === 'object' ? assignedUser.name : assignedUser;
+        return assignedName === newUserName;
+      }
+    });
+
+    if (!isAlreadyAssigned) {
+      const updatedAssignReportTo = [...assignReportTo, newAssigneeUser];
+      setAssignReportTo(updatedAssignReportTo);
+      
+      // Auto-save the updated assignment
+      saveAssignedToAPI(assignedTo, updatedAssignReportTo);
+    }
+  };
+
+  // Function to save assigned to data to backend API
+  const saveAssignedToAPI = async (assignedToData, assignReportToData = []) => {
+    if (!lead?._id) {
+      console.warn('No lead ID available, cannot save assigned to data');
+      return;
+    }
+
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        console.warn('No user ID available');
+        return;
+      }
+
+      const apiUrl = `/api/leads/${lead._id}?user_id=${userId}`;
+      
+      // Extract IDs for assignedTo
+      const assignedToIds = assignedToData.map(user => {
+        if (typeof user === 'object') {
+          // Try to get the ID from different possible properties
+          return user.id || user._id || user.user_id || user.name?.toLowerCase().replace(/\s+/g, '_');
+        } else {
+          return user;
+        }
+      }).filter(id => id); // Remove any empty values
+      
+      // Extract IDs for assignReportTo
+      const assignReportToIds = assignReportToData.map(user => {
+        if (typeof user === 'object') {
+          // Try to get the ID from different possible properties
+          return user.id || user._id || user.user_id || user.name?.toLowerCase().replace(/\s+/g, '_');
+        } else {
+          return user;
+        }
+      }).filter(id => id); // Remove any empty values
+
+      // Send both fields as separate arrays to the backend
+      // Make sure we're sending proper strings, not arrays with square brackets as strings
+      const updateData = {
+        assigned_to: assignedToIds.length > 0 ? assignedToIds.map(id => String(id).replace(/[\[\]']/g, '')) : null, // Send null if empty array
+        assign_report_to: assignReportToIds.length > 0 ? assignReportToIds.map(id => String(id).replace(/[\[\]']/g, '')) : null // Send null if empty array
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      console.log('Assigned to data saved to API successfully');
+      
+      // Fetch updated lead data to refresh the UI
+      try {
+        const refreshResponse = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (refreshResponse.ok) {
+          const updatedLeadData = await refreshResponse.json();
+          console.log('Fetched updated lead data:', updatedLeadData);
+          
+          // Update local state with fresh data from backend
+          if (updatedLeadData.assigned_to) {
+            updateAssignedUsersWithNames(updatedLeadData.assigned_to, updatedLeadData.assign_report_to, assignableUsers);
+          }
+        }
+      } catch (refreshError) {
+        console.error("Error refreshing lead data:", refreshError);
+      }
+      
+      // Update parent component if onSave is provided
+      if (onSave) {
+        const updatedLead = {
+          ...lead,
+          assigned_to: assignedToIds,
+          assign_report_to: assignReportToIds
+        };
+        
+        try {
+          const result = onSave(updatedLead);
+          if (result instanceof Promise) {
+            await result;
+          }
+        } catch (error) {
+          console.error("Error updating lead data in parent:", error);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error saving assigned to data to API:', error);
+    }
+  };
+
+  return (
+    <div className="p-7 rounded-2xl border-2 border-cyan-400/70 bg-white shadow-2xl text-[1.1rem] relative overflow-visible">
+      <div className="absolute -right-12 -top-10 w-40 h-40 bg-white rounded-full blur-2xl" />
+      <div className="absolute -left-16 top-20 w-28 h-28 bg-white rounded-full blur-2xl" />
+      
+      {/* Auto-save status indicator */}
+      {(isSaving || saveStatus) && (
+        <div className="absolute top-4 right-4 z-20">
+          <div className={`px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2 ${
+            isSaving ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+            saveStatus.includes('✅') ? 'bg-green-100 text-green-700 border border-green-300' :
+            'bg-red-100 text-red-700 border border-red-300'
+          }`}>
+            {isSaving && (
+              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            )}
+            <span>{saveStatus}</span>
+          </div>
+        </div>
+      )}
+      
+      <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 font-extrabold text-cyan-300 text-[1.2rem] z-10 relative">
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>LEAD ID</label>
+            <input
+              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+              value={fields.id}
+              readOnly={true}
+              placeholder="Lead ID (Read-only)"
+              title="Lead ID cannot be modified"
+            />
+          </div>
+
+          {/* Date and Time Field */}
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>DATE & TIME</label>
+            <input
+              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+              value={lead?.created_at ? new Date(lead.created_at).toLocaleString('en-IN', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true,
+                timeZone: 'Asia/Kolkata'
+              }) : 'N/A'}
+              readOnly={true}
+              placeholder="Date & Time (Read-only)"
+              title="Lead creation date and time (IST)"
+            />
+          </div>
+
+          {/* Created By Field */}
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>CREATED BY</label>
+            <input
+              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+              value={(() => {
+                if (lead?.created_by_name) {
+                  return typeof lead.created_by_name === 'object' 
+                    ? (lead.created_by_name.name || lead.created_by_name.first_name || 'Unknown')
+                    : lead.created_by_name;
+                }
+                if (lead?.created_by) {
+                  return typeof lead.created_by === 'object' 
+                    ? (lead.created_by.name || lead.created_by.first_name || 'Unknown')
+                    : lead.created_by;
+                }
+                return 'N/A';
+              })()}
+              readOnly={true}
+              placeholder="Created By (Read-only)"
+              title="User who created this lead"
+            />
+          </div>
+
+          {/* Team Name Field */}
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>TEAM NAME</label>
+            <input
+              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+              value={(() => {
+                if (lead?.department_name) {
+                  return typeof lead.department_name === 'object' 
+                    ? (lead.department_name.name || 'Unknown')
+                    : lead.department_name;
+                }
+                if (lead?.team_name) {
+                  return typeof lead.team_name === 'object' 
+                    ? (lead.team_name.name || 'Unknown')
+                    : lead.team_name;
+                }
+                return 'N/A';
+              })()}
+              readOnly={true}
+              placeholder="Team Name (Read-only)"
+              title="Department/Team name for this lead"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>PRODUCT NAME</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+                onClick={() => {
+                  if (canEdit) {
+                    // Close all other dropdowns first
+                    setShowCampaignDropdown(false);
+                    setShowDataCodeDropdown(false);
+                    setShowCityDropdown(false);
+                    // Then toggle this dropdown
+                    setShowProductDropdown(!showProductDropdown);
+                  }
+                }}
+              >
+                <span>{fields.productName || "Select Product Type"}</span>
+                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showProductDropdown && canEdit && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search product types..."
+                      value={productSearchTerm}
+                      onChange={(e) => setProductSearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {getFilteredLoanTypes().length > 0 ? (
+                      getFilteredLoanTypes().map(loanType => (
+                        <div
+                          key={loanType._id}
+                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            handleChange("productName", loanType.name);
+                            handleBlur("productName", loanType.name);
+                            setShowProductDropdown(false);
+                            setProductSearchTerm('');
+                          }}
+                        >
+                          {loanType.name}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">No products found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>CAMPAIGN NAME</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+                onClick={() => {
+                  if (canEdit) {
+                    // Close all other dropdowns first
+                    setShowProductDropdown(false);
+                    setShowDataCodeDropdown(false);
+                    setShowCityDropdown(false);
+                    // Then toggle this dropdown
+                    setShowCampaignDropdown(!showCampaignDropdown);
+                  }
+                }}
+              >
+                <span>{fields.campaignName || "Select Campaign"}</span>
+                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showCampaignDropdown && canEdit && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search campaigns..."
+                      value={campaignSearchTerm}
+                      onChange={(e) => setCampaignSearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {getFilteredCampaigns().length > 0 ? (
+                      getFilteredCampaigns().map(campaign => (
+                        <div
+                          key={campaign._id}
+                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            handleChange("campaignName", campaign.name);
+                            handleBlur("campaignName", campaign.name);
+                            setShowCampaignDropdown(false);
+                            setCampaignSearchTerm('');
+                          }}
+                        >
+                          {campaign.name}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">No campaigns found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>DATA CODE</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+                onClick={() => {
+                  if (canEdit) {
+                    // Close all other dropdowns first
+                    setShowProductDropdown(false);
+                    setShowCampaignDropdown(false);
+                    setShowCityDropdown(false);
+                    // Then toggle this dropdown
+                    setShowDataCodeDropdown(!showDataCodeDropdown);
+                  }
+                }}
+              >
+                <span>{fields.dataCode || "Select Data Code"}</span>
+                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showDataCodeDropdown && canEdit && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search data codes..."
+                      value={dataCodeSearchTerm}
+                      onChange={(e) => setDataCodeSearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {getFilteredDataCodes().length > 0 ? (
+                      getFilteredDataCodes().map(dataCode => (
+                        <div
+                          key={dataCode._id}
+                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            handleChange("dataCode", dataCode.name);
+                            handleBlur("dataCode", dataCode.name);
+                            setShowDataCodeDropdown(false);
+                            setDataCodeSearchTerm('');
+                          }}
+                        >
+                          {dataCode.name}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">No data codes found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>CUSTOMER NAME</label>
+            <input
+              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
+              value={fields.customerName}
+              onChange={e => canEdit && handleChange("customerName", e.target.value.toLocaleUpperCase())}
+              onBlur={e => canEdit && handleBlur("customerName", e.target.value.toLocaleUpperCase())}
+              readOnly={!canEdit}
+              placeholder={!canEdit ? "Read-only: No edit permission" : "Enter customer name"}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>MOBILE NUMBER</label>
+            <div className="flex-1">
+              <input
+                className={`w-full p-3 border-2 rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !isUserSuperAdmin ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
+                  validationErrors.mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
+                }`}
+                value={fields.mobileNumber}
+                onChange={e => isUserSuperAdmin && handleChange("mobileNumber", e.target.value)}
+                onBlur={e => isUserSuperAdmin && handleBlur("mobileNumber", e.target.value)}
+                readOnly={!isUserSuperAdmin}
+                placeholder={!isUserSuperAdmin ? "Super Admin only" : "Enter 10-digit mobile number"}
+                maxLength="10"
+                pattern="[0-9]{10}"
+                title={!isUserSuperAdmin ? "Only Super Admin can edit mobile number" : "Enter mobile number"}
+              />
+              {validationErrors.mobileNumber && (
+                <div className="text-red-500 text-sm mt-1 font-normal">
+                  {validationErrors.mobileNumber}
+                </div>
+              )}
+              {isCheckingDuplicate && (
+                <div className="text-blue-500 text-sm mt-1 font-normal flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  Checking for duplicates...
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>PIN CODE</label>
+            <div className="flex-1">
+              <input
+                className={`w-full p-3 border-2 rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
+                  validationErrors.pinCode ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
+                }`}
+                value={fields.pinCode}
+                onChange={e => canEdit && handleChange("pinCode", e.target.value)}
+                onBlur={e => canEdit && handleBlur("pinCode", e.target.value)}
+                readOnly={!canEdit}
+                placeholder={!canEdit ? "Read-only: No edit permission" : "Enter 6-digit PIN"}
+                maxLength="6"
+                pattern="[0-9]{6}"
+              />
+              {validationErrors.pinCode && (
+                <div className="text-red-500 text-sm mt-1 font-normal">
+                  {validationErrors.pinCode}
+                </div>
+              )}
+              {isValidatingPincode && (
+                <div className="text-blue-500 text-sm mt-1 font-normal">
+                  Validating pincode...
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>CITY</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit || loading || cities.length === 0 ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                }`}
+                onClick={() => {
+                  if (canEdit && !loading && cities.length > 0) {
+                    // Close all other dropdowns first
+                    setShowProductDropdown(false);
+                    setShowCampaignDropdown(false);
+                    setShowDataCodeDropdown(false);
+                    // Then toggle this dropdown
+                    setShowCityDropdown(!showCityDropdown);
+                  }
+                }}
+              >
+                <span>
+                  {fields.city || 
+                   (loading ? "Loading cities..." : 
+                    cities.length === 0 ? "Enter PIN code first" : "Select City")}
+                </span>
+                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showCityDropdown && canEdit && !loading && cities.length > 0 && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search cities..."
+                      value={citySearchTerm}
+                      onChange={(e) => setCitySearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {getFilteredCities().length > 0 ? (
+                      getFilteredCities().map((city, index) => (
+                        <div
+                          key={index}
+                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            handleChange("city", city.name.toUpperCase());
+                            handleBlur("city", city.name.toUpperCase());
+                            setShowCityDropdown(false);
+                            setCitySearchTerm('');
+                          }}
+                        >
+                          {city.name} - {city.district}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">No cities found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>ALTERNATE NUMBER</label>
+            <div className="flex-1">
+              <input
+                className={`w-full p-3 border-2 rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEditAlternateNumber ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
+                  validationErrors.alternateNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
+                }`}
+                value={fields.alternateNumber}
+                onChange={e => canEditAlternateNumber && handleChange("alternateNumber", e.target.value)}
+                onBlur={e => canEditAlternateNumber && handleBlur("alternateNumber", e.target.value)}
+                readOnly={!canEditAlternateNumber}
+                placeholder={!canEditAlternateNumber ? 
+                  (isUserSuperAdmin ? "Enter 10-digit alternate number" : "Super Admin only") : 
+                  "Enter 10-digit alternate number"
+                }
+                maxLength="10"
+                pattern="[0-9]{10}"
+                title={!canEditAlternateNumber ? 
+                  (isUserSuperAdmin ? "Enter alternate number" : "Only Super Admin can edit alternate number") : 
+                  "Enter alternate number"
+                }
+              />
+              {validationErrors.alternateNumber && (
+                <div className="text-red-500 text-sm mt-1 font-normal">
+                  {validationErrors.alternateNumber}
+                </div>
+              )}
+              {isCheckingDuplicate && (
+                <div className="text-blue-500 text-sm mt-1 font-normal flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  Checking for duplicates...
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>ASSIGNED TL</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
+                onClick={() => setShowAssignReportToPopup(true)}
+              >
+                {assignReportTo.length === 0 && (
+                  <span className="text-gray-400">Click to select assignees</span>
+                )}
+
+                {assignReportTo.map((assignee) => {
+                  const displayName = typeof assignee === 'object' ? assignee.name : assignee;
+                  const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
+                  return (
+                    <div
+                      key={uniqueKey}
+                      className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm"
+                    >
+                      {/* Profile icon with initials */}
+                      <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                        {displayName.split(' ')
+                          .map(part => part[0])
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase()}
+                      </div>
+                      <span className="text-xs">{displayName}</span>
+                      <button
+                        type="button"
+                        className="text-white hover:text-red-200 ml-1 text-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveAssignReportTo(assignee);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Add button */}
+                {assignReportTo.length > 0 && (
+                  <button
+                    type="button"
+                    className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAssignReportToPopup(true);
+                    }}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* AssignPopup component for Assigned TL field */}
+      {showAssignReportToPopup && (
+        <AssignPopup
+          onClose={() => setShowAssignReportToPopup(false)}
+          onSelect={(user) => {
+            handleAddAssignReportTo(user);
+            setShowAssignReportToPopup(false);
+          }}
+          assignableUsers={assignableUsers}
+        />
+      )}
+    </div>
+  );
+}

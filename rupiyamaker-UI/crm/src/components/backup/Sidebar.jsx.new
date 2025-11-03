@@ -1,0 +1,534 @@
+// This is a modified version of Sidebar.jsx with proper login permission checks
+// Make a backup of your original Sidebar.jsx before replacing it with this file
+
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu } from 'antd';
+import {
+  UserOutlined,
+  MessageOutlined,
+  HomeOutlined,
+  TeamOutlined
+} from '@ant-design/icons';
+import {
+  CreditCard,
+  BarChart3,
+  Monitor,
+  Building2,
+  Ticket,
+  Briefcase,
+  TrendingUp,
+  AlertTriangle,
+  PieChart,
+  Calculator,
+  Settings,
+  Target,
+  List,
+  RefreshCw,
+  Key,
+  ListTodo,
+  CalendarX,
+  CheckCircle,
+  LogIn,
+  ChevronUp,
+  ChevronDown,
+  Activity,
+  Users,
+  UserPlus
+} from "lucide-react";
+import { useNavigate, useLocation, useRoutes } from 'react-router-dom';
+import { cn } from "../lib/utils.js";
+import { hasPermission, getUserPermissions } from '../utils/permissions';
+import { filterNavItems, getNavigationItems } from '../utils/navigation';
+
+const { Sider } = Layout;
+const { SubMenu } = Menu;
+
+const iconMap = {
+  'lead-crm': <UserOutlined />,
+  'feed': <MessageOutlined />,
+  'home-loan-updates': <HomeOutlined />,
+  'hrms': <TeamOutlined />
+};
+
+// Create a version of the sidebar that doesn't use router hooks
+function SidebarWithoutRouter({ selectedLabel, setSelectedLabel }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
+
+  // Use a dummy navigate function and location object
+  const navigate = () => { };
+  const location = { pathname: '/' };
+  const [isLEADCRMOpen, setLEADCRMOpen] = useState(false);
+  const [isLoginCRMOpen, setLoginCRMOpen] = useState(false);
+  const [isWarningOpen, setWarningOpen] = useState(false);
+  const [isHRMSOpen, setHRMSOpen] = useState(false);
+  const [isPinnedOpen, setIsPinnedOpen] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
+  const [loanTypes, setLoanTypes] = useState([]);
+  const [selectedLoanType, setSelectedLoanType] = useState('all');
+  const [userPermissions, setUserPermissions] = useState({});
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  const isOpen = isPinnedOpen || isHovered;
+
+  // Load permissions on component mount
+  useEffect(() => {
+    try {
+      const permissions = getUserPermissions();
+      console.log("Sidebar loaded permissions:", permissions);
+      setUserPermissions(permissions || {});
+      setPermissionsLoaded(true);
+    } catch (error) {
+      console.error("Error loading permissions in sidebar:", error);
+      // Set default minimal permissions for critical navigation
+      setUserPermissions({
+        feeds: { view: true }
+      });
+      setPermissionsLoaded(true);
+    }
+  }, []);
+
+  // Fetch loan types when the component mounts
+  useEffect(() => {
+    loadLoanTypes();
+  }, []);
+
+  // Safe wrapper for permission checks
+  const checkPermission = (page, action) => {
+    try {
+      return hasPermission(userPermissions, page, action);
+    } catch (error) {
+      console.error(`Permission check error for ${page}:${action}:`, error);
+      // Default to showing critical items if permission check fails
+      return page === 'feeds' && action === 'view';
+    }
+  };
+
+  const loadLoanTypes = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || '';
+      const response = await fetch(`https://rupiyamaker.com:8049/loan-types?user_id=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch loan types');
+      }
+
+      const data = await response.json();
+      const loanTypesData = data.items || data.loan_types || data || [];
+
+      // Filter out any duplicates and format as needed
+      setLoanTypes([
+        { _id: 'all', name: 'All Leads', description: 'Show all leads' },
+        ...loanTypesData
+      ]);
+
+    } catch (error) {
+      console.error('Error loading loan types:', error);
+      // Set default loan types if fetch fails
+      setLoanTypes([
+        { _id: 'all', name: 'All Leads', description: 'Show all leads' },
+        { _id: 'personal', name: 'Personal Loan', description: 'Personal loans' },
+        { _id: 'home', name: 'Home Loan', description: 'Home loans' },
+      ]);
+    }
+  };
+
+  // Handle loan type selection and navigate to Lead CRM with selected loan type
+  const handleLoanTypeSelection = (loanTypeId, loanTypeName) => {
+    setSelectedLoanType(loanTypeId);
+    // Update the localStorage with selected loan type for LeadCRM to use
+    localStorage.setItem('selectedLoanType', loanTypeId);
+    localStorage.setItem('selectedLoanTypeName', loanTypeName);
+    // Set the selected label to Lead CRM
+    setSelectedLabel('Lead CRM');
+    // Dispatch a storage event to notify LeadCRM component about the change
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  // Show loading while permissions are being fetched
+  if (!permissionsLoaded) {
+    return (
+      <div className="h-screen w-20 bg-black flex items-center justify-center">
+        <div className="text-[#03B0F5] text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  const getSelectedKeys = () => {
+    const path = location.pathname;
+    const parts = path.split('/').filter(Boolean);
+
+    if (parts.length === 0) {
+      return ['lead-crm']; // Default route
+    }
+
+    if (parts.length >= 2) {
+      // For nested routes like /hrms/employees
+      return [parts[1]]; // Return the second part as the selected key
+    }
+
+    return [parts[0]]; // First level route
+  };
+
+  const getOpenKeys = () => {
+    const path = location.pathname;
+    const parts = path.split('/').filter(Boolean);
+
+    if (parts.length >= 2) {
+      // For nested routes like /hrms/employees
+      return [parts[0]]; // Return the first part as the open key
+    }
+
+    return [];
+  };
+
+  return (
+    <Sider
+      theme="dark"
+      className={cn(
+        "bg-[#282c34] transition-all duration-300 flex flex-col h-screen sticky top-0 left-0 z-30 overflow-hidden",
+        isOpen ? "w-64" : "w-20"
+      )}
+      width={isOpen ? 256 : 80}
+      collapsed={!isOpen}
+      collapsedWidth={80}
+      collapsible
+      trigger={null}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="flex justify-between items-center h-16 px-4 border-b border-gray-700">
+        <div className="flex items-center space-x-2">
+          <div className="w-10 h-10 rounded-full bg-[#03B0F5] flex items-center justify-center">
+            <span className="font-bold text-lg text-white">R</span>
+          </div>
+          {isOpen && <span className="text-white font-bold text-lg">RupiyaMaker</span>}
+        </div>
+        {isOpen && (
+          <button
+            onClick={() => setIsPinnedOpen(!isPinnedOpen)}
+            className="text-gray-400 hover:text-white"
+          >
+            <ChevronDown className={cn("h-5 w-5", !isPinnedOpen && "rotate-180")} />
+          </button>
+        )}
+      </div>
+
+      <Menu
+        theme="dark"
+        mode="vertical"
+        style={{ height: '100%', backgroundColor: '#282c34' }}
+        className="bg-[#282c34] border-r border-gray-700 flex-1 overflow-y-auto p-2"
+      >
+        {/* FEED - Show if user has feeds:view permission */}
+        {checkPermission('feeds', 'view') && (
+          <MenuItem icon={<BarChart3 className="h-6 w-6" />} label="Feed" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        )}
+
+        {/* LEAD CRM - Only show if user has leads:view permission */}
+        {checkPermission('leads', 'view') && (
+          <div className="relative">
+            <button
+              onClick={() => setLEADCRMOpen(!isLEADCRMOpen)}
+              className={cn(
+                "flex  w-full p-3 mb-1 rounded-lg hover:bg-white transition-all font-extrabold text-[15px] text-[#03B0F5] shadow animate-pop",
+                selectedLabel === "Lead CRM" && "bg-[#FFFF00] border border-[#03B0F5]"
+              )}
+            >
+              <UserOutlined className="h-6 w-6" />
+              {isOpen && (
+                <>
+                  <span className="ml-3">Lead CRM</span>
+                  {isLEADCRMOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </>
+              )}
+            </button>
+            {isOpen && isLEADCRMOpen && (
+              <ul className="pl-6 pr-2 mt-1 space-y-1 backdrop-blur-md bg-white/10 rounded-lg">
+                {/* Only show Create LEAD if user has create permission */}
+                {checkPermission('leads', 'create') && (
+                  <li>
+                    <SidebarSubItem icon={<UserPlus className="h-6 w-6" />} label="Create LEAD" {...{ selectedLabel, setSelectedLabel, isOpen }} />
+                  </li>
+                )}
+                {/* Loan Types Section */}
+                <li className="mt-2 pt-2 border-t border-gray-700">
+                  <div className="px-2 py-1 text-xs text-gray-400">LOAN TYPES</div>
+                </li>
+                {/* Display all loan types */}
+                {loanTypes.map((loanType) => (
+                  <li key={loanType._id}>
+                    <button
+                      className={cn(
+                        "flex w-full p-2 text-left mb-1 rounded-md hover:bg-white text-[14px] transition-all font-semibold text-[#03B0F5] animate-pop ml-2",
+                        selectedLoanType === loanType._id && selectedLabel === "Lead CRM" && "bg-[#FFFF00] border border-[#03B0F5]"
+                      )}
+                      onClick={() => handleLoanTypeSelection(loanType._id, loanType.name)}
+                    >
+                      <CreditCard className="h-5 w-5" />
+                      {isOpen && <span className="ml-2">{loanType.name}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* LOGIN CRM - Only show if user has login:view permission */}
+        {(checkPermission('login', 'view') || checkPermission('leads', 'junior')) && (
+          <Dropdown
+            label="Login CRM"
+            icon={<LogIn className="h-6 w-6" />}
+            isOpen={isOpen}
+            isExpanded={isLoginCRMOpen}
+            toggle={() => setLoginCRMOpen(!isLoginCRMOpen)}
+            items={[
+              { icon: <Monitor className="h-6 w-6" />, label: "Dashboard" },
+              { icon: <LogIn className="h-6 w-6" />, label: "Login CRM" },
+              { icon: <Key className="h-6 w-6" />, label: "PL & ODD LOGIN" },
+              { icon: <Building2 className="h-6 w-6" />, label: "Home Loan LOGIN" },
+            ]}
+            {...{ selectedLabel, setSelectedLabel }}
+          />
+        )}
+
+        {/* TASK - Only show if user has feeds:view or tasks:view permission */}
+        {(checkPermission('feeds', 'view') || checkPermission('tasks', 'view')) && (
+          <MenuItem icon={<ListTodo className="h-6 w-6" />} label="Task" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        )}
+
+        {/* TICKET - Only show if user has feeds:view or tickets:view permission */}
+        {(checkPermission('feeds', 'view') || checkPermission('tickets', 'view')) && (
+          <MenuItem icon={<Ticket className="h-6 w-6" />} label="Ticket" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        )}
+
+        {/* HRMS - Only show if user has users:view permission */}
+        {checkPermission('users', 'view') && (
+          <Dropdown
+            label="HRMS"
+            icon={<Briefcase className="h-6 w-6" />}
+            isOpen={isOpen}
+            isExpanded={isHRMSOpen}
+            toggle={() => setHRMSOpen(!isHRMSOpen)}
+            items={[
+              { icon: <Monitor className="h-6 w-6" />, label: "Dashboard" },
+              { icon: <Users className="h-6 w-6" />, label: "Employees" },
+              { icon: <CalendarX className="h-6 w-6" />, label: "Leaves" },
+              { icon: <CheckCircle className="h-6 w-6" />, label: "Attendance" },
+              { icon: <TrendingUp className="h-6 w-6" />, label: "Daily Performance" },
+            ]}
+            {...{ selectedLabel, setSelectedLabel }}
+          />
+        )}
+
+        {/* WARNING, CHARTS, CALCULATOR, SETTINGS - Show to all users */}
+        <MenuItem icon={<AlertTriangle className="h-6 w-6" />} label="Warning" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        <MenuItem icon={<PieChart className="h-6 w-6" />} label="Charts" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        <MenuItem icon={<Calculator className="h-6 w-6" />} label="EMI Calculator" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+        <MenuItem icon={<Settings className="h-6 w-6" />} label="Settings" {...{ isOpen, selectedLabel, setSelectedLabel }} />
+      </Menu>
+    </Sider>
+  );
+}
+
+function Dropdown({ label, icon, isOpen, isExpanded, toggle, items, selectedLabel, setSelectedLabel }) {
+  const isSelected = items.some((item) => selectedLabel === item.label);
+
+  return (
+    <div className="w-full">
+      <button
+        onClick={() => {
+          if (isOpen) toggle();
+        }}
+        className={cn(
+          "flex items-center w-full p-3 mb-1 rounded-lg hover:bg-white transition-all font-extrabold text-[15px] text-[#03B0F5] shadow animate-pop",
+          isSelected && "bg-[#FFFF00] border border-[#03B0F5]"
+        )}
+      >
+        {icon}
+        {isOpen && (
+          <>
+            <span className="flex-1 ml-3 text-left">{label}</span>
+            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </>
+        )}
+      </button>
+
+      {isExpanded && isOpen && (
+        <ul className="pl-6 pr-2 mt-1 space-y-1 backdrop-blur-md bg-white/10 rounded-lg">
+          {items.map((item, index) => (
+            <li key={index}>
+              <SidebarSubItem icon={item.icon} label={item.label} {...{ selectedLabel, setSelectedLabel, isOpen }} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ icon, label, isOpen, selectedLabel, setSelectedLabel }) {
+  return (
+    <button
+      className={cn(
+        "flex  w-full p-3 mb-1 rounded-lg hover:bg-white text-[15px] font-extrabold transition-all text-[#03B0F5] shadow animate-pop",
+        selectedLabel === label && "bg-[#FFFF00] border border-[#03B0F5]"
+      )}
+      onClick={() => setSelectedLabel(label)}
+    >
+      {icon}
+      {isOpen && <span className="ml-3">{label}</span>}
+    </button>
+  );
+}
+
+function SidebarSubItem({ icon, label, selectedLabel, setSelectedLabel, isOpen }) {
+  return (
+    <button
+      className={cn(
+        "flex w-full p-2 text-left mb-1 rounded-md hover:bg-white text-[14px] transition-all font-semibold text-[#03B0F5] animate-pop ml-2",
+        selectedLabel === label && "bg-[#FFFF00] border border-[#03B0F5]"
+      )}
+      onClick={() => setSelectedLabel(label)}
+    >
+      {icon}
+      {isOpen && <span className="ml-2">{label}</span>}
+    </button>
+  );
+}
+
+// Main Sidebar component with router support
+export default function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [selectedLabel, setSelectedLabel] = useState(null);
+
+  useEffect(() => {
+    // If a loan type is already selected, use the corresponding label
+    const selectedLoanType = localStorage.getItem('selectedLoanType');
+    if (selectedLoanType && selectedLoanType !== 'all') {
+      setSelectedLabel('Lead CRM');
+    } else {
+      // Determine initial selected label based on path
+      const path = location.pathname;
+      const parts = path.split('/').filter(Boolean);
+      
+      if (parts.length === 0) {
+        setSelectedLabel('Lead CRM'); // Default
+      } else if (parts.length >= 2) {
+        // Handle nested routes
+        if (parts[0] === 'hrms') {
+          switch (parts[1]) {
+            case 'employees':
+              setSelectedLabel('Employees');
+              break;
+            case 'dashboard':
+              setSelectedLabel('Dashboard');
+              break;
+            // Add more mappings as needed
+            default:
+              setSelectedLabel('HRMS');
+          }
+        }
+      } else {
+        // Simple path mapping
+        switch (parts[0]) {
+          case 'leads':
+          case 'lead-crm':
+            setSelectedLabel('Lead CRM');
+            break;
+          case 'feeds':
+          case 'feed':
+            setSelectedLabel('Feed');
+            break;
+          case 'task':
+            setSelectedLabel('Task');
+            break;
+          case 'ticket':
+            setSelectedLabel('Ticket');
+            break;
+          case 'login-crm':
+            setSelectedLabel('Login CRM');
+            break;
+          case 'warning':
+            setSelectedLabel('Warning');
+            break;
+          case 'charts':
+            setSelectedLabel('Charts');
+            break;
+          case 'emi-calculator':
+            setSelectedLabel('EMI Calculator');
+            break;
+          case 'settings':
+            setSelectedLabel('Settings');
+            break;
+          default:
+            setSelectedLabel('Lead CRM'); // Fallback
+        }
+      }
+    }
+  }, [location.pathname]);
+
+  // Watch for changes in selected label to update navigation
+  useEffect(() => {
+    if (!selectedLabel) return;
+    
+    // Navigation mapping
+    switch (selectedLabel) {
+      case 'Lead CRM':
+        navigate('/lead-crm');
+        break;
+      case 'Create LEAD':
+        navigate('/create-lead');
+        break;
+      case 'Feed':
+        navigate('/feed');
+        break;
+      case 'Task':
+        navigate('/task');
+        break;
+      case 'Ticket':
+        navigate('/ticket');
+        break;
+      case 'Login CRM':
+        navigate('/login-crm');
+        break;
+      case 'Dashboard':
+        navigate('/hrms/dashboard');
+        break;
+      case 'Employees':
+        navigate('/hrms/employees');
+        break;
+      case 'Leaves':
+        navigate('/hrms/leave');
+        break;
+      case 'Attendance':
+        navigate('/hrms/attendance');
+        break;
+      case 'Daily Performance':
+        navigate('/hrms/performance');
+        break;
+      case 'Warning':
+        navigate('/warning');
+        break;
+      case 'Charts':
+        navigate('/charts');
+        break;
+      case 'EMI Calculator':
+        navigate('/emi-calculator');
+        break;
+      case 'Settings':
+        navigate('/settings');
+        break;
+    }
+  }, [selectedLabel, navigate]);
+
+  return <SidebarWithoutRouter selectedLabel={selectedLabel} setSelectedLabel={setSelectedLabel} />;
+}

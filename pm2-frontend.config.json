@@ -1,0 +1,28 @@
+{
+  "apps": [
+    {
+      "name": "rupiyame-frontend",
+      "script": "npm",
+      "args": "run dev",
+      "cwd": "/www/wwwroot/rupiyamaker/RupiyaMe/rupiyamaker-UI/crm",
+      "instances": 1,
+      "autorestart": true,
+      "watch": false,
+      "max_memory_restart": "1G",
+      "env": {
+        "NODE_ENV": "development",
+        "PORT": "4521"
+      },
+      "env_production": {
+        "NODE_ENV": "production",
+        "PORT": "4521"
+      },
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "error_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/frontend-error.log",
+      "out_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/frontend-out.log",
+      "log_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/frontend-combined.log",
+      "merge_logs": true,
+      "kill_timeout": 5000
+    }
+  ]
+}

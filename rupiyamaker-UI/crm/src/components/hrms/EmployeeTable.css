@@ -1,0 +1,148 @@
+/* EmployeeTable.css */
+
+/* Style the table with a dark theme */
+.employee-table-dark {
+  background-color: #000 !important;
+}
+
+/* Style the table header */
+.employee-table-dark .ant-table-thead > tr > th {
+  background-color: #181818 !important;
+  color: #03B0F5 !important; /* Blue header text for better visibility */
+  border-bottom: 1px solid #333 !important;
+  font-weight: bold;
+}
+
+/* Style the table rows */
+.employee-table-dark .ant-table-tbody > tr > td {
+  background-color: #000 !important;
+  color: white !important;
+  border-bottom: 1px solid #333 !important;
+}
+
+/* Style the table rows on hover */
+.employee-table-dark .ant-table-tbody > tr:hover > td {
+  background-color: #1a1a1a !important;
+}
+
+/* Style the pagination */
+.employee-table-dark .ant-pagination {
+  background-color: transparent;
+}
+
+.employee-table-dark .ant-pagination-item {
+  background-color: #181818;
+  border-color: #333;
+}
+
+.employee-table-dark .ant-pagination-item a {
+  color: white;
+}
+
+.employee-table-dark .ant-pagination-item-active {
+  background-color: #03B0F5;
+  border-color: #03B0F5;
+}
+
+.employee-table-dark .ant-pagination-item-active a {
+  color: white;
+}
+
+.employee-table-dark .ant-pagination-prev .ant-pagination-item-link,
+.employee-table-dark .ant-pagination-next .ant-pagination-item-link {
+  background-color: #181818;
+  color: white;
+  border-color: #333;
+}
+
+/* Style the badges for better visibility on dark background */
+.employee-table-dark .ant-badge-status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.employee-table-dark .ant-badge-status-text {
+  color: white;
+}
+
+/* Style dropdown menu */
+.employee-table-dark .ant-dropdown-menu {
+  background-color: #181818;
+  border: 1px solid #333;
+}
+
+.employee-table-dark .ant-dropdown-menu-item {
+  color: white;
+}
+
+.employee-table-dark .ant-dropdown-menu-item:hover {
+  background-color: #252525;
+}
+
+/* Style size changer */
+.employee-table-dark .ant-select-selector {
+  background-color: #181818 !important;
+  color: white !important;
+  border-color: #333 !important;
+}
+
+.employee-table-dark .ant-select-arrow {
+  color: white !important;
+}
+
+/* Ensure loading state is visible on dark background */
+.employee-table-dark .ant-spin-dot-item {
+  background-color: #03B0F5;
+}
+
+.employee-table-dark .ant-table-empty .ant-table-tbody > tr > td {
+  color: #a9a9a9 !important;
+}
+
+/* Tag styling */
+.employee-table-dark .ant-tag {
+  border: 1px solid transparent;
+}
+
+/* Typography styling */
+.employee-table-dark .ant-typography {
+  color: white;
+}
+
+/* Quick jumper styling */
+.employee-table-dark .ant-pagination-options-quick-jumper {
+  color: white;
+}
+
+.employee-table-dark .ant-pagination-options-quick-jumper input {
+  background-color: #181818;
+  border-color: #333;
+  color: white;
+}
+
+/* Button text styling */
+.employee-table-dark .ant-btn-text {
+  color: white;
+}
+
+.employee-table-dark .ant-btn-text:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Dropdown overlay styling */
+.ant-dropdown-menu {
+  background-color: #181818 !important;
+  color: white !important;
+}
+
+.ant-dropdown-menu-item {
+  color: white !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: #252525 !important;
+}
+
+.ant-dropdown-menu-item .anticon {
+  color: #03B0F5;
+}

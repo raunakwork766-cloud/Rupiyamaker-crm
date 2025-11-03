@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Permission System Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background-color: #2a2a2a;
+        }
+        .permission-card {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        .own { border-left: 4px solid #fbbf24; }
+        .junior { border-left: 4px solid #3b82f6; }
+        .all { border-left: 4px solid #10b981; }
+        .test-controls {
+            margin: 15px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #3b82f6;
+            color: white;
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
+        .log {
+            background-color: #111;
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.own { background-color: #fbbf24; color: #000; }
+        .status.junior { background-color: #3b82f6; color: #fff; }
+        .status.all { background-color: #10b981; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Frontend Permission System Test</h1>
+        <p>Test the simplified 3-type permission system for React components</p>
+
+        <div class="section">
+            <h2>📋 Permission Types</h2>
+            <div class="permission-card own">
+                <strong>👤 "own" Permission</strong><br>
+                Can only view and manage own records (default for regular users)
+            </div>
+            <div class="permission-card junior">
+                <strong>🔸 "junior" Permission</strong><br>
+                Can view and manage subordinate records + own records (manager level)
+            </div>
+            <div class="permission-card all">
+                <strong>🔑 "all" Permission</strong><br>
+                Can view and manage all records (admin level)
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🧪 Test Controls</h2>
+            <div class="test-controls">
+                <h3>Simulate Different Permission Sets:</h3>
+                <button onclick="setTestPermissions('own')">Set "Own" Permissions</button>
+                <button onclick="setTestPermissions('junior')">Set "Junior" Permissions</button>
+                <button onclick="setTestPermissions('all')">Set "All" Permissions</button>
+                <button onclick="setTestPermissions('super_admin')">Set Super Admin</button>
+                <button onclick="clearPermissions()">Clear Permissions</button>
+            </div>
+            
+            <div class="test-controls">
+                <h3>Test Module Permissions:</h3>
+                <button onclick="testModule('warnings')">Test Warnings</button>
+                <button onclick="testModule('users')">Test Users</button>
+                <button onclick="testModule('attendance')">Test Attendance</button>
+                <button onclick="testModule('leaves')">Test Leaves</button>
+                <button onclick="testAllModules()">Test All Modules</button>
+            </div>
+
+            <div class="test-controls">
+                <button onclick="clearLog()">Clear Log</button>
+                <button onclick="exportResults()">Export Results</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Current Status</h2>
+            <div id="currentStatus">
+                <p>Loading permission status...</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📝 Test Results</h2>
+            <div id="testLog" class="log">
+                <div>🔍 Permission system test initialized...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock permission functions for testing (simplified versions)
+        const permissionUtils = {
+            isSuperAdmin: (userPermissions) => {
+                if (!userPermissions) userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+                
+                if (Array.isArray(userPermissions)) {
+                    return userPermissions === '*' || 
+                           userPermissions.some(perm => 
+                             (perm.page === '*' && perm.actions === '*') ||
+                             (perm.page === '*' && Array.isArray(perm.actions) && perm.actions.includes('*'))
+                           );
+                }
+                return false;
+            },
+
+            getPermissionLevel: (module, userPermissions) => {
+                if (!userPermissions) userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+                
+                if (permissionUtils.isSuperAdmin(userPermissions)) {
+                    return "all";
+                }
+                
+                if (!Array.isArray(userPermissions)) {
+                    return "own";
+                }
+                
+                const modulePermission = userPermissions.find(perm => perm.page === module);
+                
+                if (!modulePermission) {
+                    return "own";
+                }
+                
+                const actions = modulePermission.actions;
+                
+                if (actions === "all" || actions === "*" ||
+                    (Array.isArray(actions) && (actions.includes("all") || actions.includes("*")))) {
+                    return "all";
+                }
+                
+                if (actions === "junior" ||
+                    (Array.isArray(actions) && actions.includes("junior"))) {
+                    return "junior";
+                }
+                
+                return "own";
+            },
+
+            getPermissionDisplayText: (module, userPermissions) => {
+                const level = permissionUtils.getPermissionLevel(module, userPermissions);
+                
+                switch (level) {
+                    case "all":
+                        return permissionUtils.isSuperAdmin(userPermissions) ? "🔑 Super Admin Access" : "👑 Full Admin Access";
+                    case "junior":
+                        return "🔸 Manager Access (Subordinates + Own)";
+                    case "own":
+                        return "👤 Regular User Access (Own Only)";
+                    default:
+                        return "❓ Unknown Permission Level";
+                }
+            },
+
+            canViewAll: (module, userPermissions) => {
+                return permissionUtils.getPermissionLevel(module, userPermissions) === "all";
+            },
+
+            canViewJunior: (module, userPermissions) => {
+                const level = permissionUtils.getPermissionLevel(module, userPermissions);
+                return level === "junior" || level === "all";
+            },
+
+            canCreate: (module, userPermissions) => {
+                const level = permissionUtils.getPermissionLevel(module, userPermissions);
+                return level === "junior" || level === "all";
+            }
+        };
+
+        // Test permission sets
+        const testPermissions = {
+            own: [],
+            junior: [
+                {"page": "warnings", "actions": ["junior"]},
+                {"page": "users", "actions": ["own"]},
+                {"page": "attendance", "actions": ["junior"]},
+                {"page": "leaves", "actions": ["junior"]}
+            ],
+            all: [
+                {"page": "warnings", "actions": ["all"]},
+                {"page": "users", "actions": ["all"]},
+                {"page": "attendance", "actions": ["all"]},
+                {"page": "leaves", "actions": ["all"]}
+            ],
+            super_admin: [
+                {"page": "*", "actions": ["*"]}
+            ]
+        };
+
+        // Logging function
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('testLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = {
+                'info': '#ffffff',
+                'success': '#10b981',
+                'warning': '#fbbf24',
+                'error': '#ef4444'
+            }[type];
+            
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Update status display
+        function updateStatus() {
+            const statusDiv = document.getElementById('currentStatus');
+            const permissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+            const modules = ['warnings', 'users', 'attendance', 'leaves'];
+            
+            let html = '<h3>Current Permission Status:</h3>';
+            
+            if (permissions.length === 0) {
+                html += '<p>❌ No permissions set (defaults to "own" for all modules)</p>';
+            } else {
+                html += '<table border="1" style="border-collapse: collapse; width: 100%; margin-top: 10px;">';
+                html += '<tr><th>Module</th><th>Permission Level</th><th>Display Text</th><th>Capabilities</th></tr>';
+                
+                modules.forEach(module => {
+                    const level = permissionUtils.getPermissionLevel(module);
+                    const displayText = permissionUtils.getPermissionDisplayText(module);
+                    const canView = permissionUtils.canViewAll(module) ? 'All' : 
+                                   permissionUtils.canViewJunior(module) ? 'Junior' : 'Own';
+                    const canCreateRec = permissionUtils.canCreate(module) ? 'Yes' : 'No';
+                    
+                    html += `<tr>
+                        <td>${module}</td>
+                        <td><span class="status ${level}">${level}</span></td>
+                        <td>${displayText}</td>
+                        <td>View: ${canView}, Create: ${canCreateRec}</td>
+                    </tr>`;
+                });
+                
+                html += '</table>';
+            }
+            
+            statusDiv.innerHTML = html;
+        }
+
+        // Set test permissions
+        function setTestPermissions(type) {
+            const permissions = testPermissions[type];
+            localStorage.setItem('userPermissions', JSON.stringify(permissions));
+            log(`✅ Set ${type} permissions: ${JSON.stringify(permissions)}`, 'success');
+            updateStatus();
+        }
+
+        // Clear permissions
+        function clearPermissions() {
+            localStorage.removeItem('userPermissions');
+            log('🗑️ Cleared all permissions', 'warning');
+            updateStatus();
+        }
+
+        // Test a specific module
+        function testModule(module) {
+            log(`🧪 Testing ${module} module...`, 'info');
+            
+            const level = permissionUtils.getPermissionLevel(module);
+            const displayText = permissionUtils.getPermissionDisplayText(module);
+            const canViewAll = permissionUtils.canViewAll(module);
+            const canViewJunior = permissionUtils.canViewJunior(module);
+            const canCreate = permissionUtils.canCreate(module);
+            
+            log(`   Permission Level: ${level}`, 'info');
+            log(`   Display Text: ${displayText}`, 'info');
+            log(`   Can View All: ${canViewAll}`, canViewAll ? 'success' : 'warning');
+            log(`   Can View Junior: ${canViewJunior}`, canViewJunior ? 'success' : 'warning');
+            log(`   Can Create: ${canCreate}`, canCreate ? 'success' : 'warning');
+            log(``, 'info');
+        }
+
+        // Test all modules
+        function testAllModules() {
+            const modules = ['warnings', 'users', 'attendance', 'leaves'];
+            log('🔍 Testing all modules...', 'info');
+            modules.forEach(module => testModule(module));
+        }
+
+        // Clear log
+        function clearLog() {
+            document.getElementById('testLog').innerHTML = '<div>🔍 Permission system test initialized...</div>';
+        }
+
+        // Export results
+        function exportResults() {
+            const logDiv = document.getElementById('testLog');
+            const results = logDiv.innerText;
+            const blob = new Blob([results], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'permission_test_results.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+            log('📁 Results exported to file', 'success');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 Frontend permission test system loaded', 'success');
+            updateStatus();
+            
+            // Test with current permissions
+            testAllModules();
+        });
+    </script>
+</body>
+</html>

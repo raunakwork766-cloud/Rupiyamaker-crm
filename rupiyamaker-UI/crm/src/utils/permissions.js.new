@@ -1,0 +1,134 @@
+/**
+ * Permission utilities for frontend authorization
+ */
+
+/**
+ * Check if user is super admin
+ * @param {Object} userPermissions - The user's permissions object
+ * @returns {boolean} - Whether the user is super admin
+ */
+export const isSuperAdmin = (userPermissions) => {
+    if (!userPermissions) return false;
+
+    // Global super admin - has access to everything (page "*" and actions "*")
+    if (userPermissions?.pages === "*" && userPermissions?.actions === "*") {
+        return true;
+    }
+
+    // Page-specific super admin for leads (page "leads" and actions "*")
+    if (userPermissions?.leads && userPermissions.leads === "*") {
+        return true;
+    }
+
+    // Alternative format: if permissions object has leads with all actions
+    if (userPermissions?.leads && typeof userPermissions.leads === 'object' && userPermissions.leads['*'] === true) {
+        return true;
+    }
+
+    return false;
+};
+
+/**
+ * Check if a user has a specific permission
+ * @param {Object} userPermissions - The user's permissions object from localStorage
+ * @param {string} page - The page/module to check permission for (e.g., 'leads', 'feeds')
+ * @param {string} action - The action to check (e.g., 'view', 'edit', 'delete')
+ * @returns {boolean} - Whether the user has permission
+ */
+export const hasPermission = (userPermissions, page, action) => {
+    if (!userPermissions) {
+        console.warn('No permissions provided to hasPermission check');
+        return false;
+    }
+
+    // Global super admin checks - has access to everything (page "*" and actions "*")
+    if (userPermissions?.pages === "*" && userPermissions?.actions === "*") {
+        return true;
+    }
+
+    // Page-specific super admin check (page "leads" and actions "*" means super admin for leads)
+    if (userPermissions?.[page] === "*") {
+        return true;
+    }
+
+    // Check specific page and action
+    if (userPermissions?.[page]) {
+        // If page permissions exist as object
+        if (typeof userPermissions[page] === 'object' && !Array.isArray(userPermissions[page])) {
+            // Check if the action is explicitly allowed
+            if (userPermissions[page][action] === true) {
+                return true;
+            }
+
+            // Check if all actions are allowed for this page (actions "*")
+            if (userPermissions[page]['*'] === true) {
+                return true;
+            }
+        }
+
+        // If page permissions exist as array (backwards compatibility)
+        if (Array.isArray(userPermissions[page])) {
+            // Check if action is in the array or if '*' is in the array
+            if (userPermissions[page].includes(action) || userPermissions[page].includes('*')) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+
+/**
+ * Check if user can view the LoginCRM tab
+ * @param {Object} userPermissions - The user's permissions object
+ * @returns {boolean} - Whether the user can view LoginCRM tab
+ */
+export const canViewLoginCRM = (userPermissions) => {
+    if (!userPermissions) {
+        userPermissions = getUserPermissions();
+    }
+    
+    // Case 1: Global super admin with wildcard permissions
+    if (userPermissions?.pages === "*" && userPermissions?.actions === "*") {
+        return true;
+    }
+    
+    // Case 2: Page-specific sudo admin (page "login" and action *)
+    if (userPermissions?.login === "*" || 
+        (userPermissions?.login && typeof userPermissions.login === 'object' && userPermissions.login['*'] === true)) {
+        return true;
+    }
+    
+    // Case 3: Specific permission (page "login" action "show")
+    return hasPermission(userPermissions, 'login', 'view');
+};
+
+/**
+ * Get the user's permissions from localStorage
+ * @returns {Object} - The user's permissions object
+ */
+export const getUserPermissions = () => {
+    try {
+        const permissionsJSON = localStorage.getItem('userPermissions');
+        if (!permissionsJSON) {
+            console.warn('No permissions found in localStorage');
+            return {};
+        }
+        return JSON.parse(permissionsJSON);
+    } catch (error) {
+        console.error('Error parsing user permissions:', error);
+        return {};
+    }
+};
+
+/**
+ * Set the user's permissions in localStorage
+ * @param {Object} permissions - The permissions to store
+ */
+export const setUserPermissions = (permissions) => {
+    try {
+        localStorage.setItem('userPermissions', JSON.stringify(permissions));
+    } catch (error) {
+        console.error('Error storing user permissions:', error);
+    }
+};

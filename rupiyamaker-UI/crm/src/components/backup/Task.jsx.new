@@ -1,0 +1,483 @@
+import React, { useState, useEffect } from "react";
+import {
+  CheckSquare, Plus, Search
+} from 'lucide-react';
+import CreateTask from "./CreateTask";
+import EditTask from "./EditTask";
+
+// Tasks dummy data
+const TASKS_DUMMY = [
+  {
+    id: 1,
+    createdBy: "ADMIN",
+    status: "OPEN",
+    subject: "ESFSER",
+    message: "Test message",
+    typeTask: "TO DO",
+    leadLogin: "PL20250101",
+    customerName: "Ravi Kumar",
+    date: "2025-06-11",
+    time: "10:05 PM",
+    assign: "ADMIN",
+  },
+  {
+    id: 2,
+    createdBy: "USER1",
+    status: "COMPLETED",
+    subject: "Document Verification",
+    message: "Verify all uploaded documents.",
+    typeTask: "REVIEW",
+    leadLogin: "PL20250102",
+    customerName: "Priya Sharma",
+    date: "2025-06-15",
+    time: "11:00 AM",
+    assign: "USER2",
+  },
+  {
+    id: 3,
+    createdBy: "USER2",
+    status: "OVERDUE",
+    subject: "Call Back",
+    message: "Call customer for KYC update.",
+    typeTask: "CALL",
+    leadLogin: "PL20250103",
+    customerName: "Ankit Mehta",
+    date: "2025-06-10",
+    time: "4:00 PM",
+    assign: "USER3",
+  },
+];
+
+// All possible statuses for update
+const STATUS_OPTIONS = [
+  "OPEN",
+  "COMPLETED",
+  "OVERDUE",
+  "DUE TODAY",
+  "UPCOMING",
+];
+
+// Task type options
+const TASK_TYPE_OPTIONS = [
+  "TO DO",
+  "CUSTOMER CALL",
+  "TENDENCY"
+];
+
+// Helper function for status display in table
+function statusPill(status) {
+  switch (status) {
+    case "COMPLETED":
+      return (
+        <span className="bg-green-900 text-green-300 px-3 py-1 rounded-full text-xs font-bold">
+          Completed
+        </span>
+      );
+    case "OVERDUE":
+      return (
+        <span className="bg-red-900 text-red-300 px-3 py-1 rounded-full text-xs font-bold">
+          Overdue
+        </span>
+      );
+    case "OPEN":
+      return (
+        <span className="bg-blue-900 text-blue-300 px-3 py-1 rounded-full text-xs font-bold">
+          Open
+        </span>
+      );
+    case "DUE TODAY":
+      return (
+        <span className="bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full text-xs font-bold">
+          Due Today
+        </span>
+      );
+    case "UPCOMING":
+      return (
+        <span className="bg-purple-900 text-purple-300 px-3 py-1 rounded-full text-xs font-bold">
+          Upcoming
+        </span>
+      );
+    default:
+      return (
+        <span className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-xs font-bold">
+          {status}
+        </span>
+      );
+  }
+}
+
+// Helper to truncate message for table
+function truncate(str, length = 30) {
+  if (!str) return "";
+  return str.length > length ? str.slice(0, length) + "..." : str;
+}
+
+const initialTaskForm = {
+  subject: "",
+  message: "",
+  typeTask: TASK_TYPE_OPTIONS[0],
+  leadLogin: "",
+  customerName: "",
+  date: "",
+  time: "",
+  assign: "",
+  createdBy: "",
+  status: STATUS_OPTIONS[0],
+};
+
+export default function Task() {
+  const [tasks, setTasks] = useState(TASKS_DUMMY);
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [editTask, setEditTask] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [taskForm, setTaskForm] = useState(initialTaskForm);
+  const [formError, setFormError] = useState("");
+  const [currentUser, setCurrentUser] = useState("");
+
+  useEffect(() => {
+    // Get current user from localStorage
+    try {
+      const userName = localStorage.getItem('userName');
+      const userFirstName = localStorage.getItem('userFirstName');
+      const userLastName = localStorage.getItem('userLastName');
+      
+      // Check for userName first as it's likely the most complete format
+      if (userName) {
+        setCurrentUser(userName);
+        return;
+      }
+      
+      // Check for first and last name combination
+      if (userFirstName && userLastName) {
+        setCurrentUser(`${userFirstName} ${userLastName}`);
+        return;
+      }
+      if (userFirstName) {
+        setCurrentUser(userFirstName);
+        return;
+      }
+      
+      // Check for a full user object
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          // Return user info in order of most likely to contain a full name
+          if (parsedUser.name) {
+            setCurrentUser(parsedUser.name);
+            return;
+          }
+          if (parsedUser.fullName) {
+            setCurrentUser(parsedUser.fullName);
+            return;
+          }
+          if (parsedUser.firstName && parsedUser.lastName) {
+            setCurrentUser(`${parsedUser.firstName} ${parsedUser.lastName}`);
+            return;
+          }
+          if (parsedUser.firstName) {
+            setCurrentUser(parsedUser.firstName);
+            return;
+          }
+          if (parsedUser.username) {
+            setCurrentUser(parsedUser.username);
+            return;
+          }
+          if (parsedUser.email) {
+            setCurrentUser(parsedUser.email);
+            return;
+          }
+        } catch (parseError) {
+          console.log("Error parsing user data:", parseError);
+        }
+      }
+      
+      setCurrentUser("Current User");
+    } catch (error) {
+      console.log("Error getting current user:", error);
+      setCurrentUser("Current User");
+    }
+  }, []);
+
+  // Calculate dynamic counts
+  const completedCount = tasks.filter((t) => t.status === "COMPLETED").length;
+  const overdueCount = tasks.filter((t) => t.status === "OVERDUE").length;
+  const dueTodayCount = tasks.filter((t) => t.status === "DUE TODAY").length;
+  const upcomingCount = tasks.filter((t) => t.status === "UPCOMING").length;
+  const allCount = tasks.length;
+
+  // Filters with dynamic counts
+  const FILTERS = [
+    { key: "due_today", label: "Due Today", count: dueTodayCount },
+    { key: "upcoming", label: "Upcoming", count: upcomingCount },
+    { key: "overdues", label: "Overdues", count: overdueCount },
+    { key: "completed", label: "Completed", count: completedCount },
+    { key: "all", label: "All", count: allCount, active: true },
+  ];
+
+  const filteredTasks = tasks.filter((task) => {
+    const filterValid =
+      activeFilter === "all" ||
+      (activeFilter === "overdues" && task.status === "OVERDUE") ||
+      (activeFilter === "completed" && task.status === "COMPLETED") ||
+      (activeFilter === "due_today" && task.status === "DUE TODAY") ||
+      (activeFilter === "upcoming" && task.status === "UPCOMING");
+    const searchValid =
+      !search ||
+      task.customerName.toLowerCase().includes(search.toLowerCase()) ||
+      task.subject.toLowerCase().includes(search.toLowerCase()) ||
+      task.status.toLowerCase().includes(search.toLowerCase());
+    return filterValid && searchValid;
+  });
+
+  // Handle row click to show EditTask
+  const handleRowClick = (task) => {
+    setEditTask(null);
+    setTimeout(() => setEditTask(task), 0); // Remount with new or same task
+  };
+
+  // Handle save task from EditTask
+  const handleSaveTask = (updatedTask) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+    );
+    setEditTask(null); // Close EditTask after saving
+  };
+
+  // Handle cancel from EditTask
+  const handleCancelEdit = () => {
+    setEditTask(null);
+  };
+
+  // Create Task Modal controls
+  const openCreateModal = () => {
+    // Initialize with the current logged-in user
+    setTaskForm({
+      ...initialTaskForm,
+      createdBy: currentUser
+    });
+    setFormError("");
+    setShowCreateModal(true);
+  };
+  
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setTaskForm(initialTaskForm);
+    setFormError("");
+  };
+
+  // Handle create form field change
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setTaskForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // Create new task from the CreateTask component
+  const handleCreateTaskSave = (formData) => {
+    // Add new task
+    const newTask = {
+      id: tasks.length > 0 ? Math.max(...tasks.map((t) => t.id)) + 1 : 1,
+      subject: formData.get('subject'),
+      message: formData.get('task_details'),
+      typeTask: formData.get('task_type'),
+      leadLogin: "PL" + Date.now().toString().substr(-7),
+      customerName: "Customer " + (tasks.length + 1),
+      date: new Date().toISOString().split('T')[0],
+      time: formData.get('due_time'),
+      assign: formData.get('assigned_to') ? JSON.parse(formData.get('assigned_to'))[0] : currentUser,
+      createdBy: formData.get('created_by') || currentUser,
+      status: "OPEN"
+    };
+    
+    setTasks((prev) => [newTask, ...prev]);
+    setShowCreateModal(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl text-[#08B8EA]">
+              <CheckSquare size={32} />
+            </span>
+            <h1 className="text-2xl font-bold">Task Management</h1>
+          </div>
+          <button
+            className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
+            onClick={openCreateModal}
+          >
+            <Plus size={24} />
+            Create Task
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-3 mb-8 flex-wrap text-xl font-bold">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setActiveFilter(f.key)}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full font-semibold border
+                ${
+                  activeFilter === f.key
+                    ? "bg-[#08B8EA] text-white border-[#08B8EA] shadow"
+                    : "bg-white text-[#08B8EA] border-[#232a36] hover:bg-[#1a222e]"
+                }
+                transition-all duration-200
+              `}
+            >
+              <span>{f.label}</span>
+              <span
+                className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                  f.count > 0
+                    ? "bg-gray-800 text-white"
+                    : "bg-[#232a36] text-[#08B8EA]"
+                }`}
+              >
+                {f.count}
+              </span>
+            </button>
+          ))}
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              className="rounded-full px-4 py-2 border border-[#08B8EA] bg-[#181e29] text-[#e4eaf5] font-medium focus:outline-none"
+              style={{ minWidth: 220 }}
+              placeholder="Search by name, subject, status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Search className="text-[#08B8EA]" size={20} />
+          </div>
+        </div>
+
+        {/* Table Section */}
+        <div className="overflow-auto rounded-xl shadow-2xl">
+          <table className="min-w-[1000px] w-full">
+            <thead className="bg-white">
+              <tr>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  #
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Subject
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Status
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Created By
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Lead/Login
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Customer
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Assigned
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Date
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Time
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Task Type
+                </th>
+                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
+                  Message
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTasks.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="bg-[#181e29] rounded-xl shadow p-8 text-center text-lg font-bold text-[#08B8EA]"
+                  >
+                    No Tasks Found
+                  </td>
+                </tr>
+              ) : (
+                filteredTasks.map((task, idx) => (
+                  <tr
+                    key={task.id}
+                    className="border-b-4 border-white bg-[#181e29] hover:bg-gray-800 transition cursor-pointer"
+                    onClick={() => handleRowClick(task)}
+                  >
+                    <td className="text-lg text-bold py-3 px-4 whitespace-nowrap text-center">
+                      {idx + 1}
+                    </td>
+                    <td className="text-lg py-3 px-4 whitespace-nowrap font-bold">
+                      {task.subject}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {statusPill(task.status)}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.createdBy}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.leadLogin}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap">
+                      {task.customerName}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.assign}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.date}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.time}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
+                      {task.typeTask}
+                    </td>
+                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap">
+                      {truncate(task.message, 30)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Render EditTask in a modal popup when a task is selected */}
+        {editTask && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black bg-opacity-50" style={{ backdropFilter: "blur(3px)" }}>
+            <div className="w-full max-w-2xl mx-auto">
+              <EditTask
+                taskData={editTask}
+                onClose={handleCancelEdit}
+                onSave={handleSaveTask}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Modal Popup for Create Task */}
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style={{ backdropFilter: "blur(3px)" }}>
+            <div className="w-full max-w-2xl mx-auto">
+              <CreateTask
+                onClose={closeCreateModal}
+                onSave={handleCreateTaskSave}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

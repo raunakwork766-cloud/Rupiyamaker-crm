@@ -1,0 +1,2562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Modules Testing</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .module-nav {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .tab-content {
+            padding: 20px;
+        }
+
+        /* Organization Chart Styling */
+        .org-chart {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background-color: #fcfcfc;
+            overflow: auto;
+            max-height: 600px;
+        }
+        .org-chart ul {
+            padding: 0;
+            margin: 0;
+            list-style: none;
+            display: flex;
+            justify-content: center;
+        }
+        .org-chart li {
+            padding: 0;
+            margin: 0;
+            text-align: center;
+            position: relative;
+        }
+        /* Department node styling */
+        .org-chart .department-node {
+            display: inline-block;
+            padding: 10px 15px;
+            border: 2px solid #28a745;
+            border-radius: 5px;
+            background-color: #e8f5e9;
+            margin: 0 10px 25px;
+            min-width: 220px;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .org-chart .department-node:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-3px);
+            background-color: #d4edda;
+        }
+        .org-chart .department-node.inactive {
+            border-color: #6c757d;
+            background-color: #f8f9fa;
+            opacity: 0.7;
+        }
+        .org-chart .department-node.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
+        }
+        
+        /* Role node styling */
+        .org-chart .role-node {
+            display: inline-block;
+            padding: 10px 15px;
+            border: 2px solid #6f42c1;
+            border-radius: 5px;
+            background-color: #f3ebff;
+            margin: 0 10px 25px;
+            min-width: 220px;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .org-chart .role-node:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-3px);
+            background-color: #e9dcff;
+        }
+        .org-chart .role-node.inactive {
+            border-color: #6c757d;
+            background-color: #f8f9fa;
+            opacity: 0.7;
+        }
+        .org-chart .role-node.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
+        }
+        
+        /* Common node styling */
+        .org-chart .node-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 3px;
+            color: #212529;
+        }
+        .org-chart .node-subtitle {
+            color: #6c757d;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .org-chart .node-badges {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .org-chart .node-badge {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+        
+        /* Department and role connectors */
+        .org-chart li::before {
+            content: "";
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            width: 2px;
+            height: 25px;
+            background-color: #6c757d;
+        }
+        .org-chart > ul > li::before {
+            display: none;
+        }
+        .org-chart ul ul::before {
+            content: "";
+            position: absolute;
+            top: -25px;
+            left: calc(50% - 1px);
+            width: 2px;
+            height: 25px;
+            background-color: #6c757d;
+        }
+        .org-chart li ul::before {
+            content: "";
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            height: 20px;
+            width: 0;
+            border-left: 2px solid #6c757d;
+        }
+        .org-chart ul ul::after {
+            content: "";
+            position: absolute;
+            top: -20px;
+            width: 100%;
+            height: 2px;
+            background-color: #6c757d;
+        }
+        .org-chart > ul ul::after {
+            left: 50%;
+            width: 50%;
+        }
+        .org-chart > ul ul:first-child::after {
+            left: 50%;
+            width: 50%;
+        }
+        .org-chart > ul ul:last-child::after {
+            left: 0;
+            width: 50%;
+        }
+        .org-chart > ul > li > ul::after {
+            display: none;
+        }
+        
+        /* Department connector colors */
+        .dept-org-chart li::before,
+        .dept-org-chart ul ul::before,
+        .dept-org-chart li ul::before,
+        .dept-org-chart ul ul::after {
+            background-color: #28a745;
+        }
+        
+        /* Role connector colors */
+        .role-org-chart li::before,
+        .role-org-chart ul ul::before,
+        .role-org-chart li ul::before,
+        .role-org-chart ul ul::after {
+            background-color: #6f42c1;
+        }
+        
+        /* Toggle buttons */
+        .node-toggle {
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.2s ease;
+        }
+        .department-toggle {
+            background: #28a745;
+            color: white;
+        }
+        .role-toggle {
+            background: #6f42c1;
+            color: white;
+        }
+        .node-toggle:hover {
+            transform: translateX(-50%) scale(1.1);
+        }
+        
+        /* Collapsed state */
+        .org-chart li.collapsed > ul {
+            display: none;
+        }
+        
+        /* Action buttons */
+        .node-actions {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: flex;
+            gap: 2px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .department-node:hover .node-actions,
+        .role-node:hover .node-actions {
+            opacity: 1;
+        }
+        
+        /* Permission checkboxes */
+        .permissions-section {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .permission-group h6 {
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 5px;
+            margin-top: 15px;
+        }
+        .permission-checkbox {
+            margin-bottom: 5px;
+        }
+        .permission-all {
+            background-color: #fff3cd;
+            padding: 5px;
+            border-radius: 3px;
+            margin-bottom: 10px;
+        }
+        
+        /* User styles */
+        .user-card {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+        }
+        .user-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-3px);
+        }
+        .user-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #6c757d;
+            margin-right: 15px;
+        }
+        .user-filter-bar {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        
+        /* Auth styles */
+        .auth-card {
+            max-width: 450px;
+            margin: 0 auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .permissions-display {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .permission-page-title {
+            font-weight: bold;
+            background-color: #f8f9fa;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .permission-action {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 2px 8px;
+            margin: 2px;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+        .permission-all-access {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        /* Role Permissions Section Styling */
+        .permissions-section {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f8f9fa;
+        }
+        
+        .permission-group {
+            background-color: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: all 0.2s ease;
+        }
+        
+        .permission-group:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .permission-group h6 {
+            color: #495057;
+            margin-bottom: 12px;
+            font-weight: 600;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 8px;
+        }
+        
+        .permission-all {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .permission-all label {
+            color: #1976d2;
+            font-weight: 600;
+        }
+        
+        .permission-checkbox {
+            padding: 6px 0;
+        }
+        
+        .permission-checkbox label {
+            margin-bottom: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .permission-checkbox:hover {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding-left: 8px;
+            margin-left: -8px;
+        }
+        
+        /* Super Admin Section */
+        .permission-group.bg-warning {
+            background-color: #fff3cd !important;
+            border-color: #ffc107;
+        }
+        
+        .permission-group.bg-warning .form-check-label {
+            color: #856404 !important;
+        }
+        
+        /* User permissions grid */
+        .permissions-grid {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 500px;
+            overflow: auto;
+        }
+        .permission-cell {
+            padding: 5px;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.5rem;
+        }
+        .badge-role {
+            background-color: #6c757d;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+        .badge-department {
+            background-color: #28a745;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+        pre.response-output {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            max-height: 300px;
+            overflow: auto;
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875rem;
+        }
+        .all-permissions-checkbox {
+            background-color: #f8d7da;
+            border: 1px solid #f5c2c7;
+            border-radius: 3px;
+        }
+        .permissions-page-row {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Loan Agency CRM</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Module Testing</a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center text-white">
+                    <span class="me-2" id="current-time">2025-06-18 10:43:50</span>
+                    <span class="badge bg-light text-dark">soher</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <ul class="nav nav-tabs module-nav" id="moduleTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="departments-tab" data-bs-toggle="tab" data-bs-target="#departments-panel" type="button">
+                    <i class="fas fa-building me-1"></i> Departments
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="roles-tab" data-bs-toggle="tab" data-bs-target="#roles-panel" type="button">
+                    <i class="fas fa-user-tag me-1"></i> Roles
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-panel" type="button">
+                    <i class="fas fa-users me-1"></i> Users
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="auth-tab" data-bs-toggle="tab" data-bs-target="#auth-panel" type="button">
+                    <i class="fas fa-lock me-1"></i> Authentication
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="moduleTabContent">
+            <!-- Department Module Panel -->
+            <div class="tab-pane fade show active" id="departments-panel" role="tabpanel">
+                <div class="row">
+                    <!-- Department Form -->
+                    <div class="col-lg-4">
+                        <div class="card mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Create/Edit Department</h5>
+                                <button type="button" id="btn-reset-dept-form" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-plus"></i> New
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <form id="department-form">
+                                    <input type="hidden" id="dept-id">
+                                    <div class="mb-3">
+                                        <label for="dept-name" class="form-label">Name</label>
+                                        <input type="text" class="form-control" id="dept-name" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="dept-description" class="form-label">Description</label>
+                                        <textarea class="form-control" id="dept-description" rows="2"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="dept-parent" class="form-label">Parent Department</label>
+                                        <select class="form-select" id="dept-parent">
+                                            <option value="">-- None (Root Department) --</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="dept-active" checked>
+                                        <label class="form-check-label" for="dept-active">Active</label>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary" id="btn-save-dept">
+                                            <i class="fas fa-save me-1"></i> Save Department
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="card-footer">
+                                <div id="dept-result"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Department List Table -->
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Department List</h5>
+                                <button id="btn-refresh-dept-list" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0" id="departments-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Parent</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="4" class="text-center">Loading departments...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Department Hierarchy -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Department Organization Chart</h5>
+                                <div>
+                                    <button id="btn-expand-all-depts" class="btn btn-sm btn-outline-secondary me-2">
+                                        <i class="fas fa-expand-alt me-1"></i> Expand All
+                                    </button>
+                                    <button id="btn-collapse-all-depts" class="btn btn-sm btn-outline-secondary me-2">
+                                        <i class="fas fa-compress-alt me-1"></i> Collapse All
+                                    </button>
+                                    <button id="btn-refresh-dept-tree" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info small">
+                                    <i class="fas fa-info-circle me-1"></i> This organizational chart shows the hierarchy of departments. Click on a department to edit it.
+                                </div>
+                                <div class="org-chart dept-org-chart" id="dept-tree">
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <p class="mt-2">Loading department organization chart...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-3"><i class="fas fa-info-circle me-1"></i> Legend:</span>
+                                    <span class="me-3"><span class="badge bg-success">Active</span></span>
+                                    <span><span class="badge bg-secondary">Inactive</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roles Module Panel -->
+            <div class="tab-pane fade" id="roles-panel" role="tabpanel">
+                <div class="row">
+                    <!-- Roles Form and List -->
+                    <div class="col-lg-4">
+                        <div class="card mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Create/Edit Role</h5>
+                                <button type="button" id="btn-reset-role-form" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-plus"></i> New
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <form id="role-form">
+                                    <input type="hidden" id="role-id">
+                                    <div class="mb-3">
+                                        <label for="role-name" class="form-label">Name</label>
+                                        <input type="text" class="form-control" id="role-name" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="role-description" class="form-label">Description</label>
+                                        <textarea class="form-control" id="role-description" rows="2"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="role-department" class="form-label">Department</label>
+                                        <select class="form-select" id="role-department">
+                                            <option value="">-- None --</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="role-reporting" class="form-label">Reports To</label>
+                                        <select class="form-select" id="role-reporting">
+                                            <option value="">-- None (Top Level) --</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="role-active" checked>
+                                        <label class="form-check-label" for="role-active">Active</label>
+                                    </div>
+                                    
+                                    <!-- Permissions Section -->
+                                    <div class="mb-3">
+                                        <label class="form-label d-block">Permissions</label>
+                                        <div class="permissions-section" id="role-permissions">
+                                            <div class="text-center py-3">
+                                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                                <span class="ms-2">Loading permissions...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary" id="btn-save-role">
+                                            <i class="fas fa-save me-1"></i> Save Role
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="card-footer">
+                                <div id="role-result"></div>
+                            </div>
+                        </div>
+
+                        <!-- Roles List -->
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Roles</h5>
+                                <button id="btn-refresh-roles" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0" id="roles-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Department</th>
+                                                <th>Reports To</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="4" class="text-center">Loading roles...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Role Hierarchy -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Role Organization Chart</h5>
+                                <div>
+                                    <button id="btn-expand-all-roles" class="btn btn-sm btn-outline-secondary me-2">
+                                        <i class="fas fa-expand-alt me-1"></i> Expand All
+                                    </button>
+                                    <button id="btn-collapse-all-roles" class="btn btn-sm btn-outline-secondary me-2">
+                                        <i class="fas fa-compress-alt me-1"></i> Collapse All
+                                    </button>
+                                    <button id="btn-refresh-role-tree" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info small">
+                                    <i class="fas fa-info-circle me-1"></i> This organizational chart shows the reporting hierarchy of roles. Click on a role to edit it.
+                                </div>
+                                <div class="org-chart role-org-chart" id="role-tree">
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <p class="mt-2">Loading role organization chart...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-3"><i class="fas fa-info-circle me-1"></i> Legend:</span>
+                                    <span class="me-3"><span class="badge bg-success">Active</span></span>
+                                    <span><span class="badge bg-secondary">Inactive</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Users Module Panel -->
+            <div class="tab-pane fade" id="users-panel" role="tabpanel">
+                <div class="row">
+                    <!-- User Form -->
+                    <div class="col-lg-4">
+                        <div class="card mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Create/Edit User</h5>
+                                <button type="button" id="btn-reset-user-form" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-plus"></i> New
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <form id="user-form">
+                                    <input type="hidden" id="user-id">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="user-first-name" class="form-label">First Name</label>
+                                            <input type="text" class="form-control" id="user-first-name" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label for="user-last-name" class="form-label">Last Name</label>
+                                            <input type="text" class="form-control" id="user-last-name" required>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-username" class="form-label">Username</label>
+                                        <input type="text" class="form-control" id="user-username" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-email" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="user-email" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-password" class="form-label">Password</label>
+                                        <input type="password" class="form-control" id="user-password">
+                                        <div class="form-text" id="password-hint">Required for new users. Leave blank to keep unchanged.</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-phone" class="form-label">Phone Number</label>
+                                        <input type="tel" class="form-control" id="user-phone">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-role" class="form-label">Role</label>
+                                        <select class="form-select" id="user-role">
+                                            <option value="">-- Select Role --</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="user-department" class="form-label">Department</label>
+                                        <select class="form-select" id="user-department">
+                                            <option value="">-- Select Department --</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="user-active" checked>
+                                        <label class="form-check-label" for="user-active">Active</label>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary" id="btn-save-user">
+                                            <i class="fas fa-save me-1"></i> Save User
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="card-footer">
+                                <div id="user-result"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User List -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Users</h5>
+                                <button id="btn-refresh-users" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <!-- Filter bar -->
+                                <div class="user-filter-bar mb-3">
+                                    <div class="row g-2">
+                                        <div class="col-md-4">
+                                            <label for="filter-role" class="form-label">Filter by Role</label>
+                                            <select class="form-select" id="filter-role">
+                                                <option value="">All Roles</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="filter-department" class="form-label">Filter by Department</label>
+                                            <select class="form-select" id="filter-department">
+                                                <option value="">All Departments</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="search-user" class="form-label">Search</label>
+                                            <input type="text" class="form-control" id="search-user" placeholder="Name, email or username">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- User cards -->
+                                <div class="row" id="users-container">
+                                    <div class="col-12 text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <p class="mt-2">Loading users...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Authentication Module Panel -->
+            <div class="tab-pane fade" id="auth-panel" role="tabpanel">
+                <div class="row">
+                    <!-- Authentication Form -->
+                    <div class="col-lg-5">
+                        <div class="card auth-card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">Test Authentication</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="auth-form">
+                                    <div class="mb-3">
+                                        <label for="auth-username" class="form-label">Username or Email</label>
+                                        <input type="text" class="form-control" id="auth-username" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="auth-password" class="form-label">Password</label>
+                                        <input type="password" class="form-control" id="auth-password" required>
+                                    </div>
+                                    <div class="d-grid">
+                                        <button type="submit" class="btn btn-primary" id="btn-auth">
+                                            <i class="fas fa-sign-in-alt me-1"></i> Authenticate
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <!-- Authentication Response -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Authentication Response</h5>
+                            </div>
+                            <div class="card-body">
+                                <pre class="response-output" id="auth-response">No authentication attempt yet</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Permissions Display -->
+                    <div class="col-lg-7">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">User Permissions</h5>
+                                <div id="auth-user-info" class="text-muted">
+                                    <i class="fas fa-user me-1"></i> Not authenticated
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="permissions-display" id="auth-permissions">
+                                    <div class="text-center py-5">
+                                        <i class="fas fa-lock fa-3x mb-3 text-muted"></i>
+                                        <p class="text-muted">Log in to view permissions</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Base API URL - Update this to match your FastAPI server
+        const API_URL = '';
+        
+        // Global variables to store departments and roles for reference
+        let allDepartments = [];
+        let allRoles = [];
+        let permissionsConfig = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize department module
+            initDepartments();
+            
+            // Tab change listeners
+            document.getElementById('roles-tab').addEventListener('click', initRoles);
+            document.getElementById('users-tab').addEventListener('click', initUsers);
+            document.getElementById('auth-tab').addEventListener('click', initAuth);
+        });
+
+        // ----- DEPARTMENTS MODULE -----
+        function initDepartments() {
+            loadDepartments();
+            
+            // Event listeners
+            document.getElementById('department-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveDepartment();
+            });
+            
+            document.getElementById('btn-reset-dept-form').addEventListener('click', resetDepartmentForm);
+            document.getElementById('btn-refresh-dept-tree').addEventListener('click', buildDepartmentOrgChart);
+            document.getElementById('btn-refresh-dept-list').addEventListener('click', loadDepartmentTable);
+            
+            // Expand/collapse all buttons
+            document.getElementById('btn-expand-all-depts').addEventListener('click', function() {
+                expandCollapseAll('dept-tree', true);
+            });
+            
+            document.getElementById('btn-collapse-all-depts').addEventListener('click', function() {
+                expandCollapseAll('dept-tree', false);
+            });
+        }
+
+        function loadDepartments() {
+            fetch(`${API_URL}/departments`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(departments => {
+                    // Store departments globally
+                    allDepartments = departments;
+                    
+                    // Populate department dropdown for department form
+                    const deptSelect = document.getElementById('dept-parent');
+                    deptSelect.innerHTML = '<option value="">-- None (Root Department) --</option>';
+                    
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept._id;
+                        option.textContent = dept.name;
+                        deptSelect.appendChild(option);
+                    });
+                    
+                    // Populate department dropdown for roles form
+                    updateRoleDepartmentDropdown();
+                    
+                    // Populate department dropdown for users form
+                    updateUserDepartmentDropdown();
+                    
+                    // Populate filter dropdown for users
+                    updateDepartmentFilterDropdown();
+                    
+                    // Load department table and build org chart
+                    loadDepartmentTable();
+                    buildDepartmentOrgChart();
+                })
+                .catch(error => {
+                    console.error('Error loading departments:', error);
+                    document.getElementById('dept-tree').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load departments: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        function updateRoleDepartmentDropdown() {
+            const roleDeptSelect = document.getElementById('role-department');
+            if (roleDeptSelect) {
+                roleDeptSelect.innerHTML = '<option value="">-- None --</option>';
+                allDepartments.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept._id;
+                    option.textContent = dept.name;
+                    roleDeptSelect.appendChild(option);
+                });
+            }
+        }
+        
+        function updateUserDepartmentDropdown() {
+            const userDeptSelect = document.getElementById('user-department');
+            if (userDeptSelect) {
+                userDeptSelect.innerHTML = '<option value="">-- Select Department --</option>';
+                allDepartments.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept._id;
+                    option.textContent = dept.name;
+                    userDeptSelect.appendChild(option);
+                });
+            }
+        }
+        
+        function updateDepartmentFilterDropdown() {
+            const deptFilterSelect = document.getElementById('filter-department');
+            if (deptFilterSelect) {
+                deptFilterSelect.innerHTML = '<option value="">All Departments</option>';
+                allDepartments.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept._id;
+                    option.textContent = dept.name;
+                    deptFilterSelect.appendChild(option);
+                });
+            }
+        }
+
+        function loadDepartmentTable() {
+            const tbody = document.querySelector('#departments-table tbody');
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Loading departments...</td></tr>';
+            
+            if (allDepartments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No departments found</td></tr>';
+                return;
+            }
+            
+            // Create department map for parent lookup
+            const deptMap = {};
+            allDepartments.forEach(dept => {
+                deptMap[dept._id] = dept;
+            });
+            
+            tbody.innerHTML = '';
+            allDepartments.forEach(dept => {
+                const tr = document.createElement('tr');
+                
+                // Name cell
+                const nameCell = document.createElement('td');
+                nameCell.textContent = dept.name;
+                tr.appendChild(nameCell);
+                
+                // Parent department cell
+                const parentCell = document.createElement('td');
+                if (dept.parent_id && deptMap[dept.parent_id]) {
+                    parentCell.textContent = deptMap[dept.parent_id].name;
+                } else {
+                    parentCell.innerHTML = '<em class="text-muted">None</em>';
+                }
+                tr.appendChild(parentCell);
+                
+                // Status cell
+                const statusCell = document.createElement('td');
+                statusCell.innerHTML = dept.is_active 
+                    ? '<span class="badge bg-success">Active</span>' 
+                    : '<span class="badge bg-secondary">Inactive</span>';
+                tr.appendChild(statusCell);
+                
+                // Actions cell
+                const actionsCell = document.createElement('td');
+                
+                // Edit button
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn btn-sm btn-outline-primary me-1';
+                editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+                editBtn.addEventListener('click', () => editDepartment(dept._id));
+                actionsCell.appendChild(editBtn);
+                
+                // Delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.addEventListener('click', () => {
+                    if(confirm(`Are you sure you want to delete department "${dept.name}"?`)) {
+                        deleteDepartment(dept._id);
+                    }
+                });
+                actionsCell.appendChild(deleteBtn);
+                
+                tr.appendChild(actionsCell);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function buildDepartmentOrgChart() {
+            const chartContainer = document.getElementById('dept-tree');
+            chartContainer.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Building organization chart...</p>
+                </div>
+            `;
+            
+            fetch(`${API_URL}/departments/hierarchy`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(hierarchy => {
+                    // Step 2: Render the organization chart
+                    if (hierarchy.length === 0) {
+                        chartContainer.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-building fa-3x mb-3"></i><p>No departments found</p></div>';
+                        return;
+                    }
+                    
+                    // Create the organization chart structure
+                    chartContainer.innerHTML = '';
+                    const rootUl = document.createElement('ul');
+                    rootUl.className = 'org-chart-root';
+                    
+                    hierarchy.forEach(dept => {
+                        rootUl.appendChild(createDepartmentOrgNode(dept));
+                    });
+                    
+                    chartContainer.appendChild(rootUl);
+                })
+                .catch(error => {
+                    console.error('Error loading department hierarchy:', error);
+                    chartContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load department hierarchy: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        function createDepartmentOrgNode(department) {
+            const li = document.createElement('li');
+            li.setAttribute('data-id', department._id);
+            
+            // Create node element
+            const nodeDiv = document.createElement('div');
+            nodeDiv.className = `department-node ${!department.is_active ? 'inactive' : ''}`;
+            nodeDiv.setAttribute('data-id', department._id);
+            
+            // Create department content
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'node-title';
+            titleDiv.textContent = department.name;
+            nodeDiv.appendChild(titleDiv);
+            
+            if (department.description) {
+                const subtitleDiv = document.createElement('div');
+                subtitleDiv.className = 'node-subtitle';
+                subtitleDiv.textContent = department.description;
+                nodeDiv.appendChild(subtitleDiv);
+            }
+            
+            // Add badges
+            const badgesDiv = document.createElement('div');
+            badgesDiv.className = 'node-badges';
+            
+            // Status badge
+            const statusBadge = document.createElement('span');
+            statusBadge.className = `node-badge ${department.is_active ? 'bg-success' : 'bg-secondary'}`;
+            statusBadge.textContent = department.is_active ? 'Active' : 'Inactive';
+            badgesDiv.appendChild(statusBadge);
+            
+            // Child count badge if has children
+            if (department.children && department.children.length > 0) {
+                const countBadge = document.createElement('span');
+                countBadge.className = 'node-badge bg-info';
+                countBadge.textContent = `${department.children.length} Sub-dept${department.children.length > 1 ? 's' : ''}`;
+                badgesDiv.appendChild(countBadge);
+            }
+            
+            nodeDiv.appendChild(badgesDiv);
+            
+            // Add toggle button for collapsible behavior if has children
+            if (department.children && department.children.length > 0) {
+                const toggleBtn = document.createElement('div');
+                toggleBtn.className = 'node-toggle department-toggle';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                toggleBtn.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Prevent the click from editing department
+                    toggleCollapse(li, toggleBtn);
+                });
+                nodeDiv.appendChild(toggleBtn);
+            }
+            
+            // Add action buttons
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'node-actions';
+            
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-sm btn-outline-primary';
+            editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+            editBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent double action from node click
+                editDepartment(department._id);
+            });
+            actionsDiv.appendChild(editBtn);
+            
+            nodeDiv.appendChild(actionsDiv);
+            
+            // Add click handler for the node itself
+            nodeDiv.addEventListener('click', function() {
+                editDepartment(department._id);
+            });
+            
+            li.appendChild(nodeDiv);
+            
+            // Add children if any
+            if (department.children && department.children.length > 0) {
+                const childUl = document.createElement('ul');
+                department.children.forEach(child => {
+                    childUl.appendChild(createDepartmentOrgNode(child));
+                });
+                li.appendChild(childUl);
+            }
+            
+            return li;
+        }
+
+        function toggleCollapse(listItem, toggleBtn) {
+            listItem.classList.toggle('collapsed');
+            
+            // Update toggle button icon
+            const icon = toggleBtn.querySelector('i');
+            if (listItem.classList.contains('collapsed')) {
+                icon.className = 'fas fa-chevron-right';
+            } else {
+                icon.className = 'fas fa-chevron-down';
+            }
+        }
+
+        function expandCollapseAll(containerId, expand) {
+            const container = document.getElementById(containerId);
+            const items = container.querySelectorAll('li');
+            
+            items.forEach(item => {
+                // Only process items that have children (have a toggle button)
+                const toggleBtn = item.querySelector('.node-toggle');
+                if (toggleBtn) {
+                    if (expand) {
+                        item.classList.remove('collapsed');
+                        const icon = toggleBtn.querySelector('i');
+                        if (icon) icon.className = 'fas fa-chevron-down';
+                    } else {
+                        item.classList.add('collapsed');
+                        const icon = toggleBtn.querySelector('i');
+                        if (icon) icon.className = 'fas fa-chevron-right';
+                    }
+                }
+            });
+        }
+
+        function saveDepartment() {
+            const deptId = document.getElementById('dept-id').value;
+            const deptData = {
+                name: document.getElementById('dept-name').value,
+                description: document.getElementById('dept-description').value || "",
+                parent_id: document.getElementById('dept-parent').value || null,
+                is_active: document.getElementById('dept-active').checked
+            };
+            
+            const resultDiv = document.getElementById('dept-result');
+            resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Saving...';
+            
+            const method = deptId ? 'PUT' : 'POST';
+            const url = deptId ? `${API_URL}/departments/${deptId}` : `${API_URL}/departments`;
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(deptData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to save department');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                resultDiv.innerHTML = '<div class="alert alert-success">Department saved successfully!</div>';
+                resetDepartmentForm();
+                
+                // Refresh all department data
+                loadDepartments();
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            });
+        }
+        
+        function deleteDepartment(deptId) {
+            fetch(`${API_URL}/departments/${deptId}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to delete department');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Refresh all department data
+                loadDepartments();
+                alert('Department deleted successfully!');
+            })
+            .catch(error => {
+                alert(`Error: ${error.message}`);
+            });
+        }
+
+        function editDepartment(deptId) {
+            fetch(`${API_URL}/departments/${deptId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(dept => {
+                    document.getElementById('dept-id').value = dept._id;
+                    document.getElementById('dept-name').value = dept.name;
+                    document.getElementById('dept-description').value = dept.description || '';
+                    document.getElementById('dept-parent').value = dept.parent_id || '';
+                    document.getElementById('dept-active').checked = dept.is_active;
+                    
+                    // Highlight the selected node in the org chart
+                    highlightNode('dept-tree', deptId);
+                })
+                .catch(error => {
+                    console.error('Error loading department:', error);
+                    alert(`Error loading department: ${error.message}`);
+                });
+        }
+
+        function highlightNode(treeId, nodeId) {
+            // Remove any existing highlights
+            const orgChart = document.getElementById(treeId);
+            const allNodes = orgChart.querySelectorAll('.department-node, .role-node');
+            allNodes.forEach(node => {
+                node.classList.remove('selected');
+            });
+            
+            // Add highlight to the selected node
+            const selectedNode = orgChart.querySelector(`[data-id="${nodeId}"]`);
+            if (selectedNode) {
+                selectedNode.classList.add('selected');
+                
+                // Ensure the node is visible (expand parent nodes)
+                let parent = selectedNode.closest('li').parentNode;
+                while (parent && parent !== orgChart) {
+                    if (parent.tagName === 'LI') {
+                        parent.classList.remove('collapsed');
+                        const toggleIcon = parent.querySelector('.node-toggle i');
+                        if (toggleIcon) toggleIcon.className = 'fas fa-chevron-down';
+                    }
+                    parent = parent.parentNode;
+                }
+                
+                // Scroll into view
+                selectedNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function resetDepartmentForm() {
+            document.getElementById('department-form').reset();
+            document.getElementById('dept-id').value = '';
+            document.getElementById('dept-result').innerHTML = '';
+            
+            // Remove any node highlighting
+            const orgChart = document.getElementById('dept-tree');
+            const allNodes = orgChart.querySelectorAll('.department-node');
+            allNodes.forEach(node => {
+                node.classList.remove('selected');
+            });
+        }
+
+        // ----- ROLES MODULE -----
+        function initRoles() {
+            loadRoles();
+            loadPermissionsConfig();
+            
+            // Event listeners
+            document.getElementById('role-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveRole();
+            });
+            
+            document.getElementById('btn-reset-role-form').addEventListener('click', resetRoleForm);
+            document.getElementById('btn-refresh-role-tree').addEventListener('click', buildRoleOrgChart);
+            document.getElementById('btn-refresh-roles').addEventListener('click', loadRolesTable);
+            
+            // Expand/collapse all buttons
+            document.getElementById('btn-expand-all-roles').addEventListener('click', function() {
+                expandCollapseAll('role-tree', true);
+            });
+            
+            document.getElementById('btn-collapse-all-roles').addEventListener('click', function() {
+                expandCollapseAll('role-tree', false);
+            });
+        }
+        
+        function loadRoles() {
+            fetch(`${API_URL}/roles`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(roles => {
+                    // Store roles globally
+                    allRoles = roles;
+                    
+                    // Populate roles dropdown for reporting
+                    const reportingSelect = document.getElementById('role-reporting');
+                    reportingSelect.innerHTML = '<option value="">-- None (Top Level) --</option>';
+                    
+                    roles.forEach(role => {
+                        const option = document.createElement('option');
+                        option.value = role._id;
+                        option.textContent = role.name;
+                        reportingSelect.appendChild(option);
+                    });
+                    
+                    // Populate role dropdown for users
+                    updateUserRoleDropdown();
+                    
+                    // Populate filter dropdown for users
+                    updateRoleFilterDropdown();
+                    
+                    // Load roles table and build org chart
+                    loadRolesTable();
+                    buildRoleOrgChart();
+                })
+                .catch(error => {
+                    console.error('Error loading roles:', error);
+                    document.getElementById('role-tree').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load roles: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+        
+        function updateUserRoleDropdown() {
+            const userRoleSelect = document.getElementById('user-role');
+            if (userRoleSelect) {
+                userRoleSelect.innerHTML = '<option value="">-- Select Role --</option>';
+                allRoles.forEach(role => {
+                    const option = document.createElement('option');
+                    option.value = role._id;
+                    option.textContent = role.name;
+                    userRoleSelect.appendChild(option);
+                });
+            }
+        }
+        
+        function updateRoleFilterDropdown() {
+            const roleFilterSelect = document.getElementById('filter-role');
+            if (roleFilterSelect) {
+                roleFilterSelect.innerHTML = '<option value="">All Roles</option>';
+                allRoles.forEach(role => {
+                    const option = document.createElement('option');
+                    option.value = role._id;
+                    option.textContent = role.name;
+                    roleFilterSelect.appendChild(option);
+                });
+            }
+        }
+
+        function loadPermissionsConfig() {
+            // Define comprehensive permissions configuration that matches the centralized permission system
+            const defaultPermissionsConfig = [
+                {
+                    page: "users",
+                    actions: ["create", "show", "edit", "delete", "assign_role"]
+                },
+                {
+                    page: "roles", 
+                    actions: ["create", "show", "edit", "delete", "manage_permissions"]
+                },
+                {
+                    page: "departments",
+                    actions: ["create", "show", "edit", "delete", "manage_users"]
+                },
+                {
+                    page: "leads",
+                    actions: ["create", "show", "edit", "delete", "assign", "transfer", "junior"]
+                },
+                {
+                    page: "feeds",
+                    actions: ["create", "show", "edit", "delete", "moderate"]
+                },
+                {
+                    page: "reports",
+                    actions: ["show", "generate", "export"]
+                },
+                {
+                    page: "settings",
+                    actions: ["show", "edit", "manage"]
+                },
+                {
+                    page: "dashboard",
+                    actions: ["show", "access"]
+                },
+                {
+                    page: "*",
+                    actions: ["*"]
+                }
+            ];
+
+            // Try to fetch from API, fallback to default config
+            fetch(`${API_URL}/roles/config/permissions`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Using default permissions configuration');
+                    }
+                    return response.json();
+                })
+                .then(config => {
+                    // Store permissions config globally
+                    permissionsConfig = config && config.length > 0 ? config : defaultPermissionsConfig;
+                    
+                    // Generate permission checkboxes for role form
+                    generatePermissionCheckboxes();
+                })
+                .catch(error => {
+                    console.warn('API permissions config not available, using default:', error.message);
+                    
+                    // Use default configuration
+                    permissionsConfig = defaultPermissionsConfig;
+                    
+                    // Generate permission checkboxes for role form
+                    generatePermissionCheckboxes();
+                });
+        }
+
+        function generatePermissionCheckboxes(rolePermissions = []) {
+            const container = document.getElementById('role-permissions');
+            container.innerHTML = '';
+            
+            if (!permissionsConfig || permissionsConfig.length === 0) {
+                container.innerHTML = '<div class="alert alert-warning">No permissions configured</div>';
+                return;
+            }
+
+            // Add super admin option at the top
+            const superAdminDiv = document.createElement('div');
+            superAdminDiv.className = 'permission-group border rounded p-3 mb-3 bg-warning bg-opacity-10';
+            
+            const superAdminTitle = document.createElement('h6');
+            superAdminTitle.className = 'text-warning mb-2';
+            superAdminTitle.innerHTML = '<i class="fas fa-crown me-2"></i>Super Administrator';
+            superAdminDiv.appendChild(superAdminTitle);
+            
+            const superAdminCheckDiv = document.createElement('div');
+            superAdminCheckDiv.className = 'permission-checkbox';
+            
+            const superAdminInput = document.createElement('input');
+            superAdminInput.type = 'checkbox';
+            superAdminInput.className = 'form-check-input me-2';
+            superAdminInput.id = 'perm-super-admin';
+            superAdminInput.dataset.page = '*';
+            superAdminInput.dataset.action = '*';
+            
+            // Check if this role has super admin permissions
+            const hasSuperAdmin = rolePermissions.some(p => p.page === '*' && (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*'))));
+            superAdminInput.checked = hasSuperAdmin;
+            
+            superAdminInput.addEventListener('change', function() {
+                // When super admin is checked, disable all other checkboxes
+                const allCheckboxes = container.querySelectorAll('input[type="checkbox"]:not(#perm-super-admin)');
+                allCheckboxes.forEach(cb => {
+                    cb.disabled = this.checked;
+                    if (this.checked) cb.checked = false;
+                });
+            });
+            
+            const superAdminLabel = document.createElement('label');
+            superAdminLabel.className = 'form-check-label fw-bold text-warning';
+            superAdminLabel.textContent = 'ALL PERMISSIONS ON ALL MODULES (Super Admin)';
+            superAdminLabel.setAttribute('for', 'perm-super-admin');
+            
+            superAdminCheckDiv.appendChild(superAdminInput);
+            superAdminCheckDiv.appendChild(superAdminLabel);
+            superAdminDiv.appendChild(superAdminCheckDiv);
+            
+            const superAdminDesc = document.createElement('small');
+            superAdminDesc.className = 'text-muted d-block mt-1';
+            superAdminDesc.textContent = 'Grants unrestricted access to all features and modules';
+            superAdminDiv.appendChild(superAdminDesc);
+            
+            container.appendChild(superAdminDiv);
+
+            // Group permissions by page/module
+            permissionsConfig.forEach(pageConfig => {
+                const page = pageConfig.page;
+                const actions = pageConfig.actions;
+                
+                // Skip the wildcard page as it's handled by super admin
+                if (page === '*') return;
+                
+                // Create permission group
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'permission-group border rounded p-3 mb-3';
+                
+                // Add group title with icon
+                const title = document.createElement('h6');
+                title.className = 'mb-2';
+                const pageIcon = getPageIcon(page);
+                title.innerHTML = `<i class="fas ${pageIcon} me-2"></i>${page.charAt(0).toUpperCase() + page.slice(1)} Module`;
+                groupDiv.appendChild(title);
+                
+                // Add "ALL" checkbox for this module
+                const allDiv = document.createElement('div');
+                allDiv.className = 'permission-all permission-checkbox mb-2 bg-light rounded p-2';
+                
+                const allInput = document.createElement('input');
+                allInput.type = 'checkbox';
+                allInput.className = 'form-check-input me-2 permission-all-checkbox';
+                allInput.id = `perm-${page}-all`;
+                allInput.dataset.page = page;
+                
+                // Check if this role has all permissions for this page
+                const pagePermissions = rolePermissions.find(p => p.page === page);
+                const hasAllForPage = pagePermissions && (pagePermissions.actions === '*' || (Array.isArray(pagePermissions.actions) && pagePermissions.actions.includes('*')));
+                allInput.checked = hasAllForPage;
+                
+                // Disable if super admin is checked
+                allInput.disabled = hasSuperAdmin;
+                
+                allInput.addEventListener('change', function() {
+                    // When "ALL" is checked, check and disable all other page checkboxes
+                    const pageCheckboxes = groupDiv.querySelectorAll('.permission-action-checkbox');
+                    pageCheckboxes.forEach(cb => {
+                        cb.checked = this.checked;
+                        cb.disabled = this.checked;
+                    });
+                });
+                
+                const allLabel = document.createElement('label');
+                allLabel.className = 'form-check-label fw-bold';
+                allLabel.textContent = `ALL ${page.toUpperCase()} PERMISSIONS`;
+                allLabel.setAttribute('for', `perm-${page}-all`);
+                
+                allDiv.appendChild(allInput);
+                allDiv.appendChild(allLabel);
+                groupDiv.appendChild(allDiv);
+                
+                // Add individual action checkboxes in a grid
+                const actionsGrid = document.createElement('div');
+                actionsGrid.className = 'row row-cols-2 g-2';
+                
+                actions.forEach(action => {
+                    const colDiv = document.createElement('div');
+                    colDiv.className = 'col';
+                    
+                    const checkDiv = document.createElement('div');
+                    checkDiv.className = 'permission-checkbox';
+                    
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.className = 'form-check-input me-2 permission-action-checkbox';
+                    input.id = `perm-${page}-${action}`;
+                    input.dataset.page = page;
+                    input.dataset.action = action;
+                    
+                    // Check if this role has this specific permission
+                    const hasSpecificPermission = pagePermissions && 
+                        (pagePermissions.actions === '*' || 
+                         (Array.isArray(pagePermissions.actions) && (pagePermissions.actions.includes(action) || pagePermissions.actions.includes('*'))));
+                    input.checked = hasSpecificPermission;
+                    
+                    // Disable if "ALL" is checked for this page or super admin is checked
+                    input.disabled = hasAllForPage || hasSuperAdmin;
+                    
+                    const label = document.createElement('label');
+                    label.className = 'form-check-label';
+                    label.textContent = formatActionName(action);
+                    label.setAttribute('for', `perm-${page}-${action}`);
+                    
+                    checkDiv.appendChild(input);
+                    checkDiv.appendChild(label);
+                    colDiv.appendChild(checkDiv);
+                    actionsGrid.appendChild(colDiv);
+                });
+                
+                groupDiv.appendChild(actionsGrid);
+                container.appendChild(groupDiv);
+            });
+        }
+        
+        function getPageIcon(page) {
+            const icons = {
+                'users': 'fa-users',
+                'roles': 'fa-user-tag',
+                'departments': 'fa-building',
+                'leads': 'fa-user-tie',
+                'feeds': 'fa-rss',
+                'reports': 'fa-chart-bar',
+                'settings': 'fa-cogs'
+            };
+            return icons[page] || 'fa-folder';
+        }
+        
+        function formatActionName(action) {
+            return action.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+        
+        function loadRolesTable() {
+            const tbody = document.querySelector('#roles-table tbody');
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Loading roles...</td></tr>';
+            
+            if (allRoles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No roles found</td></tr>';
+                return;
+            }
+            
+            // Create maps for lookups
+            const roleMap = {};
+            allRoles.forEach(role => {
+                roleMap[role._id] = role;
+            });
+            
+            const deptMap = {};
+            allDepartments.forEach(dept => {
+                deptMap[dept._id] = dept;
+            });
+            
+            tbody.innerHTML = '';
+            allRoles.forEach(role => {
+                const tr = document.createElement('tr');
+                
+                // Name cell
+                const nameCell = document.createElement('td');
+                nameCell.textContent = role.name;
+                tr.appendChild(nameCell);
+                
+                // Department cell
+                const deptCell = document.createElement('td');
+                if (role.department_id && deptMap[role.department_id]) {
+                    deptCell.textContent = deptMap[role.department_id].name;
+                } else {
+                    deptCell.textContent = '-';
+                }
+                tr.appendChild(deptCell);
+                
+                // Reports to cell
+                const reportsCell = document.createElement('td');
+                if (role.reporting_id && roleMap[role.reporting_id]) {
+                    reportsCell.textContent = roleMap[role.reporting_id].name;
+                } else {
+                    reportsCell.textContent = '-';
+                }
+                tr.appendChild(reportsCell);
+                
+                // Actions cell
+                const actionsCell = document.createElement('td');
+                
+                // Edit button
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn btn-sm btn-outline-primary me-1';
+                editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+                editBtn.addEventListener('click', () => editRole(role._id));
+                actionsCell.appendChild(editBtn);
+                
+                // Delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.addEventListener('click', () => {
+                    if(confirm(`Are you sure you want to delete role "${role.name}"?`)) {
+                        deleteRole(role._id);
+                    }
+                });
+                actionsCell.appendChild(deleteBtn);
+                
+                tr.appendChild(actionsCell);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function buildRoleOrgChart() {
+            const chartContainer = document.getElementById('role-tree');
+            chartContainer.innerHTML = `<div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2">Building role organization chart...</p>
+            </div>`;
+            
+            fetch(`${API_URL}/roles/hierarchy`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(hierarchy => {
+                    // Step 2: Render the organization chart
+                    if (hierarchy.length === 0) {
+                        chartContainer.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-user-tag fa-3x mb-3"></i><p>No roles found</p></div>';
+                        return;
+                    }
+                    
+                    // Create the organization chart structure
+                    chartContainer.innerHTML = '';
+                    const rootUl = document.createElement('ul');
+                    rootUl.className = 'org-chart-root';
+                    
+                    hierarchy.forEach(role => {
+                        rootUl.appendChild(createRoleOrgNode(role));
+                    });
+                    
+                    chartContainer.appendChild(rootUl);
+                })
+                .catch(error => {
+                    console.error('Error loading role hierarchy:', error);
+                    chartContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load role hierarchy: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        function createRoleOrgNode(role) {
+            const li = document.createElement('li');
+            li.setAttribute('data-id', role._id);
+            
+            // Create node element
+            const nodeDiv = document.createElement('div');
+            nodeDiv.className = `role-node ${!role.is_active ? 'inactive' : ''}`;
+            nodeDiv.setAttribute('data-id', role._id);
+            
+            // Create role content
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'node-title';
+            titleDiv.textContent = role.name;
+            nodeDiv.appendChild(titleDiv);
+            
+            if (role.description) {
+                const subtitleDiv = document.createElement('div');
+                subtitleDiv.className = 'node-subtitle';
+                subtitleDiv.textContent = role.description;
+                nodeDiv.appendChild(subtitleDiv);
+            }
+            
+            // Add badges
+            const badgesDiv = document.createElement('div');
+            badgesDiv.className = 'node-badges';
+            
+            // Status badge
+            const statusBadge = document.createElement('span');
+            statusBadge.className = `node-badge ${role.is_active ? 'bg-success' : 'bg-secondary'}`;
+            statusBadge.textContent = role.is_active ? 'Active' : 'Inactive';
+            badgesDiv.appendChild(statusBadge);
+            
+            // Department badge
+            if (role.department_id) {
+                const dept = allDepartments.find(d => d._id === role.department_id);
+                if (dept) {
+                    const deptBadge = document.createElement('span');
+                    deptBadge.className = 'node-badge bg-primary';
+                    deptBadge.textContent = dept.name;
+                    badgesDiv.appendChild(deptBadge);
+                }
+            }
+            
+            // Direct reports count badge if has reports
+            if (role.direct_reports && role.direct_reports.length > 0) {
+                const countBadge = document.createElement('span');
+                countBadge.className = 'node-badge bg-info';
+                countBadge.textContent = `${role.direct_reports.length} Direct Report${role.direct_reports.length > 1 ? 's' : ''}`;
+                badgesDiv.appendChild(countBadge);
+            }
+            
+            nodeDiv.appendChild(badgesDiv);
+            
+            // Add toggle button for collapsible behavior if has direct reports
+            if (role.direct_reports && role.direct_reports.length > 0) {
+                const toggleBtn = document.createElement('div');
+                toggleBtn.className = 'node-toggle role-toggle';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                toggleBtn.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Prevent the click from editing role
+                    toggleCollapse(li, toggleBtn);
+                });
+                nodeDiv.appendChild(toggleBtn);
+            }
+            
+            // Add action buttons
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'node-actions';
+            
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-sm btn-outline-primary';
+            editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+            editBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent double action from node click
+                editRole(role._id);
+            });
+            actionsDiv.appendChild(editBtn);
+            
+            nodeDiv.appendChild(actionsDiv);
+            
+            // Add click handler for the node itself
+            nodeDiv.addEventListener('click', function() {
+                editRole(role._id);
+            });
+            
+            li.appendChild(nodeDiv);
+            
+            // Add direct reports if any
+            if (role.direct_reports && role.direct_reports.length > 0) {
+                const childUl = document.createElement('ul');
+                role.direct_reports.forEach(report => {
+                    childUl.appendChild(createRoleOrgNode(report));
+                });
+                li.appendChild(childUl);
+            }
+            
+            return li;
+        }
+
+        function collectRolePermissions() {
+            const permissions = [];
+            
+            // Check for super admin permission first
+            const superAdminCheckbox = document.getElementById('perm-super-admin');
+            if (superAdminCheckbox && superAdminCheckbox.checked) {
+                return [{ page: '*', actions: '*' }];
+            }
+            
+            const pageMap = {};
+            
+            // First collect "ALL" permissions for specific modules
+            const allCheckboxes = document.querySelectorAll('.permission-all-checkbox:checked');
+            allCheckboxes.forEach(checkbox => {
+                const page = checkbox.dataset.page;
+                pageMap[page] = { page, actions: '*' }; // Use * string to represent all permissions for this page
+                permissions.push(pageMap[page]);
+            });
+            
+            // Then collect individual permissions (only for pages that don't have ALL checked)
+            const actionCheckboxes = document.querySelectorAll('.permission-action-checkbox:checked:not(:disabled)');
+            actionCheckboxes.forEach(checkbox => {
+                const page = checkbox.dataset.page;
+                const action = checkbox.dataset.action;
+                
+                // Skip if this page already has "all permissions"
+                if (pageMap[page] && pageMap[page].actions === '*') {
+                    return;
+                }
+                
+                if (!pageMap[page]) {
+                    pageMap[page] = { page, actions: [] };
+                    permissions.push(pageMap[page]);
+                }
+                
+                pageMap[page].actions.push(action);
+            });
+            
+            return permissions;
+        }
+
+        function saveRole() {
+            const roleId = document.getElementById('role-id').value;
+            const roleData = {
+                name: document.getElementById('role-name').value,
+                description: document.getElementById('role-description').value || "",
+                department_id: document.getElementById('role-department').value || null,
+                reporting_id: document.getElementById('role-reporting').value || null,
+                is_active: document.getElementById('role-active').checked,
+                permissions: collectRolePermissions()
+            };
+            
+            const resultDiv = document.getElementById('role-result');
+            resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Saving...';
+            
+            const method = roleId ? 'PUT' : 'POST';
+            const url = roleId ? `${API_URL}/roles/${roleId}` : `${API_URL}/roles`;
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(roleData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to save role');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                resultDiv.innerHTML = '<div class="alert alert-success">Role saved successfully!</div>';
+                resetRoleForm();
+                
+                // Refresh all role data
+                loadRoles();
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            });
+        }
+        
+        function deleteRole(roleId) {
+            fetch(`${API_URL}/roles/${roleId}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to delete role');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Refresh all role data
+                loadRoles();
+                alert('Role deleted successfully!');
+            })
+            .catch(error => {
+                alert(`Error: ${error.message}`);
+            });
+        }
+
+        function editRole(roleId) {
+            fetch(`${API_URL}/roles/${roleId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(role => {
+                    document.getElementById('role-id').value = role._id;
+                    document.getElementById('role-name').value = role.name;
+                    document.getElementById('role-description').value = role.description || '';
+                    document.getElementById('role-department').value = role.department_id || '';
+                    document.getElementById('role-reporting').value = role.reporting_id || '';
+                    document.getElementById('role-active').checked = role.is_active;
+                    
+                    // Load permissions for this role
+                    generatePermissionCheckboxes(role.permissions || []);
+                    
+                    // Highlight the selected node in the org chart
+                    highlightNode('role-tree', roleId);
+                    
+                    // Make sure we're on the roles tab
+                    const tab = document.getElementById('roles-tab');
+                    bootstrap.Tab.getOrCreateInstance(tab).show();
+                })
+                .catch(error => {
+                    console.error('Error loading role:', error);
+                    alert(`Error loading role: ${error.message}`);
+                });
+        }
+
+        function resetRoleForm() {
+            document.getElementById('role-form').reset();
+            document.getElementById('role-id').value = '';
+            document.getElementById('role-result').innerHTML = '';
+            
+            // Reset permissions to unchecked state
+            generatePermissionCheckboxes([]);
+            
+            // Remove any node highlighting
+            const orgChart = document.getElementById('role-tree');
+            const allNodes = orgChart.querySelectorAll('.role-node');
+            allNodes.forEach(node => {
+                node.classList.remove('selected');
+            });
+        }
+
+        // ----- USERS MODULE -----
+        function initUsers() {
+            // Make sure roles and departments are loaded
+            if (allRoles.length === 0) {
+                loadRoles();
+            } else {
+                updateUserRoleDropdown();
+                updateRoleFilterDropdown();
+            }
+            
+            if (allDepartments.length === 0) {
+                loadDepartments();
+            } else {
+                updateUserDepartmentDropdown();
+                updateDepartmentFilterDropdown();
+            }
+            
+            // Load users list
+            loadUsers();
+            
+            // Event listeners
+            document.getElementById('user-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveUser();
+            });
+            
+            document.getElementById('btn-reset-user-form').addEventListener('click', resetUserForm);
+            document.getElementById('btn-refresh-users').addEventListener('click', loadUsers);
+            
+            // Filter and search listeners
+            document.getElementById('filter-role').addEventListener('change', loadUsers);
+            document.getElementById('filter-department').addEventListener('change', loadUsers);
+            document.getElementById('search-user').addEventListener('input', debounce(loadUsers, 300));
+        }
+        
+        // Debounce function to prevent too many requests when typing in search box
+        function debounce(func, wait) {
+            let timeout;
+            return function() {
+                const context = this;
+                const args = arguments;
+                clearTimeout(timeout);
+                timeout = setTimeout(function() {
+                    func.apply(context, args);
+                }, wait);
+            };
+        }
+
+        function loadUsers() {
+            const container = document.getElementById('users-container');
+            container.innerHTML = `
+                <div class="col-12 text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Loading users...</p>
+                </div>
+            `;
+            
+            // Collect filter parameters
+            const roleFilter = document.getElementById('filter-role').value;
+            const deptFilter = document.getElementById('filter-department').value;
+            const searchTerm = document.getElementById('search-user').value.trim();
+            
+            // Build URL with query parameters
+            let url = `${API_URL}/users`;
+            const params = [];
+            if (roleFilter) params.push(`role_id=${encodeURIComponent(roleFilter)}`);
+            if (deptFilter) params.push(`department_id=${encodeURIComponent(deptFilter)}`);
+            if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`);
+            if (params.length > 0) url += '?' + params.join('&');
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(users => {
+                    if (users.length === 0) {
+                        container.innerHTML = `
+                            <div class="col-12 text-center py-5">
+                                <i class="fas fa-users fa-3x mb-3 text-muted"></i>
+                                <p class="text-muted">No users found</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // Render user cards
+                    container.innerHTML = '';
+                    users.forEach(user => {
+                        const userCard = createUserCard(user);
+                        container.appendChild(userCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading users:', error);
+                    container.innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Failed to load users: ${error.message}
+                            </div>
+                        </div>
+                    `;
+                });
+        }
+
+        function createUserCard(user) {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4 mb-3';
+            
+            // Get role and department names
+            const role = allRoles.find(r => r._id === user.role_id);
+            const dept = allDepartments.find(d => d._id === user.department_id);
+            
+            // Create card HTML
+            col.innerHTML = `
+                <div class="user-card p-3">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="user-avatar me-3">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-1">${user.first_name} ${user.last_name}</h5>
+                            <div class="text-muted">${user.username}</div>
+                        </div>
+                        <div class="ms-auto">
+                            ${user.is_active ? 
+                                '<span class="badge bg-success">Active</span>' : 
+                                '<span class="badge bg-secondary">Inactive</span>'
+                            }
+                        </div>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <i class="fas fa-envelope me-2 text-muted"></i> ${user.email}
+                    </div>
+                    
+                    ${user.phone ? 
+                        `<div class="mb-2">
+                            <i class="fas fa-phone me-2 text-muted"></i> ${user.phone}
+                        </div>` : ''
+                    }
+                    
+                    <div class="mb-2">
+                        <i class="fas fa-user-tag me-2 text-muted"></i> 
+                        ${role ? `<span class="badge-role">${role.name}</span>` : '<span class="text-muted">No role</span>'}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <i class="fas fa-building me-2 text-muted"></i>
+                        ${dept ? `<span class="badge-department">${dept.name}</span>` : '<span class="text-muted">No department</span>'}
+                    </div>
+                    
+                    <div class="d-flex">
+                        <button class="btn btn-sm btn-outline-primary me-2 btn-edit-user" data-id="${user._id}">
+                            <i class="fas fa-edit me-1"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-delete-user" data-id="${user._id}" data-name="${user.username}">
+                            <i class="fas fa-trash me-1"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Add event listeners
+            col.querySelector('.btn-edit-user').addEventListener('click', () => editUser(user._id));
+            col.querySelector('.btn-delete-user').addEventListener('click', (e) => {
+                const userId = e.currentTarget.dataset.id;
+                const username = e.currentTarget.dataset.name;
+                if(confirm(`Are you sure you want to delete user "${username}"?`)) {
+                    deleteUser(userId);
+                }
+            });
+            
+            return col;
+        }
+
+        function saveUser() {
+            const userId = document.getElementById('user-id').value;
+            const userData = {
+                first_name: document.getElementById('user-first-name').value,
+                last_name: document.getElementById('user-last-name').value,
+                username: document.getElementById('user-username').value,
+                email: document.getElementById('user-email').value,
+                phone: document.getElementById('user-phone').value || null,
+                role_id: document.getElementById('user-role').value || null,
+                department_id: document.getElementById('user-department').value || null,
+                is_active: document.getElementById('user-active').checked
+            };
+            
+            // Only include password if provided (for new users or password changes)
+            const password = document.getElementById('user-password').value;
+            if (password) {
+                userData.password = password;
+            }
+            
+            const resultDiv = document.getElementById('user-result');
+            resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Saving...';
+            
+            const method = userId ? 'PUT' : 'POST';
+            const url = userId ? `${API_URL}/users/${userId}` : `${API_URL}/users`;
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(userData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to save user');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                resultDiv.innerHTML = '<div class="alert alert-success">User saved successfully!</div>';
+                resetUserForm();
+                loadUsers();
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            });
+        }
+
+        function editUser(userId) {
+            fetch(`${API_URL}/users/${userId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(user => {
+                    document.getElementById('user-id').value = user._id;
+                    document.getElementById('user-first-name').value = user.first_name;
+                    document.getElementById('user-last-name').value = user.last_name;
+                    document.getElementById('user-username').value = user.username;
+                    document.getElementById('user-email').value = user.email;
+                    document.getElementById('user-phone').value = user.phone || '';
+                    document.getElementById('user-role').value = user.role_id || '';
+                    document.getElementById('user-department').value = user.department_id || '';
+                    document.getElementById('user-active').checked = user.is_active;
+                    
+                    // Clear password field and update hint
+                    document.getElementById('user-password').value = '';
+                    document.getElementById('password-hint').textContent = 'Leave blank to keep current password.';
+                    
+                    // Make sure we're on the users tab
+                    const tab = document.getElementById('users-tab');
+                    bootstrap.Tab.getOrCreateInstance(tab).show();
+                })
+                .catch(error => {
+                    console.error('Error loading user:', error);
+                    alert(`Error loading user: ${error.message}`);
+                });
+        }
+
+        function deleteUser(userId) {
+            fetch(`${API_URL}/users/${userId}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Failed to delete user');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('User deleted successfully!');
+                loadUsers();
+            })
+            .catch(error => {
+                alert(`Error: ${error.message}`);
+            });
+        }
+
+        function resetUserForm() {
+            document.getElementById('user-form').reset();
+            document.getElementById('user-id').value = '';
+            document.getElementById('user-result').innerHTML = '';
+            document.getElementById('password-hint').textContent = 'Required for new users. Leave blank to keep unchanged.';
+        }
+
+        // ----- AUTHENTICATION MODULE -----
+        function initAuth() {
+            // Event listener for authentication form
+            document.getElementById('auth-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                authenticateUser();
+            });
+        }
+
+        function authenticateUser() {
+            const username = document.getElementById('auth-username').value;
+            const password = document.getElementById('auth-password').value;
+            
+            const authResponse = document.getElementById('auth-response');
+            authResponse.innerHTML = 'Authenticating...';
+            
+            const authPermissions = document.getElementById('auth-permissions');
+            authPermissions.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Authenticating...</p>
+                </div>
+            `;
+            
+            fetch(`${API_URL}/users/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username_or_email: username,
+                    password: password
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Authentication failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Display authentication response
+                authResponse.innerHTML = JSON.stringify(data, null, 2);
+                
+                // Update user info header
+                document.getElementById('auth-user-info').innerHTML = `
+                    <i class="fas fa-user-check me-1 text-success"></i>
+                    ${data.user.first_name} ${data.user.last_name} (${data.user.username})
+                `;
+                
+                // Display permissions
+                displayUserPermissions(data);
+            })
+            .catch(error => {
+                authResponse.innerHTML = `Error: ${error.message}`;
+                
+                // Reset permissions display
+                authPermissions.innerHTML = `
+                    <div class="text-center py-5">
+                        <i class="fas fa-lock fa-3x mb-3 text-danger"></i>
+                        <p class="text-danger">Authentication failed</p>
+                    </div>
+                `;
+                
+                // Reset user info header
+                document.getElementById('auth-user-info').innerHTML = `
+                    <i class="fas fa-user me-1"></i> Not authenticated
+                `;
+            });
+        }
+
+        function displayUserPermissions(authData) {
+            const container = document.getElementById('auth-permissions');
+            container.innerHTML = '';
+            
+            // Display user info
+            const userInfoDiv = document.createElement('div');
+            userInfoDiv.className = 'mb-4 p-3 border-bottom';
+            
+            // Role and department info
+            const role = authData.role ? authData.role.name : 'No role assigned';
+            const department = authData.user.department ? authData.user.department.name : 'No department assigned';
+            
+            userInfoDiv.innerHTML = `
+                <div class="d-flex align-items-center mb-2">
+                    <h5 class="mb-0 me-2">User Details</h5>
+                    <span class="badge ${authData.user.is_active ? 'bg-success' : 'bg-secondary'} ms-auto">
+                        ${authData.user.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </div>
+                <div><strong>Role:</strong> ${role}</div>
+                <div><strong>Department:</strong> ${department}</div>
+            `;
+            container.appendChild(userInfoDiv);
+            
+            // Display permissions
+            if (!authData.permissions || authData.permissions.length === 0) {
+                const noPermDiv = document.createElement('div');
+                noPermDiv.className = 'alert alert-info';
+                noPermDiv.innerHTML = '<i class="fas fa-info-circle me-2"></i> This user has no permissions assigned.';
+                container.appendChild(noPermDiv);
+                return;
+            }
+            
+            // Group permissions by page
+            authData.permissions.forEach(perm => {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'mb-3';
+                
+                // Page title
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'permission-page-title';
+                titleDiv.textContent = perm.page;
+                pageDiv.appendChild(titleDiv);
+                
+                // Permission actions
+                const actionsDiv = document.createElement('div');
+                
+                // Check if has all permissions (*)
+                if (perm.actions.includes('*')) {
+                    const allAction = document.createElement('span');
+                    allAction.className = 'permission-action permission-all-access';
+                    allAction.innerHTML = '<i class="fas fa-check-circle me-1"></i> ALL PERMISSIONS';
+                    actionsDiv.appendChild(allAction);
+                } else {
+                    // Individual actions
+                    perm.actions.forEach(action => {
+                        const actionSpan = document.createElement('span');
+                        actionSpan.className = 'permission-action';
+                        actionSpan.textContent = action;
+                        actionsDiv.appendChild(actionSpan);
+                    });
+                }
+                
+                pageDiv.appendChild(actionsDiv);
+                container.appendChild(pageDiv);
+            });
+        }
+
+        // Update current time to match the specified value
+        document.getElementById('current-time').textContent = '2025-06-18 11:22:19';
+        // Update the displayed user name
+        document.querySelector('.badge.bg-light.text-dark').textContent = 'soher';
+    </script>
+</body>
+</html>

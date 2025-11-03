@@ -1,0 +1,2974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM Flash Message - FINAL COMPLETE VERSION</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #000;
+      color: white;
+    }
+
+    .sidebar {
+      width: 250px;
+      height: 100vh;
+      background-color: #000;
+      position: fixed;
+      top: 0;
+      left: 0;
+      border-right: 1px solid #1a1a1a;
+      z-index: 999;
+    }
+
+    .sidebar ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .sidebar li {
+      padding: 12px 20px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .sidebar li:hover {
+      background-color: #111;
+    }
+
+    .sidebar li.active {
+      background-color: #007bff;
+      color: white;
+    }
+
+    .sidebar i {
+      margin-right: 8px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background-color: #000;
+      color: white;
+      border-bottom: 1px solid #1a1a1a;
+      margin-left: 250px;
+    }
+
+    .logo {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #007bff;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background-color: #007bff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+    }
+
+    .main-content {
+      margin-left: 250px;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    /* MODAL STYLES */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #111;
+      padding: 30px;
+      border-radius: 12px;
+      z-index: 2000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      width: 90%;
+      max-width: 800px;
+      color: white;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .announcements-panel {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #111 0%, #1a1a1a 100%);
+      padding: 0;
+      border-radius: 15px;
+      z-index: 2000;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+      width: 95%;
+      max-width: 1000px;
+      color: white;
+      max-height: 90vh;
+      overflow: hidden;
+      border: 1px solid #333;
+    }
+
+    .panel-header {
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      padding: 20px 30px;
+      border-radius: 15px 15px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .close-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.3s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .panel-content {
+      padding: 30px;
+      overflow-y: auto;
+      max-height: calc(90vh - 80px);
+    }
+
+    .panel-tabs {
+      display: flex;
+      margin-bottom: 30px;
+      background: #222;
+      border-radius: 10px;
+      padding: 5px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .tab-btn.active {
+      background: #007bff;
+      color: white;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Enhanced Form Styles */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      font-size: 14px;
+      transition: border-color 0.3s ease;
+    }
+
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none;
+      border-color: #007bff;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+
+    /* Reports Section */
+    .reports-grid {
+      display: grid;
+      gap: 20px;
+    }
+
+    .report-card {
+      background: linear-gradient(135deg, #222 0%, #2a2a2a 100%);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .report-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+
+    .report-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #007bff;
+      margin: 0;
+    }
+
+    .report-date {
+      font-size: 12px;
+      color: #888;
+      text-align: right;
+    }
+
+    .report-message {
+      background: #1a1a1a;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-style: italic;
+      border-left: 3px solid #007bff;
+    }
+
+    .report-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+    }
+
+    .stat-number {
+      font-size: 24px;
+      font-weight: 700;
+      display: block;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      margin-top: 5px;
+    }
+
+    .accepted { color: #28a745; }
+    .pending { color: #ffc107; }
+    .total { color: #6c757d; }
+
+    .user-list {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .user-list h4 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #e0e0e0;
+    }
+
+    .user-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .user-tag {
+      background: #007bff;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 15px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .user-tag.pending {
+      background: #ffc107;
+      color: #000;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 15px 0 10px 0;
+      border: 2px solid #333;
+      box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00C853 0%, #4CAF50 100%);
+      transition: width 0.3s ease;
+      box-shadow: 0 0 10px rgba(0, 200, 83, 0.5);
+    }
+
+    .progress-text {
+      font-size: 16px;
+      color: #ffffff;
+      text-align: center;
+      font-weight: 900;
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    }
+
+    .progress-count {
+      font-size: 16px;
+      color: #ffffff;
+      font-weight: 900;
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    }
+
+    /* New Inline Form Styles */
+    .announcements-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #333;
+    }
+
+    .announcements-header h2 {
+      margin: 0;
+      color: #007bff;
+      font-size: 2rem;
+    }
+
+    .btn-create-announcement {
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-create-announcement:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4);
+    }
+
+    .create-form {
+      margin-bottom: 40px;
+      animation: slideDown 0.3s ease;
+    }
+
+    .form-card {
+      background: linear-gradient(135deg, #111 0%, #1a1a1a 100%);
+      border: 1px solid #333;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .form-card h3 {
+      margin: 0 0 25px 0;
+      color: #007bff;
+      font-size: 1.5rem;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 15px;
+      margin-top: 25px;
+    }
+
+    .reports-section {
+      margin-top: 40px;
+    }
+
+    .reports-section h3 {
+      color: #007bff;
+      font-size: 1.5rem;
+      margin-bottom: 25px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #333;
+    }
+
+    .simple-reports {
+      display: grid;
+      gap: 20px;
+    }
+
+    .simple-report-card {
+      background: linear-gradient(135deg, #1a1a1a 0%, #222 100%);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 25px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .simple-report-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .simple-report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .simple-report-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #007bff;
+      margin: 0;
+    }
+
+    .simple-report-date {
+      font-size: 14px;
+      color: #888;
+    }
+
+    .simple-message {
+      background: #000;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-style: italic;
+      border-left: 4px solid #007bff;
+      color: #e0e0e0;
+    }
+
+    .simple-stats {
+      display: flex;
+      justify-content: space-around;
+      background: #000;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .simple-stat {
+      text-align: center;
+    }
+
+    .simple-stat-number {
+      font-size: 28px;
+      font-weight: 700;
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .simple-stat-label {
+      font-size: 14px;
+      color: #888;
+    }
+
+    .simple-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn-small {
+      padding: 8px 15px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-download {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-resend {
+      background: #ffc107;
+      color: #000;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Table-based Reports Styles */
+    .reports-filters {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 25px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .filter-group label {
+      font-size: 14px;
+      color: #e0e0e0;
+      font-weight: 600;
+    }
+
+    .search-input, .date-input {
+      padding: 8px 12px;
+      border: 2px solid #333;
+      border-radius: 6px;
+      background: #222;
+      color: white;
+      font-size: 14px;
+      min-width: 200px;
+    }
+
+    .search-input:focus, .date-input:focus {
+      outline: none;
+      border-color: #007bff;
+    }
+
+    .reports-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1a1a1a;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 229, 255, 0.1);
+      border: 2px solid rgba(0, 229, 255, 0.2);
+    }
+
+    .reports-table th {
+      background: linear-gradient(135deg, #00E5FF 0%, #0080FF 100%);
+      color: #000000;
+      padding: 18px 15px;
+      text-align: left;
+      font-weight: 800;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-shadow: none;
+      border-bottom: 3px solid #00C853;
+    }
+
+    .reports-table td {
+      padding: 16px 15px;
+      border-bottom: 1px solid #333;
+      vertical-align: middle;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .reports-table tr {
+      transition: all 0.3s ease;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .reports-table tr:hover {
+      background-color: rgba(0, 229, 255, 0.1);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(0, 229, 255, 0.2);
+    }
+
+    .reports-table tr.expanded {
+      background-color: rgba(0, 200, 83, 0.1);
+      border-left: 4px solid #00C853;
+    }
+
+    .announcement-id {
+      font-weight: 900;
+      color: #00E5FF;
+      font-size: 20px;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    }
+
+    .announcement-preview {
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .target-info {
+      font-size: 15px;
+      color: #00C853;
+      font-weight: 600;
+      text-shadow: 0 0 5px rgba(0, 200, 83, 0.3);
+    }
+
+    .stats-compact {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .stat-compact {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .stat-compact.accepted { 
+      color: #00C853; 
+      text-shadow: 0 0 8px rgba(0, 200, 83, 0.4);
+    }
+    .stat-compact.pending { 
+      color: #FFC107; 
+      text-shadow: 0 0 8px rgba(255, 193, 7, 0.4);
+    }
+    .stat-compact.total { 
+      color: #ffffff; 
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+    }
+
+    .progress-mini {
+      width: 80px;
+      height: 10px;
+      background: #222222;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-right: 12px;
+      border: 2px solid #333333;
+      box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-mini-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00E5FF 0%, #00C853 100%);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    }
+
+    .actions-compact {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn-mini {
+      padding: 10px 16px;
+      font-size: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-view {
+      background: linear-gradient(135deg, #00E5FF, #0080FF);
+      color: #000000;
+      border: 2px solid transparent;
+    }
+
+    .btn-view:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-download-mini {
+      background: linear-gradient(135deg, #00C853, #00A040);
+      color: white;
+      border: 2px solid transparent;
+    }
+
+    .btn-download-mini:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 200, 83, 0.4);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-resend-mini {
+      background: linear-gradient(135deg, #FFC107, #FF9800);
+      color: #000000;
+      border: 2px solid transparent;
+    }
+
+    .btn-resend-mini:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Expandable Details */
+    .details-row {
+      display: none;
+    }
+
+    .details-row.expanded {
+      display: table-row;
+    }
+
+    .details-content {
+      padding: 25px;
+      background: #111;
+      border-left: 4px solid #007bff;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 25px;
+      margin-top: 15px;
+    }
+
+    .detail-section {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .detail-section h4 {
+      margin: 0 0 12px 0;
+      color: #007bff;
+      font-size: 14px;
+    }
+
+    .user-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .user-chip {
+      background: #007bff;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .user-chip.pending {
+      background: #ffc107;
+      color: #000;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+
+    .filter-summary {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 15px;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 0;
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      animation: slideIn 0.3s ease;
+    }
+
+    .modal-header {
+      padding: 24px 32px;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      color: #333;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #666;
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .modal-close:hover {
+      background: #f8f9fa;
+      color: #333;
+    }
+
+    .modal-body {
+      padding: 24px 32px 32px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .form-row.full-width {
+      grid-template-columns: 1fr;
+    }
+
+    .form-group {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      color: #374151;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #17a2b8;
+      border-radius: 8px;
+      background: white;
+      color: #333;
+      font-size: 14px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      outline: none;
+      border-color: #138496;
+      box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.1);
+    }
+
+    .form-input[readonly] {
+      background: #f8f9fa;
+      color: #6c757d;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .field-validation {
+      background: #333;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-top: 4px;
+      display: inline-block;
+    }
+
+    .add-more-link {
+      color: #17a2b8;
+      font-size: 14px;
+      margin-top: 8px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .add-more-link:hover {
+      text-decoration: underline;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid #e9ecef;
+    }
+
+    .btn-cancel {
+      background: white;
+      color: #6c757d;
+      border: 2px solid #e9ecef;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-cancel:hover {
+      background: #f8f9fa;
+      border-color: #dee2e6;
+    }
+
+    .btn-primary {
+      background: #17a2b8;
+      color: white;
+      border: 2px solid #17a2b8;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      background: #138496;
+      border-color: #138496;
+    }
+
+    /* Employee List Styles */
+    .employee-list {
+      border: 2px solid #17a2b8;
+      border-radius: 8px;
+      background: white;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .employee-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .employee-item:last-child {
+      border-bottom: none;
+    }
+
+    .employee-item.accepted {
+      background: #f8fff9;
+      border-left: 4px solid #28a745;
+    }
+
+    .employee-item.pending {
+      background: #fff8f0;
+      border-left: 4px solid #ffc107;
+    }
+
+    .employee-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .employee-name {
+      font-weight: 500;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .employee-department {
+      font-size: 12px;
+      color: #6c757d;
+    }
+
+    .employee-timestamp {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+    }
+
+    .timestamp-label {
+      font-size: 10px;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .timestamp-value {
+      font-size: 12px;
+      color: #28a745;
+      font-weight: 500;
+    }
+
+    .employee-status {
+      display: flex;
+      align-items: center;
+    }
+
+    .status-badge {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .no-employees {
+      text-align: center;
+      color: #6c757d;
+      font-style: italic;
+      padding: 20px;
+    }
+
+    /* Table Progress Display */
+    .progress-display {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 120px;
+    }
+
+    .progress-text {
+      font-size: 16px;
+      color: #ffffff;
+      font-weight: 900;
+      text-align: center;
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #333;
+      box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00C853 0%, #4CAF50 100%);
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px rgba(0, 200, 83, 0.4);
+    }
+
+    .progress-percentage {
+      font-size: 14px;
+      color: #ffffff;
+      text-align: center;
+      font-weight: 900;
+      text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+    }
+
+    /* Deactivate Button */
+    .btn-deactivate {
+      background: linear-gradient(135deg, #FF5722, #D32F2F);
+      color: white;
+      border: 2px solid transparent;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 12px rgba(255, 87, 34, 0.3);
+    }
+
+    .btn-deactivate:hover {
+      background: linear-gradient(135deg, #D32F2F, #B71C1C);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255, 87, 34, 0.5);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-deactivate.reactivate {
+      background: linear-gradient(135deg, #00C853, #00A040);
+      box-shadow: 0 4px 12px rgba(0, 200, 83, 0.3);
+    }
+
+    .btn-deactivate.reactivate:hover {
+      background: linear-gradient(135deg, #00A040, #00691C);
+      box-shadow: 0 6px 20px rgba(0, 200, 83, 0.5);
+    }
+
+    .btn-resend-icon {
+      background: transparent;
+      color: #FF9800;
+      border: none;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-left: 8px;
+    }
+
+    .btn-resend-icon:hover {
+      color: #F57C00;
+      transform: scale(1.1);
+    }
+
+    /* Creator Info */
+    .creator-info {
+      font-size: 15px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    /* Summary Cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin: 25px 0;
+      padding: 0 5px;
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e9ecef;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+      border-color: #17a2b8;
+    }
+
+    .summary-card.active {
+      border-color: #17a2b8;
+      background: #f8fdff;
+    }
+
+    .card-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .card-icon.blue {
+      background: linear-gradient(135deg, #007bff, #0056b3);
+      color: white;
+    }
+
+    .card-icon.green {
+      background: linear-gradient(135deg, #28a745, #1e7e34);
+      color: white;
+    }
+
+    .card-icon.purple {
+      background: linear-gradient(135deg, #6f42c1, #5a32a3);
+      color: white;
+    }
+
+    .card-icon.gray {
+      background: linear-gradient(135deg, #6c757d, #5a6268);
+      color: white;
+    }
+
+    .card-content {
+      flex: 1;
+    }
+
+    .card-label {
+      font-size: 14px;
+      color: #6c757d;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #333;
+      line-height: 1;
+    }
+
+    /* Multi-select styles */
+    .multi-select-container {
+      position: relative;
+    }
+
+    .multi-select-dropdown {
+      background: white;
+      border: 2px solid #17a2b8;
+      border-radius: 8px;
+      padding: 12px 16px;
+      cursor: pointer;
+      color: #333;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+
+    .multi-select-dropdown:hover {
+      border-color: #138496;
+    }
+
+    .multi-select-dropdown.open {
+      border-color: #138496;
+      box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.1);
+    }
+
+    .multi-select-placeholder {
+      color: #6c757d;
+      font-size: 14px;
+    }
+
+    .multi-select-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .multi-select-tag {
+      background: #17a2b8;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .multi-select-tag .remove {
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .multi-select-arrow {
+      font-size: 12px;
+      color: #6c757d;
+      transition: transform 0.3s ease;
+    }
+
+    .multi-select-arrow.open {
+      transform: rotate(180deg);
+    }
+
+    .multi-select-options {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 2px solid #17a2b8;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1001;
+      display: none;
+    }
+
+    .multi-select-options.show {
+      display: block;
+    }
+
+    .multi-select-option {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #333;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+
+    .multi-select-option:hover {
+      background: #f8f9fa;
+    }
+
+    .multi-select-option.selected {
+      background: #e7f8f9;
+      color: #138496;
+    }
+
+    .multi-select-checkbox {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #dee2e6;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .multi-select-option.selected .multi-select-checkbox {
+      background: #17a2b8;
+      border-color: #17a2b8;
+    }
+
+    .multi-select-option.selected .multi-select-checkbox::after {
+      content: '✓';
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+    }
+    .multi-select-options.show {
+      display: block;
+    }
+
+    .multi-select-option {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #333;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+
+    .multi-select-option:hover {
+      background: #f8f9fa;
+    }
+
+    .multi-select-option.selected {
+      background: #e7f8f9;
+      color: #138496;
+    }
+
+    .multi-select-checkbox {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #666;
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .multi-select-checkbox.checked {
+      background: #007bff;
+      border-color: #007bff;
+    }
+
+    .multi-select-checkbox.checked::after {
+      content: '✓';
+      position: absolute;
+      top: -2px;
+      left: 2px;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .modal h3 {
+      margin-top: 0;
+      color: #007bff;
+    }
+
+    .modal label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 600;
+    }
+
+    .modal textarea,
+    .modal select {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #000;
+      color: white;
+    }
+
+    .modal button {
+      margin-top: 20px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    .modal .btn-send {
+      background-color: #007bff;
+      color: white;
+    }
+
+    .modal .btn-cancel {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .modal .btn-download {
+      background-color: #28a745;
+      color: white;
+      margin-top: 10px;
+      display: block;
+      width: 100%;
+    }
+
+    /* DYNAMIC FIELDS */
+    .dynamic-field {
+      margin-top: 15px;
+    }
+
+    /* FLASH OVERLAY */
+    .flash-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+      backdrop-filter: blur(5px);
+    }
+
+    .flash-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .flash-message {
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #00E5FF;
+      color: white;
+      padding: 30px;
+      border-radius: 20px;
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.3), 0 20px 60px rgba(0, 0, 0, 0.9);
+      animation: slideIn 0.3s ease-out;
+      position: relative;
+      backdrop-filter: blur(10px);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-50px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .flash-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 30px;
+      padding-bottom: 25px;
+      border-bottom: 2px solid #333;
+    }
+
+    .flash-icon {
+      font-size: 3.5rem;
+      background: linear-gradient(135deg, #FF6B35, #F7931E);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: pulse 2s infinite;
+    }
+
+    .flash-header h2 {
+      color: #00E5FF;
+      margin: 0;
+      font-size: 3rem;
+      font-weight: 900;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+    }
+
+    .announcement-creator-single {
+      color: #00C853;
+      margin-bottom: 20px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(0, 200, 83, 0.4);
+    }
+
+    .announcement-subject-text {
+      color: #ffffff;
+      margin: 20px 0;
+      font-size: 1.3rem;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .announcement-content-simple {
+      color: #ffffff;
+      margin: 20px 0 30px 0;
+      font-size: 1.1rem;
+      font-weight: 500;
+      line-height: 1.6;
+      text-align: center;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .accept-btn-simple {
+      background: linear-gradient(135deg, #0066FF, #0052CC);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      font-size: 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
+    }
+
+    .accept-btn-simple:hover {
+      background: linear-gradient(135deg, #0052CC, #003D99);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 102, 255, 0.5);
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+
+    .announcement-creator {
+      margin-bottom: 25px;
+      color: #ccc;
+      font-size: 1.1rem;
+      text-align: center;
+    }
+
+    .creator-name {
+      color: #00E5FF;
+      font-weight: 900;
+      font-size: 1.4rem;
+      display: block;
+      margin-bottom: 8px;
+      text-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+    }
+
+    .creator-designation {
+      display: block;
+      font-size: 1rem;
+      color: #00C853;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(0, 200, 83, 0.3);
+    }
+
+    .announcement-subject {
+      margin-bottom: 25px;
+      padding: 20px;
+      background: rgba(0, 229, 255, 0.1);
+      border-radius: 15px;
+      border: 2px solid rgba(0, 229, 255, 0.3);
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+    }
+
+    .announcement-subject h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin: 0;
+      color: #ffffff;
+      text-align: center;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+
+    .announcement-content {
+      color: #ffffff;
+      margin-bottom: 30px;
+      font-size: 1.2rem;
+      line-height: 1.8;
+      text-align: center;
+      padding: 25px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      font-weight: 500;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    }
+    
+    .announcement-progress {
+      margin-bottom: 30px;
+      text-align: left;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1rem;
+      color: #ffffff;
+      margin-bottom: 15px;
+      font-weight: 700;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #222222;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #333333;
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00E5FF, #00C853);
+      transition: width 0.3s ease;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
+    }
+
+    .announcement-actions {
+      margin-top: 25px;
+    }
+
+    .accept-btn {
+      background: linear-gradient(135deg, #00E5FF, #00C853);
+      color: white;
+      border: none;
+      padding: 18px 40px;
+      font-size: 1.2rem;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      box-shadow: 0 8px 25px rgba(0, 229, 255, 0.4);
+      border: 2px solid transparent;
+    }
+
+    .accept-btn:hover {
+      background: linear-gradient(135deg, #0080FF, #00A040);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 35px rgba(0, 229, 255, 0.6);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .accept-btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-icon {
+      font-size: 1.8rem;
+      filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+    }
+
+    .btn-text {
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+
+    /* REPORT MODAL */
+    #reportModal {
+      max-width: 700px;
+      overflow-y: auto;
+      max-height: 80vh;
+    }
+
+    .report-item {
+      background: #222;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+
+    .report-item h4 {
+      margin: 0 0 10px 0;
+      color: #007bff;
+    }
+
+    .report-item p {
+      margin: 5px 0;
+      font-size: 0.9rem;
+    }
+
+    .accepted-list {
+      font-size: 0.85rem;
+      color: #00ff00;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <ul>
+      <li class="announcements-trigger active" onclick="showAnnouncementsSection()"><i>📢</i> Announcements</li>
+    </ul>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">RupiyaMaker</div>
+    <div class="user-info">
+      <span>Raunak Kumar</span>
+      <span>DIRECTOR OF OPERATIONS</span>
+      <div class="user-avatar">RK</div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="announcements-header">
+      <h2>📢 Announcements Management</h2>
+      <button class="btn-create-announcement" onclick="openCreateModal()">+ Create Announcement</button>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="summary-card" onclick="filterByStatus('all')">
+        <div class="card-icon blue">
+          <i class="icon-message">💬</i>
+        </div>
+        <div class="card-content">
+          <div class="card-label">Total Sent</div>
+          <div class="card-value" id="totalSent">0</div>
+        </div>
+      </div>
+      
+      <div class="summary-card" onclick="filterByStatus('active')">
+        <div class="card-icon green">
+          <i class="icon-check">✓</i>
+        </div>
+        <div class="card-content">
+          <div class="card-label">Active</div>
+          <div class="card-value" id="activeCount">0</div>
+        </div>
+      </div>
+      
+      <div class="summary-card" onclick="filterByStatus('completed')">
+        <div class="card-icon purple">
+          <i class="icon-complete">🎯</i>
+        </div>
+        <div class="card-content">
+          <div class="card-label">Completed</div>
+          <div class="card-value" id="completedCount">0</div>
+        </div>
+      </div>
+      
+      <div class="summary-card" onclick="filterByStatus('deactivated')">
+        <div class="card-icon gray">
+          <i class="icon-inactive">⏸️</i>
+        </div>
+        <div class="card-content">
+          <div class="card-label">Deactivated</div>
+          <div class="card-value" id="deactivatedCount">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Announcements Reports Section -->
+    <div class="reports-section">
+      <h3>📊 Announcement Reports</h3>
+      
+      <!-- Filters -->
+      <div class="reports-filters">
+        <div class="filter-group">
+          <label>🔍 Search:</label>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search announcements..." onkeyup="filterReports()">
+        </div>
+        <div class="filter-group">
+          <label>📅 From:</label>
+          <input type="date" id="dateFrom" class="date-input" onchange="filterReports()">
+        </div>
+        <div class="filter-group">
+          <label>📅 To:</label>
+          <input type="date" id="dateTo" class="date-input" onchange="filterReports()">
+        </div>
+        <button class="btn-secondary" onclick="clearFilters()">Clear Filters</button>
+      </div>
+
+      <div id="filterSummary" class="filter-summary"></div>
+
+      <div id="reportsTableContainer">
+        <!-- Table will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Announcement Modal -->
+  <div id="createModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>CREATE ANNOUNCEMENT</h3>
+        <button class="modal-close" onclick="closeCreateModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Date & Time</label>
+            <input type="text" id="announcementDateTime" class="form-input" value="" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Created By</label>
+            <input type="text" id="createdBy" class="form-input" value="Raunak Kumar" readonly>
+          </div>
+        </div>
+
+        <div class="form-row full-width">
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <input type="text" id="announcementSubject" class="form-input" placeholder="Enter subject">
+          </div>
+        </div>
+
+        <div class="form-row full-width">
+          <div class="form-group">
+            <label class="form-label">Announcement Details</label>
+            <textarea id="announcementMessage" class="form-textarea" rows="4" placeholder="Enter announcement details..."></textarea>
+            <div class="field-validation" id="messageValidation" style="display: none;">Please fill out this field.</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Target Type</label>
+            <select id="targetType" class="form-select" onchange="toggleTargetFields()">
+              <option value="all">All Employees</option>
+              <option value="department">Specific Departments</option>
+              <option value="individual">Individual Employees</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="departmentField" class="form-group" style="display: none;">
+          <label class="form-label">Select Departments</label>
+          <div class="multi-select-container">
+            <div class="multi-select-dropdown" onclick="toggleMultiSelect('department')">
+              <div class="multi-select-placeholder" id="departmentPlaceholder">Select departments...</div>
+              <div class="multi-select-values" id="departmentValues"></div>
+              <div class="multi-select-arrow" id="departmentArrow">▼</div>
+            </div>
+            <div class="multi-select-options" id="departmentOptions">
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'Sales', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Sales</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'HR', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>HR</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'IT', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>IT</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'Finance', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Finance</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'Marketing', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Marketing</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('department', 'Operations', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Operations</span>
+              </div>
+            </div>
+          </div>
+          <div class="add-more-link">+ Add more</div>
+        </div>
+
+        <div id="individualField" class="form-group" style="display: none;">
+          <label class="form-label">Select Employees</label>
+          <div class="multi-select-container">
+            <div class="multi-select-dropdown" onclick="toggleMultiSelect('individual')">
+              <div class="multi-select-placeholder" id="individualPlaceholder">Select employees...</div>
+              <div class="multi-select-values" id="individualValues"></div>
+              <div class="multi-select-arrow" id="individualArrow">▼</div>
+            </div>
+            <div class="multi-select-options" id="individualOptions">
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Pramod Das', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Pramod Das</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Ankit Sharma', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Ankit Sharma</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Rajesh Gupta', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Rajesh Gupta</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Amit Singh', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Amit Singh</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Priya Patel', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Priya Patel</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Vikas Mehta', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Vikas Mehta</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Neha Joshi', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Neha Joshi</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Arjun Yadav', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Arjun Yadav</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Karan Singh', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Karan Singh</span>
+              </div>
+              <div class="multi-select-option" onclick="selectMultiOption('individual', 'Sneha Roy', this)">
+                <div class="multi-select-checkbox"></div>
+                <span>Sneha Roy</span>
+              </div>
+            </div>
+          </div>
+          <div class="add-more-link">+ Add more</div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="closeCreateModal()">Cancel</button>
+          <button class="btn-primary" onclick="sendAnnouncement()">Create Announcement</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Announcement Details Modal -->
+  <div id="detailsModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="detailsModalTitle">ANNOUNCEMENT DETAILS</h3>
+        <button class="modal-close" onclick="closeDetailsModal()">×</button>
+      </div>
+      <div class="modal-body" id="detailsModalBody">
+        <!-- Details will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- FLASH MESSAGE OVERLAY -->
+  <div id="flashOverlay" class="flash-overlay">
+    <div class="flash-message">
+      <div class="flash-header">
+        <span class="flash-icon">🚨</span>
+        <h2>ANNOUNCEMENT</h2>
+      </div>
+      
+      <div class="announcement-creator-single">
+        <span id="senderInfo">RAUNAK KUMAR - SUPER ADMIN</span>
+      </div>
+      
+      <div class="announcement-subject-text" id="announcementSubjectDisplay">
+        Subject
+      </div>
+      
+      <div class="announcement-content-simple">
+        <div id="flashText">Announcement details will appear here</div>
+      </div>
+      
+      <div class="announcement-actions">
+        <button class="accept-btn-simple" onclick="acceptMessage()">
+          I Accept
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Enhanced Data Structure
+    const employees = [
+      { id: 1, name: "Pramod Das", department: "Sales", status: "active" },
+      { id: 2, name: "Ankit Sharma", department: "HR", status: "active" },
+      { id: 3, name: "Rajesh Gupta", department: "IT", status: "active" },
+      { id: 4, name: "Amit Singh", department: "Finance", status: "active" },
+      { id: 5, name: "Priya Patel", department: "Marketing", status: "active" },
+      { id: 6, name: "Vikas Mehta", department: "Operations", status: "active" },
+      { id: 7, name: "Neha Joshi", department: "HR", status: "active" },
+      { id: 8, name: "Arjun Yadav", department: "IT", status: "active" },
+      { id: 9, name: "Karan Singh", department: "Sales", status: "active" },
+      { id: 10, name: "Sneha Roy", department: "Support", status: "active" }
+    ];
+
+    let announcements = [];
+    let currentAnnouncement = null;
+    let currentAcceptedUsers = [];
+    let selectedDepartments = [];
+    let selectedIndividuals = [];
+
+    // Modal Management
+    function openCreateModal() {
+      // Set current date and time
+      const now = new Date();
+      const dateTimeString = now.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }) + ' ' + now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      document.getElementById('announcementDateTime').value = dateTimeString;
+      
+      document.getElementById('createModal').classList.add('show');
+      resetCreateForm();
+    }
+
+    function closeCreateModal() {
+      document.getElementById('createModal').classList.remove('show');
+      resetCreateForm();
+    }
+
+    function resendAnnouncement(announcementId) {
+      console.log("resendAnnouncement called with ID:", announcementId);
+      
+      // Find the announcement by ID
+      const announcement = announcements.find(a => a.id === announcementId);
+      if (!announcement) {
+        console.error("Announcement not found for ID:", announcementId);
+        alert("Announcement not found!");
+        return;
+      }
+
+      console.log("Found announcement:", announcement);
+
+      // Set current date and time (new timestamp)
+      const now = new Date();
+      const dateTimeString = now.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }) + ' ' + now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      document.getElementById('announcementDateTime').value = dateTimeString;
+
+      // Reset form first
+      resetCreateForm();
+
+      // Pre-fill only subject and message
+      document.getElementById('announcementSubject').value = announcement.subject || '';
+      document.getElementById('announcementMessage').value = announcement.message || '';
+
+      console.log("Pre-filled subject:", announcement.subject);
+      console.log("Pre-filled message:", announcement.message);
+
+      // Open the create modal
+      document.getElementById('createModal').classList.add('show');
+      
+      console.log("Modal should be open now");
+    }
+
+    function openDetailsModal(announcementIndex) {
+      const announcement = announcements[announcementIndex];
+      const modal = document.getElementById('detailsModal');
+      const title = document.getElementById('detailsModalTitle');
+      const body = document.getElementById('detailsModalBody');
+
+      const displayId = announcements.length - announcementIndex;
+      title.textContent = `ANNOUNCEMENT DETAILS #${displayId}`;
+
+      const acceptedUsers = announcement.targetUsers.filter(u => u.status === 'accepted');
+      const pendingUsers = announcement.targetUsers.filter(u => u.status === 'pending');
+      const acceptanceRate = Math.round((announcement.acceptedCount / announcement.totalTargets) * 100);
+
+      body.innerHTML = `
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Date & Time Created</label>
+            <input type="text" class="form-input" value="${announcement.sentAt}" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Created By</label>
+            <input type="text" class="form-input" value="${announcement.sentBy}" readonly>
+          </div>
+        </div>
+
+        ${announcement.subject ? `
+          <div class="form-row full-width">
+            <div class="form-group">
+              <label class="form-label">Subject</label>
+              <input type="text" class="form-input" value="${announcement.subject}" readonly>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="form-row full-width">
+          <div class="form-group">
+            <label class="form-label">Announcement Details</label>
+            <textarea class="form-textarea" rows="3" readonly>${announcement.message}</textarea>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Target Type</label>
+            <input type="text" class="form-input" value="${announcement.targetType}${announcement.targetValue ? ' → ' + announcement.targetValue : ''}" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Progress</label>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="flex: 1; background: #e9ecef; border-radius: 10px; height: 8px; overflow: hidden;">
+                <div style="background: #17a2b8; height: 100%; width: ${acceptanceRate}%; transition: width 0.3s ease;"></div>
+              </div>
+              <span style="font-size: 14px; color: #6c757d; font-weight: 500;">${acceptanceRate}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row full-width">
+          <div class="form-group">
+            <label class="form-label">Accepted Employees (${acceptedUsers.length})</label>
+            <div class="employee-list">
+              ${acceptedUsers.length > 0 ? acceptedUsers.map(user => `
+                <div class="employee-item accepted">
+                  <div class="employee-info">
+                    <span class="employee-name">${user.name}</span>
+                    <span class="employee-department">${user.department}</span>
+                  </div>
+                  <div class="employee-timestamp">
+                    <span class="timestamp-label">Accepted:</span>
+                    <span class="timestamp-value">${user.acceptedAt}</span>
+                  </div>
+                </div>
+              `).join('') : '<div class="no-employees">No employees have accepted yet</div>'}
+            </div>
+          </div>
+        </div>
+
+        ${pendingUsers.length > 0 ? `
+          <div class="form-row full-width">
+            <div class="form-group">
+              <label class="form-label">Pending Employees (${pendingUsers.length})</label>
+              <div class="employee-list">
+                ${pendingUsers.map(user => `
+                  <div class="employee-item pending">
+                    <div class="employee-info">
+                      <span class="employee-name">${user.name}</span>
+                      <span class="employee-department">${user.department}</span>
+                    </div>
+                    <div class="employee-status">
+                      <span class="status-badge pending">Pending</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="closeDetailsModal()">Close</button>
+          <button class="btn-primary" onclick="downloadReport(announcement)">
+            Download Report
+          </button>
+          ${pendingUsers.length > 0 ? `
+            <button class="btn-primary" onclick="resendAnnouncement(announcement); closeDetailsModal();" style="background: #28a745; border-color: #28a745;">
+              Resend to ${pendingUsers.length} Pending
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      modal.classList.add('show');
+    }
+
+    function closeDetailsModal() {
+      document.getElementById('detailsModal').classList.remove('show');
+    }
+
+    // Multi-select functionality
+    function toggleMultiSelect(type) {
+      const options = document.getElementById(type + 'Options');
+      const arrow = document.getElementById(type + 'Arrow');
+      const dropdown = document.querySelector(`#${type}Field .multi-select-dropdown`);
+
+      if (options.classList.contains('show')) {
+        options.classList.remove('show');
+        arrow.classList.remove('open');
+        dropdown.classList.remove('open');
+      } else {
+        // Close other multi-selects
+        document.querySelectorAll('.multi-select-options.show').forEach(opt => {
+          opt.classList.remove('show');
+        });
+        document.querySelectorAll('.multi-select-arrow.open').forEach(arr => {
+          arr.classList.remove('open');
+        });
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(dd => {
+          dd.classList.remove('open');
+        });
+
+        options.classList.add('show');
+        arrow.classList.add('open');
+        dropdown.classList.add('open');
+      }
+    }
+
+    function selectMultiOption(type, value, element) {
+      const checkbox = element.querySelector('.multi-select-checkbox');
+      const valuesContainer = document.getElementById(type + 'Values');
+      const placeholder = document.getElementById(type + 'Placeholder');
+
+      if (type === 'department') {
+        if (selectedDepartments.includes(value)) {
+          selectedDepartments = selectedDepartments.filter(dept => dept !== value);
+          checkbox.classList.remove('checked');
+          element.classList.remove('selected');
+        } else {
+          selectedDepartments.push(value);
+          checkbox.classList.add('checked');
+          element.classList.add('selected');
+        }
+        updateMultiSelectDisplay('department', selectedDepartments, valuesContainer, placeholder);
+      } else if (type === 'individual') {
+        if (selectedIndividuals.includes(value)) {
+          selectedIndividuals = selectedIndividuals.filter(ind => ind !== value);
+          checkbox.classList.remove('checked');
+          element.classList.remove('selected');
+        } else {
+          selectedIndividuals.push(value);
+          checkbox.classList.add('checked');
+          element.classList.add('selected');
+        }
+        updateMultiSelectDisplay('individual', selectedIndividuals, valuesContainer, placeholder);
+      }
+    }
+
+    function updateMultiSelectDisplay(type, selectedValues, valuesContainer, placeholder) {
+      if (selectedValues.length === 0) {
+        placeholder.style.display = 'block';
+        valuesContainer.innerHTML = '';
+      } else {
+        placeholder.style.display = 'none';
+        valuesContainer.innerHTML = selectedValues.map(value => `
+          <div class="multi-select-tag">
+            ${value}
+            <span class="remove" onclick="removeMultiSelectTag('${type}', '${value}')">&times;</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeMultiSelectTag(type, value) {
+      if (type === 'department') {
+        selectedDepartments = selectedDepartments.filter(dept => dept !== value);
+        // Update UI
+        const element = [...document.querySelectorAll('#departmentOptions .multi-select-option')]
+          .find(el => el.textContent.trim() === value);
+        if (element) {
+          element.querySelector('.multi-select-checkbox').classList.remove('checked');
+          element.classList.remove('selected');
+        }
+        updateMultiSelectDisplay('department', selectedDepartments, 
+          document.getElementById('departmentValues'), 
+          document.getElementById('departmentPlaceholder'));
+      } else if (type === 'individual') {
+        selectedIndividuals = selectedIndividuals.filter(ind => ind !== value);
+        // Update UI
+        const element = [...document.querySelectorAll('#individualOptions .multi-select-option')]
+          .find(el => el.textContent.trim() === value);
+        if (element) {
+          element.querySelector('.multi-select-checkbox').classList.remove('checked');
+          element.classList.remove('selected');
+        }
+        updateMultiSelectDisplay('individual', selectedIndividuals, 
+          document.getElementById('individualValues'), 
+          document.getElementById('individualPlaceholder'));
+      }
+    }
+
+    function resetCreateForm() {
+      document.getElementById('announcementSubject').value = '';
+      document.getElementById('announcementMessage').value = '';
+      document.getElementById('targetType').value = 'all';
+      selectedDepartments = [];
+      selectedIndividuals = [];
+      
+      // Reset multi-selects
+      document.querySelectorAll('.multi-select-checkbox.checked').forEach(cb => cb.classList.remove('checked'));
+      document.querySelectorAll('.multi-select-option.selected').forEach(opt => opt.classList.remove('selected'));
+      document.getElementById('departmentValues').innerHTML = '';
+      document.getElementById('individualValues').innerHTML = '';
+      document.getElementById('departmentPlaceholder').style.display = 'block';
+      document.getElementById('individualPlaceholder').style.display = 'block';
+      
+      toggleTargetFields();
+    }
+
+    // New Inline Interface Functions
+    function showAnnouncementsSection() {
+      loadSimpleReports();
+    }
+
+    function toggleTargetFields() {
+      const targetType = document.getElementById('targetType').value;
+      document.getElementById('departmentField').style.display = 'none';
+      document.getElementById('individualField').style.display = 'none';
+
+      if (targetType === 'department') {
+        document.getElementById('departmentField').style.display = 'block';
+      } else if (targetType === 'individual') {
+        document.getElementById('individualField').style.display = 'block';
+      }
+    }
+
+    // Enhanced Send Announcement
+    function sendAnnouncement() {
+      console.log("sendAnnouncement function called");
+      
+      const subject = document.getElementById('announcementSubject').value.trim();
+      const message = document.getElementById('announcementMessage').value.trim();
+      
+      console.log("Subject:", subject);
+      console.log("Message:", message);
+      
+      if (!subject) {
+        alert("Please enter a subject for the announcement.");
+        return;
+      }
+      
+      if (!message) {
+        alert("Please enter an announcement message.");
+        return;
+      }
+
+      const targetType = document.getElementById('targetType').value;
+      let targetValue = "";
+      let targetUsers = [];
+
+      if (targetType === 'all') {
+        targetUsers = [...employees];
+        targetValue = "All Employees";
+      } else if (targetType === 'department') {
+        if (selectedDepartments.length === 0) {
+          alert("Please select at least one department.");
+          return;
+        }
+        targetValue = selectedDepartments.join(', ');
+        targetUsers = employees.filter(emp => selectedDepartments.includes(emp.department));
+      } else if (targetType === 'individual') {
+        if (selectedIndividuals.length === 0) {
+          alert("Please select at least one employee.");
+          return;
+        }
+        targetValue = selectedIndividuals.join(', ');
+        targetUsers = employees.filter(emp => selectedIndividuals.includes(emp.name));
+      }
+
+      if (targetUsers.length === 0) {
+        alert("No target users found.");
+        return;
+      }
+
+      // Create announcement record
+      const announcement = {
+        id: Date.now(),
+        subject: subject,
+        message: message,
+        targetType: targetType,
+        targetValue: targetValue,
+        sentBy: document.getElementById('createdBy').value,
+        sentAt: new Date().toLocaleString(),
+        targetUsers: targetUsers.map(user => ({
+          ...user,
+          status: 'pending',
+          acceptedAt: null
+        })),
+        totalTargets: targetUsers.length,
+        acceptedCount: 0,
+        seenCount: 0,
+        isActive: true
+      };
+
+      announcements.unshift(announcement);
+      currentAnnouncement = announcement;
+      currentAcceptedUsers = [];
+
+      console.log("Announcement created:", announcement);
+      
+      // Show flash message
+      displayFlashMessage(message, targetUsers.length);
+      
+      // Close modal and refresh reports
+      closeCreateModal();
+      loadSimpleReports();
+      
+      console.log("sendAnnouncement function completed");
+    }
+
+    function displayFlashMessage(message, totalTargets) {
+      // Update the message content
+      document.getElementById('flashText').textContent = message;
+      
+      // Update creator information if currentAnnouncement exists
+      if (currentAnnouncement) {
+        const creatorName = currentAnnouncement.sentBy.split(' - ')[0] || 'Unknown';
+        const designation = currentAnnouncement.sentBy.split(' - ')[1] || 'Administrator';
+        
+        document.getElementById('senderInfo').textContent = `${creatorName.toUpperCase()} - ${designation.toUpperCase()}`;
+        
+        // Update subject if available
+        if (currentAnnouncement.subject) {
+          document.getElementById('announcementSubjectDisplay').textContent = currentAnnouncement.subject;
+        } else {
+          document.getElementById('announcementSubjectDisplay').textContent = 'General Announcement';
+        }
+      } else {
+        document.getElementById('senderInfo').textContent = 'RAUNAK KUMAR - SUPER ADMIN';
+        document.getElementById('announcementSubjectDisplay').textContent = 'System Announcement';
+      }
+      
+      updateProgressDisplay(0, totalTargets);
+      document.getElementById('flashOverlay').classList.add('show');
+    }
+
+    function updateProgressDisplay(accepted, total) {
+      // Progress display removed from modal - this function kept for compatibility
+      console.log(`Progress: ${accepted} out of ${total} have accepted`);
+    }
+
+    function acceptMessage() {
+      if (!currentAnnouncement) return;
+
+      const userId = Math.floor(Math.random() * currentAnnouncement.targetUsers.length);
+      const user = currentAnnouncement.targetUsers[userId];
+
+      if (user.status === 'pending') {
+        user.status = 'accepted';
+        user.acceptedAt = new Date().toLocaleString();
+        currentAnnouncement.acceptedCount++;
+        currentAcceptedUsers.push(user);
+
+        updateProgressDisplay(currentAnnouncement.acceptedCount, currentAnnouncement.totalTargets);
+
+        if (currentAnnouncement.acceptedCount >= currentAnnouncement.totalTargets) {
+          document.getElementById('statusCount').textContent = "✅ All users have accepted this announcement!";
+          setTimeout(() => {
+            document.getElementById('flashOverlay').classList.remove('show');
+            currentAnnouncement = null;
+            loadSimpleReports(); // Refresh reports
+          }, 2000);
+        }
+      }
+    }
+
+    // Simplified Reports System
+    let filteredAnnouncements = [];
+    let searchTerm = '';
+    let dateFrom = '';
+    let dateTo = '';
+    let currentStatusFilter = 'all';
+
+    function loadSimpleReports() {
+      filteredAnnouncements = [...announcements];
+      updateSummaryCards();
+      renderReportsTable();
+    }
+
+    // Filter by status (All, Active, Completed, Deactivated)
+    function filterByStatus(status) {
+      currentStatusFilter = status;
+      
+      // Update active card styling
+      document.querySelectorAll('.summary-card').forEach(card => {
+        card.classList.remove('active');
+      });
+      event.target.closest('.summary-card').classList.add('active');
+      
+      // Apply all filters
+      filterReports();
+    }
+
+    // Update summary card counts
+    function updateSummaryCards() {
+      const totalSent = announcements.length;
+      const activeCount = announcements.filter(a => a.isActive !== false && !isCompleted(a)).length;
+      const completedCount = announcements.filter(a => a.isActive !== false && isCompleted(a)).length;
+      const deactivatedCount = announcements.filter(a => a.isActive === false).length;
+      
+      document.getElementById('totalSent').textContent = totalSent;
+      document.getElementById('activeCount').textContent = activeCount;
+      document.getElementById('completedCount').textContent = completedCount;
+      document.getElementById('deactivatedCount').textContent = deactivatedCount;
+    }
+
+    // Check if announcement is completed (100% acceptance)
+    function isCompleted(announcement) {
+      return announcement.acceptedCount === announcement.totalTargets;
+    }
+
+    function filterReports() {
+      searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      dateFrom = document.getElementById('dateFrom').value;
+      dateTo = document.getElementById('dateTo').value;
+
+      filteredAnnouncements = announcements.filter(announcement => {
+        // Search filter
+        const matchesSearch = !searchTerm || 
+          announcement.message.toLowerCase().includes(searchTerm) ||
+          announcement.targetType.toLowerCase().includes(searchTerm) ||
+          (announcement.targetValue && announcement.targetValue.toLowerCase().includes(searchTerm));
+
+        // Date filter
+        const announcementDate = new Date(announcement.sentAt).toISOString().split('T')[0];
+        const matchesDateFrom = !dateFrom || announcementDate >= dateFrom;
+        const matchesDateTo = !dateTo || announcementDate <= dateTo;
+
+        // Status filter
+        let matchesStatus = true;
+        if (currentStatusFilter === 'active') {
+          matchesStatus = announcement.isActive !== false && !isCompleted(announcement);
+        } else if (currentStatusFilter === 'completed') {
+          matchesStatus = announcement.isActive !== false && isCompleted(announcement);
+        } else if (currentStatusFilter === 'deactivated') {
+          matchesStatus = announcement.isActive === false;
+        }
+        // 'all' shows everything, so no additional filter needed
+
+        return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus;
+      });
+
+      updateFilterSummary();
+      renderReportsTable();
+    }
+
+    function clearFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('dateFrom').value = '';
+      document.getElementById('dateTo').value = '';
+      filterReports();
+    }
+
+    function updateFilterSummary() {
+      const summary = document.getElementById('filterSummary');
+      const total = announcements.length;
+      const filtered = filteredAnnouncements.length;
+      
+      if (total === filtered) {
+        summary.textContent = '';
+      } else {
+        summary.textContent = `Showing ${filtered} of ${total} announcements`;
+      }
+    }
+
+    function renderReportsTable() {
+      const container = document.getElementById('reportsTableContainer');
+
+      if (filteredAnnouncements.length === 0) {
+        if (announcements.length === 0) {
+          container.innerHTML = `
+            <div class="no-results">
+              <h3 style="font-size: 2rem; margin-bottom: 15px;">📭 No Announcements Yet</h3>
+              <p style="font-size: 1.2rem; margin-bottom: 25px;">Click "Create Announcement" to send your first message.</p>
+              <button class="btn-create-announcement" onclick="toggleCreateForm()">+ Create Announcement</button>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `
+            <div class="no-results">
+              <h3 style="font-size: 1.5rem; margin-bottom: 15px;">🔍 No Results Found</h3>
+              <p>No announcements match your current filters.</p>
+              <button class="btn-secondary" onclick="clearFilters()">Clear Filters</button>
+            </div>
+          `;
+        }
+        return;
+      }
+
+      let tableHTML = `
+        <table class="reports-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Date & Time</th>
+              <th>Created By</th>
+              <th>Subject</th>
+              <th>Target</th>
+              <th>Progress</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      filteredAnnouncements.forEach((announcement, index) => {
+        const acceptedUsers = announcement.targetUsers.filter(u => u.status === 'accepted');
+        const pendingUsers = announcement.targetUsers.filter(u => u.status === 'pending');
+        const acceptanceRate = Math.round((announcement.acceptedCount / announcement.totalTargets) * 100);
+        const announcementId = announcements.indexOf(announcement);
+        const displayId = announcements.length - announcementId;
+
+        tableHTML += `
+          <tr onclick="openDetailsModal(${announcementId})" style="cursor: pointer;" title="Click to view details">
+            <td>
+              <div class="announcement-id">#${displayId}</div>
+            </td>
+            <td>
+              <div style="font-size: 13px; color: #ccc;">
+                ${new Date(announcement.sentAt).toLocaleDateString()}<br>
+                <small>${new Date(announcement.sentAt).toLocaleTimeString()}</small>
+              </div>
+            </td>
+            <td>
+              <div class="creator-info">
+                ${announcement.sentBy}
+              </div>
+            </td>
+            <td>
+              <div class="announcement-preview" title="${announcement.subject || 'No subject'}">
+                ${announcement.subject || '<em>No subject</em>'}
+              </div>
+            </td>
+            <td>
+              <div class="target-info">
+                ${announcement.targetType}${announcement.targetValue ? '<br><small>' + announcement.targetValue + '</small>' : ''}
+              </div>
+            </td>
+            <td>
+              <div class="progress-display">
+                <div class="progress-text">${announcement.acceptedCount} out of ${announcement.totalTargets}</div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" style="width: ${acceptanceRate}%"></div>
+                </div>
+                <div class="progress-percentage">${acceptanceRate}%</div>
+              </div>
+            </td>
+            <td>
+              <div class="actions-compact">
+                <button class="btn-deactivate" onclick="event.stopPropagation(); deactivateAnnouncement(${announcementId})" title="Deactivate announcement">
+                  ${announcement.isActive !== false ? 'Deactivate' : 'Reactivate'}
+                </button>
+                <button class="btn-resend-icon" onclick="event.stopPropagation(); resendAnnouncement(${announcementId})" title="Resend/Recreate announcement">
+                  🔄
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+
+      tableHTML += `
+          </tbody>
+        </table>
+      `;
+
+      container.innerHTML = tableHTML;
+    }
+
+    // Download report for announcement
+    function downloadReport(announcement) {
+      const acceptedUsers = announcement.targetUsers.filter(u => u.status === 'accepted');
+      const pendingUsers = announcement.targetUsers.filter(u => u.status === 'pending');
+      const displayId = announcements.indexOf(announcement) + 1;
+
+      const content = `
+ANNOUNCEMENT REPORT #${displayId}
+===============================
+
+Message: "${announcement.message}"
+Target: ${announcement.targetType}${announcement.targetValue ? ' → ' + announcement.targetValue : ''}
+Sent By: ${announcement.sentBy}
+Sent At: ${announcement.sentAt}
+
+SUMMARY
+=======
+Total Recipients: ${announcement.totalTargets}
+Accepted: ${announcement.acceptedCount}
+Pending: ${pendingUsers.length}
+Acceptance Rate: ${Math.round((announcement.acceptedCount / announcement.totalTargets) * 100)}%
+
+ACCEPTED BY (${acceptedUsers.length})
+===============
+${acceptedUsers.length > 0 ? acceptedUsers.map(u => `• ${u.name} (${u.department}) - ${u.acceptedAt}`).join('\n') : 'None'}
+
+PENDING (${pendingUsers.length})
+=======
+${pendingUsers.length > 0 ? pendingUsers.map(u => `• ${u.name} (${u.department})`).join('\n') : 'None'}
+
+Generated: ${new Date().toLocaleString()}
+      `.trim();
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `announcement_report_${displayId}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Deactivate/Reactivate announcement
+    function deactivateAnnouncement(announcementIndex) {
+      const announcement = announcements[announcementIndex];
+      const isCurrentlyActive = announcement.isActive !== false;
+      const action = isCurrentlyActive ? 'deactivate' : 'reactivate';
+      const displayId = announcements.length - announcementIndex;
+      
+      if (confirm(`Are you sure you want to ${action} announcement #${displayId}?`)) {
+        announcement.isActive = !isCurrentlyActive;
+        
+        // Show confirmation message
+        const message = isCurrentlyActive ? 
+          `Announcement #${displayId} has been deactivated. Users will no longer see this announcement.` :
+          `Announcement #${displayId} has been reactivated. Users can now see this announcement again.`;
+        
+        alert(message);
+        
+        // Refresh the table
+        loadSimpleReports();
+      }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      // Add sample data for demonstration
+      const sampleAnnouncement = {
+        id: Date.now() - 1000000,
+        subject: "System Setup Required",
+        message: "Welcome to the new CRM system! Please complete your profile setup by end of day.",
+        targetType: "all",
+        targetValue: "",
+        sentBy: "Raunak Kumar - Super Admin",
+        sentAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleString(),
+        targetUsers: employees.slice(0, 8).map((user, i) => ({
+          ...user,
+          status: i < 5 ? 'accepted' : 'pending',
+          acceptedAt: i < 5 ? new Date(Date.now() - (24 - i) * 60 * 60 * 1000).toLocaleString() : null
+        })),
+        totalTargets: 8,
+        acceptedCount: 5,
+        seenCount: 6,
+        isActive: true
+      };
+
+      // Add a completed announcement
+      const completedAnnouncement = {
+        id: Date.now() - 2000000,
+        subject: "Monthly Meeting Reminder",
+        message: "Don't forget about the monthly team meeting tomorrow at 10 AM.",
+        targetType: "department",
+        targetValue: "Sales",
+        sentBy: "Raunak Kumar - Super Admin",
+        sentAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toLocaleString(),
+        targetUsers: employees.slice(0, 4).map((user, i) => ({
+          ...user,
+          status: 'accepted',
+          acceptedAt: new Date(Date.now() - (48 - i) * 60 * 60 * 1000).toLocaleString()
+        })),
+        totalTargets: 4,
+        acceptedCount: 4,
+        seenCount: 4,
+        isActive: true
+      };
+
+      // Add a deactivated announcement
+      const deactivatedAnnouncement = {
+        id: Date.now() - 3000000,
+        subject: "Old Policy Update",
+        message: "Please review the updated company policies in the employee handbook.",
+        targetType: "all",
+        targetValue: "",
+        sentBy: "Raunak Kumar - Super Admin",
+        sentAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toLocaleString(),
+        targetUsers: employees.slice(0, 6).map((user, i) => ({
+          ...user,
+          status: i < 2 ? 'accepted' : 'pending',
+          acceptedAt: i < 2 ? new Date(Date.now() - (72 - i) * 60 * 60 * 1000).toLocaleString() : null
+        })),
+        totalTargets: 6,
+        acceptedCount: 2,
+        seenCount: 3,
+        isActive: false
+      };
+      
+      announcements.push(sampleAnnouncement, completedAnnouncement, deactivatedAnnouncement);
+      loadSimpleReports();
+    });
+  </script>
+
+</body>
+</html>

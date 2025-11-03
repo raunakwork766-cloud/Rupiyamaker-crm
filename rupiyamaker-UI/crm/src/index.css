@@ -1,0 +1,198 @@
+@import 'tailwindcss';
+
+/* styles/globals.css or wherever your global styles are */
+
+/* DISABLE text selection everywhere by default */
+* {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  cursor: default !important;
+}
+
+/* ONLY allow text selection and text cursor in actual input fields */
+input, textarea, [contenteditable="true"], [contenteditable] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text !important;
+}
+
+/* Buttons and clickable elements show pointer cursor */
+button, a, [role="button"], .cursor-pointer, [onclick], [onDoubleClick] {
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+/* All text content shows default cursor - NO text selection */
+body, div, span, p, td, th, li, ul, ol, label, h1, h2, h3, h4, h5, h6 {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* Override any classes that might enable text selection */
+.select-text, .select-auto {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  cursor: default !important;
+}
+
+/* Specific cursor rules for CRM elements - NO text selection */
+.table-row, .lead-row, .employee-row, .activity-item {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+.table-row:hover, .lead-row:hover, .employee-row:hover {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* Dropdown and status elements should be clickable - NO text selection */
+.status-dropdown, .dropdown-item, select, option {
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+/* Navigation and menu items - NO text selection */
+.nav-item, .menu-item, .tab {
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+/* Form labels and text content - NO text selection */
+label, .form-label, .text-content {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* Icons and interactive elements - NO text selection */
+svg, .icon, .toggle-icon {
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+/* Card and panel content - NO text selection */
+.card, .panel, .modal-content {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* Table elements - NO text selection */
+table, thead, tbody, tr, td, th {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* Modal and popup content - NO text selection */
+.modal, .popup, .dropdown-menu {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+/* FORCE disable text selection on absolutely everything except inputs */
+html *, *::before, *::after {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* ONLY these elements can have text selection */
+input, textarea, [contenteditable="true"] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text !important;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000; /* black background */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #888; /* gray thumb */
+  border-radius: 10px;
+  border: 2px solid #000000;
+}
+
+/* Firefox */
+* {
+  scrollbar-color: #888 #000000;
+  scrollbar-width: thin;
+}
+
+/* Notification popup container to ensure proper positioning and z-index */
+.notification-popup-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999; /* Very high z-index to ensure it's on top */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ensure all tabs are always in front */
+.nav-tabs, .tab-container, [role="tablist"], [class*="tab"], [class*="Tab"] {
+  position: relative;
+  z-index: 100 !important;
+}
+
+/* Material-UI tabs */
+.MuiTabs-root, .MuiTab-root, .MuiTabPanel-root {
+  position: relative;
+  z-index: 100 !important;
+}
+
+/* Tailwind tab classes */
+.tab-content, .tab-pane, .tab-button, .tabs {
+  position: relative;
+  z-index: 100 !important;
+}
+
+/* Override any conflicting z-index values for tab elements */
+button[role="tab"], div[role="tabpanel"], ul[role="tablist"] {
+  position: relative;
+  z-index: 100 !important;
+}
+
+/* Mobile-specific Feed enhancements */
+@media (max-width: 640px) {
+  /* Improve touch targets on mobile */
+  button {
+    min-height: 44px; /* iOS/Apple guideline for touch targets */
+    min-width: 44px;
+  }
+  
+  /* Better text input for mobile */
+  input, textarea {
+    font-size: 16px; /* Prevents zoom on iOS when focusing inputs */
+  }
+  
+  /* Smoother scrolling on mobile */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Better modal positioning on mobile */
+  .fixed {
+    position: fixed !important;
+  }
+}

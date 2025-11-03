@@ -1,0 +1,1470 @@
+import React, { useState, useEffect } from "react";
+import {
+  TicketIcon, Plus, Search, Filter
+} from 'lucide-react';
+import CreateTicket from "./CreateTicket";
+import EditTicket from "./EditTicket";
+
+// Tickets dummy data
+const TICKETS_DUMMY = [
+  {
+    id: "T1001",
+    subject: "Login Page Error",
+    description: "Users unable to log in using SSO authentication",
+    priority: "High",
+    status: "Open",
+    type: "Bug",
+    createdBy: "ADMIN",
+    assignedTo: "John Dev",
+    createdAt: "2025-06-11T10:05:00",
+    updatedAt: "2025-06-11T14:30:00",
+    attachments: ["screenshot1.png", "error_log.txt"]
+  },
+  {
+    id: "T1002",
+    subject: "Dashboard Data Not Loading",
+    description: "Sales metrics widgets showing loading spinner indefinitely",
+    priority: "Urgent",
+    status: "In Progress",
+    type: "Bug",
+    createdBy: "USER1",
+    assignedTo: "Sarah Tech",
+    createdAt: "2025-06-12T09:15:00",
+    updatedAt: "2025-06-12T11:20:00",
+    attachments: ["console_error.png"]
+  },
+  {
+    id: "T1003",
+    subject: "Add Export to Excel Feature",
+    description: "Need ability to export report data to Excel format",
+    priority: "Medium",
+    status: "Open",
+    type: "Feature Request",
+    createdBy: "USER2",
+    assignedTo: "",
+    createdAt: "2025-06-13T14:25:00",
+    updatedAt: "2025-06-13T14:25:00",
+    attachments: []
+  },
+  {
+    id: "T1004",
+    subject: "Password Reset Not Working",
+    description: "Reset emails are not being delivered to users",
+    priority: "High",
+    status: "Resolved",
+    type: "Support",
+    createdBy: "USER1",
+    assignedTo: "Mike Support",
+    createdAt: "2025-06-10T08:30:00",
+    updatedAt: "2025-06-14T16:45:00",
+    attachments: ["user_report.pdf"]
+  },
+  {
+    id: "T1005",
+    subject: "Mobile View Optimization",
+    description: "Improve responsive design on small screens",
+    priority: "Low",
+    status: "Open",
+    type: "Feature Request",
+    createdBy: "USER3",
+    assignedTo: "Lisa UX",
+    createdAt: "2025-06-14T11:10:00",
+    updatedAt: "2025-06-14T11:10:00",
+    attachments: ["design_mockup.jpg", "user_feedback.docx"]
+  }
+];
+
+// All possible statuses
+const STATUS_OPTIONS = [
+  "Open",
+  "In Progress", 
+  "Pending",
+  "Resolved",
+  "Closed"
+];
+
+// Priority options
+const PRIORITY_OPTIONS = [
+  "Low",
+  "Medium",
+  "High",
+  "Urgent"
+];
+
+// Helper function for priority display in table
+function priorityPill(priority) {
+  switch (priority) {
+    case "Urgent":
+      return (
+        <span className="bg-red-900 text-red-300 px-3 py-1 rounded-full text-xs font-bold">
+          Urgent
+        </span>
+      );
+    case "High":
+      return (
+        <span className="bg-orange-900 text-orange-300 px-3 py-1 rounded-full text-xs font-bold">
+          High
+        </span>
+      );
+    case "Medium":
+      return (
+        <span className="bg-blue-900 text-blue-300 px-3 py-1 rounded-full text-xs font-bold">
+          Medium
+        </span>
+      );
+    case "Low":
+      return (
+        <span className="bg-green-900 text-green-300 px-3 py-1 rounded-full text-xs font-bold">
+          Low
+        </span>
+      );
+    default:
+      return (
+        <span className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-xs font-bold">
+          {priority}
+        </span>
+      );
+  }
+}
+
+// Helper function for status display in table
+function statusPill(status) {
+  switch (status) {
+    case "Open":
+      return (
+        <span className="bg-blue-900 text-blue-300 px-3 py-1 rounded-full text-xs font-bold">
+          Open
+        </span>
+      );
+    case "In Progress":
+      return (
+        <span className="bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full text-xs font-bold">
+          In Progress
+        </span>
+      );
+    case "Pending":
+      return (
+        <span className="bg-purple-900 text-purple-300 px-3 py-1 rounded-full text-xs font-bold">
+          Pending
+        </span>
+      );
+    case "Resolved":
+      return (
+        <span className="bg-green-900 text-green-300 px-3 py-1 rounded-full text-xs font-bold">
+          Resolved
+        </span>
+      );
+    case "Closed":
+      return (
+        <span className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-xs font-bold">
+          Closed
+        </span>
+      );
+    default:
+      return (
+        <span className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-xs font-bold">
+          {status}
+        </span>
+      );
+  }
+}
+
+// Helper to truncate description for table
+function truncate(str, length = 30) {
+  if (!str) return "";
+  return str.length > length ? str.slice(0, length) + "..." : str;
+}
+
+// Format date for display
+const formatDate = (dateString) => {
+  if (!dateString) return "";
+  return new Date(dateString).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+export default function TicketPage() {
+  const [tickets, setTickets] = useState(TICKETS_DUMMY);
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [editTicket, setEditTicket] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState("");
+
+  useEffect(() => {
+    // Get current user from localStorage
+    try {
+      const userName = localStorage.getItem('userName');
+      const userFirstName = localStorage.getItem('userFirstName');
+      const userLastName = localStorage.getItem('userLastName');
+      
+      // Check for userName first as it's likely the most complete format
+      if (userName) {
+        setCurrentUser(userName);
+        return;
+      }
+      
+      // Check for first and last name combination
+      if (userFirstName && userLastName) {
+        setCurrentUser(`${userFirstName} ${userLastName}`);
+        return;
+      }
+      if (userFirstName) {
+        setCurrentUser(userFirstName);
+        return;
+      }
+      
+      // Check for a full user object
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          // Return user info in order of most likely to contain a full name
+          if (parsedUser.name) {
+            setCurrentUser(parsedUser.name);
+            return;
+          }
+          if (parsedUser.fullName) {
+            setCurrentUser(parsedUser.fullName);
+            return;
+          }
+          if (parsedUser.firstName && parsedUser.lastName) {
+            setCurrentUser(`${parsedUser.firstName} ${parsedUser.lastName}`);
+            return;
+          }
+          if (parsedUser.firstName) {
+            setCurrentUser(parsedUser.firstName);
+            return;
+          }
+          if (parsedUser.username) {
+            setCurrentUser(parsedUser.username);
+            return;
+          }
+          if (parsedUser.email) {
+            setCurrentUser(parsedUser.email);
+            return;
+          }
+        } catch (parseError) {
+          console.log("Error parsing user data:", parseError);
+        }
+      }
+      
+      setCurrentUser("Current User");
+    } catch (error) {
+      console.log("Error getting current user:", error);
+      setCurrentUser("Current User");
+    }
+    
+    // In a real implementation, here we would fetch tickets from API
+    // fetchTickets();
+  }, []);
+
+  // Calculate dynamic counts
+  const openCount = tickets.filter((t) => t.status === "Open").length;
+  const inProgressCount = tickets.filter((t) => t.status === "In Progress").length;
+  const pendingCount = tickets.filter((t) => t.status === "Pending").length;
+  const resolvedCount = tickets.filter((t) => t.status === "Resolved").length;
+  const closedCount = tickets.filter((t) => t.status === "Closed").length;
+  const allCount = tickets.length;
+
+  // Filters with dynamic counts
+  const FILTERS = [
+    { key: "open", label: "Open", count: openCount },
+    { key: "in_progress", label: "In Progress", count: inProgressCount },
+    { key: "pending", label: "Pending", count: pendingCount },
+    { key: "resolved", label: "Resolved", count: resolvedCount },
+    { key: "closed", label: "Closed", count: closedCount },
+    { key: "all", label: "All", count: allCount, active: true },
+  ];
+
+  const filteredTickets = tickets.filter((ticket) => {
+    // Status filtering
+    const statusValid =
+      activeFilter === "all" ||
+      (activeFilter === "open" && ticket.status === "Open") ||
+      (activeFilter === "in_progress" && ticket.status === "In Progress") ||
+      (activeFilter === "pending" && ticket.status === "Pending") ||
+      (activeFilter === "resolved" && ticket.status === "Resolved") ||
+      (activeFilter === "closed" && ticket.status === "Closed");
+    
+    // Priority filtering
+    const priorityValid = 
+      !priorityFilter || ticket.priority === priorityFilter;
+    
+    // Search filtering
+    const searchValid =
+      !search ||
+      ticket.subject.toLowerCase().includes(search.toLowerCase()) ||
+      ticket.description.toLowerCase().includes(search.toLowerCase()) ||
+      ticket.createdBy.toLowerCase().includes(search.toLowerCase()) ||
+      (ticket.assignedTo && ticket.assignedTo.toLowerCase().includes(search.toLowerCase()));
+    
+    return statusValid && priorityValid && searchValid;
+  });
+
+  // Handle row click to show EditTicket
+  const handleRowClick = (ticket) => {
+    setEditTicket(null);
+    setTimeout(() => setEditTicket(ticket), 0); // Remount with new or same ticket
+  };
+
+  // Handle save ticket from EditTicket
+  const handleSaveTicket = (formData) => {
+    // In real implementation, we would make API call here
+    const ticketId = formData.get('id');
+    const subject = formData.get('subject');
+    const description = formData.get('description');
+    const priority = formData.get('priority');
+    const status = formData.get('status');
+    const type = formData.get('type');
+    const assignedTo = formData.get('assigned_to');
+    const createdBy = formData.get('created_by');
+    
+    const updatedTicket = {
+      id: ticketId,
+      subject,
+      description,
+      priority,
+      status,
+      type,
+      createdBy,
+      assignedTo,
+      updatedAt: new Date().toISOString(),
+      // Keep original values for these fields
+      createdAt: editTicket.createdAt,
+      attachments: editTicket.attachments
+    };
+    
+    setTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? updatedTicket : t))
+    );
+    setEditTicket(null); // Close EditTicket after saving
+  };
+
+  // Handle cancel from EditTicket
+  const handleCancelEdit = () => {
+    setEditTicket(null);
+  };
+
+  // Create Ticket Modal controls
+  const openCreateModal = () => {
+    setShowCreateModal(true);
+  };
+  
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+  };
+
+  // Create new ticket from the CreateTicket component
+  const handleCreateTicketSave = (formData) => {
+    // In real implementation, we would make API call here
+    const subject = formData.get('subject');
+    const description = formData.get('description');
+    const priority = formData.get('priority');
+    const type = formData.get('type');
+    const assignedTo = formData.get('assigned_to');
+    const createdBy = formData.get('created_by') || currentUser;
+    
+    // Add new ticket
+    const newTicket = {
+      id: "T" + (1000 + tickets.length + 1),
+      subject,
+      description,
+      priority,
+      status: "Open",
+      type,
+      createdBy,
+      assignedTo,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attachments: []
+    };
+    
+    setTickets((prev) => [newTicket, ...prev]);
+    setShowCreateModal(false);
+  };
+
+  // Toggle advanced filters
+  const toggleFilters = () => {
+    setShowFilters(!showFilters);
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl text-[#08B8EA]">
+              <TicketIcon size={32} />
+            </span>
+            <h1 className="text-2xl font-bold">Ticket Management</h1>
+          </div>
+          <button
+            className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
+            onClick={openCreateModal}
+          >
+            <Plus size={24} />
+            Create Ticket
+          </button>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Total Tickets */}
+          <div className="bg-[#181e29] border border-[#323a46] rounded-xl p-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-gray-400 text-sm">Total Tickets</h3>
+                <p className="text-2xl font-bold text-white">{tickets.length}</p>
+              </div>
+              <div className="bg-[#08B8EA] p-3 rounded-lg">
+                <TicketIcon size={24} className="text-white" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Open Tickets */}
+          <div className="bg-[#181e29] border border-[#323a46] rounded-xl p-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-gray-400 text-sm">Open Tickets</h3>
+                <p className="text-2xl font-bold text-blue-400">{openCount}</p>
+              </div>
+              <div className="bg-blue-900 p-3 rounded-lg">
+                <TicketIcon size={24} className="text-blue-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Resolved Tickets */}
+          <div className="bg-[#181e29] border border-[#323a46] rounded-xl p-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-gray-400 text-sm">Resolved</h3>
+                <p className="text-2xl font-bold text-green-400">{resolvedCount}</p>
+              </div>
+              <div className="bg-green-900 p-3 rounded-lg">
+                <TicketIcon size={24} className="text-green-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-3 mb-4 flex-wrap">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setActiveFilter(f.key)}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full font-semibold border
+                ${
+                  activeFilter === f.key
+                    ? "bg-[#08B8EA] text-white border-[#08B8EA] shadow"
+                    : "bg-[#181e29] text-white border-[#323a46] hover:bg-[#232a36]"
+                }
+                transition-all duration-200
+              `}
+            >
+              <span>{f.label}</span>
+              <span
+                className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                  f.count > 0
+                    ? "bg-[#0d131e] text-white"
+                    : "bg-[#0d131e] text-gray-400"
+                }`}
+              >
+                {f.count}
+              </span>
+            </button>
+          ))}
+          <button
+            onClick={toggleFilters}
+            className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg bg-[#181e29] border border-[#323a46] hover:bg-[#232a36] transition"
+          >
+            <Filter size={18} className="text-[#08B8EA]" />
+            <span>Filters</span>
+          </button>
+        </div>
+
+        {/* Advanced Filters */}
+        {showFilters && (
+          <div className="bg-[#181e29] border border-[#323a46] rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Priority Filter */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Priority</label>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full p-2 rounded bg-[#0d131e] border border-[#323a46] text-white"
+              >
+                <option value="">All Priorities</option>
+                {PRIORITY_OPTIONS.map(priority => (
+                  <option key={priority} value={priority}>{priority}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Search */}
+            <div className="md:col-span-2">
+              <label className="block text-sm text-gray-400 mb-1">Search</label>
+              <div className="flex items-center gap-2 bg-[#0d131e] rounded border border-[#323a46]">
+                <input
+                  type="text"
+                  className="flex-grow bg-transparent p-2 focus:outline-none text-white"
+                  placeholder="Search tickets..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <Search size={18} className="text-gray-400 mr-2" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table Section */}
+        <div className="overflow-auto rounded-xl shadow-2xl">
+          <table className="min-w-[1000px] w-full">
+            <thead className="bg-[#181e29]">
+              <tr>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-left whitespace-nowrap">
+                  ID
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-left whitespace-nowrap">
+                  Subject
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-center whitespace-nowrap">
+                  Status
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-center whitespace-nowrap">
+                  Priority
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-center whitespace-nowrap">
+                  Created By
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-center whitespace-nowrap">
+                  Assigned To
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-center whitespace-nowrap">
+                  Created At
+                </th>
+                <th className="py-3 px-4 text-lg font-bold text-[#08B8EA] text-left whitespace-nowrap">
+                  Description
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTickets.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="bg-[#0d131e] rounded-xl shadow p-8 text-center text-lg font-bold text-[#08B8EA]"
+                  >
+                    No Tickets Found
+                  </td>
+                </tr>
+              ) : (
+                filteredTickets.map((ticket) => (
+                  <tr
+                    key={ticket.id}
+                    className="border-b border-[#232a36] bg-[#0d131e] hover:bg-[#161f2e] transition cursor-pointer"
+                    onClick={() => handleRowClick(ticket)}
+                  >
+                    <td className="py-3 px-4 text-sm font-medium">{ticket.id}</td>
+                    <td className="py-3 px-4 text-sm font-medium">{ticket.subject}</td>
+                    <td className="py-3 px-4 text-center">{statusPill(ticket.status)}</td>
+                    <td className="py-3 px-4 text-center">{priorityPill(ticket.priority)}</td>
+                    <td className="py-3 px-4 text-center text-sm">{ticket.createdBy}</td>
+                    <td className="py-3 px-4 text-center text-sm">
+                      {ticket.assignedTo || <span className="text-gray-500">Unassigned</span>}
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm">{formatDate(ticket.createdAt)}</td>
+                    <td className="py-3 px-4 text-sm">{truncate(ticket.description, 40)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Render EditTicket in a modal popup when a ticket is selected */}
+        {editTicket && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black bg-opacity-50" style={{ backdropFilter: "blur(3px)" }}>
+            <div className="w-full max-w-2xl mx-auto">
+              <EditTicket
+                ticketData={editTicket}
+                onClose={handleCancelEdit}
+                onSave={handleSaveTicket}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Modal Popup for Create Ticket */}
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style={{ backdropFilter: "blur(3px)" }}>
+            <div className="w-full max-w-2xl mx-auto">
+              <CreateTicket
+                onClose={closeCreateModal}
+                onSave={handleCreateTicketSave}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+      {/* Filters */}
+      <Card sx={{ backgroundColor: "#1a1a1a", color: "white" }}>
+        <CardHeader
+          title={<Typography variant="h6" className="text-white">Filters</Typography>}
+        />
+        <CardContent>
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                label="Search tickets"
+                value={filters.search}
+                onChange={(e) =>
+                  setFilters((prev) => ({ ...prev, search: e.target.value }))
+                }
+                variant="outlined"
+                size="small"
+                InputProps={{
+                  startAdornment: <SearchIcon sx={{ color: "gray", mr: 1 }} />,
+                }}
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    color: "white",
+                    "& fieldset": { borderColor: "gray" },
+                    "&:hover fieldset": { borderColor: "white" },
+                  },
+                  "& .MuiInputLabel-root": { color: "gray" },
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ color: "gray" }}>Status</InputLabel>
+                <Select
+                  value={filters.status}
+                  onChange={(e) =>
+                    setFilters((prev) => ({ ...prev, status: e.target.value }))
+                  }
+                  sx={{
+                    color: "white",
+                    "& .MuiOutlinedInput-notchedOutline": { borderColor: "gray" },
+                    "&:hover .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "white",
+                    },
+                  }}
+                >
+                  <MenuItem value="">All Status</MenuItem>
+                  <MenuItem value="open">Open</MenuItem>
+                  <MenuItem value="closed">Closed</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ color: "gray" }}>Priority</InputLabel>
+                <Select
+                  value={filters.priority}
+                  onChange={(e) =>
+                    setFilters((prev) => ({ ...prev, priority: e.target.value }))
+                  }
+                  sx={{
+                    color: "white",
+                    "& .MuiOutlinedInput-notchedOutline": { borderColor: "gray" },
+                    "&:hover .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "white",
+                    },
+                  }}
+                >
+                  <MenuItem value="">All Priorities</MenuItem>
+                  <MenuItem value="low">Low</MenuItem>
+                  <MenuItem value="medium">Medium</MenuItem>
+                  <MenuItem value="high">High</MenuItem>
+                  <MenuItem value="urgent">Urgent</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Button
+                variant="outlined"
+                startIcon={<FilterIcon />}
+                onClick={() =>
+                  setFilters({ status: "", priority: "", search: "" })
+                }
+                sx={{ color: "white", borderColor: "white" }}
+              >
+                Clear Filters
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Tabs */}
+      <Card sx={{ backgroundColor: "#1a1a1a" }}>
+        <Tabs
+          value={selectedTab}
+          onChange={(e, newValue) => setSelectedTab(newValue)}
+          sx={{
+            "& .MuiTab-root": { color: "gray" },
+            "& .Mui-selected": { color: "white !important" },
+            "& .MuiTabs-indicator": { backgroundColor: "#2196f3" },
+          }}
+        >
+          <Tab label={`All Tickets (${tickets.length})`} />
+          <Tab label={`Open (${stats.open})`} />
+          <Tab label={`Closed (${stats.closed})`} />
+        </Tabs>
+      </Card>
+
+      {/* Tickets List */}
+      {loading ? (
+        <Box sx={{ width: "100%" }}>
+          <LinearProgress
+            sx={{
+              backgroundColor: "#333",
+              "& .MuiLinearProgress-bar": { backgroundColor: "#2196f3" },
+            }}
+          />
+        </Box>
+      ) : (
+        <div className="space-y-4">
+          {filteredTickets.length === 0 ? (
+            <Card sx={{ backgroundColor: "#1a1a1a", color: "white" }}>
+              <CardContent className="text-center py-12">
+                <AssignmentIcon
+                  sx={{ fontSize: 64, color: "gray", mb: 2 }}
+                />
+                <Typography variant="h6" className="text-gray-400">
+                  No tickets found
+                </Typography>
+                <Typography
+                  variant="body2"
+                  className="text-gray-500 mt-2"
+                >
+                  {selectedTab === 1
+                    ? "No open tickets"
+                    : selectedTab === 2
+                    ? "No closed tickets"
+                    : "Try adjusting your filters"}
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredTickets.map((ticket) => (
+              <StyledCard
+                key={ticket.id}
+                priority={ticket.priority}
+                sx={{
+                  backgroundColor: "#1a1a1a",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+                onClick={() => handleOpenTicket(ticket.id)}
+              >
+                <CardContent>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} md={6}>
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <PriorityChip
+                          priority={ticket.priority}
+                          label={ticket.priority.toUpperCase()}
+                          size="small"
+                        />
+                        <StatusChip
+                          status={ticket.status}
+                          label={ticket.status.toUpperCase()}
+                          size="small"
+                        />
+                      </Box>
+                      <Typography
+                        variant="h6"
+                        className="font-semibold mt-2 mb-1"
+                      >
+                        {ticket.subject}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        className="text-gray-400"
+                      >
+                        {ticket.description.length > 100
+                          ? `${ticket.description.substring(0, 100)}...`
+                          : ticket.description}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                        mb={1}
+                      >
+                        <PersonIcon
+                          sx={{ fontSize: 16, color: "gray" }}
+                        />
+                        <Typography
+                          variant="body2"
+                          className="text-gray-400"
+                        >
+                          Created by: {ticket.created_by_name || "Unknown"}
+                        </Typography>
+                      </Box>
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        <CalendarIcon
+                          sx={{ fontSize: 16, color: "gray" }}
+                        />
+                        <Typography
+                          variant="body2"
+                          className="text-gray-400"
+                        >
+                          {formatDate(ticket.created_at)}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      {ticket.assigned_users_details.length > 0 && (
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            className="text-gray-400 mb-1"
+                          >
+                            Assigned to:
+                          </Typography>
+                          <Box
+                            display="flex"
+                            flexWrap="wrap"
+                            gap={1}
+                          >
+                            {ticket.assigned_users_details
+                              .slice(0, 3)
+                              .map((assignee) => (
+                                <Chip
+                                  key={assignee.user_id}
+                                  label={assignee.name}
+                                  size="small"
+                                  avatar={
+                                    <Avatar
+                                      sx={{ width: 24, height: 24 }}
+                                    >
+                                      {assignee.name.charAt(0)}
+                                    </Avatar>
+                                  }
+                                  sx={{
+                                    backgroundColor: "#333",
+                                    color: "white",
+                                  }}
+                                />
+                              ))}
+                            {ticket.assigned_users_details.length > 3 && (
+                              <Chip
+                                label={`+${
+                                  ticket.assigned_users_details.length - 3
+                                }`}
+                                size="small"
+                                sx={{ backgroundColor: "#333", color: "white" }}
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        gap={2}
+                        mt={2}
+                      >
+                        <Box
+                          display="flex"
+                          alignItems="center"
+                          gap={1}
+                        >
+                          <CommentIcon
+                            sx={{ fontSize: 16, color: "gray" }}
+                          />
+                          <Typography
+                            variant="body2"
+                            className="text-gray-400"
+                          >
+                            {ticket.comments?.length || 0}
+                          </Typography>
+                        </Box>
+                        <Box
+                          display="flex"
+                          alignItems="center"
+                          gap={1}
+                        >
+                          <AttachFileIcon
+                            sx={{ fontSize: 16, color: "gray" }}
+                          />
+                          <Typography
+                            variant="body2"
+                            className="text-gray-400"
+                          >
+                            {ticket.attachments?.length || 0}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </StyledCard>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Create Ticket Dialog */}
+      <Dialog
+        open={openCreateDialog}
+        onClose={() => {
+          setOpenCreateDialog(false);
+          setSelectedFiles([]);
+        }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: { backgroundColor: "#ffffff", color: "black" },
+        }}
+      >
+        <DialogTitle>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-blue-600 text-xl font-semibold">ADD TICKET</h2>
+            <button
+              className="text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setOpenCreateDialog(false);
+                setSelectedFiles([]);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </DialogTitle>
+        <DialogContent>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-gray-600 font-medium mb-1">
+                CREATED BY
+              </label>
+              <input
+                type="text"
+                value={createdBy}
+                onChange={(e) => setCreatedBy(e.target.value)}
+                className="w-full p-2 border rounded-md bg-white text-black border-gray-300"
+                placeholder=""
+              />
+            </div>
+            <div>
+              <label className="block text-gray-600 font-medium mb-1">
+                SUBJECT
+              </label>
+              <input
+                type="text"
+                value={newTicket.subject}
+                onChange={(e) =>
+                  setNewTicket((prev) => ({
+                    ...prev,
+                    subject: e.target.value,
+                  }))
+                }
+                className="w-full p-2 border rounded-md bg-white text-black border-gray-300"
+                placeholder=""
+              />
+            </div>
+            <div>
+              <label className="block text-gray-600 font-medium mb-1">
+                TICKET DETAILS...
+              </label>
+              <textarea
+                value={newTicket.description}
+                onChange={(e) =>
+                  setNewTicket((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
+                className="w-full p-2 border rounded-md bg-white text-black border-gray-300 h-24"
+                placeholder=""
+              ></textarea>
+            </div>
+            <div>
+              <label className="block text-gray-600 font-medium mb-1">
+                ATTACHMENTS
+              </label>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleFileChange}
+                className="w-full p-2 border rounded-md bg-blue-500 text-white cursor-pointer hidden"
+                id="fileInput"
+              />
+              <label
+                htmlFor="fileInput"
+                className="w-full bg-blue-500 text-white p-2 rounded-md flex items-center justify-center cursor-pointer"
+              >
+                <span className="mr-2">📎</span> PHOTO/PDF
+              </label>
+              {selectedFiles.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-gray-600">Selected Images:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedFiles.map((file, index) => (
+                      <img
+                        key={index}
+                        src={URL.createObjectURL(file)}
+                        alt={`Preview ${index}`}
+                        className="w-full h-20 object-cover rounded-md"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={assignedTo}
+                  onClick={handleAssignClick}
+                  className="w-full p-2 border rounded-md cursor-pointer bg-white text-black border-gray-300"
+                  placeholder="ASSIGN TO"
+                  readOnly
+                />
+                {showDropdown && (
+                  <div className="absolute w-full bg-white border rounded-md mt-1 z-10">
+                    <div
+                      onClick={() => handleAssignSelect("SOHAIL")}
+                      className="p-2 hover:bg-gray-100 text-black cursor-pointer"
+                    >
+                      SOHAIL
+                    </div>
+                    <div
+                      onClick={() => handleAssignSelect("SOYEB")}
+                      className="p-2 hover:bg-gray-100 text-black cursor-pointer"
+                    >
+                      SOYEB
+                    </div>
+                    <div
+                      onClick={() => handleAssignSelect("ADMIN")}
+                      className="p-2 hover:bg-gray-100 text-black cursor-pointer"
+                    >
+                      ADMIN
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "flex-start", p: 3 }}>
+          <button
+            className="bg-blue-500 text-white p-2 rounded-md mr-2"
+            onClick={handleCreateTicket}
+            disabled={!newTicket.subject || !newTicket.description}
+          >
+            <span className="mr-2">🚀</span> ADD
+          </button>
+          <button
+            className="bg-blue-500 text-white p-2 rounded-md"
+            onClick={() => {
+              setOpenCreateDialog(false);
+              setSelectedFiles([]);
+            }}
+          >
+            CANCEL
+          </button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Ticket Details Dialog */}
+      <Dialog
+        open={openTicketDialog}
+        onClose={() => setOpenTicketDialog(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: { backgroundColor: "#1a1a1a", color: "white", maxHeight: "90vh" },
+        }}
+      >
+        {selectedTicket && (
+          <>
+            <DialogTitle>
+              <Box
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+              >
+                <Box>
+                  <Typography variant="h6">{selectedTicket.subject}</Typography>
+                  <Box display="flex" gap={1} mt={1}>
+                    <PriorityChip
+                      priority={selectedTicket.priority}
+                      label={selectedTicket.priority.toUpperCase()}
+                      size="small"
+                    />
+                    <StatusChip
+                      status={selectedTicket.status}
+                      label={selectedTicket.status.toUpperCase()}
+                      size="small"
+                    />
+                  </Box>
+                </Box>
+                <Box display="flex" gap={1}>
+                  {selectedTicket.status === "open" && (
+                    <Button
+                      variant="contained"
+                      color="error"
+                      onClick={() => handleCloseTicket()}
+                      startIcon={<CheckCircleIcon />}
+                    >
+                      Close Ticket
+                    </Button>
+                  )}
+                  <IconButton
+                    onClick={() => setOpenTicketDialog(false)}
+                    sx={{ color: "white" }}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers>
+              <Grid container spacing={3}>
+                {/* Ticket Details */}
+                <Grid item xs={12} md={8}>
+                  <Typography variant="h6" gutterBottom>
+                    Description
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    className="text-gray-300 mb-4"
+                  >
+                    {selectedTicket.description}
+                  </Typography>
+
+                  {/* Comments Section */}
+                  <Typography variant="h6" gutterBottom>
+                    Comments ({selectedTicket.comments?.length || 0})
+                  </Typography>
+                  <Box sx={{ maxHeight: 300, overflowY: "auto", mb: 3 }}>
+                    {selectedTicket.comments?.map((comment, index) => (
+                      <Card
+                        key={comment.comment_id || index}
+                        sx={{ backgroundColor: "#2a2a2a", mb: 2 }}
+                      >
+                        <CardContent>
+                          <Box
+                            display="flex"
+                            justifyContent="space-between"
+                            alignItems="center"
+                            mb={1}
+                          >
+                            <Typography
+                              variant="subtitle2"
+                              className="text-blue-400"
+                            >
+                              {comment.created_by_name || "Unknown User"}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              className="text-gray-500"
+                            >
+                              {formatDate(comment.created_at)}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            className="text-gray-300"
+                          >
+                            {comment.content}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
+
+                  {/* Add Comment */}
+                  <Box display="flex" gap={2}>
+                    <TextField
+                      fullWidth
+                      label="Add a comment"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      variant="outlined"
+                      multiline
+                      rows={2}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          color: "white",
+                          "& fieldset": { borderColor: "gray" },
+                          "&:hover fieldset": { borderColor: "white" },
+                        },
+                        "& .MuiInputLabel-root": { color: "gray" },
+                      }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleAddComment}
+                      disabled={!newComment.trim()}
+                      sx={{
+                        backgroundColor: "#2196f3",
+                        color: "white",
+                        "&:hover": { backgroundColor: "#1976d2" },
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </Box>
+                </Grid>
+
+                {/* Sidebar with ticket info */}
+                <Grid item xs={12} md={4}>
+                  <Card sx={{ backgroundColor: "#2a2a2a", color: "white" }}>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Ticket Information
+                      </Typography>
+
+                      <Box mb={2}>
+                        <Typography
+                          variant="body2"
+                          className="text-gray-400"
+                        >
+                          Created by
+                        </Typography>
+                        <Typography variant="body1">
+                          {selectedTicket.created_by_name || "Unknown User"}
+                        </Typography>
+                      </Box>
+
+                      <Box mb={2}>
+                        <Typography
+                          variant="body2"
+                          className="text-gray-400"
+                        >
+                          Created at
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatDate(selectedTicket.created_at)}
+                        </Typography>
+                      </Box>
+
+                      <Box mb={2}>
+                        <Typography
+                          variant="body2"
+                          className="text-gray-400"
+                        >
+                          Last updated
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatDate(selectedTicket.updated_at)}
+                        </Typography>
+                      </Box>
+
+                      {selectedTicket.assigned_users_details.length > 0 && (
+                        <Box mb={2}>
+                          <Typography
+                            variant="body2"
+                            className="text-gray-400"
+                          >
+                            Assigned to
+                          </Typography>
+                          {selectedTicket.assigned_users_details.map(
+                            (assignee) => (
+                              <Box
+                                key={assignee.user_id}
+                                display="flex"
+                                alignItems="center"
+                                gap={1}
+                                mt={1}
+                              >
+                                <Avatar
+                                  sx={{ width: 24, height: 24 }}
+                                >
+                                  {assignee.name.charAt(0)}
+                                </Avatar>
+                                <Typography variant="body2">
+                                  {assignee.name}
+                                  {assignee.role_name && (
+                                    <span className="text-gray-400">
+                                      {" "}
+                                      ({assignee.role_name})
+                                    </span>
+                                  )}
+                                </Typography>
+                              </Box>
+                            )
+                          )}
+                        </Box>
+                      )}
+
+                      {selectedTicket.tags &&
+                        selectedTicket.tags.length > 0 && (
+                          <Box mb={2}>
+                            <Typography
+                              variant="body2"
+                              className="text-gray-400"
+                              gutterBottom
+                            >
+                              Tags
+                            </Typography>
+                            <Box
+                              display="flex"
+                              flexWrap="wrap"
+                              gap={1}
+                            >
+                              {selectedTicket.tags.map((tag, index) => (
+                                <Chip
+                                  key={index}
+                                  label={tag}
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: "#333",
+                                    color: "white",
+                                  }}
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Attachments */}
+                  <Card
+                    sx={{ backgroundColor: "#2a2a2a", color: "white", mt: 2 }}
+                  >
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Attachments (
+                        {selectedTicket.attachments?.length || 0})
+                      </Typography>
+
+                      {selectedTicket.attachments?.map(
+                        (attachment, index) => (
+                          <Box
+                            key={attachment.attachment_id || index}
+                            display="flex"
+                            alignItems="center"
+                            gap={2}
+                            mb={1}
+                          >
+                            <AttachFileIcon sx={{ color: "gray" }} />
+                            <Box flex={1}>
+                              <Typography variant="body2">
+                                {attachment.filename}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                className="text-gray-500"
+                              >
+                                {attachment.file_size
+                                  ? `${(
+                                      attachment.file_size / 1024
+                                    ).toFixed(1)} KB`
+                                  : "Unknown size"}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )
+                      )}
+
+                      <Divider
+                        sx={{ backgroundColor: "gray", my: 2 }}
+                      />
+
+                      <Box
+                        display="flex"
+                        gap={2}
+                        alignItems="center"
+                      >
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            setAttachmentFile(e.target.files[0])
+                          }
+                          style={{ display: "none" }}
+                          id="attachment-upload"
+                        />
+                        <label htmlFor="attachment-upload">
+                          <Button
+                            variant="outlined"
+                            component="span"
+                            sx={{ color: "white", borderColor: "white" }}
+                          >
+                            Choose File
+                          </Button>
+                        </label>
+                        {attachmentFile && (
+                          <Button
+                            variant="contained"
+                            onClick={handleUploadAttachment}
+                            size="small"
+                            sx={{
+                              backgroundColor: "#2196f3",
+                              color: "white",
+                              "&:hover": { backgroundColor: "#1976d2" },
+                            }}
+                          >
+                            Upload
+                          </Button>
+                        )}
+                      </Box>
+                      {attachmentFile && (
+                        <Typography
+                          variant="caption"
+                          className="text-gray-400 mt-1"
+                        >
+                          Selected: {attachmentFile.name}
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </DialogContent>
+          </>
+        )}
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() =>
+          setSnackbar((prev) => ({ ...prev, open: false }))
+        }
+      >
+        <Alert
+          onClose={() =>
+            setSnackbar((prev) => ({ ...prev, open: false }))
+          }
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </div>
+  );
+}
+export default TicketPage;

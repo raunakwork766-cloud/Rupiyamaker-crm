@@ -1,0 +1,49 @@
+{
+  "apps": [
+    {
+      "name": "rupiyame-backend",
+      "script": "/www/wwwroot/rupiyamaker/RupiyaMe/backend/venv/bin/python",
+      "args": ["-m", "app"],
+      "cwd": "/www/wwwroot/rupiyamaker/RupiyaMe/backend",
+      "interpreter": "none",
+      "instances": 1,
+      "exec_mode": "fork",
+      "watch": false,
+      "max_memory_restart": "1G",
+      "env": {
+        "PYTHONPATH": "/www/wwwroot/rupiyamaker/RupiyaMe/backend",
+        "ENVIRONMENT": "production"
+      },
+      "log_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend.log",
+      "out_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend-out.log",
+      "error_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend-error.log",
+      "time": true,
+      "restart_delay": 5000,
+      "max_restarts": 10,
+      "min_uptime": "10s"
+    },
+    {
+      "name": "rupiyame-frontend",
+      "script": "npm",
+      "args": "run dev -- --port 4521 --host 0.0.0.0",
+      "cwd": "/www/wwwroot/rupiyamaker/RupiyaMe/rupiyamaker-UI/crm",
+      "interpreter": "none",
+      "instances": 1,
+      "exec_mode": "fork",
+      "watch": false,
+      "max_memory_restart": "500M",
+      "env": {
+        "NODE_ENV": "development",
+        "VITE_API_BASE_URL": "https://localhost:8049",
+        "VITE_PORT": "4521"
+      },
+      "log_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend.log",
+      "out_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend-out.log",
+      "error_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend-error.log",
+      "time": true,
+      "restart_delay": 3000,
+      "max_restarts": 5,
+      "min_uptime": "10s"
+    }
+  ]
+}
