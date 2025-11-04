@@ -756,7 +756,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const validateLeadExists = async (leadId) => {
         try {
             const userId = localStorage.getItem('userId');
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}?user_id=${userId}`, {
+            // IMPORTANT: Check login leads endpoint, not main leads
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${leadId}?user_id=${userId}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -765,7 +766,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             
             return response.ok;
         } catch (error) {
-            console.error('Error validating lead existence:', error);
+            console.error('Error validating login lead existence:', error);
             return false;
         }
     };
@@ -788,7 +789,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         try {
             setIsSaving(true);
             const userId = localStorage.getItem('userId');
-            const apiUrl = `/api/leads/${selectedLead._id}?user_id=${userId}`;
+            // IMPORTANT: Use login leads endpoint, not main leads endpoint
+            const apiUrl = `/api/lead-login/login-leads/${selectedLead._id}?user_id=${userId}`;
             
             console.log('performAutoSave called:', {
                 field,
@@ -1809,12 +1811,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     }, [selectedStatus, selectedLoanType]);
 
     // Effect for filtering leads when any filter changes
-    useEffect(() => {
-        const applyFilters = async () => {
-            await filterLeads();
-        };
-        applyFilters();
-    }, [leads, selectedLoanType, selectedStatus, debouncedSearchTerm, filterOptions, filterRevision]); // ⚡ USE DEBOUNCED
+    // NOTE: Filtering is handled automatically by the filteredLeadsData useMemo
+    // This effect is removed to avoid circular dependency issues
+    // The filtering happens automatically when leads, selectedLoanType, selectedStatus,
+    // debouncedSearchTerm, filterOptions, or filterRevision change
 
     // ⚡ PERFORMANCE: Removed duplicate fetchLoginDepartmentLeads - now only triggered by selectedLoanType change
     // Refetch leads when selected loan type changes
@@ -1887,8 +1887,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         
         try {
             const userId = localStorage.getItem('userId');
-            // Fetch the specific lead by ID
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}?user_id=${userId}`, {
+            // Fetch the specific login lead by ID
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${leadId}?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
@@ -3119,8 +3119,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         
         try {
             // Fetch fresh lead data from API to ensure we have the latest version
+            // IMPORTANT: Fetch from login leads endpoint, not main leads
             const userId = localStorage.getItem('userId');
-            const response = await fetch(`${API_BASE_URL}/leads/${lead._id}?user_id=${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${lead._id}?user_id=${userId}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -3351,8 +3352,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
             
 
-            // Update lead status via API
-            const response = await fetch(`${API_BASE_URL}/leads/${lead._id}?user_id=${userId}`, {
+            // Update login lead status via API
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${lead._id}?user_id=${userId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3635,7 +3636,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 sub_status: 'NEW LOGIN'
             };
             
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}?user_id=${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${leadId}?user_id=${userId}`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -3894,9 +3895,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 const userId = localStorage.getItem('userId');
                 const token = localStorage.getItem('token');
                 
-                // Delete each lead via API
+                // Delete each login lead via API
                 const deletePromises = selectedLeadIds.map(async (leadId) => {
-                    const response = await fetch(`${API_BASE_URL}/leads/${leadId}?user_id=${userId}`, {
+                    const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${leadId}?user_id=${userId}`, {
                         method: 'DELETE',
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -3959,7 +3960,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             const userId = localStorage.getItem('userId');
             const token = localStorage.getItem('token');
             
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}?user_id=${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${leadId}?user_id=${userId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -4080,8 +4081,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 }
             };
 
-            // Use the general lead update endpoint with activity tracking
-            const response = await fetch(`${API_BASE_URL}/leads/${editingLead._id}?user_id=${userId}`, {
+            // Use the general login lead update endpoint with activity tracking
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${editingLead._id}?user_id=${userId}`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -6408,7 +6409,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                         ...filterOptions,
                                                         selectedStatuses: []
                                                     });
-                                                    setTimeout(async () => await filterLeads(), 0);
+                                                    // Filtering happens automatically via useMemo when filterOptions changes
                                                 }}
                                                 className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition"
                                             >
@@ -6434,7 +6435,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                         ...filterOptions,
                                                         selectedStatuses: [...new Set(allAvailableStatuses)]
                                                     });
-                                                    setTimeout(async () => await filterLeads(), 0);
+                                                    // Filtering happens automatically via useMemo when filterOptions changes
                                                 }}
                                                 className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                                             >

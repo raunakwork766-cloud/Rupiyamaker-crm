@@ -49,7 +49,14 @@ export default function CommentSection({ leadData }) {
         throw new Error('No user ID available');
       }
       
-      const apiUrl = `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
+      // Determine if this is a login lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const apiUrl = isLoginLead
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
+        : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
+      
+      console.log(`📡 Remark (GET): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
       
       const response = await fetch(apiUrl, {
         method: 'GET',
@@ -87,7 +94,14 @@ export default function CommentSection({ leadData }) {
       }
       
       // Use the dedicated notes API endpoint
-      const apiUrl = `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
+      // Determine if this is a login lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const apiUrl = isLoginLead
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
+        : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
+      
+      console.log(`📡 Remark (POST): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
       
       const noteData = {
         lead_id: leadData._id,

@@ -6253,34 +6253,78 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     </div>
                     <div className="flex-1"></div>
                     <div className="flex flex-wrap gap-2">
+                        {/* Debug: Show current state */}
+                        {console.log('🔍 Button Render Check:', {
+                            lead_id: selectedLead?._id,
+                            status: selectedLead?.status,
+                            sub_status: selectedLead?.sub_status,
+                            important_questions_validated: selectedLead?.important_questions_validated,
+                            file_sent_to_login: selectedLead?.file_sent_to_login
+                        })}
+                        
                         {/* Show Copy Button regardless of department */}
-                        {!selectedLead?.file_sent_to_login && 
-                         (((typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) === "FILE COMPLETE" || 
-                           (typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) === "FILE COMPLETED") ||
-                          ((typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) === "FILE COMPLETE" || 
-                           (typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) === "FILE COMPLETED")) &&
-                         selectedLead?.important_questions_validated ? (
-                            <button
-                                onClick={() => setShowCopyLeadModal(true)}
-                                className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
-                            >
-                                <Copy className="mr-2 h-4 w-4" /> COPY THIS LEAD
-                            </button>
-                        ) : null}
-                        {!selectedLead?.file_sent_to_login ? (
-                            (((typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) === "FILE COMPLETED" || 
-                              (typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) === "FILE COMPLETE") ||
-                             ((typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) === "FILE COMPLETE" || 
-                              (typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) === "FILE COMPLETED")) &&
-                            selectedLead?.important_questions_validated ? (
+                        {!selectedLead?.file_sent_to_login && (() => {
+                            // Get status and sub_status values
+                            const status = (typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) || '';
+                            const subStatus = (typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) || '';
+                            
+                            // Check if status or sub_status contains "file complete" (case-insensitive)
+                            const statusLower = status.toLowerCase();
+                            const subStatusLower = subStatus.toLowerCase();
+                            const isFileComplete = statusLower.includes('file complete') || subStatusLower.includes('file complete');
+                            
+                            console.log('📋 Copy Button Decision:', {
+                                status,
+                                subStatus,
+                                statusLower,
+                                subStatusLower,
+                                isFileComplete,
+                                validated: selectedLead?.important_questions_validated,
+                                shouldShow: isFileComplete && selectedLead?.important_questions_validated
+                            });
+                            
+                            // Show button if file is complete AND important questions are validated
+                            return isFileComplete && selectedLead?.important_questions_validated ? (
                                 <button
-                                    onClick={() => setShowFileSentToLoginModal(true)}
-                                    className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base"
+                                    onClick={() => setShowCopyLeadModal(true)}
+                                    className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
                                 >
-                                    <span className="hidden sm:inline">FILE SENT TO LOGIN</span>
-                                    <span className="sm:hidden">SEND TO LOGIN</span>
+                                    <Copy className="mr-2 h-4 w-4" /> COPY THIS LEAD
                                 </button>
-                            ) : null
+                            ) : null;
+                        })()}
+                        {!selectedLead?.file_sent_to_login ? (
+                            (() => {
+                                // Get status and sub_status values
+                                const status = (typeof selectedLead?.status === 'string' ? selectedLead.status : selectedLead?.status?.name) || '';
+                                const subStatus = (typeof selectedLead?.sub_status === 'string' ? selectedLead.sub_status : selectedLead?.sub_status?.name) || '';
+                                
+                                // Check if status or sub_status contains "file complete" (case-insensitive)
+                                const statusLower = status.toLowerCase();
+                                const subStatusLower = subStatus.toLowerCase();
+                                const isFileComplete = statusLower.includes('file complete') || subStatusLower.includes('file complete');
+                                
+                                console.log('✅ Send to Login Button Decision:', {
+                                    status,
+                                    subStatus,
+                                    statusLower,
+                                    subStatusLower,
+                                    isFileComplete,
+                                    validated: selectedLead?.important_questions_validated,
+                                    shouldShow: isFileComplete && selectedLead?.important_questions_validated
+                                });
+                                
+                                // Show button if file is complete AND important questions are validated
+                                return isFileComplete && selectedLead?.important_questions_validated ? (
+                                    <button
+                                        onClick={() => setShowFileSentToLoginModal(true)}
+                                        className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base"
+                                    >
+                                        <span className="hidden sm:inline">FILE SENT TO LOGIN</span>
+                                        <span className="sm:hidden">SEND TO LOGIN</span>
+                                    </button>
+                                ) : null;
+                            })()
                         ) : (
                             <button
                                 disabled

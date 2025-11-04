@@ -1313,7 +1313,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         return false;
       }
 
-      const apiUrl = `/api/leads/${lead._id}?user_id=${userId}`;
+      // Determine if this is a login lead by checking for original_lead_id field
+      const isLoginLead = !!lead.original_lead_id || !!lead.login_created_at;
+      const apiUrl = isLoginLead 
+        ? `/api/lead-login/login-leads/${lead._id}?user_id=${userId}`
+        : `/api/leads/${lead._id}?user_id=${userId}`;
+      
+      console.log(`📡 AboutSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
       
       // Map fields to appropriate API fields
       const apiFieldMap = {
@@ -1489,7 +1496,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         return;
       }
 
-      const apiUrl = `/api/leads/${lead._id}?user_id=${userId}`;
+      // Determine if this is a login lead by checking for original_lead_id field
+      const isLoginLead = !!lead.original_lead_id || !!lead.login_created_at;
+      const apiUrl = isLoginLead 
+        ? `/api/lead-login/login-leads/${lead._id}?user_id=${userId}`
+        : `/api/leads/${lead._id}?user_id=${userId}`;
+      
+      console.log(`📡 AboutSection (Assignment): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
       
       // Extract IDs for assignedTo
       const assignedToIds = assignedToData.map(user => {

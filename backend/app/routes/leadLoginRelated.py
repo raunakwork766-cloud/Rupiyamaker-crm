@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
@@ -6,11 +6,15 @@ from datetime import datetime
 from app.utils.timezone import get_ist_now
 import time
 import asyncio
+import logging
 from app.database import get_database_instances
 from app.database.Leads import LeadsDB
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
-from app.schemas.lead_schemas import LeadBase, LeadCreate, LeadUpdate, LeadInDB
+from app.database.Tasks import TasksDB
+from app.database.LoanTypes import LoanTypesDB
+from app.schemas.lead_schemas import LeadBase, LeadCreate, LeadUpdate, LeadInDB, NoteCreate
+from app.schemas.task_schemas import TaskCreate
 from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission, get_user_capabilities, get_user_permissions, get_user_role
 from app.utils.permission_helpers import is_super_admin_permission
@@ -18,6 +22,9 @@ from app.utils.performance_cache import (
     cached_response, cache_user_permissions, get_cached_user_permissions,
     performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response
 )
+from app.utils.lead_utils import save_upload_file, get_relative_media_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/lead-login",
@@ -93,6 +100,10 @@ async def get_leads_db():
     db_instances = get_database_instances()
     return db_instances["leads"]
 
+async def get_login_leads_db():
+    db_instances = get_database_instances()
+    return db_instances["login_leads"]
+
 async def get_users_db():
     db_instances = get_database_instances()
     return db_instances["users"]
@@ -101,20 +112,34 @@ async def get_roles_db():
     db_instances = get_database_instances()
     return db_instances["roles"]
 
+async def get_tasks_db():
+    db_instances = get_database_instances()
+    return db_instances["tasks"]
+
+async def get_loan_types_db():
+    db_instances = get_database_instances()
+    return db_instances["loan_types"]
+
 @router.post("/send-to-login-department/{lead_id}")
 @router.post("/{lead_id}/send-to-login")  # Add alias route for frontend compatibility
 async def send_lead_to_login_department(
     lead_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
     leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Send a lead to login department for processing"""
+    """
+    Send a lead to login department for processing
+    
+    NEW BEHAVIOR: Creates a separate login lead in login_leads collection
+    while keeping the original lead in leads collection
+    """
     # Check permission - user should be able to edit leads (check both leads and login permissions)
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
-    # Verify lead exists and has FILE COMPLETED sub-status
+    # Verify lead exists
     lead = await leads_db.get_lead(lead_id)
     if not lead:
         raise HTTPException(
@@ -122,48 +147,224 @@ async def send_lead_to_login_department(
             detail=f"Lead with ID {lead_id} not found"
         )
     
-    # Removed strict FILE COMPLETED sub-status requirement to allow any lead to be sent to login
-    # Also removed important_questions_validated check to simplify the flow
+    # Check if login lead already exists for this original lead
+    existing_login_lead = await login_leads_db.get_login_lead_by_original_id(lead_id)
+    if existing_login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A login lead already exists for this lead. Use update operations instead."
+        )
     
-    # Save current assigned users to history before resetting
-    current_assigned_to = lead.get("assigned_to", [])
-    if isinstance(current_assigned_to, str):
-        current_assigned_to = [current_assigned_to]
+    # Create a complete copy of the lead data for the login department
+    # ⚡ CRITICAL FIX: Use convert_object_id to properly convert ALL nested BSON objects
+    # This ensures ObligationSection and all dynamic_fields are properly preserved
+    from app.utils.common_utils import convert_object_id
+    login_lead_data = convert_object_id(lead)
     
-    # Get or create assignment history array
-    assignment_history = lead.get("assignment_history", [])
+    # Debug logging to verify data preservation
+    print(f"🔍 Original lead dynamic_fields keys: {list(lead.get('dynamic_fields', {}).keys()) if lead.get('dynamic_fields') else 'None'}")
+    print(f"🔍 Login lead data dynamic_fields keys: {list(login_lead_data.get('dynamic_fields', {}).keys()) if login_lead_data.get('dynamic_fields') else 'None'}")
     
-    # Add current assignment to history with timestamp
-    if current_assigned_to:
-        history_entry = {
-            "users": current_assigned_to,
-            "department_id": lead.get("department_id"),
-            "assigned_date": lead.get("last_assigned_date"),
-            "transferred_date": get_ist_now().isoformat(),
-            "transferred_by": user_id,
-            "transferred_to": "Login Department"
-        }
-        assignment_history.append(history_entry)
+    # 🔍 LOAN REQUIRED DEBUG - Check all possible locations
+    loan_required_checks = {
+        'lead.loan_required': lead.get('loan_required'),
+        'lead.loan_amount': lead.get('loan_amount'),
+        'lead.loanRequired': lead.get('loanRequired'),
+        'lead.dynamic_fields.financial_details.loan_required': lead.get('dynamic_fields', {}).get('financial_details', {}).get('loan_required'),
+        'lead.dynamic_details.financial_details.loan_required': lead.get('dynamic_details', {}).get('financial_details', {}).get('loan_required'),
+        'login_lead_data.loan_required': login_lead_data.get('loan_required'),
+        'login_lead_data.loan_amount': login_lead_data.get('loan_amount'),
+        'login_lead_data.loanRequired': login_lead_data.get('loanRequired'),
+        'login_lead_data.dynamic_fields.financial_details.loan_required': login_lead_data.get('dynamic_fields', {}).get('financial_details', {}).get('loan_required'),
+        'login_lead_data.dynamic_details.financial_details.loan_required': login_lead_data.get('dynamic_details', {}).get('financial_details', {}).get('loan_required'),
+    }
+    print(f"💰 LOAN REQUIRED TRANSFER CHECK:")
+    for key, value in loan_required_checks.items():
+        if value:
+            print(f"   ✅ {key}: {value}")
     
-    # Update lead with login department data
+    # 🔍 PROCESSING BANK DEBUG - Check all possible locations
+    processing_bank_checks = {
+        'lead.processing_bank': lead.get('processing_bank'),
+        'lead.processingBank': lead.get('processingBank'),
+        'lead.bank_name': lead.get('bank_name'),
+        'lead.dynamic_fields.processingBank': lead.get('dynamic_fields', {}).get('processingBank'),
+        'lead.dynamic_fields.processing_bank': lead.get('dynamic_fields', {}).get('processing_bank'),
+        'login_lead_data.processing_bank': login_lead_data.get('processing_bank'),
+        'login_lead_data.processingBank': login_lead_data.get('processingBank'),
+        'login_lead_data.dynamic_fields.processingBank': login_lead_data.get('dynamic_fields', {}).get('processingBank'),
+        'login_lead_data.dynamic_fields.processing_bank': login_lead_data.get('dynamic_fields', {}).get('processing_bank'),
+    }
+    print(f"🏦 PROCESSING BANK TRANSFER CHECK:")
+    for key, value in processing_bank_checks.items():
+        if value:
+            print(f"   ✅ {key}: {value}")
+    
+    if lead.get('dynamic_fields', {}).get('obligation_data'):
+        print(f"✅ Original lead has obligation_data with keys: {list(lead['dynamic_fields']['obligation_data'].keys())}")
+        print(f"✅ Login lead data has obligation_data: {bool(login_lead_data.get('dynamic_fields', {}).get('obligation_data'))}")
+    
+    # Create the new login lead in login_leads collection
+    try:
+        login_lead_id = await login_leads_db.create_login_lead(
+            lead_data=login_lead_data,
+            original_lead_id=lead_id,
+            user_id=user_id
+        )
+        
+        print(f"✅ Login lead created: {login_lead_id} from original lead {lead_id}")
+        print(f"✅ ObligationSection data preserved: {bool(login_lead_data.get('dynamic_fields', {}).get('obligation_data'))}")
+        
+        # 📋 Copy all activities from original lead to login lead
+        try:
+            original_activities = await leads_db.get_lead_activities(lead_id, skip=0, limit=1000)
+            print(f"📋 Copying {len(original_activities)} activities from original lead")
+            
+            for activity in original_activities:
+                # Create a copy of the activity for the login lead
+                activity_copy = convert_object_id(activity)
+                if '_id' in activity_copy:
+                    del activity_copy['_id']  # Remove original ID to create new one
+                
+                # Update to reference login lead instead of original lead
+                activity_copy['login_lead_id'] = login_lead_id
+                if 'lead_id' in activity_copy:
+                    del activity_copy['lead_id']
+                
+                # Insert into login lead activities collection
+                await login_leads_db.activity_collection.insert_one(activity_copy)
+            
+            print(f"✅ Copied {len(original_activities)} activities to login lead")
+        except Exception as activity_error:
+            logger.warning(f"⚠️ Error copying activities: {activity_error}")
+            # Don't fail the whole operation if activity copy fails
+        
+        # 📎 Copy all attachments/documents from original lead to login lead
+        try:
+            # Get attachments from original lead
+            original_attachments = await leads_db.get_lead_documents(lead_id)
+            print(f"📎 Found {len(original_attachments)} attachments in original lead")
+            
+            if original_attachments:
+                print(f"📎 Sample attachment structure: {list(original_attachments[0].keys()) if original_attachments else 'None'}")
+            
+            copied_count = 0
+            for attachment in original_attachments:
+                try:
+                    # Create a copy of the attachment for the login lead
+                    attachment_copy = convert_object_id(attachment)
+                    if '_id' in attachment_copy:
+                        del attachment_copy['_id']  # Remove original ID to create new one
+                    
+                    # Update to reference login lead instead of original lead
+                    attachment_copy['login_lead_id'] = login_lead_id
+                    if 'lead_id' in attachment_copy:
+                        del attachment_copy['lead_id']
+                    
+                    # Preserve original timestamps
+                    if 'created_at' not in attachment_copy:
+                        attachment_copy['created_at'] = get_ist_now()
+                    
+                    # Insert into login lead documents collection
+                    result = await login_leads_db.documents_collection.insert_one(attachment_copy)
+                    if result.inserted_id:
+                        copied_count += 1
+                        print(f"📎 Copied attachment: {attachment_copy.get('filename', 'unknown')} -> {result.inserted_id}")
+                except Exception as single_attachment_error:
+                    logger.error(f"⚠️ Error copying single attachment: {single_attachment_error}")
+                    import traceback
+                    traceback.print_exc()
+            
+            print(f"✅ Successfully copied {copied_count}/{len(original_attachments)} attachments to login lead")
+        except Exception as attachment_error:
+            logger.error(f"⚠️ Error in attachment copying process: {attachment_error}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole operation if attachment copy fails
+        
+        # 📝 Copy all notes/remarks from original lead to login lead
+        try:
+            print(f"\n📝 ========== NOTES COPY OPERATION START ==========")
+            print(f"📝 Fetching notes for lead_id: {lead_id}")
+            original_notes = await leads_db.get_lead_notes(lead_id, skip=0, limit=1000)
+            print(f"📝 Found {len(original_notes)} notes/remarks in original lead")
+            
+            if original_notes:
+                print(f"📝 Sample note structure: {list(original_notes[0].keys()) if original_notes else 'None'}")
+                print(f"📝 Sample note content: {original_notes[0].get('content', original_notes[0].get('note', 'N/A'))[:100] if original_notes else 'N/A'}")
+            else:
+                print(f"⚠️ No notes found in original lead collection for lead_id={lead_id}")
+            
+            copied_count = 0
+            for note in original_notes:
+                try:
+                    # Create a copy of the note for the login lead
+                    note_copy = convert_object_id(note)
+                    if '_id' in note_copy:
+                        del note_copy['_id']  # Remove original ID to create new one
+                    
+                    print(f"📝 Processing note - original lead_id field: {note_copy.get('lead_id')}")
+                    
+                    # Update to reference login lead instead of original lead
+                    note_copy['login_lead_id'] = note_copy.pop('lead_id', lead_id)
+                    
+                    print(f"📝 After conversion - login_lead_id: {note_copy.get('login_lead_id')}")
+                    
+                    # Preserve original timestamps and author info
+                    if 'created_at' not in note_copy:
+                        note_copy['created_at'] = get_ist_now()
+                    
+                    # Insert into login lead notes collection
+                    print(f"📝 Inserting into login_lead_notes collection...")
+                    result = await login_leads_db.notes_collection.insert_one(note_copy)
+                    if result.inserted_id:
+                        copied_count += 1
+                        note_preview = note_copy.get('note', note_copy.get('content', note_copy.get('comment', '')))[:50]
+                        print(f"📝 ✅ Copied note #{copied_count}: '{note_preview}...' -> ObjectId({result.inserted_id})")
+                except Exception as single_note_error:
+                    logger.error(f"⚠️ Error copying single note: {single_note_error}")
+                    import traceback
+                    traceback.print_exc()
+            
+            print(f"📝 ========== NOTES COPY SUMMARY ==========")
+            print(f"📝 Total found: {len(original_notes)}")
+            print(f"📝 Successfully copied: {copied_count}")
+            print(f"📝 Failed: {len(original_notes) - copied_count}")
+            print(f"📝 Target collection: login_lead_notes")
+            print(f"📝 Login lead ID: {login_lead_id}")
+            print(f"📝 ========== NOTES COPY OPERATION END ==========\n")
+        except Exception as note_error:
+            logger.error(f"⚠️ Error in notes copying process: {note_error}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole operation if note copy fails
+        
+    except Exception as e:
+        print(f"❌ Error creating login lead: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create login lead: {str(e)}"
+        )
+    
+    # Update the original lead to mark it as sent to login (for tracking)
     update_data = {
         "file_sent_to_login": True,
         "login_department_sent_date": get_ist_now().isoformat(),
         "login_department_sent_by": user_id,
-        "status": "Active Login",  # Default status for login department
-        "sub_status": "Pending Assignment",
-        "previous_assigned_to": current_assigned_to,  # Store previous assignment
-        "assigned_to": [],  # Reset assignments for login department
-        "assignment_history": assignment_history,  # Update assignment history
+        "login_lead_id": login_lead_id,  # Link to the login lead
         "updated_at": get_ist_now().isoformat()
     }
     
-    # Update the lead using correct method signature
+    # Update the original lead
     success = await leads_db.update_lead(lead_id, update_data, user_id)
     if not success:
+        # Rollback: delete the login lead we just created
+        await login_leads_db.delete_login_lead(login_lead_id, user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update lead"
+            detail="Failed to update original lead"
         )
     
     # ⚡ CACHE INVALIDATION: Clear login department leads cache after sending lead to login department
@@ -173,17 +374,771 @@ async def send_lead_to_login_department(
     except Exception as cache_error:
         print(f"⚠️ Warning: Failed to invalidate cache after sending to login: {cache_error}")
     
-    return {"message": "Lead successfully sent to login department", "lead_id": lead_id}
+    return {
+        "message": "Lead successfully sent to login department", 
+        "lead_id": lead_id,
+        "login_lead_id": login_lead_id,
+        "info": "A separate login lead has been created with all data from the original lead",
+        "obligation_data_preserved": bool(login_lead_data.get('dynamic_fields', {}).get('obligation_data'))
+    }
+
+@router.get("/login-leads/{login_lead_id}")
+async def get_single_login_lead(
+    login_lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """
+    Get a single login lead by ID
+    Used when clicking on a login lead row to view details
+    """
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get the login lead
+    login_lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Convert ObjectId fields to strings for JSON serialization
+    from app.utils.common_utils import convert_object_id
+    login_lead_data = convert_object_id(login_lead)
+    
+    return login_lead_data
+
+@router.put("/login-leads/{login_lead_id}")
+async def update_login_lead(
+    login_lead_id: str,
+    update_data: Dict[str, Any],
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """
+    Update a login lead with any fields
+    Used by the details panel for auto-save functionality
+    """
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get the login lead
+    login_lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Add updated timestamp
+    update_data["updated_at"] = get_ist_now().isoformat()
+    update_data["updated_by"] = user_id
+    
+    # Update the login lead
+    success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update login lead"
+        )
+    
+    # ⚡ CACHE INVALIDATION: Clear cache after update
+    try:
+        await invalidate_cache_pattern("login-department-leads*")
+        logger.info(f"🔄 Cache invalidated after login lead update: {login_lead_id}")
+    except Exception as cache_error:
+        logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
+    
+    # Return the updated lead
+    updated_lead = await login_leads_db.get_login_lead(login_lead_id)
+    from app.utils.common_utils import convert_object_id
+    return convert_object_id(updated_lead)
+
+@router.post("/login-leads/{login_lead_id}/login-form")
+async def update_login_lead_form(
+    login_lead_id: str,
+    login_form_data: Dict[str, Any],
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Update login form data (applicant_form or co_applicant_form) for a login lead"""
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get the login lead
+    login_lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Get existing dynamic fields
+    dynamic_fields = login_lead.get('dynamic_fields', {}) or {}
+    
+    # Determine which fields to update based on what's in the login_form_data
+    form_field_updated = False
+    
+    # Support for both applicant_form and co_applicant_form
+    if 'applicant_form' in login_form_data:
+        if 'applicant_form' not in dynamic_fields:
+            dynamic_fields['applicant_form'] = {}
+        # Merge the applicant form data instead of replacing it
+        dynamic_fields['applicant_form'].update(login_form_data['applicant_form'])
+        form_field_updated = True
+        logger.info(f"Updated applicant_form for login lead {login_lead_id}")
+    
+    if 'co_applicant_form' in login_form_data:
+        if 'co_applicant_form' not in dynamic_fields:
+            dynamic_fields['co_applicant_form'] = {}
+        # Merge the co-applicant form data instead of replacing it
+        dynamic_fields['co_applicant_form'].update(login_form_data['co_applicant_form'])
+        form_field_updated = True
+        logger.info(f"Updated co_applicant_form for login lead {login_lead_id}")
+    
+    # Handle legacy login_form - if nothing else was updated and login_form exists in data
+    if not form_field_updated and login_form_data:
+        dynamic_fields['login_form'] = login_form_data
+        form_field_updated = True
+        logger.info(f"Updated legacy login_form for login lead {login_lead_id}")
+    
+    if not form_field_updated:
+        logger.warning(f"No form data to update for login lead {login_lead_id}")
+        return {"message": "No form data provided to update"}
+    
+    # Prepare update data
+    update_data = {
+        'dynamic_fields': dynamic_fields,
+        'updated_at': get_ist_now().isoformat(),
+        'updated_by': user_id
+    }
+    
+    # Update the login lead
+    success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update login form"
+        )
+    
+    # ⚡ CACHE INVALIDATION: Clear cache after update
+    try:
+        await invalidate_cache_pattern("login-department-leads*")
+        logger.info(f"🔄 Cache invalidated after login lead form update: {login_lead_id}")
+    except Exception as cache_error:
+        logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
+    
+    return {"message": "Login form updated successfully", "success": True}
+
+@router.get("/login-leads/{login_lead_id}/obligations")
+async def get_login_lead_obligations(
+    login_lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get obligation and eligibility data for a login lead"""
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get the login lead
+    login_lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # 🔍 DEBUG: Log the entire lead structure
+    logger.info("🔍 ========== FULL LEAD DATA DEBUG ==========")
+    logger.info(f"🔍 Lead ID: {login_lead_id}")
+    logger.info(f"🔍 Top-level keys: {list(login_lead.keys())}")
+    logger.info(f"🔍 dynamic_fields keys: {list(login_lead.get('dynamic_fields', {}).keys()) if login_lead.get('dynamic_fields') else 'None'}")
+    logger.info(f"🔍 dynamic_details keys: {list(login_lead.get('dynamic_details', {}).keys()) if login_lead.get('dynamic_details') else 'None'}")
+    logger.info(f"🔍 financial_details (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('financial_details', {})}")
+    logger.info(f"🔍 financial_details (in dynamic_details): {login_lead.get('dynamic_details', {}).get('financial_details', {})}")
+    logger.info(f"🔍 personal_details (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('personal_details', {})}")
+    logger.info(f"🔍 personal_details (in dynamic_details): {login_lead.get('dynamic_details', {}).get('personal_details', {})}")
+    logger.info(f"🔍 obligation_data (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('obligation_data', {})}")
+    logger.info("🔍 ==========================================")
+    
+    # Extract obligation data from the lead's dynamic_fields
+    dynamic_fields = login_lead.get("dynamic_fields") or {}
+    dynamic_details = login_lead.get("dynamic_details") or {}  # Also check dynamic_details
+    financial_details = dynamic_fields.get("financial_details") or {}
+    financial_details_v2 = dynamic_details.get("financial_details") or {}  # Check both locations
+    personal_details = dynamic_fields.get("personal_details") or {}
+    personal_details_v2 = dynamic_details.get("personal_details") or {}  # Check both locations
+    check_eligibility = dynamic_fields.get("check_eligibility") or {}
+    eligibility_details = dynamic_fields.get("eligibility_details") or {}
+    obligation_data_nested = dynamic_fields.get("obligation_data") or {}
+    
+    # Extract obligations with priority order: 
+    # 1. dynamic_fields.obligations (top level)
+    # 2. dynamic_fields.obligation_data.obligations (nested)
+    # 3. financial_details.obligations (fallback)
+    obligations_list = (
+        dynamic_fields.get("obligations") or 
+        obligation_data_nested.get("obligations") or 
+        financial_details.get("obligations") or 
+        []
+    )
+    
+    # 🎯 ENHANCED: Extract loan_required from all possible locations with priority
+    loan_required_value = (
+        # Check dynamic_details first (newer structure)
+        financial_details_v2.get("loan_required") or
+        financial_details_v2.get("loan_amount") or
+        financial_details_v2.get("required_loan") or
+        financial_details_v2.get("loan_amt") or
+        dynamic_details.get("loan_required") or
+        dynamic_details.get("loan_amount") or
+        dynamic_details.get("required_loan") or
+        # Then check dynamic_fields (older structure)
+        financial_details.get("loan_required") or
+        financial_details.get("loan_amount") or
+        financial_details.get("required_loan") or  # ✨ NEW: Check required_loan
+        financial_details.get("loan_amt") or      # ✨ NEW: Check loan_amt
+        dynamic_fields.get("loanRequired") or
+        dynamic_fields.get("loan_required") or
+        dynamic_fields.get("loan_amount") or
+        # Finally check top-level lead fields
+        login_lead.get("loan_required") or
+        login_lead.get("loan_amount") or
+        login_lead.get("loanRequired") or
+        ""
+    )
+    
+    # 🎯 ENHANCED: Extract salary from all possible locations
+    salary_value = (
+        financial_details_v2.get("salary") or
+        financial_details_v2.get("monthly_income") or
+        dynamic_details.get("salary") or
+        financial_details.get("salary") or
+        financial_details.get("monthly_income") or
+        dynamic_fields.get("salary") or
+        login_lead.get("salary") or
+        ""
+    )
+    
+    # 🎯 ENHANCED: Extract company_name from all possible locations
+    company_name_value = (
+        personal_details_v2.get("company_name") or
+        dynamic_details.get("company_name") or
+        personal_details.get("company_name") or
+        dynamic_fields.get("companyName") or
+        dynamic_fields.get("company_name") or
+        login_lead.get("company_name") or
+        ""
+    )
+    
+    # 🎯 Extract processing bank from all possible locations
+    processing_bank_value = (
+        dynamic_fields.get("processingBank") or
+        dynamic_fields.get("processing_bank") or
+        dynamic_fields.get("bank_name") or
+        login_lead.get("processing_bank") or
+        login_lead.get("processingBank") or
+        ""
+    )
+    
+    # Build obligation data - Return COMPLETE lead structure with minimal extraction
+    # The key is to preserve ALL nested structures so frontend can find data anywhere
+    obligation_data = {
+        # 🎯 Core extracted fields (single source of truth for display)
+        "salary": salary_value,
+        "partnerSalary": dynamic_fields.get("partnerSalary", financial_details.get("partner_salary", financial_details_v2.get("partner_salary", ""))),
+        "yearlyBonus": dynamic_fields.get("yearlyBonus", financial_details.get("yearly_bonus", financial_details_v2.get("yearly_bonus", ""))),
+        "bonusDivision": dynamic_fields.get("bonusDivision", financial_details.get("bonus_division", financial_details_v2.get("bonus_division", None))),
+        "loanRequired": loan_required_value,
+        "companyName": company_name_value,
+        "processingBank": processing_bank_value,
+        "obligations": obligations_list,
+        "selectedBanks": dynamic_fields.get("selectedBanks", []),
+        "cibilScore": (
+            financial_details.get("cibil_score") or
+            financial_details_v2.get("cibil_score") or
+            dynamic_fields.get("cibil_score") or
+            login_lead.get("cibil_score") or
+            ""
+        ),
+        
+        # 🎯 CRITICAL: Preserve COMPLETE nested structures
+        # This allows frontend to find data in ANY location without conflicts
+        "dynamic_fields": dynamic_fields,
+        "dynamic_details": dynamic_details,
+        "check_eligibility": check_eligibility,
+        "eligibility_details": eligibility_details,
+        "obligation_data": obligation_data_nested,
+    }
+    
+    # 🔍 DEBUG: Log what we're returning
+    print(f"\n📊 ========== OBLIGATIONS RESPONSE DEBUG ==========")
+    print(f"📊 Login Lead ID: {login_lead_id}")
+    print(f"📊 Extracted Values:")
+    print(f"   - salary: {salary_value}")
+    print(f"   - loanRequired: {loan_required_value}")
+    print(f"   - companyName: {company_name_value}")
+    print(f"   - processingBank: {processing_bank_value}")
+    print(f"   - obligations count: {len(obligations_list)}")
+    print(f"   - cibilScore: {obligation_data['cibilScore']}")
+    print(f"📊 Nested Structures Preserved:")
+    print(f"   - dynamic_fields keys: {list(dynamic_fields.keys()) if dynamic_fields else 'None'}")
+    print(f"   - dynamic_details keys: {list(dynamic_details.keys()) if dynamic_details else 'None'}")
+    print(f"   - check_eligibility keys: {list(check_eligibility.keys()) if check_eligibility else 'None'}")
+    if obligations_list:
+        print(f"📊 First Obligation Sample: {obligations_list[0] if obligations_list else 'None'}")
+    print(f"📊 ================================================\n")
+    
+    logger.info(f"📊 Login lead {login_lead_id} obligations: salary={salary_value}, loanRequired={loan_required_value}, companyName={company_name_value}, processingBank={processing_bank_value}, obligations={len(obligations_list)}")
+    return obligation_data
+
+@router.post("/login-leads/{login_lead_id}/obligations")
+async def update_login_lead_obligations(
+    login_lead_id: str,
+    obligation_data: Dict[str, Any],
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Update obligation and eligibility data for a login lead"""
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get the login lead
+    login_lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not login_lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Get existing dynamic fields
+    dynamic_fields = login_lead.get('dynamic_fields', {}) or {}
+    
+    # Update dynamic_fields with obligation data
+    # Preserve existing data and merge new data
+    for key, value in obligation_data.items():
+        if key not in ['_id', 'id']:  # Skip ID fields
+            dynamic_fields[key] = value
+    
+    # Prepare update data
+    update_data = {
+        'dynamic_fields': dynamic_fields,
+        'updated_at': get_ist_now().isoformat(),
+        'updated_by': user_id
+    }
+    
+    # Update the login lead
+    success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update obligations"
+        )
+    
+    # ⚡ CACHE INVALIDATION
+    try:
+        await invalidate_cache_pattern("login-department-leads*")
+        logger.info(f"🔄 Cache invalidated after login lead obligations update: {login_lead_id}")
+    except Exception as cache_error:
+        logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
+    
+    return {"message": "Obligations updated successfully", "success": True}
+
+@router.post("/login-leads/{login_lead_id}/notes", response_model=Dict[str, str])
+async def add_note_to_login_lead(
+    login_lead_id: str,
+    note: NoteCreate,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Add a note to a login lead"""
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Ensure lead_id in body matches URL
+    if note.lead_id != login_lead_id:
+        note.lead_id = login_lead_id
+    
+    # Ensure created_by is the current user
+    note.created_by = user_id
+    
+    # Add the note using the LoginLeadsDB method
+    note_id = await login_leads_db.add_note(note.dict())
+    
+    if not note_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add note"
+        )
+    
+    # ⚡ CACHE INVALIDATION
+    try:
+        await invalidate_cache_pattern("login-department-leads*")
+        logger.info(f"🔄 Cache invalidated after adding note to login lead: {login_lead_id}")
+    except Exception as cache_error:
+        logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
+    
+    return {"id": note_id}
+
+@router.get("/login-leads/{login_lead_id}/notes", response_model=List[Dict[str, Any]])
+async def get_login_lead_notes(
+    login_lead_id: str,
+    skip: int = 0,
+    limit: int = 20,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get notes for a login lead"""
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get notes using the LoginLeadsDB method
+    notes = await login_leads_db.get_lead_notes(login_lead_id, skip, limit)
+    
+    # Convert ObjectIds to strings and enhance with user info
+    enhanced_notes = []
+    for note in notes:
+        note_dict = convert_object_id(note)
+        
+        # Add creator info
+        if note.get("created_by"):
+            creator = await users_db.get_user(note["created_by"])
+            if creator:
+                note_dict["creator_name"] = f"{creator.get('first_name', '')} {creator.get('last_name', '')}"
+        
+        # Check if user can edit/delete this note
+        permissions = await get_user_permissions(user_id, users_db, roles_db)
+        
+        # User can edit if they created the note or have edit permission
+        can_edit = note.get("created_by") == user_id or any(
+            perm["page"] in ["leads", "login"] and ("create" in perm["actions"] or "*" in perm["actions"])
+            for perm in permissions
+        )
+        note_dict["can_edit"] = can_edit
+        
+        # User can delete if they created the note or have delete permission
+        can_delete = note.get("created_by") == user_id or any(
+            perm["page"] in ["leads", "login"] and ("delete" in perm["actions"] or "*" in perm["actions"])
+            for perm in permissions
+        )
+        note_dict["can_delete"] = can_delete
+        
+        enhanced_notes.append(note_dict)
+    
+    return enhanced_notes
+
+@router.get("/login-leads/{login_lead_id}/documents", response_model=List[Dict[str, Any]])
+async def get_login_lead_documents(
+    login_lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get documents/attachments for a login lead"""
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get documents using the LoginLeadsDB method
+    documents = await login_leads_db.get_lead_documents(login_lead_id)
+    
+    # Convert ObjectIds to strings
+    return [convert_object_id(doc) for doc in documents]
+
+@router.post("/login-leads/{login_lead_id}/documents", response_model=Dict[str, List[str]])
+async def upload_login_lead_documents(
+    login_lead_id: str,
+    files: List[UploadFile] = File(...),
+    document_type: str = Form(...),
+    category: str = Form(...),
+    description: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Upload one or more documents to a login lead"""
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "create", users_db, roles_db)
+    
+    # Create directory for this login lead's documents
+    lead_media_dir = await login_leads_db.create_media_path(login_lead_id)
+    document_ids = []
+    
+    for file in files:
+        if not file.filename:
+            continue
+            
+        # Save file
+        file_data = await save_upload_file(file, lead_media_dir)
+        
+        # Convert path to URL for API usage
+        relative_path = get_relative_media_url(file_data["file_path"])
+        
+        # Create document record
+        document_data = {
+            "login_lead_id": login_lead_id,
+            "filename": file.filename,
+            "file_path": relative_path,
+            "absolute_file_path": file_data["file_path"],
+            "file_type": file_data["file_type"],
+            "document_type": document_type,
+            "category": category,
+            "description": description,
+            "password": password if password and password.strip() else None,
+            "status": "received",
+            "uploaded_by": user_id,
+            "uploaded_at": get_ist_now(),
+            "size": file_data["size"]
+        }
+        
+        # Insert into login lead documents collection
+        result = await login_leads_db.documents_collection.insert_one(document_data)
+        if result.inserted_id:
+            document_ids.append(str(result.inserted_id))
+    
+    if not document_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files were uploaded"
+        )
+    
+    return {"uploaded_files": document_ids}
+
+
+@router.get("/login-leads/{login_lead_id}/tasks", response_model=Dict[str, Any])
+async def get_tasks_for_login_lead(
+    login_lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    tasks_db: TasksDB = Depends(get_tasks_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+    loan_types_db: LoanTypesDB = Depends(get_loan_types_db)
+):
+    """Get all tasks associated with a specific login lead"""
+    try:
+        # Verify login lead exists
+        lead = await login_leads_db.get_login_lead(login_lead_id)
+        if not lead:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Login lead not found"
+            )
+        
+        # Check permission
+        await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+        
+        logger.info(f"Getting tasks for login lead {login_lead_id}, user {user_id}")
+        
+        # Get tasks for this login lead
+        lead_filter = {"lead_id": ObjectId(login_lead_id)}
+        tasks = await tasks_db.list_tasks(filter_dict=lead_filter)
+        
+        logger.info(f"Found {len(tasks)} tasks for login lead {login_lead_id}")
+        
+        # Import enhance_task_details from tasks module
+        from app.routes.tasks import enhance_task_details
+        
+        # Convert to response format
+        task_responses = []
+        for task in tasks:
+            task_dict = await enhance_task_details(task, users_db, None, loan_types_db, user_id)
+            task_responses.append(task_dict)
+        
+        return {
+            "tasks": task_responses,
+            "total": len(task_responses),
+            "lead_id": login_lead_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting tasks for login lead {login_lead_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get tasks for login lead"
+        )
+
+@router.post("/login-leads/{login_lead_id}/tasks/create", response_model=Dict[str, Any])
+async def create_task_for_login_lead(
+    login_lead_id: str,
+    task: TaskCreate,
+    user_id: str = Query(..., description="ID of the user creating the task"),
+    login_leads_db = Depends(get_login_leads_db),
+    tasks_db: TasksDB = Depends(get_tasks_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Create a new task for a specific login lead"""
+    try:
+        # Verify login lead exists
+        lead = await login_leads_db.get_login_lead(login_lead_id)
+        if not lead:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Login lead not found"
+            )
+        
+        # Check permission
+        await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+        
+        # Set the lead_id in the task
+        task.lead_id = login_lead_id
+        task.created_by = user_id
+        
+        # Ensure the creator is in assigned_to list by default
+        if user_id not in task.assigned_to:
+            task.assigned_to.append(user_id)
+        
+        # Validate assigned users exist
+        for assigned_user_id in task.assigned_to:
+            assigned_user = await users_db.get_user(assigned_user_id)
+            if not assigned_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Assigned user with ID {assigned_user_id} not found"
+                )
+        
+        # Create task
+        task_data = task.dict()
+        task_id = await tasks_db.create_task(task_data)
+        
+        if not task_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create task"
+            )
+        
+        logger.info(f"Created task {task_id} for login lead {login_lead_id}")
+        
+        # ⚡ CACHE INVALIDATION
+        try:
+            await invalidate_cache_pattern("login-department-leads*")
+            logger.info(f"🔄 Cache invalidated after creating task for login lead: {login_lead_id}")
+        except Exception as cache_error:
+            logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
+        
+        return {"message": "Task created successfully for login lead", "task_id": task_id, "lead_id": login_lead_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating task for login lead {login_lead_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create task for login lead"
+        )
+
+@router.get("/login-leads/{login_lead_id}/activities", response_model=List[Dict[str, Any]])
+async def get_login_lead_activities(
+    login_lead_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get activity timeline for a login lead"""
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+    
+    # Check permission
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    
+    # Get activities for this login lead
+    activities = await login_leads_db.get_login_lead_activities(login_lead_id, skip, limit)
+    
+    logger.info(f"Retrieved {len(activities)} activities for login lead {login_lead_id}")
+    
+    # Convert ObjectIds to strings and enhance with user names
+    enhanced_activities = []
+    for activity in activities:
+        activity_dict = convert_object_id(activity)
+        
+        # If user_name is not stored (for legacy activities), fetch it
+        if activity.get("user_id") and not activity.get("user_name"):
+            user = await users_db.get_user(activity["user_id"])
+            if user:
+                activity_dict["user_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}"
+        
+        # Also check performed_by field (used in login lead activities)
+        if activity.get("performed_by") and not activity.get("user_name"):
+            user = await users_db.get_user(activity["performed_by"])
+            if user:
+                activity_dict["user_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}"
+        
+        enhanced_activities.append(activity_dict)
+    
+    return enhanced_activities
+
 @router.patch("/assign-multiple-users/{lead_id}")
 async def assign_lead_to_multiple_users(
     lead_id: str,
     request_data: Dict[str, Any],  # Accept a dictionary with assigned_user_ids and activity data
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),  # CHANGED: Use login_leads collection
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Assign a lead to multiple users"""
+    """Assign a login lead to multiple users"""
     # Check permission - check both leads and login permissions
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
@@ -197,12 +1152,12 @@ async def assign_lead_to_multiple_users(
     # Extract activity data if provided
     activity_data = request_data.get("activity")
     
-    # Verify lead exists
-    lead = await leads_db.get_lead(lead_id)
+    # Verify login lead exists
+    lead = await login_leads_db.get_login_lead(lead_id)
     if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Lead with ID {lead_id} not found"
+            detail=f"Login lead with ID {lead_id} not found"
         )
     
     # Verify all assigned users exist
@@ -251,12 +1206,12 @@ async def assign_lead_to_multiple_users(
     if activity_data:
         update_data["activity"] = activity_data
     
-    # Update the lead using correct method signature
-    success = await leads_db.update_lead(lead_id, update_data, user_id)
+    # Update the login lead
+    success = await login_leads_db.update_login_lead(lead_id, update_data, user_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update lead assignments"
+            detail="Failed to update login lead assignments"
         )
     
     # ⚡ CACHE INVALIDATION: Clear login department leads cache after assignment update
@@ -266,27 +1221,27 @@ async def assign_lead_to_multiple_users(
     except Exception as cache_error:
         print(f"⚠️ Warning: Failed to invalidate cache after assignment: {cache_error}")
     
-    return {"message": "Lead assigned to multiple users successfully", "assigned_to": updated_assigned}
+    return {"message": "Login lead assigned to multiple users successfully", "assigned_to": updated_assigned}
 
 @router.patch("/update-operations/{lead_id}")
 async def update_lead_operations(
     lead_id: str,
     request_data: Dict[str, Any],
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),  # CHANGED: Use login_leads collection
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Update operations section data for a lead"""
+    """Update operations section data for a login lead"""
     # Check permission - check both leads and login permissions
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
-    # Verify lead exists
-    lead = await leads_db.get_lead(lead_id)
+    # Verify login lead exists
+    lead = await login_leads_db.get_login_lead(lead_id)
     if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Lead with ID {lead_id} not found"
+            detail=f"Login lead with ID {lead_id} not found"
         )
     
     # Extract activity data if provided
@@ -319,8 +1274,8 @@ async def update_lead_operations(
         if activity_data:
             operations_update["activity"] = activity_data
         
-        # Update the lead using correct method signature
-        success = await leads_db.update_lead(lead_id, operations_update, user_id)
+        # Update the login lead
+        success = await login_leads_db.update_login_lead(lead_id, operations_update, user_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -409,11 +1364,16 @@ async def get_login_department_leads(
     loan_type: Optional[str] = Query(None, description="Filter by loan type"),
     no_activity_date: Optional[str] = Query(None, description="Filter leads with no activity since this date"),
     _cache_bust: Optional[str] = Query(None, description="Cache busting parameter"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),  # CHANGED: Use login_leads collection
+    leads_db: LeadsDB = Depends(get_leads_db),  # Keep for backward compatibility
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """⚡ OPTIMIZED: Get leads for login department view with caching and fast permissions"""
+    """
+    ⚡ OPTIMIZED: Get leads for login department view with caching and fast permissions
+    
+    NEW BEHAVIOR: Fetches from separate login_leads collection instead of filtering main leads
+    """
     start_time = time.time()
     
     print(f"🚀 Login department leads called with no_activity_date: {no_activity_date}")
@@ -445,8 +1405,9 @@ async def get_login_department_leads(
         print(f"🔍 Permission level from hierarchical check: {permission_level}")
         print(f"✅ FIXED: Now using LOGIN permissions instead of LEADS permissions")
         
-        # Combine visibility filter with login department filter
-        extra_filters = {"file_sent_to_login": True}
+        # Build filters for login_leads collection
+        # NOTE: No need for file_sent_to_login filter since we're querying login_leads directly
+        extra_filters = {}
         
         # Add status filter if provided
         if status_filter:
@@ -458,16 +1419,19 @@ async def get_login_department_leads(
         if not visibility_filter or visibility_filter == {}:
             print(f"⚠️ CRITICAL: Empty visibility filter for user {user_id} - treating as Super Admin")
             print(f"⚠️ If this is a Team Leader, there's a BUG in get_lead_visibility_filter!")
-            filters = extra_filters
+            filters = extra_filters if extra_filters else {}
         else:
             print(f"✅ Applying strict visibility filter for user {user_id}")
-            # Combine both filters - user must match visibility AND be in login department
-            filters = {
-                "$and": [
-                    visibility_filter,
-                    extra_filters
-                ]
-            }
+            # Combine both filters - user must match visibility criteria
+            if extra_filters:
+                filters = {
+                    "$and": [
+                        visibility_filter,
+                        extra_filters
+                    ]
+                }
+            else:
+                filters = visibility_filter
         
         print(f"📊 Final combined filter: {filters}")
         
@@ -483,7 +1447,8 @@ async def get_login_department_leads(
             return cached_result
         
         # ⚡ STEP 6: Database query with performance optimization
-        leads = await leads_db.list_leads(filter_dict=filters, limit=1000)
+        # CHANGED: Query from login_leads collection
+        leads = await login_leads_db.list_login_leads(filter_dict=filters, limit=1000)
         
         # Import DepartmentsDB for department name lookup
         from app.database.Departments import DepartmentsDB
@@ -731,11 +1696,15 @@ async def validate_important_questions(
     lead_id: str,
     request_data: Dict[str, Any],
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    leads_db: LeadsDB = Depends(get_leads_db),  # FIXED: Use leads collection (validation happens BEFORE sending to login)
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Validate that all mandatory questions are answered"""
+    """
+    Validate that all mandatory questions are answered
+    
+    IMPORTANT: This validates questions in the main leads collection BEFORE sending to LoginCRM
+    """
     # Check permission - check both leads and login permissions
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
@@ -768,7 +1737,7 @@ async def validate_important_questions(
             detail=f"Please complete all mandatory questions: {', '.join(missing_questions)}"
         )
     
-    # Update lead with question responses
+    # Update login lead with question responses
     update_data = {
         "important_questions_validated": True,
         "question_responses": question_responses,
@@ -781,12 +1750,32 @@ async def validate_important_questions(
     if activity_data:
         update_data["activity"] = activity_data
     
-    # Update the lead using correct method signature
-    success = await leads_db.update_lead(lead_id, update_data, user_id)
-    if not success:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 Validating questions for lead {lead_id}")
+    logger.info(f"   Question responses: {question_responses}")
+    logger.info(f"   Update data: {list(update_data.keys())}")
+    
+    # Update the lead using correct method signature (MAIN leads collection, not login_leads)
+    try:
+        success = await leads_db.update_lead(lead_id, update_data, user_id)
+        if not success:
+            logger.error(f"❌ update_lead returned False for lead {lead_id}")
+            logger.error(f"   This usually means no changes were made or lead not found")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update question responses"
+            )
+        logger.info(f"✅ Successfully validated questions for lead {lead_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Exception during question validation: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update question responses"
+            detail=f"Failed to update question responses: {str(e)}"
         )
     
     # ⚡ CACHE INVALIDATION: Clear login department leads cache after questions validation
@@ -882,11 +1871,15 @@ async def update_login_fields(
     lead_id: str,
     login_data: Dict[str, Any],
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),  # CHANGED: Use login_leads collection
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Update login form fields for a lead"""
+    """
+    Update login form fields for a lead
+    
+    NEW BEHAVIOR: Updates login_leads collection (separate from leads)
+    """
     
     # Check permission - check both leads and login permissions
     try:
@@ -894,12 +1887,12 @@ async def update_login_fields(
     except Exception as e:
         raise
     
-    # Verify lead exists
-    lead = await leads_db.get_lead(lead_id)
+    # Verify login lead exists
+    lead = await login_leads_db.get_login_lead(lead_id)
     if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Lead with ID {lead_id} not found"
+            detail=f"Login lead with ID {lead_id} not found"
         )
     
     # Prepare login update data
@@ -980,8 +1973,8 @@ async def update_login_fields(
     # Add any direct fields
     update_data.update(direct_update)
     
-    # Update the lead using correct method signature
-    success = await leads_db.update_lead(lead_id, update_data, user_id)
+    # Update the login lead using correct method signature
+    success = await login_leads_db.update_login_lead(lead_id, update_data, user_id)
     
     if not success:
         raise HTTPException(
@@ -1006,20 +1999,24 @@ async def update_login_fields(
 async def debug_test_lead(
     lead_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db)
+    login_leads_db = Depends(get_login_leads_db)  # CHANGED: Use login_leads collection
 ):
-    """Debug endpoint to test lead retrieval and database connection"""
+    """
+    Debug endpoint to test login lead retrieval and database connection
+    
+    NEW BEHAVIOR: Queries login_leads collection (separate from leads)
+    """
     
     try:
         # Test database connection
-        collection_name = leads_db.collection.name
+        collection_name = login_leads_db.collection.name
         
-        # Test lead retrieval
-        lead = await leads_db.get_lead(lead_id)
+        # Test login lead retrieval
+        lead = await login_leads_db.get_login_lead(lead_id)
         if not lead:
             return {
                 "status": "error",
-                "message": f"Lead {lead_id} not found",
+                "message": f"Login lead {lead_id} not found",
                 "database_collection": collection_name
             }
         
@@ -1053,32 +2050,27 @@ async def debug_test_lead(
         }
 
 @router.delete("/{lead_id}")
+@router.delete("/login-leads/{lead_id}")  # Add alias for frontend compatibility
 async def delete_login_lead(
     lead_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
+    login_leads_db = Depends(get_login_leads_db),  # CHANGED: Use login_leads collection
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """
     Delete a login department lead
     
+    NEW BEHAVIOR: Deletes from login_leads collection (separate from leads)
     Permission rule: Only lead creator, users with all/junior permissions can delete
     """
     
-    # Check if lead exists
-    lead = await leads_db.get_lead(lead_id)
+    # Check if login lead exists
+    lead = await login_leads_db.get_login_lead(lead_id)
     if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Lead with ID {lead_id} not found"
-        )
-    
-    # Check if this is actually a login department lead
-    if not lead.get("file_sent_to_login", False):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This lead is not in the login department"
+            detail=f"Login lead with ID {lead_id} not found"
         )
     
     # Get hierarchical permissions for login module
@@ -1116,8 +2108,8 @@ async def delete_login_lead(
             detail="You don't have permission to delete this login department lead"
         )
     
-    # Delete the lead
-    success = await leads_db.delete_lead(lead_id, user_id)
+    # Delete the login lead
+    success = await login_leads_db.delete_login_lead(lead_id, user_id)
     
     if not success:
         raise HTTPException(

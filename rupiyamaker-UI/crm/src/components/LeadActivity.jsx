@@ -143,7 +143,12 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       setIsLoading(true);
       setError('');
       const token = localStorage.getItem('token');
-      const apiUrl = `/api/leads/${currentLeadId}/activities?user_id=${currentUserId}`;
+      
+      // Detect if this is a login lead or regular lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const apiUrl = isLoginLead
+        ? `/api/lead-login/login-leads/${currentLeadId}/activities?user_id=${currentUserId}`
+        : `/api/leads/${currentLeadId}/activities?user_id=${currentUserId}`;
       
       console.log('📡 Fetching activities from:', apiUrl);
       

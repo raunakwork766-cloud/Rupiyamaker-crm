@@ -175,10 +175,20 @@ export default function Attachments({ leadId, userId }) {
     if (!leadId) return;
     
     try {
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`);
+      // Determine if this is a login lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const apiUrl = isLoginLead
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`;
+      
+      console.log(`📎 Attachments (GET): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+      
+      const response = await fetch(apiUrl);
       if (response.ok) {
         const documents = await response.json();
         setUploadedDocuments(documents);
+        
+        console.log(`📎 Loaded ${documents.length} documents from ${isLoginLead ? 'login_lead_documents' : 'lead_documents'} collection`);
         
         // Initialize document passwords
         const initialPasswords = {};
@@ -255,15 +265,30 @@ export default function Attachments({ leadId, userId }) {
     if (!leadId) return null;
     
     try {
-      const response = await fetch(`${BASE_URL}/leads/${leadId}?user_id=${currentUserId}`, {
+      // First try to fetch as login lead, then fall back to regular lead
+      let response = await fetch(`${BASE_URL}/lead-login/login-leads/${leadId}?user_id=${currentUserId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       
+      // If not found as login lead, try as regular lead
+      if (!response.ok) {
+        response = await fetch(`${BASE_URL}/leads/${leadId}?user_id=${currentUserId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+      }
+      
       if (response.ok) {
         const data = await response.json();
         setLeadData(data);
+        console.log('📋 Lead data loaded:', {
+          id: data._id,
+          isLoginLead: !!(data.original_lead_id || data.login_created_at),
+          hasOriginalLeadId: !!data.original_lead_id
+        });
         return data;
       } else {
         console.error('Failed to fetch lead data for form export');
@@ -861,12 +886,19 @@ export default function Attachments({ leadId, userId }) {
     }
   }, [currentUserId]);
 
-  // Load uploaded documents when leadId changes
+  // Load lead data when leadId changes to determine if it's a login lead
   useEffect(() => {
-    if (leadId && !loadingTypes && currentUserId) {
+    if (leadId && currentUserId) {
+      fetchLeadData();
+    }
+  }, [leadId, currentUserId]);
+
+  // Load uploaded documents when leadId and leadData are available
+  useEffect(() => {
+    if (leadId && leadData && !loadingTypes && currentUserId) {
       loadUploadedDocuments();
     }
-  }, [leadId, loadingTypes, currentUserId]);
+  }, [leadId, leadData, loadingTypes, currentUserId]);
 
   // Handler for dynamic file input changes - now triggers direct upload
   const handleFileChange = (attachmentKey) => async (e) => {
@@ -1005,7 +1037,15 @@ export default function Attachments({ leadId, userId }) {
         hasPassword: !!password
       });
 
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`, {
+      // Determine if this is a login lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const uploadUrl = isLoginLead
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`;
+      
+      console.log(`📎 Attachments (POST): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
       });

@@ -436,7 +436,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         return false;
       }
 
-      const apiUrl = `/api/leads/${lead._id}?user_id=${userId}`;
+      // Determine if this is a login lead by checking for original_lead_id field
+      const isLoginLead = !!lead.original_lead_id || !!lead.login_created_at;
+      const apiUrl = isLoginLead 
+        ? `/api/lead-login/login-leads/${lead._id}?user_id=${userId}`
+        : `/api/leads/${lead._id}?user_id=${userId}`;
+      
+      console.log(`📡 HowToProcessSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
       
       // Map field names to process schema field names
       const processFieldMap = {

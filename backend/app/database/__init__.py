@@ -23,6 +23,7 @@ async_db = None
 # Database instances
 users_db = None
 leads_db = None
+login_leads_db = None  # NEW: Separate collection for login leads
 tasks_db = None
 roles_db = None
 departments_db = None
@@ -54,13 +55,11 @@ task_history_db = None
 email_settings_db = None
 admin_emails_db = None
 apps_db = None
-email_settings_db = None
-admin_emails_db = None
 
 async def init_database():
     """Initialize async Motor database connections and all database classes"""
     global async_client, async_db
-    global users_db, leads_db, tasks_db, roles_db, departments_db, designations_db, attendance_db, settings_db, tickets_db, notifications_db, pop_notifications_db, leaves_db, warnings_db, loan_types_db, employee_attachments_db, employee_remarks_db, employee_activity_db, products_db, holidays_db, important_questions_db, otp_db, feeds_db, interviews_db, interview_comments_db, interview_history_db, share_links_db, attendance_comments_db, attendance_history_db, task_comments_db, task_history_db, email_settings_db, admin_emails_db, apps_db
+    global users_db, leads_db, login_leads_db, tasks_db, roles_db, departments_db, designations_db, attendance_db, settings_db, tickets_db, notifications_db, pop_notifications_db, leaves_db, warnings_db, loan_types_db, employee_attachments_db, employee_remarks_db, employee_activity_db, products_db, holidays_db, important_questions_db, otp_db, feeds_db, interviews_db, interview_comments_db, interview_history_db, share_links_db, attendance_comments_db, attendance_history_db, task_comments_db, task_history_db, email_settings_db, admin_emails_db, apps_db
     
     try:
         # Create async client and database
@@ -74,6 +73,7 @@ async def init_database():
         # Initialize core database classes
         from .Users import UsersDB
         from .Leads import LeadsDB
+        from .LoginLeads import LoginLeadsDB  # NEW: Login leads database
         from .Tasks import TasksDB
         from .Roles import RolesDB
         from .Departments import DepartmentsDB
@@ -109,6 +109,7 @@ async def init_database():
         # Create instances with shared database connection
         users_db = UsersDB(async_db)
         leads_db = LeadsDB(async_db)
+        login_leads_db = LoginLeadsDB(async_db)  # NEW: Login leads instance
         tasks_db = TasksDB(async_db)
         roles_db = RolesDB(async_db)
         departments_db = DepartmentsDB(async_db)
@@ -144,6 +145,7 @@ async def init_database():
         # Initialize indexes for all databases
         await users_db.init_indexes()
         await leads_db.init_async()  # LeadsDB has special init method
+        await login_leads_db.init_async()  # NEW: Initialize login leads DB
         await tasks_db.init_indexes()
         await roles_db.init_indexes()
         await departments_db.init_indexes()
@@ -181,6 +183,7 @@ async def init_database():
         return {
             "users": users_db,
             "leads": leads_db,
+            "login_leads": login_leads_db,  # NEW: Add login leads to instances
             "tasks": tasks_db,
             "roles": roles_db,
             "departments": departments_db,
@@ -232,6 +235,7 @@ def get_database_instances():
     return {
         "users": users_db,
         "leads": leads_db,
+        "login_leads": login_leads_db,  # NEW: Add login leads to instances
         "tasks": tasks_db,
         "roles": roles_db,
         "departments": departments_db,
@@ -271,6 +275,10 @@ def get_users_db():
 def get_leads_db():
     """Get LeadsDB instance"""
     return leads_db
+
+def get_login_leads_db():
+    """Get LoginLeadsDB instance"""
+    return login_leads_db
 
 def get_tasks_db():
     """Get TasksDB instance"""

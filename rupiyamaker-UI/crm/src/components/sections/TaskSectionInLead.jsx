@@ -34,7 +34,11 @@ export default function TaskSectionInLead({ leadData }) {
           return;
         }
         
-        const apiUrl = `/api/tasks/lead/${leadData._id}?user_id=${userId}`;
+        // Detect if this is a login lead or regular lead
+        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+        const apiUrl = isLoginLead 
+          ? `/api/lead-login/login-leads/${leadData._id}/tasks?user_id=${userId}`
+          : `/api/tasks/lead/${leadData._id}?user_id=${userId}`;
         
         const response = await fetch(apiUrl, {
           headers: {
@@ -169,7 +173,11 @@ export default function TaskSectionInLead({ leadData }) {
       } 
       // For creating a new task for the lead
       else {
-        const apiUrl = `/api/tasks/lead/${leadData._id}/create?user_id=${userId}`;
+        // Detect if this is a login lead or regular lead
+        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+        const apiUrl = isLoginLead
+          ? `/api/lead-login/login-leads/${leadData._id}/tasks/create?user_id=${userId}`
+          : `/api/tasks/lead/${leadData._id}/create?user_id=${userId}`;
         
         // Ensure we're passing valid data to the API
         const createData = {
@@ -247,7 +255,13 @@ export default function TaskSectionInLead({ leadData }) {
       }
       
       // Refresh tasks after creating/updating
-      const fetchTasksResponse = await fetch(`${API_BASE_URL}/tasks/lead/${leadData._id}?user_id=${userId}`, {
+      // Detect if this is a login lead or regular lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const refreshUrl = isLoginLead
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/tasks?user_id=${userId}`
+        : `${API_BASE_URL}/tasks/lead/${leadData._id}?user_id=${userId}`;
+      
+      const fetchTasksResponse = await fetch(refreshUrl, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

@@ -256,7 +256,15 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
           // Save immediately on blur without debouncing
           const token = localStorage.getItem('token');
-          const apiUrl = `${apiBaseUrl}/leads/${leadId}/login-form?user_id=${userId}`;
+          
+          // Determine if this is a login lead by checking leadData for original_lead_id
+          const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+          const apiUrl = isLoginLead
+            ? `${apiBaseUrl}/lead-login/login-leads/${leadId}/login-form?user_id=${userId}`
+            : `${apiBaseUrl}/leads/${leadId}/login-form?user_id=${userId}`;
+          
+          console.log(`📡 LoginFormSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+
           
           const response = await fetch(apiUrl, {
             method: 'POST',
@@ -283,7 +291,9 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
           // Refresh lead data to get the latest from backend
           try {
-            const refreshUrl = `${apiBaseUrl}/leads/${leadId}?user_id=${userId}`;
+            const refreshUrl = isLoginLead
+              ? `${apiBaseUrl}/lead-login/login-leads/${leadId}?user_id=${userId}`
+              : `${apiBaseUrl}/leads/${leadId}?user_id=${userId}`;
             const refreshResponse = await fetch(refreshUrl, {
               headers: {
                 'Authorization': `Bearer ${token}`,

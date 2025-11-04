@@ -623,8 +623,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           
           setLastLoadedLeadId(currentLeadId);
           
-          // Use the dedicated obligations endpoint
-          const apiUrl = `${API_BASE_URL}/leads/${currentLeadId}/obligations?user_id=${userId}`;
+          // Determine if this is a login lead by checking for original_lead_id
+          const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+          const apiUrl = isLoginLead
+            ? `${API_BASE_URL}/lead-login/login-leads/${currentLeadId}/obligations?user_id=${userId}`
+            : `${API_BASE_URL}/leads/${currentLeadId}/obligations?user_id=${userId}`;
+          
+          console.log(`📡 ObligationSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint for GET`);
+
           
           const response = await fetch(apiUrl, {
             method: 'GET',
@@ -1887,26 +1893,42 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           } : null
         });
         setObligations(processedObligations);
+        setDataLoaded(true); // Mark data as loaded after successful obligation load
         
         // React will handle re-rendering automatically when obligations change
       } else {
-        // No obligations found, ensure default obligation with correct action
-        console.log('⚠️ No obligations found, creating default obligation');
-        console.log('📋 DEFAULT OBLIGATIONS UPDATE:', { currentCount: obligations.length, newCount: 1, leadId: leadData?._id });
-        setObligations([{
-          id: `${Date.now()}-default-${Math.random().toString(36).substr(2, 9)}`,
-          product: '',
-          bankName: '',
-          tenure: '',
-          roi: '',
-          totalLoan: '',
-          outstanding: '',
-          emi: '',
-          action: 'Obligate',
-          selectedPercentage: null,
-          selectedTenurePercentage: null,
-          selectedRoiPercentage: null
-        }]);
+        // No obligations found - check if we should preserve existing data or create default
+        console.log('⚠️ No obligations found in API response');
+        console.log('📋 OBLIGATION LOAD DECISION:', { 
+          currentCount: obligations.length, 
+          hasExistingObligations: obligations.length > 0 && obligations[0].product,
+          shouldPreserve: dataLoaded && obligations.length > 0,
+          leadId: leadData?._id 
+        });
+        
+        // If we already have obligations loaded and this is not the first load,
+        // preserve them instead of clearing (protects against race conditions)
+        if (dataLoaded && obligations.length > 0 && obligations[0].product) {
+          console.log('🔒 PRESERVING existing obligations - API returned empty but data was previously loaded');
+        } else {
+          // Create default obligation only for truly new/empty leads
+          console.log('📋 DEFAULT OBLIGATIONS UPDATE:', { currentCount: obligations.length, newCount: 1, leadId: leadData?._id });
+          setObligations([{
+            id: `${Date.now()}-default-${Math.random().toString(36).substr(2, 9)}`,
+            product: '',
+            bankName: '',
+            tenure: '',
+            roi: '',
+            totalLoan: '',
+            outstanding: '',
+            emi: '',
+            action: 'Obligate',
+            selectedPercentage: null,
+            selectedTenurePercentage: null,
+            selectedRoiPercentage: null
+          }]);
+          setDataLoaded(true); // Mark data as loaded even for default
+        }
       }
       
       // Load calculated totals with enhanced extraction
@@ -3120,8 +3142,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           console.log('🔄 Starting data reload after save...');
           const userId = getUserId();
           if (userId) {
-            const apiUrl = `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
-            console.log('🔄 Fetching fresh data from:', apiUrl);
+            // Determine if this is a login lead
+            const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+            const apiUrl = isLoginLead
+              ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/obligations?user_id=${userId}`
+              : `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
+            console.log(`🔄 Fetching fresh data from: ${apiUrl} (${isLoginLead ? 'LOGIN' : 'MAIN'} leads)`);
+
             
             const response = await fetch(apiUrl, {
               method: 'GET',
@@ -5592,9 +5619,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       
       // Make a direct API call (not debounced) when explicitly saving
       // Use the raw API call instead of debounced version to avoid delayed saving
-      const apiUrl = `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
+      // Determine if this is a login lead
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const apiUrl = isLoginLead
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/obligations?user_id=${userId}`
+        : `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
       
-      console.log('Making API call to:', apiUrl);
+      console.log(`Making API call to: ${apiUrl} (${isLoginLead ? 'LOGIN' : 'MAIN'} leads)`);
+
       
       const response = await fetch(apiUrl, {
         method: 'POST',
