@@ -215,6 +215,29 @@ async def send_lead_to_login_department(
         print(f"✅ Login lead created: {login_lead_id} from original lead {lead_id}")
         print(f"✅ ObligationSection data preserved: {bool(login_lead_data.get('dynamic_fields', {}).get('obligation_data'))}")
         
+        # 🎯 Create activity for login transfer with status information
+        try:
+            login_lead = await login_leads_db.get_login_lead(login_lead_id)
+            lead_status = login_lead.get('status', 'Active Login')
+            lead_name = login_lead.get('first_name', '') + ' ' + login_lead.get('last_name', '')
+            
+            activity_description = f"File/Lead '{lead_name.strip()}' transferred to Login Department with status: {lead_status}"
+            
+            await login_leads_db._log_activity(
+                login_lead_id=login_lead_id,
+                activity_type='login_transfer',
+                description=activity_description,
+                user_id=user_id,
+                details={
+                    'original_lead_id': lead_id,
+                    'status': lead_status,
+                    'transfer_date': get_ist_now().isoformat()
+                }
+            )
+            print(f"✅ Login transfer activity created: {activity_description}")
+        except Exception as activity_error:
+            logger.warning(f"⚠️ Error creating login transfer activity: {activity_error}")
+        
         # 📋 Copy all activities from original lead to login lead
         try:
             original_activities = await leads_db.get_lead_activities(lead_id, skip=0, limit=1000)
@@ -725,6 +748,17 @@ async def update_login_lead_obligations(
     
     # Get existing dynamic fields
     dynamic_fields = login_lead.get('dynamic_fields', {}) or {}
+    
+    # 🔍 DEBUG: Log what we're receiving and what exists
+    logger.info("🔍 ========== OBLIGATION SAVE DEBUG ==========")
+    logger.info(f"🔍 Login Lead ID: {login_lead_id}")
+    logger.info(f"🔍 Received obligation_data keys: {list(obligation_data.keys())}")
+    logger.info(f"🔍 Received obligations count: {len(obligation_data.get('obligations', []))}")
+    if obligation_data.get('obligations'):
+        logger.info(f"🔍 First obligation sample: {obligation_data['obligations'][0]}")
+    logger.info(f"🔍 Existing dynamic_fields keys: {list(dynamic_fields.keys())}")
+    logger.info(f"🔍 Existing obligation_data: {dynamic_fields.get('obligation_data', {})}")
+    logger.info("🔍 ==========================================")
     
     # Update dynamic_fields with obligation data
     # Preserve existing data and merge new data

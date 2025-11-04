@@ -245,8 +245,8 @@ const getLeadField = (lead, fieldName) => {
             return lead.customer_name || lead.name || '';
 
         case 'login_date':
-            // Use login_department_sent_date or created_date for login date
-            return lead.login_department_sent_date || lead.created_date || lead.created_at || '';
+            // Use login_date (set when lead is transferred to login), fallback to other dates
+            return lead.login_date || lead.login_created_at || lead.login_department_sent_date || lead.created_date || lead.created_at || '';
 
         case 'creator_name':
             return lead.created_by_name || lead.creator_name || '';

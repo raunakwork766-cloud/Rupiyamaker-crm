@@ -98,15 +98,15 @@ class LoginLeadsDB:
             login_lead['updated_at'] = get_ist_now()
             
             # Set login status based on current status
-            # If lead already has a login-related status, keep it; otherwise set to NEW LOGIN
+            # If lead already has a login-related status, keep it; otherwise set to Active Login
             current_status = login_lead.get('status', '').upper()
             if 'LOGIN' in current_status:
                 # Keep existing login status (ACTIVE LOGIN, etc.)
                 pass
             else:
                 # New lead being sent to login for first time
-                login_lead['status'] = 'NEW LOGIN'
-                login_lead['sub_status'] = 'Pending Review'
+                login_lead['status'] = 'Active Login'      # Main status
+                login_lead['sub_status'] = 'New Login'     # Sub status
             
             # Ensure file_sent_to_login is true
             login_lead['file_sent_to_login'] = True
