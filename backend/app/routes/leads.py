@@ -4266,6 +4266,19 @@ async def update_lead_obligations(
     # Get existing dynamic_fields or initialize empty dict
     dynamic_fields = lead.get("dynamic_fields", {})
     
+    # 🎯 CRITICAL FIX: Deep merge function to preserve nested data
+    def deep_merge(base_dict, update_dict):
+        """Deep merge update_dict into base_dict, preserving existing nested data"""
+        result = base_dict.copy()
+        for key, value in update_dict.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                # Recursively merge nested dictionaries
+                result[key] = deep_merge(result[key], value)
+            else:
+                # Replace or add the value
+                result[key] = value
+        return result
+    
     # Handle processing bank at root level since it's also used outside dynamic_fields
     if "processingBank" in obligation_data and obligation_data["processingBank"]:
         update_data = {
@@ -4277,16 +4290,20 @@ async def update_lead_obligations(
         # Deep merge the nested fields
         for key, value in obligation_data["dynamic_fields"].items():
             if isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
-                # Deep merge objects
-                dynamic_fields[key] = {**dynamic_fields[key], **value}
+                # Deep merge objects to preserve all nested fields
+                dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
             else:
                 # Direct assignment for arrays or scalar values
                 dynamic_fields[key] = value
     else:
         # If no nested dynamic_fields, update the top-level fields for backward compatibility
         for key, value in obligation_data.items():
-            if key != "dynamic_fields" and key != "processingBank":  # Skip these special cases
-                dynamic_fields[key] = value
+            if key not in ["dynamic_fields", "processingBank"]:  # Skip these special cases
+                # Deep merge for nested objects, direct assign for others
+                if isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
+                    dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
+                else:
+                    dynamic_fields[key] = value
     
     # Update the lead with the merged dynamic_fields
     update_data = {

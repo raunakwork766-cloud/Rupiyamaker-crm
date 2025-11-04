@@ -36,6 +36,66 @@ _subordinates_cache = {}
 _cache_timestamps = {}
 CACHE_TTL = 300  # 5 minutes
 
+async def create_field_update_activity(
+    login_leads_db,
+    login_lead_id: str,
+    user_id: str,
+    field_changes: Dict[str, Any],
+    lead_name: str = "Lead"
+):
+    """
+    Create an activity log for field updates in login lead
+    
+    Args:
+        login_leads_db: LoginLeadsDB instance
+        login_lead_id: ID of the login lead
+        user_id: ID of user making the change
+        field_changes: Dictionary of field names to their new values
+        lead_name: Name of the lead for better readability
+    """
+    try:
+        # Create a human-readable description of changes
+        changes_summary = []
+        for field, value in field_changes.items():
+            # Skip internal fields
+            if field in ['updated_at', 'updated_by', '_id', 'id']:
+                continue
+            
+            # Format field name nicely
+            field_name = field.replace('_', ' ').title()
+            
+            # Handle different value types
+            if isinstance(value, dict):
+                changes_summary.append(f"{field_name} updated")
+            elif isinstance(value, list):
+                changes_summary.append(f"{field_name} updated ({len(value)} items)")
+            elif value:
+                # Truncate long values
+                str_value = str(value)
+                if len(str_value) > 50:
+                    str_value = str_value[:47] + "..."
+                changes_summary.append(f"{field_name}: {str_value}")
+        
+        if not changes_summary:
+            return  # No meaningful changes to log
+        
+        description = f"Updated {', '.join(changes_summary)}"
+        
+        await login_leads_db._log_activity(
+            login_lead_id=login_lead_id,
+            activity_type='field_update',
+            description=description,
+            user_id=user_id,
+            details={
+                'fields_changed': list(field_changes.keys()),
+                'change_count': len(field_changes),
+                'timestamp': get_ist_now().isoformat()
+            }
+        )
+        logger.info(f"✅ Activity logged for login lead {login_lead_id}: {description}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to create activity log: {e}")
+
 async def get_all_subordinates_cached(user_id: str, all_users: List[Dict]) -> List[str]:
     """Get all subordinate user IDs with caching for performance"""
     current_time = time.time()
@@ -462,6 +522,16 @@ async def update_login_lead(
     update_data["updated_at"] = get_ist_now().isoformat()
     update_data["updated_by"] = user_id
     
+    # 📝 Create activity log for field updates
+    lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
+    await create_field_update_activity(
+        login_leads_db=login_leads_db,
+        login_lead_id=login_lead_id,
+        user_id=user_id,
+        field_changes=update_data,
+        lead_name=lead_name
+    )
+    
     # Update the login lead
     success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
     if not success:
@@ -551,6 +621,29 @@ async def update_login_lead_form(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update login form"
         )
+    
+    # 📝 Create activity log for form updates
+    lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
+    form_types = []
+    if 'applicant_form' in login_form_data:
+        form_types.append("Applicant Form")
+    if 'co_applicant_form' in login_form_data:
+        form_types.append("Co-Applicant Form")
+    if not form_types and login_form_data:
+        form_types.append("Login Form")
+    
+    description = f"Updated {' and '.join(form_types)}"
+    
+    await login_leads_db._log_activity(
+        login_lead_id=login_lead_id,
+        activity_type='form_update',
+        description=description,
+        user_id=user_id,
+        details={
+            'forms_updated': form_types,
+            'timestamp': get_ist_now().isoformat()
+        }
+    )
     
     # ⚡ CACHE INVALIDATION: Clear cache after update
     try:
@@ -756,15 +849,39 @@ async def update_login_lead_obligations(
     logger.info(f"🔍 Received obligations count: {len(obligation_data.get('obligations', []))}")
     if obligation_data.get('obligations'):
         logger.info(f"🔍 First obligation sample: {obligation_data['obligations'][0]}")
-    logger.info(f"🔍 Existing dynamic_fields keys: {list(dynamic_fields.keys())}")
-    logger.info(f"🔍 Existing obligation_data: {dynamic_fields.get('obligation_data', {})}")
+    logger.info(f"🔍 BEFORE UPDATE - Existing dynamic_fields keys: {list(dynamic_fields.keys())}")
+    logger.info(f"🔍 BEFORE UPDATE - Existing personal_details: {dynamic_fields.get('personal_details', {})}")
+    logger.info(f"🔍 BEFORE UPDATE - Existing financial_details: {dynamic_fields.get('financial_details', {})}")
     logger.info("🔍 ==========================================")
     
-    # Update dynamic_fields with obligation data
-    # Preserve existing data and merge new data
+    # 🎯 CRITICAL FIX: Deep merge obligation data to preserve other sections
+    # Instead of replacing, we need to intelligently merge nested structures
+    
+    def deep_merge(base_dict, update_dict):
+        """Deep merge update_dict into base_dict, preserving existing nested data"""
+        result = base_dict.copy()
+        for key, value in update_dict.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                # Recursively merge nested dictionaries
+                result[key] = deep_merge(result[key], value)
+            else:
+                # Replace or add the value
+                result[key] = value
+        return result
+    
+    # Apply deep merge for obligation data
     for key, value in obligation_data.items():
         if key not in ['_id', 'id']:  # Skip ID fields
-            dynamic_fields[key] = value
+            if key in dynamic_fields and isinstance(dynamic_fields[key], dict) and isinstance(value, dict):
+                # Deep merge for nested objects like personal_details, financial_details
+                dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
+            else:
+                # Direct assignment for non-dict values or new keys
+                dynamic_fields[key] = value
+    
+    logger.info(f"🔍 AFTER UPDATE - dynamic_fields keys: {list(dynamic_fields.keys())}")
+    logger.info(f"🔍 AFTER UPDATE - personal_details: {dynamic_fields.get('personal_details', {})}")
+    logger.info(f"🔍 AFTER UPDATE - financial_details: {dynamic_fields.get('financial_details', {})}")
     
     # Prepare update data
     update_data = {
@@ -781,6 +898,33 @@ async def update_login_lead_obligations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update obligations"
         )
+    
+    # 📝 Create activity log for obligation updates
+    lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
+    obligations_count = len(obligation_data.get('obligations', []))
+    salary = obligation_data.get('salary', '')
+    loan_required = obligation_data.get('loanRequired', '')
+    
+    description = f"Updated Obligation Section"
+    if obligations_count > 0:
+        description += f" ({obligations_count} obligations)"
+    if salary:
+        description += f", Salary: {salary}"
+    if loan_required:
+        description += f", Loan Required: {loan_required}"
+    
+    await login_leads_db._log_activity(
+        login_lead_id=login_lead_id,
+        activity_type='obligation_update',
+        description=description,
+        user_id=user_id,
+        details={
+            'obligations_count': obligations_count,
+            'salary': salary,
+            'loan_required': loan_required,
+            'timestamp': get_ist_now().isoformat()
+        }
+    )
     
     # ⚡ CACHE INVALIDATION
     try:
@@ -827,6 +971,25 @@ async def add_note_to_login_lead(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add note"
         )
+    
+    # 📝 Create activity log for note addition
+    lead_name = f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip() or "Lead"
+    note_content = note.note if hasattr(note, 'note') else note.content if hasattr(note, 'content') else ""
+    note_preview = note_content[:50] + "..." if len(note_content) > 50 else note_content
+    
+    description = f"Added note: {note_preview}"
+    
+    await login_leads_db._log_activity(
+        login_lead_id=login_lead_id,
+        activity_type='note_added',
+        description=description,
+        user_id=user_id,
+        details={
+            'note_id': note_id,
+            'note_length': len(note_content),
+            'timestamp': get_ist_now().isoformat()
+        }
+    )
     
     # ⚡ CACHE INVALIDATION
     try:
@@ -986,6 +1149,30 @@ async def upload_login_lead_documents(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No files were uploaded"
         )
+    
+    # 📝 Create activity log for document uploads
+    lead_name = f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip() or "Lead"
+    file_count = len(document_ids)
+    file_names = [f.filename for f in files if f.filename]
+    
+    description = f"Uploaded {file_count} document{'s' if file_count > 1 else ''}"
+    if file_count <= 3:
+        description += f": {', '.join(file_names)}"
+    description += f" ({category})"
+    
+    await login_leads_db._log_activity(
+        login_lead_id=login_lead_id,
+        activity_type='document_upload',
+        description=description,
+        user_id=user_id,
+        details={
+            'document_count': file_count,
+            'category': category,
+            'document_type': document_type,
+            'filenames': file_names,
+            'timestamp': get_ist_now().isoformat()
+        }
+    )
     
     return {"uploaded_files": document_ids}
 
