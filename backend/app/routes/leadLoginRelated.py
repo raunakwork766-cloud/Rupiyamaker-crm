@@ -1814,7 +1814,9 @@ async def get_login_department_leads(
                     lead_dict["creator_name"] = f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip()
             
             # Add essential login department fields
-            lead_dict["login_date"] = lead_dict.get("login_department_sent_date", "")
+            # Use login_date (set during creation), fallback to other date fields if not present
+            if not lead_dict.get("login_date"):
+                lead_dict["login_date"] = lead_dict.get("login_created_at") or lead_dict.get("login_department_sent_date") or lead_dict.get("created_at", "")
             
             # Add team/department name efficiently
             department_id = lead_dict.get("department_id")
