@@ -41,10 +41,11 @@ async def create_field_update_activity(
     login_lead_id: str,
     user_id: str,
     field_changes: Dict[str, Any],
-    lead_name: str = "Lead"
+    lead_name: str = "Lead",
+    old_lead_data: Dict[str, Any] = None
 ):
     """
-    Create an activity log for field updates in login lead
+    Create a detailed activity log for field updates in login lead
     
     Args:
         login_leads_db: LoginLeadsDB instance
@@ -52,34 +53,156 @@ async def create_field_update_activity(
         user_id: ID of user making the change
         field_changes: Dictionary of field names to their new values
         lead_name: Name of the lead for better readability
+        old_lead_data: Previous lead data to show old vs new values
     """
     try:
-        # Create a human-readable description of changes
+        # Field name mapping for better readability
+        field_labels = {
+            'first_name': 'First Name',
+            'last_name': 'Last Name',
+            'email': 'Email',
+            'phone': 'Phone',
+            'mobile_number': 'Mobile Number',
+            'alternative_phone': 'Alternative Phone',
+            'address': 'Address',
+            'status': 'Status',
+            'sub_status': 'Sub Status',
+            'priority': 'Priority',
+            'loan_type': 'Loan Type',
+            'loan_amount': 'Loan Amount',
+            'processing_bank': 'Processing Bank',
+            'assigned_to': 'Assigned To',
+            'department_id': 'Department',
+            'city': 'City',
+            'pincode': 'Pincode',
+            'company_name': 'Company Name',
+            'cibil_score': 'CIBIL Score',
+            'salary': 'Salary',
+            'loan_required': 'Loan Required',
+        }
+        
         changes_summary = []
-        for field, value in field_changes.items():
+        field_details = {}
+        
+        for field, new_value in field_changes.items():
             # Skip internal fields
-            if field in ['updated_at', 'updated_by', '_id', 'id']:
+            if field in ['updated_at', 'updated_by', '_id', 'id', 'created_at', 'created_by']:
                 continue
             
-            # Format field name nicely
-            field_name = field.replace('_', ' ').title()
+            # Get old value for comparison if available
+            old_value = None
+            if old_lead_data:
+                old_value = old_lead_data.get(field)
             
-            # Handle different value types
-            if isinstance(value, dict):
-                changes_summary.append(f"{field_name} updated")
-            elif isinstance(value, list):
-                changes_summary.append(f"{field_name} updated ({len(value)} items)")
-            elif value:
-                # Truncate long values
-                str_value = str(value)
-                if len(str_value) > 50:
-                    str_value = str_value[:47] + "..."
-                changes_summary.append(f"{field_name}: {str_value}")
+            # Get readable field name
+            field_label = field_labels.get(field, field.replace('_', ' ').title())
+            
+            # Handle different value types with detailed formatting
+            if isinstance(new_value, dict) and field == 'dynamic_fields':
+                # For dynamic_fields, dig deeper to see what actually changed
+                if old_lead_data and 'dynamic_fields' in old_lead_data:
+                    old_dynamic = old_lead_data['dynamic_fields'] or {}
+                    new_dynamic = new_value or {}
+                    
+                    # Recursive function to compare nested dictionaries
+                    def compare_nested(old_dict, new_dict, path=""):
+                        """Compare two nested dictionaries and find specific changes"""
+                        changes = []
+                        
+                        for key, new_val in new_dict.items():
+                            if key in ['updated_at', 'updated_by']:
+                                continue
+                            
+                            old_val = old_dict.get(key) if isinstance(old_dict, dict) else None
+                            full_path = f"{path}.{key}" if path else key
+                            
+                            if isinstance(new_val, dict) and isinstance(old_val, dict):
+                                # Recursively compare nested dicts
+                                nested_changes = compare_nested(old_val, new_val, full_path)
+                                changes.extend(nested_changes)
+                            elif new_val != old_val:
+                                # Found a change - format it nicely
+                                field_name = field_labels.get(key, key.replace('_', ' ').title())
+                                
+                                if old_val is not None and old_val != '':
+                                    # Show old -> new
+                                    old_str = str(old_val)
+                                    new_str = str(new_val)
+                                    if len(old_str) > 30:
+                                        old_str = old_str[:27] + "..."
+                                    if len(new_str) > 30:
+                                        new_str = new_str[:27] + "..."
+                                    changes.append({
+                                        'summary': f"{field_name}: {old_str} → {new_str}",
+                                        'field': key,
+                                        'old': old_val,
+                                        'new': new_val
+                                    })
+                                else:
+                                    # New value (no old value)
+                                    new_str = str(new_val)
+                                    if len(new_str) > 50:
+                                        new_str = new_str[:47] + "..."
+                                    changes.append({
+                                        'summary': f"{field_name}: {new_str}",
+                                        'field': key,
+                                        'old': None,
+                                        'new': new_val
+                                    })
+                        
+                        return changes
+                    
+                    # Get all nested changes
+                    nested_changes = compare_nested(old_dynamic, new_dynamic)
+                    
+                    if nested_changes:
+                        for change in nested_changes:
+                            changes_summary.append(change['summary'])
+                            field_details[change['field']] = {'old': change['old'], 'new': change['new']}
+                    else:
+                        changes_summary.append("Dynamic fields updated")
+                else:
+                    changes_summary.append("Dynamic fields updated")
+                    
+            elif isinstance(new_value, dict):
+                # Other dict fields
+                changes_summary.append(f"{field_label} updated")
+                field_details[field] = {'type': 'object', 'keys': list(new_value.keys())}
+                
+            elif isinstance(new_value, list):
+                list_desc = f"{field_label}: {len(new_value)} items"
+                if new_value and len(new_value) <= 3:
+                    list_desc = f"{field_label}: {', '.join(str(x) for x in new_value)}"
+                changes_summary.append(list_desc)
+                field_details[field] = {'old': old_value, 'new': new_value, 'count': len(new_value)}
+                
+            elif new_value is not None and new_value != '':
+                # Simple value - show old -> new if different
+                if old_value != new_value:
+                    str_value = str(new_value)
+                    if len(str_value) > 50:
+                        str_value = str_value[:47] + "..."
+                    
+                    if old_value:
+                        old_str = str(old_value)
+                        if len(old_str) > 30:
+                            old_str = old_str[:27] + "..."
+                        changes_summary.append(f"{field_label}: {old_str} → {str_value}")
+                    else:
+                        changes_summary.append(f"{field_label}: {str_value}")
+                    
+                    field_details[field] = {'old': old_value, 'new': new_value}
         
         if not changes_summary:
             return  # No meaningful changes to log
         
-        description = f"Updated {', '.join(changes_summary)}"
+        # Create a clear, readable description
+        if len(changes_summary) == 1:
+            description = f"Updated {changes_summary[0]}"
+        elif len(changes_summary) <= 3:
+            description = f"Updated {', '.join(changes_summary)}"
+        else:
+            description = f"Updated {len(changes_summary)} fields: {', '.join(changes_summary[:2])} and {len(changes_summary) - 2} more"
         
         await login_leads_db._log_activity(
             login_lead_id=login_lead_id,
@@ -88,13 +211,16 @@ async def create_field_update_activity(
             user_id=user_id,
             details={
                 'fields_changed': list(field_changes.keys()),
-                'change_count': len(field_changes),
+                'change_count': len(changes_summary),
+                'field_details': field_details,
                 'timestamp': get_ist_now().isoformat()
             }
         )
         logger.info(f"✅ Activity logged for login lead {login_lead_id}: {description}")
     except Exception as e:
         logger.warning(f"⚠️ Failed to create activity log: {e}")
+        import traceback
+        traceback.print_exc()
 
 async def get_all_subordinates_cached(user_id: str, all_users: List[Dict]) -> List[str]:
     """Get all subordinate user IDs with caching for performance"""
@@ -522,14 +648,15 @@ async def update_login_lead(
     update_data["updated_at"] = get_ist_now().isoformat()
     update_data["updated_by"] = user_id
     
-    # 📝 Create activity log for field updates
+    # 📝 Create activity log for field updates with old vs new comparison
     lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
     await create_field_update_activity(
         login_leads_db=login_leads_db,
         login_lead_id=login_lead_id,
         user_id=user_id,
         field_changes=update_data,
-        lead_name=lead_name
+        lead_name=lead_name,
+        old_lead_data=login_lead  # Pass old data for comparison
     )
     
     # Update the login lead
