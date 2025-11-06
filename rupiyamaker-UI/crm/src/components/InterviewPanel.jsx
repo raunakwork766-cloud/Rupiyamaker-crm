@@ -101,9 +101,88 @@ const InterviewPanel = () => {
   // HR Managers and Admins for filter dropdown
   const [hrManagersAndAdmins, setHrManagersAndAdmins] = useState([]);
 
+  // Permission state for interview module (like Tickets/Warnings)
+  const [permissions, setPermissions] = useState({
+    can_view_all: false,
+    can_delete: false,
+    can_add: false,
+    can_edit: false
+  });
+
+  // Check user permissions for interviews (like Tickets/Warnings)
+  const checkInterviewPermissions = () => {
+    const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+    
+    console.log('🔍 Checking Interview Permissions:', userPermissions);
+    
+    // Check for explicit delete OR all permission
+    const hasDeletePermission = () => {
+      if (Array.isArray(userPermissions)) {
+        for (const perm of userPermissions) {
+          if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
+            if (Array.isArray(perm.actions)) {
+              // Check for explicit delete OR all permission
+              return perm.actions.includes('delete') || perm.actions.includes('all');
+            } else if (perm.actions === 'delete' || perm.actions === 'all' || perm.actions === '*') {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    // Check for all permission (show all interviews)
+    const hasAllPermission = () => {
+      if (Array.isArray(userPermissions)) {
+        for (const perm of userPermissions) {
+          if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
+            if (Array.isArray(perm.actions)) {
+              return perm.actions.includes('all') || perm.actions.includes('*');
+            } else if (perm.actions === 'all' || perm.actions === '*') {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    const calculatedPermissions = {
+      can_view_all: hasAllPermission(),
+      can_delete: hasDeletePermission(),
+      can_add: true, // Default to true for now
+      can_edit: true  // Default to true for now
+    };
+
+    console.log('📋 Interview Permissions:', calculatedPermissions);
+    return calculatedPermissions;
+  };
+
   // Load job opening and interview type options from backend
   useEffect(() => {
     loadDropdownOptions();
+  }, []);
+
+  // Load permissions on mount (like Tickets/Warnings)
+  useEffect(() => {
+    const userPermissions = checkInterviewPermissions();
+    setPermissions(userPermissions);
+  }, []);
+
+  // Listen for permission changes (like Tickets/Warnings)
+  useEffect(() => {
+    const handlePermissionUpdate = () => {
+      console.log('🔄 Interviews - Permissions updated, reloading...');
+      const userPermissions = checkInterviewPermissions();
+      setPermissions(userPermissions);
+    };
+    
+    window.addEventListener('permissionsUpdated', handlePermissionUpdate);
+    
+    return () => {
+      window.removeEventListener('permissionsUpdated', handlePermissionUpdate);
+    };
   }, []);
 
   // Refresh dropdown options when window gains focus (user comes back from settings)
@@ -1727,7 +1806,16 @@ const InterviewPanel = () => {
       <div className="flex flex-wrap gap-4 mb-6 items-center justify-between">
         <div className="flex items-center gap-3">
           {/* Select Button */}
-          {!checkboxVisible ? (
+          {(() => {
+            console.log('🔍 Interview Delete Button Check:', {
+              'permissions': permissions,
+              'permissions.can_delete': permissions?.can_delete,
+              'checkboxVisible': checkboxVisible,
+              'should_show_button': permissions?.can_delete && !checkboxVisible
+            });
+            return null;
+          })()}
+          {permissions?.can_delete && !checkboxVisible ? (
             <button
               className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
               onClick={handleShowCheckboxes}
@@ -1736,7 +1824,7 @@ const InterviewPanel = () => {
                 ? `Select (${selectedInterviews.length})`
                 : "Select"}
             </button>
-          ) : (
+          ) : permissions?.can_delete && checkboxVisible ? (
             <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
               <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                 <input
@@ -1765,7 +1853,7 @@ const InterviewPanel = () => {
                 Cancel
               </button>
             </div>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           {/* Filter Button - Matching LeadCRM exactly */}

@@ -3,9 +3,9 @@
 # Simple Frontend Runner without PM2 dependency
 # This script ensures the frontend always runs
 
-FRONTEND_DIR="/www/wwwroot/rupiyamaker/RupiyaMe/rupiyamaker-UI/crm"
+FRONTEND_DIR="/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm"
 PID_FILE="/var/run/rupiyame-frontend.pid"
-LOG_DIR="/www/wwwroot/rupiyamaker/RupiyaMe/logs"
+LOG_DIR="/www/wwwroot/RupiyaMe/logs"
 
 # Colors
 RED='\033[0;31m'

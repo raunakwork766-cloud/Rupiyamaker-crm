@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-SCRIPT_DIR="/www/wwwroot/rupiyamaker/RupiyaMe"
+SCRIPT_DIR="/www/wwwroot/RupiyaMe"
 RUNNER_SCRIPT="$SCRIPT_DIR/frontend-runner.sh"
 
 echo -e "${BLUE}🚀 RupiyaMaker Frontend Control Panel${NC}"

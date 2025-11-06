@@ -337,17 +337,36 @@ const WarningPage = memo(() => {
   const checkUserPermissions = () => {
     const permLevel = getPermissionLevel('warnings');
     
+    // UPDATED: Add explicit delete permission check (like Tickets)
+    const hasDeletePermission = () => {
+      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      if (Array.isArray(userPermissions)) {
+        for (const perm of userPermissions) {
+          if (perm && (perm.page === 'warnings' || perm.page === 'Warnings')) {
+            if (Array.isArray(perm.actions)) {
+              // Check for explicit delete OR all permission
+              return perm.actions.includes('delete') || perm.actions.includes('all');
+            } else if (perm.actions === 'delete' || perm.actions === 'all') {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
+    
     const permissions = {
       can_view_own: true, // Everyone can view their own records
       can_view_all: canUserViewAll(),
       can_view_team: canUserViewJunior(),
       can_add: canUserCreate(),
       can_edit: canUserViewJunior(), // Junior and All can edit
-      can_delete: canUserViewJunior(), // Junior and All can delete
+      can_delete: hasDeletePermission(), // Check explicit delete permission
       can_export: canUserViewJunior(), // Junior and All can export
       permission_level: permLevel // Store the permission level for use elsewhere
     };
     
+    console.log('⚠️ Warning Permissions:', permissions);
     return permissions;
   };
 
@@ -366,6 +385,21 @@ const WarningPage = memo(() => {
     loadDepartments();
     loadWarnings();
     loadRankings();
+  }, []);
+
+  // Listen for permission changes (like Tickets)
+  useEffect(() => {
+    const handlePermissionUpdate = () => {
+      console.log('🔄 Warnings - Permissions updated, reloading...');
+      const userPermissions = checkUserPermissions();
+      setPermissions(userPermissions);
+    };
+    
+    window.addEventListener('permissionsUpdated', handlePermissionUpdate);
+    
+    return () => {
+      window.removeEventListener('permissionsUpdated', handlePermissionUpdate);
+    };
   }, []);
 
   // Load data when filters or pagination change
@@ -1587,6 +1621,15 @@ const WarningPage = memo(() => {
                             <div className="flex items-center justify-between gap-4 mb-6">
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
+                                {(() => {
+                                  console.log('🔍 Warnings Delete Button Check (Tab 0):', {
+                                    'permissions': permissions,
+                                    'permissions.can_delete': permissions?.can_delete,
+                                    'showCheckboxes': showCheckboxes,
+                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                  });
+                                  return null;
+                                })()}
                                 {permissions?.can_delete && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
@@ -1964,6 +2007,15 @@ const WarningPage = memo(() => {
                               
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
+                                {(() => {
+                                  console.log('🔍 Warnings Delete Button Check (Junior Tab):', {
+                                    'permissions': permissions,
+                                    'permissions.can_delete': permissions?.can_delete,
+                                    'showCheckboxes': showCheckboxes,
+                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                  });
+                                  return null;
+                                })()}
                                 {permissions?.can_delete && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
@@ -2223,6 +2275,15 @@ const WarningPage = memo(() => {
                               
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
+                                {(() => {
+                                  console.log('🔍 Warnings Delete Button Check (My Warnings Tab):', {
+                                    'permissions': permissions,
+                                    'permissions.can_delete': permissions?.can_delete,
+                                    'showCheckboxes': showCheckboxes,
+                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                  });
+                                  return null;
+                                })()}
                                 {permissions?.can_delete && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
@@ -2441,6 +2502,15 @@ const WarningPage = memo(() => {
                           
                           <div className="flex items-center gap-3">
                             {/* Select Button / Selection Controls */}
+                            {(() => {
+                              console.log('🔍 Warnings Delete Button Check (Own Warnings Only):', {
+                                'permissions': permissions,
+                                'permissions.can_delete': permissions?.can_delete,
+                                'showCheckboxes': showCheckboxes,
+                                'should_show_button': permissions?.can_delete && !showCheckboxes
+                              });
+                              return null;
+                            })()}
                             {permissions?.can_delete && !showCheckboxes ? (
                               <button
                                 onClick={handleShowCheckboxes}
