@@ -114,6 +114,7 @@ export default function TicketPage() {
     show: true,
     own: true,
     junior: false,
+    all: false, // Add all permission field to initial state
     delete: false // Reset to false - will be set by API or wildcard permissions
   });
 
@@ -122,67 +123,87 @@ export default function TicketPage() {
   const [selectAll, setSelectAll] = useState(false);
   const [showCheckboxes, setShowCheckboxes] = useState(false);
 
-  // Check for wildcard permissions
-  const hasWildcardPermission = () => {
-    const userData = localStorage.getItem('userData');
-    if (userData) {
-      const { userPermissions } = JSON.parse(userData);
-      return userPermissions === '*' || 
-             (userPermissions && userPermissions.pages === '*') ||
-             (userPermissions && userPermissions.includes && userPermissions.includes('*'));
-    }
-    return false;
-  };
-
-  // Get current user ID
-  const getCurrentUserId = () => {
-    const userData = localStorage.getItem('userData');
-    if (userData) {
-      const { user_id } = JSON.parse(userData);
-      return user_id;
-    }
-    return null;
-  };
-
-  // Load permissions
-  const loadPermissions = async () => {
+  // Load permissions - Using same pattern as Tasks for consistency
+  const loadPermissions = () => {
     try {
-      const userId = getCurrentUserId();
+      const userPermissions = getUserPermissions();
+      console.log('🎫 ===== LOADING TICKET PERMISSIONS =====');
+      console.log('🎫 userPermissions:', JSON.stringify(userPermissions, null, 2));
+      console.log('🎫 Type:', typeof userPermissions, '| Is Array:', Array.isArray(userPermissions));
       
-      const queryParams = new URLSearchParams();
-      if (userId) queryParams.append('user_id', userId);
-
-      const response = await API.get(`/tickets/permissions?${queryParams}`);
-      let perms = response.data.permissions || {
-        show: true,
-        own: true,
-        junior: false,
-        delete: false // Add delete permission default
-      };
-      
-      // If user has wildcard permissions, grant all ticket permissions
-      if (hasWildcardPermission()) {
-        perms = {
+      // Check if user is super admin
+      if (isSuperAdmin(userPermissions)) {
+        console.log('✅ User is Super Admin - granting all permissions');
+        setPermissions({
           show: true,
           own: true,
           junior: true,
-          delete: true // Grant delete permission for wildcard users
-        };
-      } else {
-        // Add delete permission based on API response or junior permission
-        perms.delete = perms.delete || perms.junior || false;
+          all: true,
+          delete: true // Super admin gets all permissions including delete
+        });
+        return;
       }
-      
-      setPermissions(perms);
+
+      // Check specific ticket permissions using hasPermission utility (SAME AS TASKS)
+      const ticketPermissions = {
+        show: hasPermission(userPermissions, 'tickets', 'show') || hasPermission(userPermissions, 'Tickets', 'show'),
+        own: hasPermission(userPermissions, 'tickets', 'own') || hasPermission(userPermissions, 'Tickets', 'own'),
+        junior: hasPermission(userPermissions, 'tickets', 'junior') || hasPermission(userPermissions, 'Tickets', 'junior'),
+        all: hasPermission(userPermissions, 'tickets', 'all') || hasPermission(userPermissions, 'Tickets', 'all'),
+        delete: hasPermission(userPermissions, 'tickets', 'delete') || hasPermission(userPermissions, 'Tickets', 'delete')
+      };
+
+      console.log('🔍 Ticket Permissions from hasPermission:', ticketPermissions);
+
+      // Check for wildcard permissions (not the same as "all" permission)
+      if (userPermissions?.tickets === "*" || userPermissions?.Tickets === "*") {
+        console.log('✅ Wildcard permission detected - granting everything');
+        setPermissions({
+          show: true,
+          own: true,
+          junior: true,
+          all: true,
+          delete: true // Wildcard (*) users get delete permission
+        });
+        return;
+      }
+
+      // Set calculated permissions (SIMPLIFIED - use hasPermission results directly like Tasks)
+      if (ticketPermissions.show) {
+        setPermissions({
+          show: true,
+          own: ticketPermissions.own || true,
+          junior: ticketPermissions.junior,
+          all: ticketPermissions.all,
+          delete: ticketPermissions.delete // Use hasPermission result directly
+        });
+        console.log('✅ Final permissions set:', {
+          show: true,
+          own: ticketPermissions.own || true,
+          junior: ticketPermissions.junior,
+          all: ticketPermissions.all,
+          delete: ticketPermissions.delete
+        });
+      } else {
+        setPermissions({
+          show: false,
+          own: false,
+          junior: false,
+          all: false,
+          delete: false
+        });
+        console.log('⚠️ No show permission - denying all access');
+      }
     } catch (error) {
-      // Set default permissions on error
-      const defaultPerms = {
+      console.error('❌ Error loading permissions:', error);
+      // Set minimal default permissions on error
+      setPermissions({
         show: true,
         own: true,
         junior: false,
-        delete: false // Reset to false for proper permission handling
-      };
-      setPermissions(defaultPerms);
+        all: false,
+        delete: false
+      });
     }
   };
 
@@ -251,21 +272,69 @@ export default function TicketPage() {
 
   // Call fetchTickets when component mounts or filter/page changes
   useEffect(() => {
-    const initializeComponent = async () => {
-      await loadPermissions();
-      // After permissions are loaded, fetch tickets and counts immediately
-      fetchTickets();
-      fetchAllTicketsForCounting(permissions);
-      setIsInitialLoad(false); // Mark initial load as complete
-    };
-    initializeComponent();
+    console.log('🚀 Initializing TicketPage component...');
+    const hasLoadedPermissions = loadPermissions(); // Synchronous - sets permissions state
+    
+    // Set a flag to indicate permissions have been loaded
+    if (hasLoadedPermissions !== false) {
+      setIsInitialLoad(false);
+    }
   }, []);
+
+  // Listen for permission changes from other tabs/windows or when permissions are updated
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      // Check if userPermissions changed
+      if (e.key === 'userPermissions' || e.key === null) {
+        console.log('🔄 Permissions changed in localStorage, reloading...');
+        loadPermissions();
+        // Clear cache to force fresh fetch
+        setTicketCache({});
+      }
+    };
+
+    // Listen for storage events (changes from other tabs)
+    window.addEventListener('storage', handleStorageChange);
+
+    // Also listen for custom event for same-tab updates
+    const handlePermissionUpdate = () => {
+      console.log('🔄 Permissions updated (same tab), reloading...');
+      loadPermissions();
+      setTicketCache({});
+    };
+    
+    window.addEventListener('permissionsUpdated', handlePermissionUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('permissionsUpdated', handlePermissionUpdate);
+    };
+  }, []);
+
+  // Fetch tickets when permissions change (junior or all)
+  useEffect(() => {
+    // Skip the initial render - wait for permissions to load first
+    if (isInitialLoad) {
+      console.log('⏳ Skipping fetch - waiting for permissions to load');
+      return;
+    }
+    
+    console.log('📋 Permissions or filter changed, fetching tickets with:', {
+      junior: permissions.junior,
+      all: permissions.all,
+      activeFilter
+    });
+    
+    fetchTickets();
+    fetchAllTicketsForCounting();
+  }, [permissions.junior, permissions.all, activeFilter, isInitialLoad]); // Trigger when permissions or filter change
 
   // Fetch tickets
   const fetchTickets = async () => {
     try {
       // Check cache first for instant display
-      const cacheKey = `${activeFilter}_${permissions.junior}`;
+      // Cache key includes both junior and all permissions since both affect what tickets we see
+      const cacheKey = `${activeFilter}_${permissions.junior}_${permissions.all}`;
       if (ticketCache[cacheKey] && !isInitialLoad) {
         setTickets(ticketCache[cacheKey]);
         setIsLoading(false);
@@ -312,11 +381,48 @@ export default function TicketPage() {
       // Add permission-based filtering parameters
       const apiParams = statusFilter ? { status: statusFilter } : {};
       
-      // If user doesn't have permission to view others' tickets, add user filter
-      if (!permissions.junior) {
-        apiParams.user_id = parsedUserData.user_id;
-        apiParams.created_by_me = true;
+      // CRITICAL: Read permissions fresh from localStorage and check directly
+      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      
+      console.log('🔍 Raw userPermissions from localStorage:', userPermissions);
+      console.log('🔍 Type of userPermissions:', typeof userPermissions, 'Is array:', Array.isArray(userPermissions));
+      console.log('🔍 userData from localStorage:', localStorage.getItem('userData'));
+      
+      // Direct check for tickets permissions without using hasPermission (to avoid "all" wildcard behavior)
+      let hasJunior = false;
+      let hasAll = false;
+      let foundTicketPermission = false;
+      
+      if (Array.isArray(userPermissions)) {
+        for (const perm of userPermissions) {
+          console.log('🔍 Checking permission entry:', perm);
+          if (perm && (perm.page === 'tickets' || perm.page === 'Tickets')) {
+            foundTicketPermission = true;
+            console.log('🎯 Found tickets permission:', perm);
+            if (Array.isArray(perm.actions)) {
+              hasJunior = perm.actions.includes('junior');
+              hasAll = perm.actions.includes('all');
+              console.log('🔍 Actions array check - junior:', hasJunior, 'all:', hasAll);
+            } else if (perm.actions === 'junior') {
+              hasJunior = true;
+            } else if (perm.actions === 'all') {
+              hasAll = true;
+            }
+            break;
+          }
+        }
       }
+      
+      console.log('🔍 Ticket permission found:', foundTicketPermission);
+      console.log('🔍 Direct permission check - junior:', hasJunior, 'all:', hasAll);
+      
+      // IMPORTANT: Backend requires user_id parameter for identification
+      // BUT it handles the actual filtering based on the user's role permissions stored in DB
+      // The frontend doesn't need to do any filtering - backend handles everything
+      // We just pass the status filter
+      
+      console.log('🎫 Fetching tickets with apiParams:', apiParams);
+      console.log('📝 Note: Backend will filter based on user role permissions (junior/all) automatically');
       
       // Fetch tickets efficiently - just one page with reasonable limit
       const response = await API.tickets.getTickets(
@@ -381,20 +487,6 @@ export default function TicketPage() {
     toast.error(errorMessage);
   };
 
-  // Call fetchTickets when component mounts or filter/page changes
-  useEffect(() => {
-    const initializeComponent = async () => {
-      await loadPermissions();
-      // After permissions are loaded, fetch tickets and counts
-      setTimeout(() => {
-        fetchTickets();
-        fetchAllTicketsForCounting(permissions);
-        setIsInitialLoad(false); // Mark initial load as complete
-      }, 100); // Small delay to ensure permissions are set
-    };
-    initializeComponent();
-  }, []);
-
   // Separate useEffect for filter changes (pagination removed)
   useEffect(() => {
     // Don't fetch if it's the initial load (already done in main useEffect)
@@ -402,7 +494,7 @@ export default function TicketPage() {
     if (!isInitialLoad && permissions.show && !isUpdatingTicketStatus) {
       console.log('🔄 Filter changed to:', activeFilter, '- Fetching tickets...');
       // Clear cache for the new filter to force fresh data
-      const cacheKey = `${activeFilter}_${permissions.junior}`;
+      const cacheKey = `${activeFilter}_${permissions.junior}_${permissions.all}`;
       setTicketCache(prev => {
         const newCache = { ...prev };
         delete newCache[cacheKey];
@@ -412,7 +504,7 @@ export default function TicketPage() {
       fetchTickets();
       // Don't refetch counting data on every filter change - only on initial load
     }
-  }, [activeFilter, isInitialLoad, permissions.show, permissions.junior, isUpdatingTicketStatus]); // Added isUpdatingTicketStatus
+  }, [activeFilter, isInitialLoad, permissions.show, permissions.junior, permissions.all, isUpdatingTicketStatus]); // Include permissions.all to refetch when it changes
 
   // Calculate dynamic counts for OpenTicket, CloseTicket, All from ALL tickets (not filtered by active filter)
   
@@ -424,22 +516,44 @@ export default function TicketPage() {
         setAllTicketsForCounting([]);
         return;
       }
-
-      // Use current permissions or the state permissions
-      const permsToUse = currentPermissions || permissions;
       
       const parsedUserData = JSON.parse(userData);
       
       // Fetch all tickets without status filter for counting
       const apiParams = {};
       
+      // CRITICAL: Read permissions fresh from localStorage and check directly
+      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      
+      // Direct check for tickets permissions without using hasPermission (to avoid "all" wildcard behavior)
+      let hasJunior = false;
+      let hasAll = false;
+      
+      if (Array.isArray(userPermissions)) {
+        for (const perm of userPermissions) {
+          if (perm && (perm.page === 'tickets' || perm.page === 'Tickets')) {
+            if (Array.isArray(perm.actions)) {
+              hasJunior = perm.actions.includes('junior');
+              hasAll = perm.actions.includes('all');
+            } else if (perm.actions === 'junior') {
+              hasJunior = true;
+            } else if (perm.actions === 'all') {
+              hasAll = true;
+            }
+            break;
+          }
+        }
+      }
+      
       // If user doesn't have permission to view others' tickets, add user filter
-      if (!permsToUse.junior) {
+      // Check both junior and all permissions - either allows viewing all tickets
+      if (!hasJunior && !hasAll) {
         apiParams.user_id = parsedUserData.user_id;
         apiParams.created_by_me = true;
       } else {
       }
       
+      console.log('📊 Fetching all tickets for counting with direct permissions:', { junior: hasJunior, all: hasAll, filtering: !hasJunior && !hasAll });
       
       // Fetch all tickets for counting - optimized to fetch just one page
       const countingResponse = await API.tickets.getTickets(1, 100, apiParams);
@@ -694,7 +808,8 @@ export default function TicketPage() {
       const parsedUserData = JSON.parse(userData);
       const apiParams = statusFilter ? { status: statusFilter } : {};
       
-      if (!permissions.junior) {
+      // Check both junior and all permissions - either allows viewing all tickets
+      if (!permissions.junior && !permissions.all) {
         apiParams.user_id = parsedUserData.user_id;
         apiParams.created_by_me = true;
       }
@@ -775,7 +890,7 @@ export default function TicketPage() {
         console.log('🔄 Ticket closed: switching to closed tab and refreshing data');
         
         // Clear the cache for the closed filter to force fresh data
-        const closedCacheKey = `closed_${permissions.junior}`;
+        const closedCacheKey = `closed_${permissions.junior}_${permissions.all}`;
         setTicketCache(prev => {
           const newCache = { ...prev };
           delete newCache[closedCacheKey];
@@ -816,7 +931,7 @@ export default function TicketPage() {
         console.log('🔄 Ticket failed: switching to failed tab and refreshing data');
         
         // Clear the cache for the failed filter to force fresh data
-        const failedCacheKey = `failed_${permissions.junior}`;
+        const failedCacheKey = `failed_${permissions.junior}_${permissions.all}`;
         setTicketCache(prev => {
           const newCache = { ...prev };
           delete newCache[failedCacheKey];
@@ -857,7 +972,7 @@ export default function TicketPage() {
         console.log('🔄 Ticket reopened: switching to open tab and refreshing data');
         
         // Clear the cache for the open filter to force fresh data
-        const openCacheKey = `open_${permissions.junior}`;
+        const openCacheKey = `open_${permissions.junior}_${permissions.all}`;
         setTicketCache(prev => {
           const newCache = { ...prev };
           delete newCache[openCacheKey];
@@ -1056,7 +1171,16 @@ export default function TicketPage() {
       <div className="flex justify-between items-center px-8 pt-8">
         <div className="flex items-center gap-3">
           {/* Select Button - Positioned on the left side */}
-          {(permissions.delete || isSuperAdmin(getUserPermissions())) && (
+          {(() => {
+            const isSuperAdminUser = isSuperAdmin(getUserPermissions());
+            const canDelete = permissions.delete || isSuperAdminUser;
+            console.log('🔘 ===== DELETE BUTTON VISIBILITY CHECK =====');
+            console.log('🔘 permissions.delete:', permissions.delete);
+            console.log('🔘 isSuperAdmin:', isSuperAdminUser);
+            console.log('🔘 canDelete (final):', canDelete);
+            console.log('🔘 Full permissions state:', permissions);
+            return canDelete;
+          })() && (
             <div className="flex items-center gap-3">
               {!showCheckboxes ? (
                 <button

@@ -863,13 +863,16 @@ const RoleSettings = () => {
                 if (response.ok) {
                     const updatedUserData = await response.json();
                     
-                    // Update localStorage with new permissions
+                    // Update localStorage with new permissions in userData
                     const currentUserData = JSON.parse(localStorage.getItem('userData'));
                     const updatedData = {
                         ...currentUserData,
                         permissions: updatedUserData.permissions || []
                     };
                     localStorage.setItem('userData', JSON.stringify(updatedData));
+                    
+                    // IMPORTANT: Also update userPermissions separately (used by permission utilities)
+                    localStorage.setItem('userPermissions', JSON.stringify(updatedUserData.permissions || []));
                     
                     // Trigger a custom event to notify other components
                     window.dispatchEvent(new CustomEvent('permissionsUpdated', { 
@@ -1944,7 +1947,9 @@ const RoleSettings = () => {
                                                                                          action === 'assign' ? '👥 Assign' :
                                                                                          action === 'download_obligation' ? '📥 Download' :
                                                                                          action === 'status_update' ? '🔄 Status' :
-                                                                                         action === 'settings' ? '⚙️ Settings' : action}
+                                                                                         action === 'settings' ? '⚙️ Settings' :
+                                                                                         action === 'delete' ? '🗑️ Delete' :
+                                                                                         action === 'reassignment_popup' ? '🔄 Reassignment' : action}
                                                                                     </span>
                                                                                 </label>
                                                                             ))}
@@ -2012,7 +2017,16 @@ const RoleSettings = () => {
                                                                          action === 'own' ? '👤 Own' : 
                                                                          action === 'junior' ? '🔸 Junior' : 
                                                                          action === 'all' ? '🔑 All' : 
-                                                                         action === 'settings' ? '⚙️ Settings' : action}
+                                                                         action === 'settings' ? '⚙️ Settings' : 
+                                                                         action === 'delete' ? '🗑️ Delete' : 
+                                                                         action === 'add' ? '➕ Add' :
+                                                                         action === 'edit' ? '✏️ Edit' :
+                                                                         action === 'post' ? '📝 Post' :
+                                                                         action === 'channel' ? '📺 Channel' :
+                                                                         action === 'password' ? '🔑 Password' :
+                                                                         action === 'role' ? '👥 Role' :
+                                                                         action === 'manage' ? '⚙️ Manage' :
+                                                                         action === 'send' ? '📤 Send' : action}
                                                                     </span>
                                                                 </label>
                                                             ))}

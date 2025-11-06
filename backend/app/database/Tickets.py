@@ -240,20 +240,31 @@ class TicketsDB:
         """
         # Check if user has ticket:view permission (can see all tickets) - includes "all" permissions
         has_view_permission = False
+        
+        # DEBUG: Log what we're checking
+        print(f"🔍 Database - Checking permissions for user {user_id}")
+        print(f"🔍 Database - Permissions received: {permissions}")
+        
         if permissions:
             for perm in permissions:
+                print(f"🔍 Database - Checking permission: {perm}")
+                # IMPORTANT: Only "all" permission or super admin can see ALL tickets
+                # "show" permission just allows seeing the tickets page, not all tickets
                 if (is_super_admin_permission(perm)) or \
-                   (perm.get("page") == "ticket" and 
+                   ((perm.get("page") == "ticket" or perm.get("page") == "tickets" or perm.get("page") == "Tickets") and 
                     (perm.get("actions") == "*" or 
                      perm.get("actions") == "all" or
-                     (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "all" in perm.get("actions") or "show" in perm.get("actions"))) or
-                     perm.get("actions") == "show")):
+                     (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "all" in perm.get("actions"))))):
                     has_view_permission = True
+                    print(f"✅ Database - User {user_id} has view ALL permission!")
                     break
+        
+        print(f"🎯 Database - Final has_view_permission: {has_view_permission}")
         
         if has_view_permission:
             # User can see all tickets
             filter_dict = {}
+            print(f"✅ Database - Returning ALL tickets (no user filter)")
         else:
             # User can only see tickets they created or are assigned to
             filter_dict = {
@@ -262,6 +273,7 @@ class TicketsDB:
                     {"assigned_users": {"$in": [user_id]}}
                 ]
             }
+            print(f"🔒 Database - Returning only user's own tickets (user filter applied)")
         
         # Merge additional filters
         if additional_filters:

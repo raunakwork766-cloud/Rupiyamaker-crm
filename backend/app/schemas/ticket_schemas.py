@@ -146,3 +146,11 @@ class TicketFilterSchema(BaseModel):
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     search: Optional[str] = None  # Search in subject and description
+
+class TicketPermissions(BaseModel):
+    """Schema for ticket permissions"""
+    show: bool = Field(True, description="Can view tickets")
+    own: bool = Field(True, description="Can view own tickets")
+    junior: bool = Field(False, description="Can view and manage subordinate tickets")
+    all: bool = Field(False, description="Can view and manage all tickets")
+    delete: bool = Field(False, description="Can delete tickets")

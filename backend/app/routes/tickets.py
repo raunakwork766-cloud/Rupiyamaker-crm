@@ -34,7 +34,7 @@ from app.schemas.ticket_schemas import (
     TicketCreateSchema, TicketUpdateSchema, TicketResponseSchema,
     TicketListResponseSchema, CommentCreateSchema, CommentResponseSchema,
     TicketAssignSchema, TicketCloseSchema, TicketStatsSchema,
-    UserAssignmentSchema, TicketFilterSchema
+    UserAssignmentSchema, TicketFilterSchema, TicketPermissions
 )
 from app.utils.permissions import PermissionManager
 from app.utils.common_utils import get_current_user_id
@@ -169,6 +169,113 @@ async def batch_get_user_details(user_ids: set, users_db: UsersDB) -> Dict[str, 
     
     return user_lookup
 
+async def get_local_user_permissions(user_id: str) -> List[Dict[str, Any]]:
+    """Get user permissions for tickets - local implementation"""
+    try:
+        # Get database instances from centralized source
+        from app.database import get_database_instances
+        db_instances = get_database_instances()
+        user_db = db_instances['users']
+        role_db = db_instances['roles']
+        
+        user = await user_db.get_user(user_id)
+        if not user:
+            return []
+        
+        role_id = user.get('role_id')
+        if not role_id:
+            return []
+        
+        role = await role_db.get_role(str(role_id))
+        if not role:
+            return []
+        
+        return role.get('permissions', [])
+    except Exception as e:
+        print(f"[ERROR] Failed to get user permissions: {e}")
+        return []
+
+def is_super_admin_permission(perm: Dict[str, Any]) -> bool:
+    """Check if permission grants super admin access"""
+    if isinstance(perm, dict):
+        page = perm.get("page", "")
+        actions = perm.get("actions", "")
+        return (page == "*" and actions == "*") or \
+               (page == "global" and actions == "*") or \
+               (page == "*") or \
+               (actions == "*" and page in ["tickets", "*"])
+    return False
+
+async def get_user_ticket_permissions(user_id: str) -> TicketPermissions:
+    """Get ticket-specific permissions for a user"""
+    try:
+        permissions = await get_local_user_permissions(user_id)
+        
+        # Check if user is super admin (wildcard permissions)
+        is_super_admin = any(
+            is_super_admin_permission(perm) for perm in permissions
+        )
+        
+        # Super admin gets all permissions
+        if is_super_admin:
+            return TicketPermissions(
+                show=True,
+                own=True,
+                junior=True,
+                all=True,
+                delete=True
+            )
+        
+        # Check for ticket-specific permissions
+        has_show = False
+        has_own = False
+        has_junior = False
+        has_all = False
+        has_delete = False
+        
+        for perm in permissions:
+            if isinstance(perm, dict):
+                page = perm.get("page", "")
+                actions = perm.get("actions", [])
+                
+                # Handle both string and list actions
+                if isinstance(actions, str):
+                    actions = [actions]
+                
+                # Check if this permission is for tickets
+                if page in ["tickets", "ticket"]:
+                    if "show" in actions:
+                        has_show = True
+                    if "own" in actions:
+                        has_own = True
+                    if "junior" in actions:
+                        has_junior = True
+                    if "all" in actions:
+                        has_all = True
+                    if "delete" in actions:
+                        has_delete = True
+        
+        # Build permission object
+        return TicketPermissions(
+            show=has_show or has_own or has_junior or has_all,
+            own=has_own or has_junior or has_all,
+            junior=has_junior or has_all,
+            all=has_all,
+            delete=has_delete or has_all  # All permission includes delete
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to get ticket permissions: {e}")
+        return TicketPermissions()
+
+@router.get("/permissions")
+async def get_ticket_permissions(user_id: str = Query(..., description="User _id making the request")):
+    """Get ticket permissions for current user"""
+    try:
+        permissions = await get_user_ticket_permissions(user_id)
+        return {"success": True, "permissions": permissions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get permissions: {str(e)}")
+
 @router.post("/", response_model=TicketResponseSchema)
 async def create_ticket(
     ticket_data: TicketCreateSchema,
@@ -254,6 +361,9 @@ async def list_tickets(
         permissions = await PermissionManager.get_user_permissions(
             current_user_id, users_db, roles_db
         )
+        
+        # DEBUG: Log permissions for troubleshooting
+        print(f"🔍 Backend - User {current_user_id} permissions:", permissions)
         
         # Build database-level filters (OPTIMIZATION: moved from Python to MongoDB)
         additional_filters = {}

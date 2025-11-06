@@ -308,11 +308,14 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
+        // Build query params
+        // IMPORTANT: Backend requires user_id for authentication, but handles filtering based on role permissions
+        // The backend will decide what tickets to return based on the user's role permissions in the database
         const queryParams = new URLSearchParams({
-            user_id: userId,
+            user_id: userId,  // Required by backend for user identification
             page: page.toString(),
             per_page: perPage.toString(),
-            ...filters
+            ...filters  // Additional filters like status, etc.
         });
 
         return apiCall(`/tickets?${queryParams}`);
