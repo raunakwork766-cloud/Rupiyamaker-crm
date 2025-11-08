@@ -162,14 +162,22 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
             throw new Error('No authentication token found');
         }
         
+        // Get user_id from localStorage
+        const userData = localStorage.getItem('userData');
+        if (!userData) {
+            throw new Error('No user data found in localStorage');
+        }
+        const { user_id } = JSON.parse(userData);
+        
         const url = roleId 
-            ? `${API_BASE_URL}/roles/${roleId}`
-            : `${API_BASE_URL}/roles`;
+            ? `${API_BASE_URL}/roles/${roleId}?user_id=${user_id}`
+            : `${API_BASE_URL}/roles?user_id=${user_id}`;
         
         const method = roleId ? 'PUT' : 'POST';
         
         console.log(`🔍 DEBUG: URL: ${url}`);
         console.log(`🔍 DEBUG: Method: ${method}`);
+        console.log(`🔍 DEBUG: user_id: ${user_id}`);
         console.log(`🔍 DEBUG: Request body:`, JSON.stringify(roleData, null, 2));
         
         // Step 1: Update the role
@@ -206,25 +214,23 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
         console.log('✅ Role updated successfully:', result);
         
         // Step 2: Check if current user's role was affected
-        const userData = localStorage.getItem('userData');
-        if (userData) {
-            const { role_id } = JSON.parse(userData);
-            const updatedRoleId = roleId || result.id || result._id;
+        // userData already retrieved earlier in the function
+        const { role_id } = JSON.parse(userData);
+        const updatedRoleId = roleId || result.id || result._id;
+        
+        console.log('🔍 DEBUG: Current user role_id:', role_id);
+        console.log('🔍 DEBUG: Updated role ID:', updatedRoleId);
+        
+        if (role_id === updatedRoleId || role_id === roleId) {
+            console.log('🎯 Current user\'s role was updated - refreshing permissions immediately');
             
-            console.log('🔍 DEBUG: Current user role_id:', role_id);
-            console.log('🔍 DEBUG: Updated role ID:', updatedRoleId);
+            // Wait a brief moment for backend to process the role update
+            await new Promise(resolve => setTimeout(resolve, 500));
             
-            if (role_id === updatedRoleId || role_id === roleId) {
-                console.log('🎯 Current user\'s role was updated - refreshing permissions immediately');
-                
-                // Wait a brief moment for backend to process the role update
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Refresh permissions immediately
-                await refreshCurrentUserPermissions();
-            } else {
-                console.log('ℹ️ Updated role does not affect current user');
-            }
+            // Refresh permissions immediately
+            await refreshCurrentUserPermissions();
+        } else {
+            console.log('ℹ️ Updated role does not affect current user');
         }
         
         return result;

@@ -11,7 +11,7 @@ class RoleBase(BaseModel):
     description: Optional[str] = None
     department_id: Optional[str] = None
     team_id: Optional[str] = None
-    reporting_id: Optional[str] = None
+    reporting_ids: List[str] = []  # Changed from reporting_id to reporting_ids (array)
     is_active: bool = True
     permissions: List[PermissionItem] = []
 
@@ -23,7 +23,7 @@ class RoleUpdate(BaseModel):
     description: Optional[str] = None
     department_id: Optional[str] = None
     team_id: Optional[str] = None
-    reporting_id: Optional[str] = None
+    reporting_ids: Optional[List[str]] = None  # Changed from reporting_id to reporting_ids (array)
     is_active: Optional[bool] = None
     permissions: Optional[List[PermissionItem]] = None
 
@@ -45,7 +45,7 @@ class RoleResponse(BaseModel):
     description: Optional[str] = None
     department_id: Optional[str] = None
     team_id: Optional[str] = None
-    reporting_id: Optional[str] = None
+    reporting_ids: List[str] = []  # Changed from reporting_id to reporting_ids (array)
     is_active: bool = True
     permissions: List[PermissionItem] = []
     created_at: datetime

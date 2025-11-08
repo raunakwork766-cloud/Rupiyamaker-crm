@@ -117,16 +117,33 @@ async def create_role(
                 detail=f"Department with ID {role.department_id} not found"
             )
     
-    # Validate reporting_id if provided
-    if role.reporting_id:
-        reporting_role = await roles_db.get_role(role.reporting_id)
-        if not reporting_role:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Reporting role with ID {role.reporting_id} not found"
-            )
+    # Validate reporting_ids if provided (multiple reporting roles)
+    if role.reporting_ids:
+        for reporting_id in role.reporting_ids:
+            # Check if reporting role exists
+            reporting_role = await roles_db.get_role(reporting_id)
+            if not reporting_role:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Reporting role with ID {reporting_id} not found"
+                )
+            
+            # Prevent circular reference - role cannot report to itself
+            # This will be checked after creation as well
             
     role_id = await roles_db.create_role(role.dict())
+    
+    # Additional check for circular reference after creation
+    if role.reporting_ids:
+        for reporting_id in role.reporting_ids:
+            if reporting_id == role_id:
+                # Rollback - delete the created role
+                await roles_db.delete_role(role_id)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="A role cannot report to itself"
+                )
+    
     return {"id": role_id}
 
 @router.get("/", response_model=List[RoleResponse])
@@ -151,18 +168,27 @@ async def list_roles(
     if is_active is not None:
         filter_dict["is_active"] = is_active
         
-    # Special handling for reporting_id filter
+    # Special handling for reporting_id filter (backward compatibility)
+    # Now we support filtering by reporting_ids array
     if reporting_id:
         # None is a special case for top-level roles
         if reporting_id.lower() == "null":
-            filter_dict["reporting_id"] = None
+            filter_dict["$or"] = [
+                {"reporting_ids": {"$in": [None]}},
+                {"reporting_ids": []},
+                {"reporting_id": None}  # Backward compatibility
+            ]
         else:
             if not ObjectIdStr.is_valid(reporting_id):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid reporting_id format: {reporting_id}"
                 )
-            filter_dict["reporting_id"] = reporting_id
+            # Filter roles that have this ID in their reporting_ids array
+            filter_dict["$or"] = [
+                {"reporting_ids": reporting_id},
+                {"reporting_id": reporting_id}  # Backward compatibility
+            ]
     
     roles = await roles_db.list_roles(filter_dict)
     
@@ -172,6 +198,11 @@ async def list_roles(
         # Convert ObjectId to string
         role_dict = convert_object_id(role)
         
+        # Handle backward compatibility - convert reporting_id to reporting_ids
+        reporting_ids = role_dict.get("reporting_ids", [])
+        if not reporting_ids and role_dict.get("reporting_id"):
+            reporting_ids = [role_dict.get("reporting_id")]
+        
         # Create response object with all fields explicitly set
         role_response = {
             "id": str(role_dict.get("_id", role_dict.get("id", ""))),
@@ -179,7 +210,7 @@ async def list_roles(
             "description": role_dict.get("description"),
             "department_id": role_dict.get("department_id"),
             "team_id": role_dict.get("team_id"),
-            "reporting_id": role_dict.get("reporting_id"),  # This is the role ID this role reports to
+            "reporting_ids": reporting_ids,  # Now returns array of role IDs this role reports to
             "is_active": role_dict.get("is_active", True),
             "permissions": role_dict.get("permissions", []),
             "created_at": role_dict.get("created_at"),
@@ -298,32 +329,34 @@ async def update_role(
                     detail=f"Department with ID {update_data['department_id']} not found"
                 )
 
-    # If reporting_id is being updated, validate it
-    if "reporting_id" in update_data and update_data["reporting_id"] != existing_role.get("reporting_id"):
-        # Check for circular reference
-        if update_data["reporting_id"] == str(existing_role["_id"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Role cannot report to itself"
-            )
-            
-        # Check if this would create a circular reporting chain
-        if update_data["reporting_id"] is not None:
-            reporting_role = await roles_db.get_role(update_data["reporting_id"])
-            if not reporting_role:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Reporting role with ID {update_data['reporting_id']} not found"
-                )
-                
-            # Check if the new manager reports to this role (would create a loop)
-            role_chain = await roles_db.get_reporting_chain(update_data["reporting_id"])
-            for r in role_chain:
-                if str(r["_id"]) == role_id:
+    # If reporting_ids is being updated, validate them (multiple reporting roles)
+    if "reporting_ids" in update_data:
+        reporting_ids = update_data["reporting_ids"]
+        if reporting_ids:  # If not empty array
+            for reporting_id in reporting_ids:
+                # Check for circular reference - role cannot report to itself
+                if reporting_id == str(existing_role["_id"]):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="This would create a circular reporting structure"
+                        detail="A role cannot report to itself"
                     )
+                
+                # Validate that reporting role exists
+                reporting_role = await roles_db.get_role(reporting_id)
+                if not reporting_role:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Reporting role with ID {reporting_id} not found"
+                    )
+                    
+                # Check if the new manager reports to this role (would create a loop)
+                reporting_chain = await roles_db.get_reporting_chain(reporting_id)
+                for chain_role in reporting_chain:
+                    if str(chain_role["_id"]) == str(existing_role["_id"]):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot create circular reporting relationship with role '{reporting_role.get('name', 'Unknown')}'"
+                        )
     
     # Update the role
     success = await roles_db.update_role(role_id, update_data)
@@ -458,3 +491,25 @@ async def get_users_one_level_above(
         })
     
     return result
+
+@router.post("/migrate-reporting-ids", response_model=Dict[str, Any])
+async def migrate_reporting_ids(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    roles_db: RolesDB = Depends(get_roles_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """
+    Migrate old reporting_id field to new reporting_ids array format.
+    This is a one-time migration endpoint.
+    Only super admins can run this.
+    """
+    # Check if user is super admin
+    await verify_permission(user_id, "settings", "show", users_db, roles_db)
+    
+    # Run migration
+    stats = await roles_db.migrate_reporting_id_to_ids()
+    
+    return {
+        "message": "Migration completed",
+        "stats": stats
+    }

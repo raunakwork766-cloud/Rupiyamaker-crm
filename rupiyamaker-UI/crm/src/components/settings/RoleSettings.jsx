@@ -212,21 +212,89 @@ const RoleSettings = () => {
         }
     };
 
-    const buildTree = (items, parentIdField = 'reporting_id') => {
+    const buildTree = (items, parentIdField = 'reporting_ids') => {
+        console.log('🌳 buildTree called with items:', items);
+        
         if (!Array.isArray(items) || items.length === 0) {
+            console.log('⚠️ buildTree: No items to build tree');
             return [];
         }
         
-        const map = new Map(items.map((item, i) => [item.id || item._id, i]));
-        const tree = [];
-        items.forEach(item => item.children = []);
+        // For roles with multiple reporting relationships, we'll create separate instances
+        // This allows the same role to appear under multiple managers in the tree
+        const expandedItems = [];
+        const itemMap = new Map();
+        
         items.forEach(item => {
-            if (item[parentIdField] !== null && item[parentIdField] !== undefined && map.has(item[parentIdField])) {
-                items[map.get(item[parentIdField])].children.push(item);
+            const itemId = item.id || item._id;
+            itemMap.set(itemId, item);
+            
+            // Support both new reporting_ids (array) and old reporting_id (single)
+            const reportingIds = item.reporting_ids || (item.reporting_id ? [item.reporting_id] : []);
+            
+            if (reportingIds.length === 0) {
+                // Top-level role - add once
+                expandedItems.push({ ...item, children: [], _originalId: itemId });
             } else {
-                tree.push(item);
+                // Role with reporting relationships - create an instance for each parent
+                reportingIds.forEach((reportingId, index) => {
+                    expandedItems.push({
+                        ...item,
+                        children: [],
+                        _originalId: itemId,
+                        _parentId: reportingId,
+                        _isMultipleReporting: reportingIds.length > 1,
+                        _reportingIndex: index,
+                        _allReportingIds: reportingIds
+                    });
+                });
             }
         });
+        
+        console.log('📋 buildTree: Created', expandedItems.length, 'expanded items from', items.length, 'original items');
+        
+        // Now build the tree from expanded items
+        const tree = [];
+        const expandedMap = new Map();
+        
+        expandedItems.forEach((item, idx) => {
+            const uniqueKey = item._parentId 
+                ? `${item._originalId}_${item._parentId}` 
+                : item._originalId;
+            expandedMap.set(uniqueKey, item);
+        });
+        
+        expandedItems.forEach(item => {
+            const itemId = item._originalId;
+            const parentId = item._parentId;
+            
+            console.log(`📌 Processing: ${item.name}, parentId:`, parentId);
+            
+            if (!parentId) {
+                // Top-level role
+                tree.push(item);
+                console.log(`   ⭐ Added ${item.name} as top-level role`);
+            } else {
+                // Find parent - check all expanded items for this parent
+                let parentFound = false;
+                expandedItems.forEach(potentialParent => {
+                    if (potentialParent._originalId === parentId) {
+                        potentialParent.children.push(item);
+                        parentFound = true;
+                        console.log(`   ✅ Added ${item.name} as child of ${potentialParent.name}`);
+                    }
+                });
+                
+                if (!parentFound) {
+                    console.log(`   ⚠️ Parent ${parentId} not found, adding to top level`);
+                    tree.push(item);
+                }
+            }
+        });
+        
+        console.log('🎯 buildTree result - Top level roles:', tree.length);
+        console.log('🌲 Tree structure:', tree);
+        
         return tree;
     };
 
@@ -796,11 +864,19 @@ const RoleSettings = () => {
                 });
             }
             
+            // Handle backward compatibility for reporting_id -> reporting_ids migration
+            let reportingIds = role.reporting_ids || [];
+            if (!reportingIds.length && role.reporting_id) {
+                reportingIds = [role.reporting_id];
+            }
+            // Filter out empty strings
+            reportingIds = reportingIds.filter(id => id);
+            
             setFormData({
                 name: role.name || '',
                 description: role.description || '',
                 department_id: role.department_id || null,
-                reporting_id: role.reporting_id || null,
+                reporting_ids: reportingIds,  // Changed from reporting_id to reporting_ids (array)
                 permissions: permissionsObj
             });
         } else {
@@ -808,7 +884,7 @@ const RoleSettings = () => {
                 name: '',
                 description: '',
                 department_id: null,
-                reporting_id: null,
+                reporting_ids: [],  // Changed from reporting_id to reporting_ids (array)
                 permissions: {}
             });
         }
@@ -829,7 +905,7 @@ const RoleSettings = () => {
     const closeModal = () => {
         setIsModalVisible(false);
         setEditingRole(null);
-        setFormData({ name: '', description: '', department_id: null, reporting_id: null, permissions: {} });
+        setFormData({ name: '', description: '', department_id: null, reporting_ids: [], permissions: {} });  // Changed from reporting_id to reporting_ids
         // Reset hierarchical navigation states
         setShowMainDepartments(true);
         setSelectedMainDepartment(null);
@@ -902,6 +978,19 @@ const RoleSettings = () => {
                 permissions: { 
                     'SuperAdmin': ['*'] 
                 } 
+            });
+            return;
+        }
+        
+        // Special handling for SuperAdmin - when unchecked, remove it completely
+        if (module === 'SuperAdmin' && !checked) {
+            console.log('SuperAdmin unchecked - removing SuperAdmin permission');
+            // Remove SuperAdmin permission completely
+            const newPerms = { ...formData.permissions };
+            delete newPerms.SuperAdmin;
+            setFormData({ 
+                ...formData, 
+                permissions: newPerms 
             });
             return;
         }
@@ -1256,7 +1345,17 @@ const RoleSettings = () => {
         try {
             const rolesList = roles.map(role => {
                 const dept = departments.find(d => (d.id || d._id) === role.department_id);
-                const reportingRole = roles.find(r => (r.id || r._id) === role.reporting_id);
+                
+                // Handle multiple reporting roles (backward compatible)
+                let reportingRoleNames = 'None';
+                const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+                if (reportingIds.length > 0) {
+                    const reportingRolesList = reportingIds
+                        .map(rid => roles.find(r => (r.id || r._id) === rid))
+                        .filter(r => r)
+                        .map(r => r.name);
+                    reportingRoleNames = reportingRolesList.length > 0 ? reportingRolesList.join(', ') : 'None';
+                }
                 
                 // Handle permissions properly
                 let permissionList = 'None';
@@ -1281,7 +1380,7 @@ const RoleSettings = () => {
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">${role.name || 'N/A'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">${dept?.name || 'N/A'}</td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">${reportingRole?.name || 'None'}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${reportingRoleNames}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">${permissionList}</td>
                     </tr>
                 `;
@@ -1338,7 +1437,17 @@ const RoleSettings = () => {
             
             const rows = roles.map(role => {
                 const dept = departments.find(d => (d.id || d._id) === role.department_id);
-                const reportingRole = roles.find(r => (r.id || r._id) === role.reporting_id);
+                
+                // Handle multiple reporting roles (backward compatible)
+                let reportingRoleNames = 'None';
+                const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+                if (reportingIds.length > 0) {
+                    const reportingRolesList = reportingIds
+                        .map(rid => roles.find(r => (r.id || r._id) === rid))
+                        .filter(r => r)
+                        .map(r => r.name);
+                    reportingRoleNames = reportingRolesList.length > 0 ? reportingRolesList.join(', ') : 'None';
+                }
                 
                 // Handle permissions properly
                 let permissionList = 'None';
@@ -1362,7 +1471,7 @@ const RoleSettings = () => {
                 return [
                     role.name || 'N/A',
                     dept?.name || 'N/A',
-                    reportingRole?.name || 'None',
+                    reportingRoleNames,
                     permissionList
                 ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
             });
@@ -1407,12 +1516,28 @@ const RoleSettings = () => {
 
     const renderRoleTree = (nodes, isChild = false) => {
         return nodes.map(node => {
-            const hasDirectReports = roles.some(r => r.reporting_id === (node.id || node._id));
+            // Check both old and new format for direct reports
+            const hasDirectReports = roles.some(r => {
+                const reportingIds = r.reporting_ids || (r.reporting_id ? [r.reporting_id] : []);
+                return reportingIds.includes(node.id || node._id);
+            });
+            
+            // Get reporting role names (support multiple)
+            const reportingIds = node.reporting_ids || (node.reporting_id ? [node.reporting_id] : []);
+            const reportingRoleNames = reportingIds
+                .map(rid => {
+                    const reportingRole = roles.find(r => (r.id || r._id) === rid);
+                    return reportingRole ? reportingRole.name : null;
+                })
+                .filter(name => name);
+            
+            // Check if this role has multiple reporting relationships
+            const hasMultipleManagers = reportingRoleNames.length > 1;
             
             return (
                 <div key={node.id || node._id} className={`tree-item my-2 ${isChild ? 'child-item' : ''}`}>
                     <div className="item-content bg-gray-900/50 hover:bg-gray-800/70 transition-colors duration-200 rounded-lg p-4 grid grid-cols-12 gap-4 items-center">
-                        <div className="col-span-3 flex items-center">
+                        <div className="col-span-2 flex items-center">
                             <span 
                                 className={`toggle-icon cursor-pointer user-select-none inline-flex items-center justify-center w-6 h-6 text-gray-400 transition-transform duration-300 ${
                                     node.children && node.children.length > 0 ? 'hover:text-gray-200' : 'invisible'
@@ -1424,13 +1549,13 @@ const RoleSettings = () => {
                             <Users className="h-5 w-5 text-indigo-400 ml-2 mr-3" />
                             <span className="font-medium text-white">{node.name}</span>
                             {node.children && node.children.length > 0 && (
-                                <span className="ml-3 bg-gray-700 text-gray-300 text-xs font-semibold px-2 py-0.5 rounded-full">
+                                <span className="ml-2 bg-gray-700 text-gray-300 text-xs font-semibold px-2 py-0.5 rounded-full">
                                     {node.children.length}
                                 </span>
                             )}
                             {hasDirectReports && (
                                 <span className="ml-2 bg-amber-500/20 text-amber-400 text-xs font-semibold px-2 py-0.5 rounded-full border border-amber-500/30" title="Has direct reports - cannot be deleted">
-                                    Protected
+                                    Manager
                                 </span>
                             )}
                         </div>
@@ -1443,7 +1568,36 @@ const RoleSettings = () => {
                                 <span className="text-gray-400">-</span>
                             )}
                         </div>
-                        <div className="col-span-5 text-sm text-gray-400">
+                        <div className="col-span-3 text-sm">
+                            {reportingRoleNames.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                    {reportingRoleNames.map((name, idx) => (
+                                        <span 
+                                            key={idx}
+                                            className={`px-2 py-1 rounded-md text-xs border inline-flex items-center ${
+                                                hasMultipleManagers && idx > 0
+                                                    ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                                                    : 'bg-green-500/20 text-green-300 border-green-500/30'
+                                            }`}
+                                            title={idx === 0 ? 'Primary reporting' : 'Additional reporting'}
+                                        >
+                                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                            </svg>
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="text-yellow-500 font-semibold text-xs flex items-center">
+                                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                    Top Level
+                                </span>
+                            )}
+                        </div>
+                        <div className="col-span-3 text-sm text-gray-400">
                             {getPermissionsCount(node.permissions) > 0 ? 
                                 `${getPermissionsCount(node.permissions)} permissions` : 
                                 'No permissions'
@@ -1467,7 +1621,7 @@ const RoleSettings = () => {
                     </div>
                     {node.children && node.children.length > 0 && (
                         <div 
-                            className={`children-container ml-7 pl-6 border-l border-indigo-600/50 transition-all duration-400 bg-white/[0.02] rounded-lg mt-2 ${
+                            className={`children-container ml-7 pl-6 border-l-2 border-indigo-500/50 transition-all duration-400 bg-white/[0.02] rounded-lg mt-2 ${
                                 collapsedNodes.has(node.id || node._id) 
                                     ? 'max-h-0 opacity-0 mt-0 pt-0 pb-0 overflow-hidden' 
                                     : 'max-h-none opacity-100 pt-2 pb-4'
@@ -1482,8 +1636,6 @@ const RoleSettings = () => {
     };
 
     const treeData = buildTree(roles);
-    const departmentTree = buildTree(departments, 'parent_id');
-    const roleTree = buildTree(roles);
 
     const totalPermissions = Object.values(allPermissions).flat().length;
     const selectedPermissions = Object.values(formData.permissions).flat().length;
@@ -1527,9 +1679,10 @@ const RoleSettings = () => {
 
             {/* Column Headers */}
             <div className="item-content text-gray-400 uppercase text-xs font-semibold tracking-wide mb-2 px-4 grid grid-cols-12 gap-4">
-                <div className="col-span-3">Role Name</div>
+                <div className="col-span-2">Role Name</div>
                 <div className="col-span-2">Department</div>
-                <div className="col-span-5">Permissions</div>
+                <div className="col-span-3">Reports To</div>
+                <div className="col-span-3">Permissions</div>
                 <div className="col-span-2 text-center">Actions</div>
             </div>
 
@@ -1692,118 +1845,76 @@ const RoleSettings = () => {
                                     </div>
                                 </div>
                             </div>
+                            
+                            {/* Multiple Reporting Roles Selection */}
                             <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-400 mb-2">Reporting Role</label>
-                                <div className="relative reporting-dropdown-container">
-                                    {/* Reporting Role Dropdown Button */}
+                                <label className="block text-sm font-medium text-gray-400 mb-2">Reporting Roles</label>
+                                <div className="space-y-2">
+                                    {/* Display selected reporting roles */}
+                                    {(formData.reporting_ids || []).map((reportingId, index) => {
+                                        const selectedRole = roles.find(r => (r._id || r.id) === reportingId);
+                                        return (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <select
+                                                    value={reportingId}
+                                                    onChange={(e) => {
+                                                        const newReportingIds = [...(formData.reporting_ids || [])];
+                                                        newReportingIds[index] = e.target.value;
+                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                    }}
+                                                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="">Select Reporting Role</option>
+                                                    {roles.filter(r => {
+                                                        const roleId = r._id || r.id;
+                                                        const editingId = editingRole?._id || editingRole?.id;
+                                                        // Don't show current role being edited or already selected roles
+                                                        return roleId !== editingId && 
+                                                               (!(formData.reporting_ids || []).includes(roleId) || roleId === reportingId);
+                                                    }).map(role => {
+                                                        const roleId = role._id || role.id;
+                                                        return (
+                                                            <option key={roleId} value={roleId}>{role.name}</option>
+                                                        );
+                                                    })}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newReportingIds = (formData.reporting_ids || []).filter((_, i) => i !== index);
+                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                    }}
+                                                    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                                    title="Remove this reporting role"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                    
+                                    {/* Add new reporting role button */}
                                     <button
                                         type="button"
-                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex justify-between items-center"
-                                        onClick={() => setShowReportingDropdown(!showReportingDropdown)}
+                                        onClick={() => {
+                                            const newReportingIds = [...(formData.reporting_ids || []), ''];
+                                            setFormData({ ...formData, reporting_ids: newReportingIds });
+                                        }}
+                                        className="w-full border-2 border-dashed border-gray-600 rounded-lg px-3 py-3 text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
                                     >
-                                        <span className="text-left">
-                                            {(() => {
-                                                if (formData.reporting_id === null) {
-                                                    return "No Reporting Role";
-                                                }
-                                                const selectedRole = roles.find(role => 
-                                                    role._id === formData.reporting_id || 
-                                                    role.id === formData.reporting_id
-                                                );
-                                                return selectedRole ? selectedRole.name : "Select Reporting Role";
-                                            })()}
-                                        </span>
-                                        <svg
-                                            className={`w-5 h-5 transition-transform ${showReportingDropdown ? 'rotate-180' : ''}`}
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
+                                        <span className="text-xl">+</span>
+                                        <span>Add Reporting Role</span>
                                     </button>
-
-                                    {/* Reporting Role Dropdown Menu */}
-                                    {showReportingDropdown && (
-                                        <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-xl mt-1 max-h-80 overflow-hidden flex flex-col">
-                                            {/* Header with Search */}
-                                            <div className="p-3 border-b border-gray-200 bg-white sticky top-0">
-                                                <div className="relative">
-                                                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                        </svg>
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:border-blue-400"
-                                                        placeholder="Search roles..."
-                                                        value={reportingSearch}
-                                                        onChange={(e) => setReportingSearch(e.target.value)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Options List */}
-                                            <div className="overflow-y-auto max-h-60">
-                                                {/* No Reporting Role Option */}
-                                                <div
-                                                    className="px-4 py-3 cursor-pointer border-b border-gray-100 transition-colors text-black hover:bg-blue-200"
-                                                    style={{
-                                                        backgroundColor: formData.reporting_id === null ? '#FFFF00' : '',
-                                                        color: '#000000',
-                                                        fontWeight: formData.reporting_id === null ? 'bold' : 'normal'
-                                                    }}
-                                                    onClick={() => {
-                                                        setFormData({...formData, reporting_id: null});
-                                                        setShowReportingDropdown(false);
-                                                        setReportingSearch('');
-                                                        setExpandedReportingRoles(new Set());
-                                                    }}
-                                                >
-                                                    <div className="flex items-center">
-                                                        <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                                                        </svg>
-                                                        No Reporting Role
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 mt-1">No reporting relationship</div>
-                                                </div>
-
-                                                {/* Role Tree */}
-                                                {buildReportingRoleTree().map(role => renderReportingRoleTreeItem(role))}
-
-                                                {/* No Results Message */}
-                                                {buildReportingRoleTree().length === 0 && (
-                                                    <div className="px-4 py-6 text-center text-gray-500">
-                                                        <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                        </svg>
-                                                        <div className="font-medium text-gray-600">
-                                                            {roles.length === 0 
-                                                                ? 'No roles created yet' 
-                                                                : reportingSearch 
-                                                                    ? `No roles found matching "${reportingSearch}"` 
-                                                                    : 'No roles available'
-                                                            }
-                                                        </div>
-                                                        {roles.length === 0 ? (
-                                                            <div className="text-xs mt-2 text-gray-400">
-                                                                Create your first role to establish reporting relationships
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-xs mt-2 text-gray-400">
-                                                                Total roles: {roles.length} | Available for reporting: {buildReportingRoleTree().length}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
+                                    
+                                    {/* Show message if no reporting roles */}
+                                    {(!formData.reporting_ids || formData.reporting_ids.length === 0) && (
+                                        <div className="text-xs text-gray-500 text-center py-2">
+                                            This role doesn't report to anyone
                                         </div>
                                     )}
                                 </div>
                             </div>
+                            
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-gray-400 mb-4">Permissions</label>
                                 

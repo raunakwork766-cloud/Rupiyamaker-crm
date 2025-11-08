@@ -22,7 +22,9 @@ class RolesDB:
             await self.collection.create_index("name", unique=True, background=True)
             # ⚡ PERFORMANCE INDEXES for faster queries
             await self.collection.create_index([("is_active", 1)], background=True)
+            # Index for both old (reporting_id) and new (reporting_ids) for backward compatibility
             await self.collection.create_index([("reporting_id", 1)], sparse=True, background=True)
+            await self.collection.create_index([("reporting_ids", 1)], sparse=True, background=True)
             print("✓ Roles database indexes created successfully")
         except Exception as e:
             print(f"RolesDB index creation warning: {e}")
@@ -42,9 +44,14 @@ class RolesDB:
         role["created_at"] = datetime.now()
         role["updated_at"] = role["created_at"]
         
-        # Set reporting_id to None if not provided
-        if "reporting_id" not in role:
-            role["reporting_id"] = None
+        # Handle both old reporting_id and new reporting_ids
+        # Convert single reporting_id to reporting_ids array for consistency
+        if "reporting_id" in role and role["reporting_id"]:
+            if "reporting_ids" not in role:
+                role["reporting_ids"] = [role["reporting_id"]]
+            del role["reporting_id"]  # Remove old field
+        elif "reporting_ids" not in role:
+            role["reporting_ids"] = []
             
         result = await self.collection.insert_one(role)
         return str(result.inserted_id)
@@ -160,7 +167,7 @@ class RolesDB:
         return role is not None
         
     async def get_direct_reports(self, role_id: str) -> List[dict]:
-        """Get all roles that directly report to this role"""
+        """Get all roles that directly report to this role (supports multiple reporting)"""
         print(f"DEBUG: Getting direct reports for role_id {role_id}")
         if not ObjectId.is_valid(role_id):
             print(f"DEBUG: Invalid role_id format: {role_id}")
@@ -168,10 +175,15 @@ class RolesDB:
             
         # Handle both string and ObjectId formats
         object_role_id = ObjectId(role_id)
+        
+        # Query for roles where this role_id is in their reporting_ids array
+        # Also check old reporting_id field for backward compatibility
         reports = await self._async_to_list(self.collection.find({
             "$or": [
-                {"reporting_id": role_id},         # String ID format
-                {"reporting_id": object_role_id}   # ObjectId format
+                {"reporting_ids": role_id},           # New array format - string ID
+                {"reporting_ids": object_role_id},    # New array format - ObjectId
+                {"reporting_id": role_id},            # Old single format - string ID (backward compatibility)
+                {"reporting_id": object_role_id}      # Old single format - ObjectId (backward compatibility)
             ]
         }))
         
@@ -184,6 +196,7 @@ class RolesDB:
     async def get_all_subordinate_roles(self, role_id: str) -> List[dict]:
         """
         Get all roles that report to this role (any level deep)
+        Supports multiple reporting relationships
         
         Args:
             role_id: Role ID to find subordinates for
@@ -200,8 +213,10 @@ class RolesDB:
         object_role_id = ObjectId(role_id)
         direct_reports = await self._async_to_list(self.collection.find({
             "$or": [
-                {"reporting_id": role_id},
-                {"reporting_id": object_role_id}
+                {"reporting_ids": role_id},           # New array format
+                {"reporting_ids": object_role_id},    # New array format
+                {"reporting_id": role_id},            # Old single format (backward compatibility)
+                {"reporting_id": object_role_id}      # Old single format (backward compatibility)
             ]
         }))
         
@@ -228,40 +243,70 @@ class RolesDB:
         """
         Get the chain of roles this role reports to (up the hierarchy)
         Returns ordered list from immediate manager to top level
+        Supports multiple reporting - will collect all reporting chains
         """
         if not ObjectId.is_valid(role_id):
             return []
             
         chain = []
+        visited = set()  # Prevent infinite loops
         current_role = await self.get_role(role_id)
         
-        while current_role and current_role.get("reporting_id"):
-            manager_role = await self.get_role(current_role["reporting_id"])
-            if manager_role:
-                chain.append(manager_role)
-                current_role = manager_role
-            else:
-                break
+        if not current_role:
+            return []
+        
+        # Get all reporting IDs for this role (support both old and new format)
+        reporting_ids = current_role.get("reporting_ids", [])
+        if not reporting_ids and current_role.get("reporting_id"):
+            # Backward compatibility with single reporting_id
+            reporting_ids = [current_role["reporting_id"]]
+        
+        # For each reporting role, get the chain
+        for reporting_id in reporting_ids:
+            if reporting_id and reporting_id not in visited:
+                visited.add(reporting_id)
+                manager_role = await self.get_role(reporting_id)
+                if manager_role and str(manager_role["_id"]) not in visited:
+                    chain.append(manager_role)
+                    # Recursively get the reporting chain for this manager
+                    manager_chain = await self.get_reporting_chain(str(manager_role["_id"]))
+                    for role in manager_chain:
+                        role_id_str = str(role["_id"])
+                        if role_id_str not in visited:
+                            visited.add(role_id_str)
+                            chain.append(role)
                 
         return chain
         
     async def get_role_hierarchy(self) -> List[dict]:
         """
         Return roles in hierarchy format.
-        Top roles first (reporting_id=None), then organized by reporting structure.
+        Top roles first (reporting_ids empty or None), then organized by reporting structure.
         """
-        # Get top roles (no reporting_id)
-        top_roles = self.list_roles({"reporting_id": None})
+        # Get top roles (no reporting relationships)
+        top_roles = await self.list_roles({
+            "$and": [
+                {"$or": [
+                    {"reporting_ids": {"$exists": False}},
+                    {"reporting_ids": []},
+                    {"reporting_ids": None}
+                ]},
+                {"$or": [
+                    {"reporting_id": {"$exists": False}},
+                    {"reporting_id": None}
+                ]}
+            ]
+        })
         
         # For each top role, recursively get subordinates
         result = []
         for role in top_roles:
-            role_with_reports = self._add_reports_to_role(role)
+            role_with_reports = await self._add_reports_to_role(role)
             result.append(role_with_reports)
             
         return result
         
-    def _add_reports_to_role(self, role: dict) -> dict:
+    async def _add_reports_to_role(self, role: dict) -> dict:
         """Helper method to recursively add direct reports to a role"""
         # Make a copy to avoid modifying the original
         role_copy = {**role}
@@ -271,13 +316,13 @@ class RolesDB:
             role_copy["_id"] = str(role_copy["_id"])
             
         # Get direct reports
-        reports = self.get_direct_reports(str(role["_id"]))
+        reports = await self.get_direct_reports(str(role["_id"]))
         
         # If there are reports, add them
         if reports:
             # Add reports with their own reports
             role_copy["direct_reports"] = [
-                self._add_reports_to_role(report)
+                await self._add_reports_to_role(report)
                 for report in reports
             ]
         else:
@@ -332,7 +377,7 @@ class RolesDB:
                         "actions": "*"
                     }
                 ],
-                "reporting_id": None,  # Top level role
+                "reporting_ids": [],  # Top level role - no reporting
                 "is_super_admin": True,
                 "created_at": datetime.now(),
                 "updated_at": datetime.now()
@@ -386,3 +431,76 @@ class RolesDB:
                 return True
         
         return False
+
+    async def migrate_reporting_id_to_ids(self) -> dict:
+        """
+        Migration helper: Convert old reporting_id field to reporting_ids array
+        This ensures backward compatibility and smooth transition
+        
+        Returns:
+            dict: Migration statistics (total, migrated, skipped)
+        """
+        stats = {
+            "total_roles": 0,
+            "migrated": 0,
+            "already_migrated": 0,
+            "errors": 0
+        }
+        
+        try:
+            # Find all roles that have reporting_id but not reporting_ids
+            roles_to_migrate = await self._async_to_list(
+                self.collection.find({
+                    "reporting_id": {"$exists": True},
+                    "reporting_ids": {"$exists": False}
+                })
+            )
+            
+            stats["total_roles"] = len(roles_to_migrate)
+            
+            for role in roles_to_migrate:
+                try:
+                    role_id = str(role["_id"])
+                    reporting_id = role.get("reporting_id")
+                    
+                    # Convert to array
+                    reporting_ids = []
+                    if reporting_id is not None:
+                        reporting_ids = [reporting_id]
+                    
+                    # Update the role
+                    await self.collection.update_one(
+                        {"_id": role["_id"]},
+                        {
+                            "$set": {
+                                "reporting_ids": reporting_ids,
+                                "updated_at": datetime.now()
+                            },
+                            "$unset": {"reporting_id": ""}  # Remove old field
+                        }
+                    )
+                    
+                    stats["migrated"] += 1
+                    print(f"✓ Migrated role: {role.get('name', 'Unknown')} ({role_id})")
+                    
+                except Exception as e:
+                    stats["errors"] += 1
+                    print(f"✗ Error migrating role {role.get('name', 'Unknown')}: {e}")
+            
+            # Count already migrated roles
+            already_migrated = await self.collection.count_documents({
+                "reporting_ids": {"$exists": True}
+            })
+            stats["already_migrated"] = already_migrated
+            
+            print(f"\n📊 Migration Summary:")
+            print(f"   Total roles to migrate: {stats['total_roles']}")
+            print(f"   Successfully migrated: {stats['migrated']}")
+            print(f"   Already migrated: {stats['already_migrated']}")
+            print(f"   Errors: {stats['errors']}")
+            
+        except Exception as e:
+            print(f"Migration error: {e}")
+            stats["errors"] += 1
+        
+        return stats

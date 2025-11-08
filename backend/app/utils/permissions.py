@@ -1043,12 +1043,7 @@ class PermissionManager:
             filter_conditions.append({"assign_report_to": user_id})
             filter_conditions.append({"assign_report_to": {"$in": [user_id]}})
         
-        # DISABLED: Junior permission team visibility
-        # Team Leaders should ONLY see their own leads and assigned leads
-        # NOT team member leads
-        print(f"DEBUG: Junior permission check DISABLED - Team Leaders cannot see team member leads")
-        
-        # Check for junior permission (case-insensitive) - DISABLED
+        # Check for junior permission (case-insensitive) - RE-ENABLED for multiple reporting support
         has_view_junior = any(
             (perm.get("page", "").lower() == "leads" and 
              (perm.get("actions") == "*" or 
@@ -1061,10 +1056,39 @@ class PermissionManager:
         )
         
         if has_view_junior:
-            print(f"DEBUG: User {user_id} has junior permission, but team visibility is DISABLED")
-            print(f"DEBUG: Team Leaders can ONLY see: 1) Leads they created, 2) Leads assigned to them")
-            # REMOVED: subordinate_users fetching and filtering
-            # This prevents Team Leaders from seeing team member leads
+            print(f"DEBUG: User {user_id} has junior permission - checking subordinate users")
+            
+            # Get all users in subordinate roles (supports multiple reporting relationships)
+            subordinate_users = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            
+            if subordinate_users:
+                subordinate_list = list(subordinate_users)
+                print(f"DEBUG: Found {len(subordinate_list)} subordinate users for {user_id}: {subordinate_list}")
+                
+                # Add subordinate created leads (string format)
+                for sub_id in subordinate_list:
+                    filter_conditions.append({"created_by": sub_id})
+                
+                # Add batch condition for subordinates (string)
+                filter_conditions.append({"created_by": {"$in": subordinate_list}})
+                
+                # Convert to ObjectId format for backward compatibility
+                subordinate_object_ids = []
+                for sub_id in subordinate_list:
+                    try:
+                        from bson import ObjectId
+                        subordinate_object_ids.append(ObjectId(sub_id))
+                    except:
+                        pass
+                
+                if subordinate_object_ids:
+                    filter_conditions.append({"created_by": {"$in": subordinate_object_ids}})
+                    filter_conditions.append({"assigned_to": {"$in": subordinate_object_ids}})
+                    filter_conditions.append({"assign_report_to": {"$in": subordinate_object_ids}})
+                
+                print(f"DEBUG: Added subordinate lead visibility filters for user {user_id}")
+            else:
+                print(f"DEBUG: No subordinate users found for user {user_id}")
         
         # ========================================================================
         # NEW: TEAM MANAGER ROLE - Can see all team member leads

@@ -1313,7 +1313,7 @@ const updateStatus = async (statusId, statusData) => {
             setFormData({
                 name: '',
                 department_id: null,
-                reporting_id: null
+                reporting_ids: []  // Changed from reporting_id to reporting_ids (array)
             });
         } else if (type === 'emailSettings') {
             setFormData({
@@ -1377,6 +1377,18 @@ const updateStatus = async (statusId, statusData) => {
             itemCopy.id = itemCopy._id;
         } else if (itemCopy.id && !itemCopy._id) {
             itemCopy._id = itemCopy.id;
+        }
+        
+        // Handle backward compatibility for reporting_id -> reporting_ids migration
+        if (type === 'roles') {
+            if (!itemCopy.reporting_ids && itemCopy.reporting_id) {
+                // Convert old single reporting_id to new array format
+                itemCopy.reporting_ids = [itemCopy.reporting_id];
+            } else if (!itemCopy.reporting_ids) {
+                itemCopy.reporting_ids = [];
+            }
+            // Remove any empty strings from reporting_ids
+            itemCopy.reporting_ids = (itemCopy.reporting_ids || []).filter(id => id);
         }
         
         console.log('Editing item:', itemCopy);
@@ -1716,21 +1728,20 @@ const updateStatus = async (statusId, statusData) => {
                         departmentId = null;
                     }
                     
-                    // Validate reporting_id - ensure it's a valid ObjectId string or null  
-                    let reportingId = formData.reporting_id;
-                    if (reportingId === '' || reportingId === undefined) {
-                        reportingId = null;
-                    }
+                    // Validate reporting_ids - ensure it's an array of valid ObjectId strings
+                    // Filter out empty strings and null values
+                    let reportingIds = (formData.reporting_ids || []).filter(id => id && id.trim() !== '');
                     
                     data = {
                         name: formData.name,
                         department_id: departmentId,
-                        reporting_id: reportingId,
+                        reporting_ids: reportingIds,  // Changed from reporting_id to reporting_ids (array)
                         permissions: formattedPermissions
                     };
                     
                     console.log('Role data to save:', data);
                     console.log('Form data department_id:', formData.department_id);
+                    console.log('Form data reporting_ids:', formData.reporting_ids);
                     console.log('Available departments:', departments);
                     break;
                 case 'adminEmails':
@@ -3395,26 +3406,64 @@ const updateStatus = async (statusId, statusData) => {
                                         ))}
                                     </select>
                                 </div>
+                                
+                                {/* Multiple Reporting Roles Selection */}
                                 <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Reporting Role</label>
-                                    <select
-                                        value={formData.reporting_id || ''}
-                                        onChange={(e) => setFormData({ ...formData, reporting_id: e.target.value || null })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                    >
-                                        <option value="">No Reporting Role</option>
-                                        {roles.filter(r => {
-                                            const roleId = r._id || r.id;
-                                            const editingId = editingItem?._id || editingItem?.id;
-                                            return roleId !== editingId;
-                                        }).map(role => {
-                                            const roleId = role._id || role.id;
-                                            console.log(`Role option: ${role.name}, ID: ${roleId}`);
-                                            return (
-                                                <option key={roleId} value={roleId}>{role.name}</option>
-                                            );
-                                        })}
-                                    </select>
+                                    <label className="block text-sm font-medium text-black mb-1">Reporting Roles</label>
+                                    <div className="space-y-2">
+                                        {/* Display selected reporting roles */}
+                                        {(formData.reporting_ids || []).map((reportingId, index) => (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <select
+                                                    value={reportingId}
+                                                    onChange={(e) => {
+                                                        const newReportingIds = [...(formData.reporting_ids || [])];
+                                                        newReportingIds[index] = e.target.value;
+                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                    }}
+                                                    className="flex-1 border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                                                >
+                                                    <option value="">Select Reporting Role</option>
+                                                    {roles.filter(r => {
+                                                        const roleId = r._id || r.id;
+                                                        const editingId = editingItem?._id || editingItem?.id;
+                                                        // Don't show current role or already selected roles
+                                                        return roleId !== editingId && 
+                                                               !(formData.reporting_ids || []).includes(roleId) || 
+                                                               roleId === reportingId;
+                                                    }).map(role => {
+                                                        const roleId = role._id || role.id;
+                                                        return (
+                                                            <option key={roleId} value={roleId}>{role.name}</option>
+                                                        );
+                                                    })}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newReportingIds = (formData.reporting_ids || []).filter((_, i) => i !== index);
+                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                    }}
+                                                    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                        
+                                        {/* Add new reporting role button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newReportingIds = [...(formData.reporting_ids || []), ''];
+                                                setFormData({ ...formData, reporting_ids: newReportingIds });
+                                            }}
+                                            className="w-full border-2 border-dashed border-gray-400 rounded-lg px-3 py-2 text-black hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <span className="text-xl">+</span>
+                                            <span>Add Reporting Role</span>
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 {/* Permission Selection */}
