@@ -35,6 +35,8 @@ const RoleSettings = () => {
     const [selectedMainRole, setSelectedMainRole] = useState(null);
     const [reportingSearch, setReportingSearch] = useState('');
     const [expandedReportingRoles, setExpandedReportingRoles] = useState(new Set());
+    const [openDropdownIndex, setOpenDropdownIndex] = useState(null);
+    const [dropdownSearchTerms, setDropdownSearchTerms] = useState({});
 
     // Form state
     const [formData, setFormData] = useState({
@@ -96,6 +98,25 @@ const RoleSettings = () => {
         // Debug: Log component mount
         console.log('RoleSettings component mounted');
     }, []);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (openDropdownIndex !== null) {
+                // Check if click is outside the dropdown
+                const dropdownElement = event.target.closest('.reporting-role-dropdown');
+                if (!dropdownElement) {
+                    setOpenDropdownIndex(null);
+                    setDropdownSearchTerms({});
+                }
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [openDropdownIndex]);
 
     // Debug effect to track permission changes
     useEffect(() => {
@@ -1212,90 +1233,846 @@ const RoleSettings = () => {
     };
 
     // Export functions for PDF and Excel
-    const exportToPDF = () => {
+    // Export comprehensive HTML report - OPENS IN NEW TAB
+    const exportToHTML = async () => {
         try {
-            console.log('Exporting to PDF...');
-            console.log('Roles data:', roles);
-            console.log('Departments data:', departments);
+            console.log('Generating comprehensive HTML report...');
             
-            if (!roles || roles.length === 0) {
-                message.warning('No roles data available to export');
+            // Get user data
+            const userData = localStorage.getItem('userData');
+            const token = localStorage.getItem('token');
+            
+            if (!userData || !token) {
+                message.error('Authentication required');
+                return;
+            }
+
+            const { user_id } = JSON.parse(userData);
+            message.loading('Fetching latest data from database...', 0);
+
+            // Fetch latest roles using the same approach as fetchRoles
+            let freshRoles = null;
+            const roleUrls = [
+                `/api/roles?user_id=${user_id}`,
+                `/api/roles/?user_id=${user_id}`,
+                `/api/roles/`,
+                `/api/roles`
+            ];
+            
+            for (const url of roleUrls) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        freshRoles = await response.json();
+                        console.log('Roles fetched from:', url, '- Count:', freshRoles?.length);
+                        break;
+                    }
+                } catch (err) {
+                    console.log(`Error with ${url}:`, err.message);
+                    continue;
+                }
+            }
+
+            // Fetch latest departments
+            let freshDepartments = null;
+            try {
+                const deptResponse = await fetch(`/api/departments/?user_id=${user_id}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (deptResponse.ok) {
+                    freshDepartments = await deptResponse.json();
+                    console.log('Departments fetched - Count:', freshDepartments?.length);
+                }
+            } catch (err) {
+                console.log('Error fetching departments:', err.message);
+                // Use existing departments as fallback
+                freshDepartments = departments;
+            }
+
+            message.destroy();
+
+            // Use fresh data or fallback to current state
+            const reportRoles = (freshRoles && Array.isArray(freshRoles) && freshRoles.length > 0) ? freshRoles : roles;
+            const reportDepartments = (freshDepartments && Array.isArray(freshDepartments) && freshDepartments.length > 0) ? freshDepartments : departments;
+
+            if (!reportRoles || reportRoles.length === 0) {
+                message.warning('No roles data available');
+                return;
+            }
+
+            console.log('Generating report with:', reportRoles.length, 'roles and', reportDepartments.length, 'departments');
+            
+            // Generate interactive HTML report with fresh data
+            const htmlContent = generateInteractiveHTMLReport(reportRoles, reportDepartments);
+            
+            // Open in new window/tab
+            const reportWindow = window.open('', '_blank');
+            if (!reportWindow) {
+                message.error('Unable to open report window. Please check if pop-ups are blocked.');
                 return;
             }
             
-            // Create HTML content for printing
-            const printContent = generatePrintableHTML();
+            reportWindow.document.write(htmlContent);
+            reportWindow.document.close();
             
-            // Validate generated content
-            if (!printContent || printContent.includes('Error generating report')) {
-                message.error('Failed to generate PDF content');
-                return;
-            }
-            
-            // Open a new window and print
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                message.error('Unable to open print window. Please check if pop-ups are blocked.');
-                return;
-            }
-            
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            
-            // Wait for content to load then print
-            printWindow.onload = () => {
-                setTimeout(() => {
-                    printWindow.print();
-                    printWindow.close();
-                }, 1000);
-            };
-            
-            message.success('PDF export window opened. Please use your browser\'s print dialog to save as PDF.');
+            message.success('Report generated successfully!');
         } catch (error) {
-            console.error('Error exporting to PDF:', error);
-            message.error('Failed to export to PDF: ' + error.message);
+            message.destroy();
+            console.error('Error generating HTML report:', error);
+            message.error('Failed to generate report: ' + error.message);
         }
     };
 
-    const exportToExcel = () => {
+    // Generate interactive HTML report with fixed columns and proper data from database
+    const generateInteractiveHTMLReport = (freshRoles, freshDepartments) => {
         try {
-            console.log('Exporting to Excel...');
-            console.log('Roles data:', roles);
-            console.log('Departments data:', departments);
+            // Use fresh data from database
+            const reportRoles = freshRoles || roles;
+            const reportDepartments = freshDepartments || departments;
+
+            // Build permission modules from allPermissions constant (ALL possible permissions)
+            const permissionModules = [];
             
-            if (!roles || roles.length === 0) {
-                message.warning('No roles data available to export');
-                return;
-            }
+            Object.entries(allPermissions).forEach(([module, actions]) => {
+                // Skip SuperAdmin - it's shown separately
+                if (module === 'SuperAdmin') return;
+                
+                // Handle nested modules (Leads CRM) - CREATE SEPARATE COLUMNS FOR EACH SECTION
+                if (typeof actions === 'object' && !Array.isArray(actions)) {
+                    // Nested module - create separate module for each section
+                    Object.entries(actions).forEach(([sectionName, sectionActions]) => {
+                        if (Array.isArray(sectionActions)) {
+                            permissionModules.push({
+                                module: `${module} - ${sectionName}`,
+                                originalModule: module,
+                                section: sectionName,
+                                actions: [...sectionActions], // Keep original order, no sorting
+                                isNested: true
+                            });
+                            console.log(`Created nested module: ${module} - ${sectionName}, pageKey will be: ${module}.${sectionName}`);
+                        }
+                    });
+                } else if (Array.isArray(actions)) {
+                    // Simple module
+                    permissionModules.push({
+                        module: module,
+                        originalModule: module,
+                        section: null,
+                        actions: [...actions], // Keep original order, no sorting
+                        isNested: false
+                    });
+                }
+            });
             
-            // Prepare data for CSV format (can be opened in Excel)
-            const csvData = generateCSVData();
+            console.log('All permission modules:', permissionModules.map(m => ({ name: m.module, isNested: m.isNested, section: m.section })));
+
+            // Calculate permissions count for each role
+            const getPermCount = (role) => {
+                if (!role.permissions || !Array.isArray(role.permissions)) return 0;
+                return role.permissions.reduce((count, perm) => {
+                    if (perm.page === '*') {
+                        // Super Admin - count ALL permissions properly
+                        let total = 0;
+                        Object.values(allPermissions).forEach(actions => {
+                            if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) {
+                                // Skip the SuperAdmin entry itself
+                                return;
+                            }
+                            if (typeof actions === 'object' && !Array.isArray(actions)) {
+                                // Nested module (Leads CRM) - count all sub-sections
+                                Object.values(actions).forEach(sectionActions => {
+                                    if (Array.isArray(sectionActions)) {
+                                        total += sectionActions.length;
+                                    }
+                                });
+                            } else if (Array.isArray(actions)) {
+                                // Simple module - count actions
+                                total += actions.length;
+                            }
+                        });
+                        return total;
+                    }
+                    
+                    // For regular roles - check if this is a nested permission (Leads CRM)
+                    // Nested permissions are stored like "leads.create_lead" or "leads.pl_odd_leads"
+                    if (perm.page && perm.page.includes('.')) {
+                        // This is a nested permission - count the actions in it
+                        return count + (perm.actions?.length || 0);
+                    }
+                    
+                    // For simple permissions, just count the actions
+                    return count + (perm.actions?.length || 0);
+                }, 0);
+            };
             
-            if (!csvData) {
-                message.error('Failed to generate CSV data');
-                return;
-            }
+            // Build header row 1 (module names with colspan)
+            let headerRow1 = `
+                <tr>
+                    <th rowspan="2" class="sticky-col role-col">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span>Role Name</span>
+                            <div style="display: flex; gap: 4px;">
+                                <button onclick="toggleFilter()" class="filter-btn" title="Filter Roles">🔍</button>
+                                <button onclick="sortTable()" class="sort-btn" title="Sort A-Z / Z-A">⇅</button>
+                            </div>
+                        </div>
+                    </th>
+                    <th rowspan="2">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span>Department</span>
+                            <button onclick="sortByDepartment()" class="sort-btn" title="Sort by Department">⇅</button>
+                        </div>
+                    </th>
+                    <th rowspan="2">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span>Reports To</span>
+                            <button onclick="sortByReportsTo()" class="sort-btn" title="Sort by Reports To">⇅</button>
+                        </div>
+                    </th>
+                    <th rowspan="2" class="sticky-col perm-col">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span>Permissions</span>
+                            <button onclick="sortByPermissions()" class="sort-btn" title="Sort by Permission Count">⇅</button>
+                        </div>
+                    </th>`;
             
-            // Create blob and download
-            const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `roles_permissions_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            permissionModules.forEach((mod, idx) => {
+                const isLastModule = idx === permissionModules.length - 1;
+                headerRow1 += `<th colspan="${mod.actions.length}" class="module-header ${isLastModule ? '' : 'module-partition'}">${mod.module.toUpperCase()}</th>`;
+            });
+            headerRow1 += '</tr>';
             
-            // Clean up the URL object
-            setTimeout(() => {
-                URL.revokeObjectURL(url);
-            }, 1000);
+            // Build header row 2 (action names)
+            let headerRow2 = '<tr>';
+            permissionModules.forEach((mod, modIdx) => {
+                mod.actions.forEach((action, actIdx) => {
+                    const isFirstAction = actIdx === 0 && modIdx > 0;
+                    headerRow2 += `<th class="action-header ${isFirstAction ? 'action-partition' : ''}">${action}</th>`;
+                });
+            });
+            headerRow2 += '</tr>';
             
-            message.success('Roles data exported to CSV successfully!');
+            // Build data rows
+            let dataRows = '';
+            reportRoles.forEach(role => {
+                const isSuperAdmin = role.permissions && role.permissions.some(p => p.page === '*');
+                const dept = reportDepartments.find(d => (d.id || d._id) === role.department_id);
+                const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+                const reportingRoles = reportingIds
+                    .map(rid => reportRoles.find(r => (r.id || r._id) === rid))
+                    .filter(r => r)
+                    .map(r => r.name);
+                const permCount = getPermCount(role);
+                
+                // Debug logging
+                console.log(`Processing role: ${role.name}`);
+                console.log('Role permissions:', role.permissions);
+                
+                dataRows += '<tr class="data-row">';
+                dataRows += `<td class="sticky-col role-name" data-role="${role.name.toLowerCase()}">${role.name}</td>`;
+                dataRows += `<td class="dept-cell">${dept?.name || '-'}</td>`;
+                dataRows += `<td class="reports-cell">${reportingRoles.length > 0 ? reportingRoles.join(', ') : 'Top Level'}</td>`;
+                dataRows += `<td class="sticky-col perm-cell">${permCount}</td>`;
+                
+                // Check each permission
+                permissionModules.forEach((mod, modIdx) => {
+                    mod.actions.forEach((action, actIdx) => {
+                        const isFirstAction = actIdx === 0 && modIdx > 0;
+                        let hasPermission = false;
+                        
+                        if (isSuperAdmin) {
+                            hasPermission = true;
+                        } else if (role.permissions && Array.isArray(role.permissions)) {
+                            if (mod.isNested) {
+                                // For nested modules (Leads CRM sections), check specific section
+                                // Database stores as "leads.create_lead" but we display as "Leads CRM - Create LEAD"
+                                // Need to convert display format to database format
+                                const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
+                                const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
+                                const pageKey = `${dbModule}.${dbSection}`;
+                                
+                                const modulePerm = role.permissions.find(p => p.page === pageKey);
+                                
+                                // Debug logging for Leads CRM
+                                if (mod.originalModule === 'Leads CRM' && actIdx === 0) {
+                                    console.log(`  Checking ${role.name} for ${mod.module}`);
+                                    console.log('  Display format:', `${mod.originalModule}.${mod.section}`);
+                                    console.log('  Database format (looking for):', pageKey);
+                                    console.log('  Available pages in permissions:', role.permissions.map(p => p.page));
+                                    console.log('  Found permission:', modulePerm);
+                                }
+                                
+                                if (modulePerm && modulePerm.actions && modulePerm.actions.includes(action)) {
+                                    hasPermission = true;
+                                }
+                            } else {
+                                // For simple modules, check directly
+                                const modulePerm = role.permissions.find(p => p.page === mod.module);
+                                if (modulePerm && modulePerm.actions && modulePerm.actions.includes(action)) {
+                                    hasPermission = true;
+                                }
+                            }
+                        }
+                        
+                        const checkMark = hasPermission ? '<span class="check-yes">✓</span>' : '<span class="check-no">-</span>';
+                        const partitionClass = isFirstAction ? 'cell-partition' : '';
+                        dataRows += `<td class="check-cell ${partitionClass}">${checkMark}</td>`;
+                    });
+                });
+                
+                dataRows += '</tr>';
+            });
+
+            return `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Roles & Permissions Report</title>
+                    <meta charset="UTF-8">
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 20px;
+                            min-height: 100vh;
+                        }
+                        .container {
+                            max-width: 100%;
+                            background: #fff;
+                            border-radius: 12px;
+                            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                            overflow: hidden;
+                        }
+                        .header {
+                            background: linear-gradient(135deg, #000 0%, #333 100%);
+                            color: #fff;
+                            padding: 30px;
+                            text-align: center;
+                        }
+                        .header h1 {
+                            font-size: 28px;
+                            margin-bottom: 10px;
+                        }
+                        .header .timestamp {
+                            font-size: 14px;
+                            opacity: 0.8;
+                        }
+                        .table-wrapper {
+                            overflow-x: auto;
+                            overflow-y: visible;
+                            margin: 20px;
+                            scroll-behavior: smooth;
+                            -webkit-overflow-scrolling: touch;
+                        }
+                        table {
+                            width: max-content;
+                            border-collapse: separate;
+                            border-spacing: 0;
+                            font-size: 13px;
+                        }
+                        thead {
+                            position: sticky;
+                            top: 0;
+                            z-index: 20;
+                        }
+                        th {
+                            position: sticky;
+                            top: 0;
+                            background: #000;
+                            color: #fff;
+                            padding: 12px 8px;
+                            font-weight: bold;
+                            text-align: center;
+                            border: 1px solid #333;
+                            white-space: nowrap;
+                        }
+                        .sticky-col {
+                            position: sticky;
+                            background: #fff;
+                            z-index: 10;
+                        }
+                        th.sticky-col {
+                            z-index: 25;
+                            background: #000;
+                        }
+                        .role-col { left: 0; min-width: 250px; max-width: 250px; text-align: left !important; }
+                        .perm-col { left: 250px; min-width: 100px; }
+                        
+                        td.sticky-col {
+                            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+                        }
+                        
+                        .sort-btn, .filter-btn {
+                            background: #ffd700;
+                            color: #000;
+                            border: none;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 14px;
+                            font-weight: bold;
+                            transition: all 0.2s;
+                        }
+                        .sort-btn:hover, .filter-btn:hover {
+                            background: #ffed4e;
+                            transform: scale(1.1);
+                        }
+                        .filter-modal {
+                            display: none;
+                            position: fixed;
+                            z-index: 1000;
+                            left: 0;
+                            top: 0;
+                            width: 100%;
+                            height: 100%;
+                            background: rgba(0,0,0,0.8);
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .filter-modal.active {
+                            display: flex;
+                        }
+                        .filter-content {
+                            background: #1a1a1a;
+                            padding: 30px;
+                            border-radius: 12px;
+                            max-width: 500px;
+                            max-height: 80vh;
+                            overflow-y: auto;
+                            box-shadow: 0 10px 40px rgba(255,215,0,0.3);
+                        }
+                        .filter-content h3 {
+                            color: #ffd700;
+                            margin-bottom: 20px;
+                            font-size: 20px;
+                        }
+                        .filter-options {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 10px;
+                            margin-bottom: 20px;
+                        }
+                        .filter-option {
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                            padding: 10px;
+                            background: #2a2a2a;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                        }
+                        .filter-option:hover {
+                            background: #3a3a3a;
+                        }
+                        .filter-option input[type="checkbox"] {
+                            width: 18px;
+                            height: 18px;
+                            cursor: pointer;
+                            accent-color: #ffd700;
+                        }
+                        .filter-option label {
+                            color: #fff;
+                            cursor: pointer;
+                            flex: 1;
+                        }
+                        .filter-buttons {
+                            display: flex;
+                            gap: 10px;
+                            justify-content: flex-end;
+                        }
+                        .filter-buttons button {
+                            padding: 10px 20px;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-weight: bold;
+                            transition: all 0.2s;
+                        }
+                        .apply-filter {
+                            background: #ffd700;
+                            color: #000;
+                        }
+                        .apply-filter:hover {
+                            background: #ffed4e;
+                        }
+                        .cancel-filter {
+                            background: #555;
+                            color: #fff;
+                        }
+                        .cancel-filter:hover {
+                            background: #666;
+                        }
+                        .module-header {
+                            background: #000 !important;
+                            color: #ffd700 !important;
+                            font-size: 13px;
+                            text-transform: uppercase;
+                            letter-spacing: 1px;
+                            padding: 15px 8px !important;
+                            font-weight: 700;
+                        }
+                        .module-partition {
+                            border-left: 5px solid #ffd700 !important;
+                        }
+                        .action-header {
+                            background: #333 !important;
+                            color: #ffd700 !important;
+                            font-size: 12px;
+                            font-weight: 600;
+                            text-transform: lowercase;
+                        }
+                        .action-partition {
+                            border-left: 5px solid #ffd700 !important;
+                        }
+                        td {
+                            padding: 12px 8px;
+                            border: 1px solid #e0e0e0;
+                            text-align: center;
+                            white-space: nowrap;
+                        }
+                        
+                        .role-name {
+                            font-weight: 600;
+                            color: #000;
+                            text-align: left !important;
+                            padding-left: 15px !important;
+                            background: #f9f9f9;
+                            left: 0;
+                        }
+                        .dept-cell {
+                            font-size: 13px;
+                            color: #000;
+                            font-weight: 600;
+                            background: #fafafa;
+                        }
+                        .reports-cell {
+                            font-size: 13px;
+                            color: #000;
+                            font-weight: 600;
+                            background: #fafafa;
+                        }
+                        .perm-cell {
+                            font-weight: 700;
+                            color: #000;
+                            background: #fff9e6;
+                            left: 250px;
+                        }
+                        .check-cell {
+                            background: #fff;
+                            min-width: 50px;
+                        }
+                        .cell-partition {
+                            border-left: 5px solid #ffd700 !important;
+                        }
+                        .check-yes {
+                            color: #00c851;
+                            font-size: 20px;
+                            font-weight: bold;
+                        }
+                        .check-no {
+                            color: #ddd;
+                            font-size: 16px;
+                        }
+                        tr:hover td:not(.sticky-col) {
+                            background: #f0f7ff;
+                        }
+                        .data-row.hidden {
+                            display: none;
+                        }
+                        @media print {
+                            body { background: #fff; padding: 0; }
+                            .container { box-shadow: none; }
+                            @page { size: landscape; }
+                        }
+                    </style>
+                    <script>
+                        let sortAscending = true;
+                        let sortPermAscending = true;
+                        let sortDeptAscending = true;
+                        let sortReportsAscending = true;
+                        let selectedRoles = [];
+
+                        function sortTable() {
+                            const table = document.querySelector('tbody');
+                            const rows = Array.from(table.querySelectorAll('.data-row'));
+                            
+                            rows.sort((a, b) => {
+                                const aText = a.querySelector('.role-name').textContent.toLowerCase();
+                                const bText = b.querySelector('.role-name').textContent.toLowerCase();
+                                
+                                if (sortAscending) {
+                                    return aText.localeCompare(bText);
+                                } else {
+                                    return bText.localeCompare(aText);
+                                }
+                            });
+                            
+                            sortAscending = !sortAscending;
+                            rows.forEach(row => table.appendChild(row));
+                        }
+
+                        function sortByPermissions() {
+                            const table = document.querySelector('tbody');
+                            const rows = Array.from(table.querySelectorAll('.data-row'));
+                            
+                            rows.sort((a, b) => {
+                                const aCount = parseInt(a.querySelector('.perm-cell').textContent);
+                                const bCount = parseInt(b.querySelector('.perm-cell').textContent);
+                                
+                                if (sortPermAscending) {
+                                    return aCount - bCount; // Low to High
+                                } else {
+                                    return bCount - aCount; // High to Low
+                                }
+                            });
+                            
+                            sortPermAscending = !sortPermAscending;
+                            rows.forEach(row => table.appendChild(row));
+                        }
+
+                        function sortByDepartment() {
+                            const table = document.querySelector('tbody');
+                            const rows = Array.from(table.querySelectorAll('.data-row'));
+                            
+                            rows.sort((a, b) => {
+                                const aText = a.querySelector('.dept-cell').textContent.toLowerCase();
+                                const bText = b.querySelector('.dept-cell').textContent.toLowerCase();
+                                
+                                if (sortDeptAscending) {
+                                    return aText.localeCompare(bText);
+                                } else {
+                                    return bText.localeCompare(aText);
+                                }
+                            });
+                            
+                            sortDeptAscending = !sortDeptAscending;
+                            rows.forEach(row => table.appendChild(row));
+                        }
+
+                        function sortByReportsTo() {
+                            const table = document.querySelector('tbody');
+                            const rows = Array.from(table.querySelectorAll('.data-row'));
+                            
+                            rows.sort((a, b) => {
+                                const aText = a.querySelector('.reports-cell').textContent.toLowerCase();
+                                const bText = b.querySelector('.reports-cell').textContent.toLowerCase();
+                                
+                                if (sortReportsAscending) {
+                                    return aText.localeCompare(bText);
+                                } else {
+                                    return bText.localeCompare(aText);
+                                }
+                            });
+                            
+                            sortReportsAscending = !sortReportsAscending;
+                            rows.forEach(row => table.appendChild(row));
+                        }
+
+                        function toggleFilter() {
+                            const modal = document.getElementById('filterModal');
+                            modal.classList.toggle('active');
+                        }
+
+                        function applyFilter() {
+                            const checkboxes = document.querySelectorAll('.role-checkbox:checked');
+                            selectedRoles = Array.from(checkboxes).map(cb => cb.value);
+                            
+                            const rows = document.querySelectorAll('.data-row');
+                            if (selectedRoles.length === 0) {
+                                rows.forEach(row => row.classList.remove('hidden'));
+                            } else {
+                                rows.forEach(row => {
+                                    const roleName = row.querySelector('.role-name').getAttribute('data-role');
+                                    if (selectedRoles.includes(roleName)) {
+                                        row.classList.remove('hidden');
+                                    } else {
+                                        row.classList.add('hidden');
+                                    }
+                                });
+                            }
+                            
+                            toggleFilter();
+                        }
+
+                        function clearFilter() {
+                            const checkboxes = document.querySelectorAll('.role-checkbox');
+                            checkboxes.forEach(cb => cb.checked = false);
+                            selectedRoles = [];
+                            
+                            const rows = document.querySelectorAll('.data-row');
+                            rows.forEach(row => row.classList.remove('hidden'));
+                            
+                            toggleFilter();
+                        }
+                    </script>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>📊 ROLES & PERMISSIONS REPORT</h1>
+                            <div class="timestamp">Generated: ${new Date().toLocaleDateString('en-US', { 
+                                weekday: 'long',
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}</div>
+                        </div>
+                        
+                        <!-- Filter Modal -->
+                        <div id="filterModal" class="filter-modal">
+                            <div class="filter-content">
+                                <h3>� Filter Roles</h3>
+                                <div class="filter-options">
+                                    ${reportRoles.map(role => `
+                                        <div class="filter-option">
+                                            <input type="checkbox" class="role-checkbox" value="${role.name.toLowerCase()}" id="role-${role.name.replace(/\s+/g, '-').toLowerCase()}">
+                                            <label for="role-${role.name.replace(/\s+/g, '-').toLowerCase()}">${role.name}</label>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="cancel-filter" onclick="clearFilter()">Clear All</button>
+                                    <button class="apply-filter" onclick="applyFilter()">Apply Filter</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    ${headerRow1}
+                                    ${headerRow2}
+                                </thead>
+                                <tbody>
+                                    ${dataRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
         } catch (error) {
-            console.error('Error exporting to Excel:', error);
-            message.error('Failed to export to Excel: ' + error.message);
+            console.error('Error generating HTML:', error);
+            return '<html><body><h1>Error generating report</h1><p>' + error.message + '</p></body></html>';
+        }
+    };
+
+    // Generate comprehensive CSV data - COMPARISON FORMAT
+    const generateComprehensiveCSVData = () => {
+        try {
+            // Get all unique permission modules across all roles
+            const allPermissionModules = new Set();
+            roles.forEach(role => {
+                if (role.permissions && Array.isArray(role.permissions)) {
+                    role.permissions.forEach(perm => {
+                        if (perm.page && perm.page !== '*') {
+                            allPermissionModules.add(perm.page);
+                        }
+                    });
+                }
+            });
+            
+            const sortedModules = Array.from(allPermissionModules).sort();
+            
+            // Create header row with role names
+            let csv = 'Permission Module,Permission Action';
+            roles.forEach(role => {
+                csv += `,"${role.name}"`;
+            });
+            csv += '\n';
+            
+            // Add department row
+            csv += 'Department,';
+            roles.forEach(role => {
+                const dept = departments.find(d => (d.id || d._id) === role.department_id);
+                csv += `,"${dept?.name || 'Not assigned'}"`;
+            });
+            csv += '\n';
+            
+            // Add reports to row
+            csv += 'Reports To,';
+            roles.forEach(role => {
+                const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+                const reportingRoles = reportingIds
+                    .map(rid => roles.find(r => (r.id || r._id) === rid))
+                    .filter(r => r)
+                    .map(r => r.name);
+                csv += `,"${reportingRoles.length > 0 ? reportingRoles.join('; ') : 'Top Level'}"`;
+            });
+            csv += '\n\n';
+            
+            // Check for super admin
+            csv += 'SUPER ADMIN,All Permissions';
+            roles.forEach(role => {
+                const isSuperAdmin = role.permissions && role.permissions.some(p => p.page === '*');
+                csv += `,"${isSuperAdmin ? 'YES ✓' : 'NO'}"`;
+            });
+            csv += '\n\n';
+            
+            // For each permission module, show which roles have it
+            sortedModules.forEach(module => {
+                // Get all possible actions for this module
+                const actionsForModule = new Set();
+                roles.forEach(role => {
+                    if (role.permissions && Array.isArray(role.permissions)) {
+                        const modulePerm = role.permissions.find(p => p.page === module);
+                        if (modulePerm && modulePerm.actions) {
+                            modulePerm.actions.forEach(action => actionsForModule.add(action));
+                        }
+                    }
+                });
+                
+                const sortedActions = Array.from(actionsForModule).sort();
+                
+                // Create rows for each action
+                sortedActions.forEach((action, idx) => {
+                    if (idx === 0) {
+                        csv += `"${module}","${action}"`;
+                    } else {
+                        csv += `"","${action}"`;
+                    }
+                    
+                    // For each role, check if they have this permission
+                    roles.forEach(role => {
+                        const isSuperAdmin = role.permissions && role.permissions.some(p => p.page === '*');
+                        if (isSuperAdmin) {
+                            csv += ',"YES ✓"';
+                        } else if (role.permissions && Array.isArray(role.permissions)) {
+                            const modulePerm = role.permissions.find(p => p.page === module);
+                            if (modulePerm && modulePerm.actions && modulePerm.actions.includes(action)) {
+                                csv += ',"YES ✓"';
+                            } else {
+                                csv += ',""';
+                            }
+                        } else {
+                            csv += ',""';
+                        }
+                    });
+                    csv += '\n';
+                });
+            });
+            
+            return csv;
+        } catch (error) {
+            console.error('Error generating CSV:', error);
+            return '';
         }
     };
 
@@ -1467,9 +2244,656 @@ const RoleSettings = () => {
     const getPermissionsCount = (permissions) => {
         if (!permissions || !Array.isArray(permissions)) return 0;
         return permissions.reduce((count, perm) => {
-            if (perm.page === '*') return Object.values(allPermissions).flat().length;
+            if (perm.page === '*') {
+                // Super Admin - count ALL permissions properly
+                let total = 0;
+                Object.values(allPermissions).forEach(actions => {
+                    if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) {
+                        // Skip the SuperAdmin entry itself
+                        return;
+                    }
+                    if (typeof actions === 'object' && !Array.isArray(actions)) {
+                        // Nested module (Leads CRM) - count all sub-sections
+                        Object.values(actions).forEach(sectionActions => {
+                            if (Array.isArray(sectionActions)) {
+                                total += sectionActions.length;
+                            }
+                        });
+                    } else if (Array.isArray(actions)) {
+                        // Simple module - count actions
+                        total += actions.length;
+                    }
+                });
+                return total;
+            }
+            
+            // For regular roles - check if this is a nested permission (Leads CRM)
+            // Nested permissions are stored like "leads.create_lead" or "leads.pl_odd_leads"
+            if (perm.page && perm.page.includes('.')) {
+                // This is a nested permission - count the actions in it
+                return count + (perm.actions?.length || 0);
+            }
+            
+            // For simple permissions, just count the actions
             return count + (perm.actions?.length || 0);
         }, 0);
+    };
+
+    // Check if a role has super admin permissions (all permissions)
+    const isSuperAdmin = (role) => {
+        if (!role.permissions || !Array.isArray(role.permissions)) return false;
+        return role.permissions.some(perm => perm.page === '*' || perm.page === 'SuperAdmin');
+    };
+
+    // Check if a role has subordinates
+    const hasSubordinates = (roleId) => {
+        return roles.some(r => {
+            const reportingIds = r.reporting_ids || (r.reporting_id ? [r.reporting_id] : []);
+            return reportingIds.includes(roleId);
+        });
+    };
+
+    // Get all subordinates of a role recursively
+    // IMPORTANT: Exclude Manager roles - they should only appear as team heads
+    const getSubordinates = (roleId, visited = new Set()) => {
+        if (visited.has(roleId)) return [];
+        visited.add(roleId);
+        
+        const directSubordinates = roles.filter(r => {
+            const reportingIds = r.reporting_ids || (r.reporting_id ? [r.reporting_id] : []);
+            const reportsToThisRole = reportingIds.includes(roleId);
+            const isManager = r.name.toLowerCase().includes('manager');
+            
+            // Exclude Manager roles from subordinates list
+            return reportsToThisRole && !isManager;
+        });
+        
+        const allSubordinates = [...directSubordinates];
+        directSubordinates.forEach(sub => {
+            allSubordinates.push(...getSubordinates(sub.id || sub._id, visited));
+        });
+        
+        return allSubordinates;
+    };
+
+    // Smart role grouping logic - Only create sections for roles WITH subordinates
+    const organizeRolesHierarchy = () => {
+        const organized = {
+            superAdminRoles: [],
+            teamGroups: [],
+            standaloneRoles: []
+        };
+        
+        // First, identify super admin roles (those with * permissions)
+        organized.superAdminRoles = roles.filter(role => isSuperAdmin(role));
+        
+        // Get roles that are NOT super admin
+        const nonSuperAdminRoles = roles.filter(role => !isSuperAdmin(role));
+        
+        // Find ALL roles that have subordinates (Manager or not) - they get their own section
+        const rolesWithSubordinates = nonSuperAdminRoles.filter(role => {
+            const roleId = role.id || role._id;
+            return hasSubordinates(roleId);
+        });
+        
+        // Create team groups ONLY for roles with subordinates
+        rolesWithSubordinates.forEach(head => {
+            const headId = head.id || head._id;
+            organized.teamGroups.push({
+                head: head,
+                members: getSubordinates(headId)
+            });
+        });
+        
+        // Get all subordinates from all team groups to exclude them
+        const allSubordinateIds = new Set();
+        organized.teamGroups.forEach(team => {
+            team.members.forEach(member => {
+                allSubordinateIds.add(member.id || member._id);
+            });
+        });
+        
+        // Standalone roles = roles that:
+        // 1. Are not super admin
+        // 2. Don't have subordinates (not a team head)
+        // 3. Are not subordinates of anyone else
+        organized.standaloneRoles = nonSuperAdminRoles.filter(role => {
+            const roleId = role.id || role._id;
+            const hasSubordinatesFlag = hasSubordinates(roleId);
+            const isSubordinate = allSubordinateIds.has(roleId);
+            
+            return !hasSubordinatesFlag && !isSubordinate;
+        });
+        
+        // Sort team groups: Managers first, then others alphabetically
+        organized.teamGroups.sort((a, b) => {
+            const aIsManager = a.head.name.toLowerCase().includes('manager');
+            const bIsManager = b.head.name.toLowerCase().includes('manager');
+            
+            if (aIsManager && !bIsManager) return -1;
+            if (!aIsManager && bIsManager) return 1;
+            return a.head.name.localeCompare(b.head.name);
+        });
+        
+        return organized;
+    };
+
+    // Render the new hierarchical structure
+    const renderHierarchicalRoles = () => {
+        const rows = [];
+        const hierarchy = organizeRolesHierarchy();
+        
+        // 1. Render Super Admin roles first
+        hierarchy.superAdminRoles.forEach(role => {
+            rows.push(renderRoleRow(role, 0, true));
+        });
+        
+        // 2. Render standalone roles under super admin
+        hierarchy.standaloneRoles.forEach(role => {
+            rows.push(renderRoleRow(role, 1, false));
+        });
+        
+        // 3. Render team groups with separation
+        hierarchy.teamGroups.forEach((team, idx) => {
+            // Add visual separation line before each team
+            if (idx > 0 || hierarchy.standaloneRoles.length > 0) {
+                rows.push(
+                    <tr key={`separator-${team.head.id || team.head._id}`} style={{
+                        height: '2px',
+                        background: '#000000'
+                    }}>
+                        <td colSpan="5" style={{ 
+                            padding: 0,
+                            borderTop: '2px solid #ffffff',
+                            borderBottom: 'none'
+                        }}></td>
+                    </tr>
+                );
+            }
+            
+            // Render team head (Manager/Leader)
+            rows.push(renderRoleRow(team.head, 0, true));
+            
+            // Render team members
+            team.members.forEach(member => {
+                rows.push(renderRoleRow(member, 1, false));
+            });
+        });
+        
+        return rows;
+    };
+
+    // Render a single role row
+    const renderRoleRow = (role, indentLevel, isHead) => {
+        const roleId = role.id || role._id;
+        const hasDirectReports = hasSubordinates(roleId);
+        
+        // Get reporting role names
+        const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+        const reportingRoleNames = reportingIds
+            .map(rid => {
+                const reportingRole = roles.find(r => (r.id || r._id) === rid);
+                return reportingRole ? reportingRole.name : null;
+            })
+            .filter(name => name);
+        
+        const isTopLevel = reportingRoleNames.length === 0 || isSuperAdmin(role);
+        
+        return (
+            <tr 
+                key={roleId}
+                style={{
+                    background: isHead ? '#0a0a0a' : '#000000',
+                    borderLeft: isHead ? '6px solid #ffffff' : 'none',
+                    borderBottom: '1px solid #222222',
+                    transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#0a0a0a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = isHead ? '#0a0a0a' : '#000000'}
+            >
+                {/* Role Name */}
+                <td style={{ 
+                    padding: isHead ? '20px 15px' : '16px 15px', 
+                    paddingLeft: indentLevel > 0 ? `${15 + (indentLevel * 50)}px` : '15px',
+                    borderRight: '1px solid #1a1a1a'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: isHead ? '12px' : '10px',
+                            height: isHead ? '12px' : '10px',
+                            background: '#ffffff',
+                            borderRadius: '50%'
+                        }}></div>
+                        <span style={{
+                            color: '#ffffff',
+                            fontWeight: isHead ? '700' : '500',
+                            fontSize: isHead ? '1.05rem' : '0.95rem'
+                        }}>
+                            {role.name}
+                        </span>
+                    </div>
+                </td>
+                
+                {/* Department */}
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                    {role.department_id ? (
+                        <span style={{
+                            display: 'inline-block',
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            background: '#000000',
+                            color: '#ffffff',
+                            border: '2px solid #555555'
+                        }}>
+                            {getDepartmentName(role.department_id)}
+                        </span>
+                    ) : (
+                        <span style={{ color: '#666666' }}>-</span>
+                    )}
+                </td>
+                
+                {/* Reports To */}
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                    {isTopLevel ? (
+                        <span style={{ color: '#666666', fontSize: '0.85rem' }}>Top Level</span>
+                    ) : reportingRoleNames.length > 0 ? (
+                        reportingRoleNames.length > 1 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                    </svg>
+                                    <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                </div>
+                                {reportingRoleNames.slice(1).map((name, idx) => (
+                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cccccc' }}>
+                                        <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                        </svg>
+                                        <span>{name}</span>
+                                        <span style={{ fontSize: '0.75rem', color: '#888888' }}>(Secondary)</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                </svg>
+                                <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                            </div>
+                        )
+                    ) : (
+                        <span style={{ color: '#666666' }}>-</span>
+                    )}
+                </td>
+                
+                {/* Permissions */}
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        <span style={{ color: '#ffffff', fontWeight: '500' }}>
+                            {getPermissionsCount(role.permissions)}
+                        </span>
+                    </div>
+                </td>
+                
+                {/* Actions */}
+                <td style={{ padding: '16px 15px' }}>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                        <button
+                            onClick={() => openModal(role)}
+                            style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '6px',
+                                border: '2px solid #ffffff',
+                                background: '#000000',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#ffffff',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#ffffff';
+                                e.currentTarget.style.color = '#000000';
+                                e.currentTarget.style.transform = 'scale(1.05)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#000000';
+                                e.currentTarget.style.color = '#ffffff';
+                                e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                            title="Edit"
+                        >
+                            <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={() => showDeleteConfirmation(role)}
+                            disabled={hasDirectReports}
+                            style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '6px',
+                                border: hasDirectReports ? '2px solid #333333' : '2px solid #666666',
+                                background: '#000000',
+                                cursor: hasDirectReports ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: hasDirectReports ? '#333333' : '#666666',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!hasDirectReports) {
+                                    e.currentTarget.style.background = '#ffffff';
+                                    e.currentTarget.style.borderColor = '#ffffff';
+                                    e.currentTarget.style.color = '#000000';
+                                    e.currentTarget.style.transform = 'scale(1.05)';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!hasDirectReports) {
+                                    e.currentTarget.style.background = '#000000';
+                                    e.currentTarget.style.borderColor = '#666666';
+                                    e.currentTarget.style.color = '#666666';
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                }
+                            }}
+                            title={hasDirectReports ? 'Cannot delete - has direct reports' : 'Delete'}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        );
+    };
+
+    // Group roles by team name for team-based UI (LEGACY - keeping for backward compatibility)
+    const groupRolesByTeam = (rolesList) => {
+        const teams = {};
+        
+        rolesList.forEach(role => {
+            // Extract team name from role name (e.g., "Team Winners Manager" -> "Team Winners")
+            const teamMatch = role.name.match(/^(Team\s+\w+)/i);
+            const teamName = teamMatch ? teamMatch[1] : 'Other';
+            
+            if (!teams[teamName]) {
+                teams[teamName] = {
+                    name: teamName,
+                    roles: []
+                };
+            }
+            teams[teamName].roles.push(role);
+        });
+        
+        // Sort roles within each team: Manager first, then Leader, then Consultant
+        Object.values(teams).forEach(team => {
+            team.roles.sort((a, b) => {
+                const getTypeOrder = (name) => {
+                    if (name.includes('Manager')) return 1;
+                    if (name.includes('Leader')) return 2;
+                    if (name.includes('Consultant')) return 3;
+                    return 4;
+                };
+                return getTypeOrder(a.name) - getTypeOrder(b.name);
+            });
+        });
+        
+        return teams;
+    };
+
+    // Team-based grouped rendering function
+    const renderTeamGroupedRoles = () => {
+        const rows = [];
+        const teams = groupRolesByTeam(roles);
+        
+        Object.values(teams).forEach((team) => {
+            // Team Header Row
+            const teamInitial = team.name.split(' ').map(word => word[0]).join('').toUpperCase();
+            rows.push(
+                <tr key={`team-header-${team.name}`} style={{
+                    background: '#000000',
+                    borderTop: '4px solid #ffffff',
+                    borderBottom: '4px solid #ffffff'
+                }}>
+                    <td colSpan="5" style={{ padding: '24px 15px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <div style={{
+                                width: '40px',
+                                height: '40px',
+                                background: '#ffffff',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: '900',
+                                fontSize: '1.2rem',
+                                color: '#000000'
+                            }}>
+                                {teamInitial}
+                            </div>
+                            <span style={{
+                                fontWeight: '800',
+                                fontSize: '1.2rem',
+                                letterSpacing: '2px',
+                                color: '#ffffff'
+                            }}>
+                                {team.name.toUpperCase()}
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+            );
+            
+            // Render roles in this team
+            team.roles.forEach((role) => {
+                const isManager = role.name.includes('Manager');
+                const isLeader = role.name.includes('Leader');
+                const hasDirectReports = roles.some(r => {
+                    const reportingIds = r.reporting_ids || (r.reporting_id ? [r.reporting_id] : []);
+                    return reportingIds.includes(role.id || role._id);
+                });
+                
+                // Get reporting role names
+                const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+                const reportingRoleNames = reportingIds
+                    .map(rid => {
+                        const reportingRole = roles.find(r => (r.id || r._id) === rid);
+                        return reportingRole ? reportingRole.name : null;
+                    })
+                    .filter(name => name);
+                
+                const isTopLevel = reportingRoleNames.length === 0;
+                
+                rows.push(
+                    <tr 
+                        key={role.id || role._id}
+                        className={isManager ? 'manager-row' : 'subordinate-row'}
+                        style={{
+                            background: isManager ? '#0a0a0a' : '#000000',
+                            borderLeft: isManager ? '6px solid #ffffff' : 'none',
+                            borderBottom: '1px solid #222222',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#0a0a0a'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = isManager ? '#0a0a0a' : '#000000'}
+                    >
+                        {/* Role Name */}
+                        <td style={{ padding: isManager ? '20px 15px' : '16px 15px', paddingLeft: isManager ? '15px' : '50px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: isManager ? '12px' : '10px',
+                                    height: isManager ? '12px' : '10px',
+                                    background: '#ffffff',
+                                    borderRadius: '50%'
+                                }}></div>
+                                <span style={{
+                                    color: '#ffffff',
+                                    fontWeight: isManager ? '700' : '500',
+                                    fontSize: isManager ? '1.05rem' : '0.95rem'
+                                }}>
+                                    {role.name}
+                                </span>
+                            </div>
+                        </td>
+                        
+                        {/* Department */}
+                        <td style={{ padding: '16px 15px' }}>
+                            {role.department_id ? (
+                                <span style={{
+                                    display: 'inline-block',
+                                    padding: '6px 14px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    background: '#000000',
+                                    color: '#ffffff',
+                                    border: '2px solid #555555'
+                                }}>
+                                    {getDepartmentName(role.department_id)}
+                                </span>
+                            ) : (
+                                <span style={{ color: '#666666' }}>-</span>
+                            )}
+                        </td>
+                        
+                        {/* Reports To */}
+                        <td style={{ padding: '16px 15px' }}>
+                            {isTopLevel ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                    </svg>
+                                    <span style={{ color: '#ffffff', fontWeight: '500' }}>Super Admin</span>
+                                </div>
+                            ) : reportingRoleNames.length > 0 ? (
+                                reportingRoleNames.length > 1 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                            </svg>
+                                            <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                        </div>
+                                        {reportingRoleNames.slice(1).map((name, idx) => (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cccccc' }}>
+                                                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                                </svg>
+                                                <span>{name}</span>
+                                                <span style={{ fontSize: '0.75rem', color: '#888888' }}>(Secondary)</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                        </svg>
+                                        <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                    </div>
+                                )
+                            ) : (
+                                <span style={{ color: '#666666' }}>-</span>
+                            )}
+                        </td>
+                        
+                        {/* Permissions */}
+                        <td style={{ padding: '16px 15px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                                <span style={{ color: '#ffffff', fontWeight: '500' }}>
+                                    {getPermissionsCount(role.permissions)}
+                                </span>
+                            </div>
+                        </td>
+                        
+                        {/* Actions */}
+                        <td style={{ padding: '16px 15px' }}>
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button
+                                    onClick={() => openModal(role)}
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '6px',
+                                        border: '2px solid #ffffff',
+                                        background: '#000000',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: '#ffffff',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = '#ffffff';
+                                        e.currentTarget.style.color = '#000000';
+                                        e.currentTarget.style.transform = 'scale(1.05)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = '#000000';
+                                        e.currentTarget.style.color = '#ffffff';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                    }}
+                                    title="Edit"
+                                >
+                                    <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                    onClick={() => showDeleteConfirmation(role)}
+                                    disabled={hasDirectReports}
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '6px',
+                                        border: hasDirectReports ? '2px solid #333333' : '2px solid #666666',
+                                        background: '#000000',
+                                        cursor: hasDirectReports ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: hasDirectReports ? '#333333' : '#666666',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!hasDirectReports) {
+                                            e.currentTarget.style.background = '#ffffff';
+                                            e.currentTarget.style.borderColor = '#ffffff';
+                                            e.currentTarget.style.color = '#000000';
+                                            e.currentTarget.style.transform = 'scale(1.05)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!hasDirectReports) {
+                                            e.currentTarget.style.background = '#000000';
+                                            e.currentTarget.style.borderColor = '#666666';
+                                            e.currentTarget.style.color = '#666666';
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                        }
+                                    }}
+                                    title={hasDirectReports ? 'Cannot delete - has direct reports' : 'Delete'}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                );
+            });
+        });
+        
+        return rows;
     };
 
     const renderRoleTableRows = (nodes, level = 0, parentName = null) => {
@@ -1834,41 +3258,97 @@ const RoleSettings = () => {
     const someSelected = selectedPermissions > 0 && selectedPermissions < totalPermissions;
 
     return (
-        <div className="max-w-7xl mx-auto bg-gradient-to-br from-gray-900 to-gray-800 backdrop-blur-sm border border-white/20 rounded-2xl shadow-2xl p-8 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div style={{
+            maxWidth: '1400px',
+            margin: '0 auto',
+            background: '#000000',
+            border: '1px solid #333333',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            padding: '2rem',
+            color: '#ffffff',
+            fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
+        }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-4xl font-bold text-white mb-2 flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                            <Shield className="h-7 w-7 text-white" />
-                        </div>
-                        <span>Roles & Permissions</span>
-                    </h1>
-                    <p className="text-gray-400 text-sm ml-15">Manage organizational hierarchy and access control</p>
-                </div>
-                <div className="flex items-center space-x-3">
-                    {/* Export Buttons */}
-                    <div className="flex items-center space-x-2">
+            <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                marginBottom: '2rem'
+            }}>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem'
+                }}>
+                    {/* Export Button */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <button 
-                            onClick={(e) => {
+                            onClick={async (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                console.log('PDF button clicked');
-                                exportToPDF();
+                                console.log('Download Report button clicked!');
+                                try {
+                                    await exportToHTML();
+                                } catch (err) {
+                                    console.error('Button click error:', err);
+                                    message.error('Error: ' + err.message);
+                                }
                             }}
-                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center space-x-2 transform hover:scale-105 transition-all shadow-lg"
-                            title="Export to PDF"
+                            style={{
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: '#ffffff',
+                                fontWeight: '700',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '0.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                border: 'none',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s',
+                                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
+                            }}
+                            title="Download comprehensive interactive HTML report - Opens in new tab with all permissions and fixed columns"
                             type="button"
                         >
-                            <Download className="h-4 w-4" />
-                            <span>Export PDF</span>
+                            <Download className="h-5 w-5" />
+                            <span>📊 Download Report</span>
                         </button>
                     </div>
                     
                     {/* Add Role Button */}
                     <button 
                         onClick={() => openModal()}
-                        className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center space-x-2 transform hover:scale-105 transition-all shadow-lg"
+                        style={{
+                            background: '#ffffff',
+                            color: '#000000',
+                            fontWeight: '600',
+                            padding: '0.625rem 1.5rem',
+                            borderRadius: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            border: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                            e.currentTarget.style.background = '#f0f0f0';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.background = '#ffffff';
+                        }}
                     >
                         <Plus className="h-5 w-5" />
                         <span>Add New Role</span>
@@ -1920,59 +3400,131 @@ const RoleSettings = () => {
             {/* Role Table */}
             {loading ? (
                 <div className="flex justify-center items-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
                 </div>
             ) : (
-                <div className="relative border-2 border-white/20 rounded-xl overflow-hidden bg-gray-900/50 shadow-2xl">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-300 uppercase bg-gradient-to-r from-gray-800 to-gray-900 sticky top-0 z-10 border-b-2 border-indigo-500/50">
+                <div style={{
+                    position: 'relative',
+                    border: '2px solid #ffffff',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    background: '#000000',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                }}>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', textAlign: 'left', fontSize: '0.95rem', borderCollapse: 'collapse' }}>
+                            <thead style={{
+                                background: '#000000',
+                                borderBottom: '3px solid #ffffff',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
+                            }}>
                                 <tr>
-                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
-                                        <div className="flex items-center space-x-2">
-                                            <Users className="h-4 w-4 text-indigo-400" />
-                                            <span>ROLE NAME</span>
-                                        </div>
+                                    <th scope="col" style={{
+                                        padding: '18px 15px',
+                                        textAlign: 'left',
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1.5px',
+                                        color: '#ffffff',
+                                        borderRight: '1px solid #333333',
+                                        width: '30%'
+                                    }}>
+                                        ROLE NAME
                                     </th>
-                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
-                                        <div className="flex items-center space-x-2">
-                                            <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                            </svg>
-                                            <span>DEPARTMENT</span>
-                                        </div>
+                                    <th scope="col" style={{
+                                        padding: '18px 15px',
+                                        textAlign: 'left',
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1.5px',
+                                        color: '#ffffff',
+                                        borderRight: '1px solid #333333',
+                                        width: '20%'
+                                    }}>
+                                        DEPARTMENT
                                     </th>
-                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
-                                        <div className="flex items-center space-x-2">
-                                            <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                                            </svg>
-                                            <span>REPORTS TO</span>
-                                        </div>
+                                    <th scope="col" style={{
+                                        padding: '18px 15px',
+                                        textAlign: 'left',
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1.5px',
+                                        color: '#ffffff',
+                                        borderRight: '1px solid #333333',
+                                        width: '25%'
+                                    }}>
+                                        REPORTS TO
                                     </th>
-                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
-                                        <div className="flex items-center space-x-2">
-                                            <Shield className="h-4 w-4 text-indigo-400" />
-                                            <span>PERMISSIONS</span>
-                                        </div>
+                                    <th scope="col" style={{
+                                        padding: '18px 15px',
+                                        textAlign: 'left',
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1.5px',
+                                        color: '#ffffff',
+                                        borderRight: '1px solid #333333',
+                                        width: '12%'
+                                    }}>
+                                        PERMISSIONS
                                     </th>
-                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide text-center">
-                                        <span>ACTIONS</span>
+                                    <th scope="col" style={{
+                                        padding: '18px 15px',
+                                        textAlign: 'left',
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1.5px',
+                                        color: '#ffffff',
+                                        width: '13%'
+                                    }}>
+                                        ACTIONS
                                     </th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {renderRoleTableRows(treeData)}
+                                {renderHierarchicalRoles()}
                             </tbody>
                         </table>
                     </div>
-                    {treeData && treeData.length === 0 && (
-                        <div className="text-center py-16 text-gray-400">
-                            <div className="bg-gray-800/50 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-                                <Users className="h-10 w-10 opacity-50" />
+                    {roles && roles.length === 0 && (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '4rem 0',
+                            color: '#999999'
+                        }}>
+                            <div style={{
+                                background: '#1a1a1a',
+                                borderRadius: '50%',
+                                width: '80px',
+                                height: '80px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                margin: '0 auto 1rem',
+                                border: '2px solid #333333'
+                            }}>
+                                <Users className="h-10 w-10" style={{ opacity: 0.5, color: '#666666' }} />
                             </div>
-                            <p className="text-lg font-medium mb-2">No roles found</p>
-                            <p className="text-sm text-gray-500">Click "Add New Role" to create your first role</p>
+                            <p style={{
+                                fontSize: '1.125rem',
+                                fontWeight: '500',
+                                marginBottom: '0.5rem',
+                                color: '#cccccc'
+                            }}>
+                                No roles found
+                            </p>
+                            <p style={{
+                                fontSize: '0.875rem',
+                                color: '#666666'
+                            }}>
+                                Click "Add New Role" to create your first role
+                            </p>
                         </div>
                     )}
                 </div>
@@ -2120,29 +3672,125 @@ const RoleSettings = () => {
                                         const selectedRole = roles.find(r => (r._id || r.id) === reportingId);
                                         return (
                                             <div key={index} className="flex items-center gap-2">
-                                                <select
-                                                    value={reportingId}
-                                                    onChange={(e) => {
-                                                        const newReportingIds = [...(formData.reporting_ids || [])];
-                                                        newReportingIds[index] = e.target.value;
-                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
-                                                    }}
-                                                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                >
-                                                    <option value="">Select Reporting Role</option>
-                                                    {roles.filter(r => {
-                                                        const roleId = r._id || r.id;
-                                                        const editingId = editingRole?._id || editingRole?.id;
-                                                        // Don't show current role being edited or already selected roles
-                                                        return roleId !== editingId && 
-                                                               (!(formData.reporting_ids || []).includes(roleId) || roleId === reportingId);
-                                                    }).map(role => {
-                                                        const roleId = role._id || role.id;
-                                                        return (
-                                                            <option key={roleId} value={roleId}>{role.name}</option>
-                                                        );
-                                                    })}
-                                                </select>
+                                                <div className="flex-1 relative reporting-role-dropdown">
+                                                    {/* Custom Searchable Dropdown */}
+                                                    <div className="relative">
+                                                        {/* Dropdown Button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (openDropdownIndex === index) {
+                                                                    setOpenDropdownIndex(null);
+                                                                    setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                } else {
+                                                                    setOpenDropdownIndex(index);
+                                                                    setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                }
+                                                            }}
+                                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                                                        >
+                                                            <span>{selectedRole?.name || 'Select Reporting Role'}</span>
+                                                            <ChevronDown className={`h-4 w-4 transition-transform ${openDropdownIndex === index ? 'rotate-180' : ''}`} />
+                                                        </button>
+
+                                                        {/* Dropdown Menu */}
+                                                        {openDropdownIndex === index && (
+                                                            <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-80 overflow-hidden">
+                                                                {/* Search Input */}
+                                                                <div className="p-2 border-b border-gray-600 sticky top-0 bg-gray-800">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="🔍 Search roles..."
+                                                                        value={dropdownSearchTerms[index] || ''}
+                                                                        onChange={(e) => {
+                                                                            setDropdownSearchTerms({...dropdownSearchTerms, [index]: e.target.value});
+                                                                        }}
+                                                                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        autoFocus
+                                                                    />
+                                                                </div>
+
+                                                                {/* Options List */}
+                                                                <div className="overflow-y-auto max-h-64">
+                                                                    {(() => {
+                                                                        // Filter roles
+                                                                        const filteredRoles = roles.filter(r => {
+                                                                            const roleId = r._id || r.id;
+                                                                            const editingId = editingRole?._id || editingRole?.id;
+                                                                            // Don't show current role being edited or already selected roles
+                                                                            return roleId !== editingId && 
+                                                                                   (!(formData.reporting_ids || []).includes(roleId) || roleId === reportingId);
+                                                                        });
+
+                                                                        // Separate Super Admin from other roles
+                                                                        const superAdminRole = filteredRoles.find(r => 
+                                                                            r.name.toLowerCase().includes('super admin') || 
+                                                                            r.name.toLowerCase() === 'super admin'
+                                                                        );
+                                                                        
+                                                                        const otherRoles = filteredRoles.filter(r => 
+                                                                            !(r.name.toLowerCase().includes('super admin') || 
+                                                                              r.name.toLowerCase() === 'super admin')
+                                                                        );
+
+                                                                        // Sort other roles alphabetically
+                                                                        otherRoles.sort((a, b) => a.name.localeCompare(b.name));
+
+                                                                        // Combine: Super Admin first, then sorted others
+                                                                        const sortedRoles = superAdminRole 
+                                                                            ? [superAdminRole, ...otherRoles] 
+                                                                            : otherRoles;
+
+                                                                        // Apply search filter
+                                                                        const searchTerm = dropdownSearchTerms[index] || '';
+                                                                        const finalRoles = searchTerm
+                                                                            ? sortedRoles.filter(r => 
+                                                                                r.name.toLowerCase().includes(searchTerm.toLowerCase())
+                                                                              )
+                                                                            : sortedRoles;
+
+                                                                        if (finalRoles.length === 0) {
+                                                                            return (
+                                                                                <div className="px-4 py-3 text-gray-400 text-sm text-center">
+                                                                                    No roles found
+                                                                                </div>
+                                                                            );
+                                                                        }
+
+                                                                        return finalRoles.map((role) => {
+                                                                            const roleId = role._id || role.id;
+                                                                            const isSuperAdmin = role.name.toLowerCase().includes('super admin') || 
+                                                                                               role.name.toLowerCase() === 'super admin';
+                                                                            const isSelected = roleId === reportingId;
+                                                                            
+                                                                            return (
+                                                                                <button
+                                                                                    key={roleId}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        const newReportingIds = [...(formData.reporting_ids || [])];
+                                                                                        newReportingIds[index] = roleId;
+                                                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                                                        setOpenDropdownIndex(null);
+                                                                                        setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                                    }}
+                                                                                    className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition-colors flex items-center ${
+                                                                                        isSelected ? 'bg-blue-600 text-white' : 'text-gray-200'
+                                                                                    } ${isSuperAdmin ? 'font-semibold' : ''}`}
+                                                                                >
+                                                                                    {isSuperAdmin && <span className="mr-2">⭐</span>}
+                                                                                    {role.name}
+                                                                                    {isSelected && <span className="ml-auto">✓</span>}
+                                                                                </button>
+                                                                            );
+                                                                        });
+                                                                    })()}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => {

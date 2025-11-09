@@ -949,29 +949,11 @@ class PermissionManager:
             for perm in user_permissions
         )
         
-        # CRITICAL: Also check if user's DESIGNATION is "Team Leader"
-        # Many Team Leaders have the designation but not the permission!
-        is_team_leader_by_designation = False
-        if not user_doc:
-            user_doc = await users_db.get_user(user_id)
+        # DESIGNATION IS DISPLAY-ONLY: Only role-based permissions matter
+        # Removed designation-based permission logic - designation is purely a job title for display
+        is_team_leader = is_team_leader_by_permission
         
-        if user_doc:
-            designation = (user_doc.get("designation") or "").lower().strip()
-            print(f"DEBUG: User designation: '{designation}'")
-            is_team_leader_by_designation = (
-                "team leader" in designation or
-                "teamleader" in designation or
-                "team-leader" in designation or
-                designation == "tl" or
-                "team lead" in designation
-            )
-            print(f"DEBUG: Is Team Leader by designation: {is_team_leader_by_designation}")
-        
-        # User is Team Leader if EITHER condition is true
-        is_team_leader = is_team_leader_by_permission or is_team_leader_by_designation
-        
-        print(f"DEBUG: Is Team Leader (by permission): {is_team_leader_by_permission} for user {user_id}")
-        print(f"DEBUG: Is Team Leader (by designation): {is_team_leader_by_designation} for user {user_id}")
+        print(f"DEBUG: Is Team Leader (by permission ONLY): {is_team_leader_by_permission} for user {user_id}")
         print(f"DEBUG: Is Team Leader (FINAL): {is_team_leader} for user {user_id}")
         
         # UNIVERSAL: Everyone can see leads they created (handle both string and ObjectId)
@@ -1103,48 +1085,32 @@ class PermissionManager:
             for perm in user_permissions
         )
         
-        # ALSO check if user's DESIGNATION contains "team manager" (case-insensitive)
-        # This allows Team Manager designation to work without explicit team_manager permission
-        is_team_manager_by_designation = False
+        # DESIGNATION IS DISPLAY-ONLY: Only check role name, NOT designation field
+        # Removed designation-based permission logic - designation is purely a job title for display
         is_team_manager_by_role_name = False
         
         if not user_doc:
             user_doc = await users_db.get_user(user_id)
         
-        if user_doc:
-            # Check designation field first (primary method)
-            designation = user_doc.get("designation", "").lower()
-            is_team_manager_by_designation = (
-                "team manager" in designation or
-                "teammanager" in designation or
-                "team-manager" in designation or
-                designation == "tm" or
-                designation.startswith("tm ") or
-                designation.endswith(" tm")
-            )
-            print(f"DEBUG: User designation '{designation}' matches Team Manager: {is_team_manager_by_designation}")
-            
-            # Also check role name as fallback
-            if not is_team_manager_by_designation and user_doc.get("role_id"):
-                role_doc = await roles_db.get_role(user_doc.get("role_id"))
-                if role_doc:
-                    role_name = role_doc.get("name", "").lower()
-                    # Check for various team manager role name variations
-                    is_team_manager_by_role_name = (
-                        "team manager" in role_name or
-                        "teammanager" in role_name or
-                        "team-manager" in role_name or
-                        "tm" == role_name or  # Short form
-                        role_name.startswith("tm ") or  # TM followed by space
-                        role_name.endswith(" tm")  # Space followed by TM
-                    )
-                    print(f"DEBUG: Role name '{role_name}' matches Team Manager: {is_team_manager_by_role_name}")
+        if user_doc and user_doc.get("role_id"):
+            # Only check role name (not designation)
+            role_doc = await roles_db.get_role(user_doc.get("role_id"))
+            if role_doc:
+                role_name = role_doc.get("name", "").lower()
+                # Check for various team manager role name variations
+                is_team_manager_by_role_name = (
+                    "team manager" in role_name or
+                    "teammanager" in role_name or
+                    "team-manager" in role_name or
+                    "tm" == role_name or  # Short form
+                    role_name.startswith("tm ") or  # TM followed by space
+                    role_name.endswith(" tm")  # Space followed by TM
+                )
+                print(f"DEBUG: Role name '{role_name}' matches Team Manager: {is_team_manager_by_role_name}")
         
-        if has_team_manager_permission or is_team_manager_by_designation or is_team_manager_by_role_name:
+        if has_team_manager_permission or is_team_manager_by_role_name:
             if has_team_manager_permission:
                 trigger_reason = "team_manager permission"
-            elif is_team_manager_by_designation:
-                trigger_reason = "designation contains 'team manager'"
             else:
                 trigger_reason = "role name contains 'team manager'"
             print(f"DEBUG: User {user_id} has TEAM MANAGER access (triggered by: {trigger_reason}) - adding team leads visibility")

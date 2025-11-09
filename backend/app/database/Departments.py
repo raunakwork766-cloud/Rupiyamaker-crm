@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+import asyncio
 
 class DepartmentsDB:
     def __init__(self, db=None):
@@ -125,7 +126,8 @@ class DepartmentsDB:
             return []
             
         parent_obj_id = ObjectId(parent_id) if parent_id else None
-        return await self._async_to_list(self.collection.find({"parent_id": parent_obj_id}))
+        cursor = self.collection.find({"parent_id": parent_obj_id})
+        return await cursor.to_list(None)
         
     async def get_all_descendant_departments(self, parent_id: str) -> List[dict]:
         """
@@ -135,12 +137,12 @@ class DepartmentsDB:
             return []
             
         all_descendants = []
-        direct_children = self.get_child_departments(parent_id)
+        direct_children = await self.get_child_departments(parent_id)
         
         all_descendants.extend(direct_children)
         
         for child in direct_children:
-            child_descendants = self.get_all_descendant_departments(str(child["_id"]))
+            child_descendants = await self.get_all_descendant_departments(str(child["_id"]))
             all_descendants.extend(child_descendants)
             
         return all_descendants
@@ -151,17 +153,17 @@ class DepartmentsDB:
         Root departments first (parent_id=None), then organized by parent.
         """
         # Get root departments
-        root_departments = self.list_departments({"parent_id": None})
+        root_departments = await self.list_departments({"parent_id": None})
         
         # For each root, recursively get children
         result = []
         for dept in root_departments:
-            dept_with_children = self._add_children_to_department(dept)
+            dept_with_children = await self._add_children_to_department(dept)
             result.append(dept_with_children)
             
         return result
         
-    def _add_children_to_department(self, department: dict) -> dict:
+    async def _add_children_to_department(self, department: dict) -> dict:
         """Helper method to recursively add children to a department"""
         # Make a copy to avoid modifying the original
         dept_copy = {**department}
@@ -171,15 +173,14 @@ class DepartmentsDB:
             dept_copy["_id"] = str(dept_copy["_id"])
             
         # Get direct children
-        children = self.get_child_departments(str(department["_id"]))
+        children = await self.get_child_departments(str(department["_id"]))
         
         # If there are children, add them
         if children:
-            # Add children with their own children
-            dept_copy["children"] = [
-                self._add_children_to_department(child)
-                for child in children
-            ]
+            # Add children with their own children (process them concurrently)
+            dept_copy["children"] = await asyncio.gather(
+                *[self._add_children_to_department(child) for child in children]
+            )
         else:
             dept_copy["children"] = []
             

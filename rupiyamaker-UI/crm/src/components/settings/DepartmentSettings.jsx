@@ -403,7 +403,14 @@ const DepartmentSettings = () => {
         if (!departmentToDelete) return;
         
         try {
-            const response = await fetch(`${API_BASE_URL}/departments/${departmentToDelete._id}`, {
+            const userData = localStorage.getItem('userData');
+            if (!userData) {
+                message.error('User not authenticated');
+                return;
+            }
+
+            const { user_id } = JSON.parse(userData);
+            const response = await fetch(`${API_BASE_URL}/departments/${departmentToDelete._id}?user_id=${user_id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -416,7 +423,10 @@ const DepartmentSettings = () => {
                 setDepartmentToDelete(null);
                 fetchDepartments();
             } else {
-                throw new Error('Failed to delete department');
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.detail || 'Failed to delete department';
+                message.error(errorMessage);
+                console.error('Delete failed:', errorMessage);
             }
         } catch (error) {
             console.error('Error deleting department:', error);

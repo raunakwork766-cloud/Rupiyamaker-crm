@@ -38,8 +38,8 @@ async def create_department(
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Create a new department"""
-    # Check permissions
-    await check_permission(user_id, "departments", "create", users_db, roles_db)
+    # Check permissions - departments are managed under "settings" permission
+    await check_permission(user_id, "settings", "show", users_db, roles_db)
     # Check if department with same name exists
     if await departments_db.get_department_by_name(department.name):
         raise HTTPException(
@@ -191,10 +191,16 @@ async def update_department(
 
 @router.delete("/{dept_id}", response_model=Dict[str, str])
 async def delete_department(
-    dept_id: ObjectIdStr, 
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    dept_id: ObjectIdStr,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Delete a department"""
+    # Check permissions - departments are managed under "settings" permission
+    await check_permission(user_id, "settings", "show", users_db, roles_db)
+    
     # Check if department exists
     department = await departments_db.get_department(dept_id)
     if not department:
