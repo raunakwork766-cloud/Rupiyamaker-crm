@@ -246,7 +246,7 @@ class LeadsDB:
         # Check for login form fields and ensure they're stored in dynamic_fields
         login_form_fields = [
             "cibil_score", "loan_eligibility", "company_name", 
-            "company_category", "salary", "pincode", "city", "customer_name"
+            "company_category", "salary", "customer_name"
         ]
         
         for field in login_form_fields:
@@ -376,6 +376,11 @@ class LeadsDB:
                 "loan_amount": 1,
                 "campaign_name": 1,  # ⚡ ADDED: Campaign name for lead tracking
                 "data_code": 1,      # ⚡ ADDED: Data code for lead source tracking
+                "xyz": 1,            # ⚡ ADDED: XYZ field
+                "pincode_city": 1,   # ⚡ ADDED: Pincode & City field (combined)
+                "importantquestion": 1,  # ⚡ ADDED: Important questions responses
+                "question_responses": 1,  # ⚡ ADDED: Important questions responses (new format)
+                "important_questions_validated": 1,  # ⚡ ADDED: Validation status
                 
                 # Assignment and tracking
                 "assigned_to": 1,
@@ -393,18 +398,14 @@ class LeadsDB:
                 "file_sent_to_login": 1,  # ⚡ ADDED: For login status badge display
                 
                 # Login form specific fields (commonly displayed)
-                "city": 1,
-                "pincode": 1,
                 "company_name": 1,
                 "company_category": 1,
                 "salary": 1,
                 "loan_eligibility": 1,
                 "customer_name": 1,
                 
-                # Source and address
+                # Source
                 "source": 1,
-                "address": 1,
-                "state": 1,
                 
                 # Additional important fields for display
                 "reference": 1,
@@ -479,30 +480,62 @@ class LeadsDB:
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
         
+        # CRITICAL FIX: ALWAYS preserve dynamic_fields when not explicitly being updated
+        # This prevents obligation_data and other nested data from being lost during any update
+        if "dynamic_fields" not in update_data:
+            # No dynamic_fields in update - preserve entire current dynamic_fields
+            if current_lead.get("dynamic_fields"):
+                update_data["dynamic_fields"] = current_lead["dynamic_fields"].copy()
+                print("✅ Preserved entire dynamic_fields from current lead (not in update)")
+            else:
+                update_data["dynamic_fields"] = {}
+        elif update_data["dynamic_fields"] is None:
+            # dynamic_fields explicitly set to None - use current or empty
+            if current_lead.get("dynamic_fields"):
+                update_data["dynamic_fields"] = current_lead["dynamic_fields"].copy()
+            else:
+                update_data["dynamic_fields"] = {}
+        else:
+            # dynamic_fields IS present - routes layer already merged it
+            print("⚠️ dynamic_fields already present in update - preserving merged data from routes layer")
+            # Ensure it's a dict
+            if not isinstance(update_data["dynamic_fields"], dict):
+                update_data["dynamic_fields"] = {}
+            
+            # EXTRA SAFETY: Preserve important nested fields that might not be in the merged update
+            important_fields = ["obligation_data", "eligibility_details", "identity_details", "financial_details"]
+            for field in important_fields:
+                if field not in update_data["dynamic_fields"]:
+                    # Field not in update - preserve from current lead if exists
+                    current_value = current_lead.get("dynamic_fields", {}).get(field)
+                    if current_value is not None:
+                        update_data["dynamic_fields"][field] = current_value
+                        print(f"✅ Preserved {field} from current lead (not in merged update)")
+        
         # Special handling for login form fields
         login_form_fields = [
             "cibil_score", "loan_eligibility", "company_name", 
-            "company_category", "salary", "pincode", "city", "customer_name"
+            "company_category", "salary", "customer_name",
+            "data_code", "first_name", "last_name", "phone", "alternative_phone",
+            "loan_type", "loan_type_name"
         ]
         
         field_updates_needed = any(field in update_data for field in login_form_fields)
         
         if field_updates_needed:
-            # Ensure dynamic_fields exists
-            if "dynamic_fields" not in update_data:
-                # If no dynamic_fields in update_data, use current or create empty
-                if current_lead.get("dynamic_fields"):
-                    update_data["dynamic_fields"] = current_lead["dynamic_fields"]
-                else:
-                    update_data["dynamic_fields"] = {}
-            elif update_data["dynamic_fields"] is None:
-                update_data["dynamic_fields"] = {}
-            
             # Ensure financial_details exists in dynamic_fields for CIBIL score
+            # But preserve existing data if already present
             if "financial_details" not in update_data["dynamic_fields"]:
                 update_data["dynamic_fields"]["financial_details"] = {}
                 if current_lead.get("dynamic_fields", {}).get("financial_details"):
                     update_data["dynamic_fields"]["financial_details"] = current_lead["dynamic_fields"]["financial_details"]
+            else:
+                # Financial details already present - merge with current instead of replace
+                current_financial = current_lead.get("dynamic_fields", {}).get("financial_details", {})
+                if current_financial:
+                    # Merge: keep new data, add missing fields from current
+                    merged_financial = {**current_financial, **update_data["dynamic_fields"]["financial_details"]}
+                    update_data["dynamic_fields"]["financial_details"] = merged_financial
             
             # Check if login_form is present in dynamic_fields
             login_form = update_data["dynamic_fields"].get("login_form", {})
@@ -529,6 +562,7 @@ class LeadsDB:
                 if field in update_data:
                     # Store field in the standard location
                     update_data["dynamic_fields"][field] = update_data[field]
+                    print(f"📋 Copied {field} to dynamic_fields: {update_data[field]}")
                     
                     # For CIBIL score, also store in financial_details
                     if field == "cibil_score":
@@ -539,6 +573,14 @@ class LeadsDB:
         print(f"Collection: {self.collection.name}")
         print(f"Filter: {{'_id': ObjectId('{lead_id}')}}")
         print(f"Update operation: $set with {len(update_data)} fields")
+        print(f"📋 TOP-LEVEL FIELDS in update_data:")
+        for key in ['phone', 'email', 'first_name', 'last_name']:
+            if key in update_data:
+                print(f"   - {key}: {update_data[key]}")
+        
+        print(f"📋 DYNAMIC_FIELDS keys in update_data:")
+        if 'dynamic_fields' in update_data:
+            print(f"   {list(update_data['dynamic_fields'].keys())}")
         
         result = await self.collection.update_one(
             {"_id": ObjectId(lead_id)},
@@ -562,8 +604,8 @@ class LeadsDB:
         
         # First, track ALL field changes (general tracking)
         for field, new_value in update_data.items():
-            # Skip metadata fields and fields we handle specially
-            if field in ["updated_at", "activity"]:
+            # Skip metadata fields, fields we handle specially
+            if field in ["updated_at", "activity", "dynamic_fields"]:
                 continue
                 
             old_value = current_lead.get(field)

@@ -1563,7 +1563,7 @@ async def get_lead(
     
     return lead_dict
 
-@router.put("/{lead_id}", response_model=Dict[str, str])
+@router.put("/{lead_id}", response_model=Dict[str, Any])
 async def update_lead(
     lead_id: ObjectIdStr,
     lead_update: LeadUpdate,
@@ -1578,16 +1578,51 @@ async def update_lead(
     # Log the incoming data for debugging
     import logging
     logger = logging.getLogger(__name__)
+    
+    # Add detailed logging at the very start
+    logger.info(f"========== UPDATE LEAD REQUEST START ==========")
+    logger.info(f"Lead ID: {lead_id}")
+    logger.info(f"User ID: {user_id}")
+    logger.info(f"lead_update object: {lead_update}")
+    logger.info(f"lead_update.__dict__: {lead_update.__dict__}")
+    logger.info(f"lead_update.__fields_set__: {lead_update.__fields_set__}")
+    
     try:
         logger.info(f"Lead update request for ID: {lead_id}")
         logger.info(f"Update data type: {type(lead_update)}")
         if hasattr(lead_update, 'dict'):
             update_dict = lead_update.dict(exclude_unset=True)
             logger.info(f"Lead update data: {update_dict}")
+            
+            # DEBUG: Check for pincode_city specifically
+            if 'pincode_city' in update_dict:
+                logger.info(f"✅ PINCODE_CITY FIELD DETECTED: {update_dict['pincode_city']}")
+            else:
+                logger.info(f"⚠️ pincode_city NOT in update_dict. Keys: {list(update_dict.keys())}")
+            
+            # CRITICAL: Reject completely empty updates to avoid 422/500 errors
+            # Check both: empty dict and dict with only None values
+            if not update_dict:
+                logger.warning(f"⚠️ Completely empty update received for lead {lead_id}, returning success without changes")
+                return {"message": "No changes to update"}
+            
+            # Also check if all values are None (which would result in empty update after filtering)
+            non_none_values = {k: v for k, v in update_dict.items() if v is not None}
+            if len(non_none_values) == 0:
+                logger.warning(f"⚠️ Update with all None values received for lead {lead_id}, returning success without changes")
+                return {"message": "No changes to update"}
         else:
             logger.info(f"Lead update data: {vars(lead_update)}")
     except Exception as e:
         logger.error(f"Error logging lead update data: {e}")
+        # If logging fails, still try to continue but be cautious about empty updates
+        try:
+            update_dict = lead_update.dict(exclude_unset=True) if hasattr(lead_update, 'dict') else {}
+            if not update_dict:
+                logger.warning(f"⚠️ Empty update detected after logging error for lead {lead_id}, returning success")
+                return {"message": "No changes to update"}
+        except:
+            pass
     
     # Check if lead exists
     lead = await leads_db.get_lead(lead_id)
@@ -1726,7 +1761,9 @@ async def update_lead(
         lead_update.assign_report_to = valid_reporters
     
     # Update the lead
+    logger.info(f"🔍 lead_update.dict() BEFORE filtering: {lead_update.dict()}")
     update_dict = {k: v for k, v in lead_update.dict().items() if v is not None}
+    logger.info(f"🔍 update_dict AFTER filtering None values: {update_dict}")
     
     # Special handling for assigned_to if it's a string representation of JSON array
     if "assigned_to" in update_dict and isinstance(update_dict["assigned_to"], str):
@@ -1747,36 +1784,95 @@ async def update_lead(
     
     # Special handling for dynamic_fields to ensure proper merging of all fields
     if "dynamic_fields" in update_dict:
+        print(f"⚠️ DYNAMIC_FIELDS RECEIVED IN UPDATE:")
+        print(f"   Keys in update_dict.dynamic_fields: {list(update_dict['dynamic_fields'].keys())}")
+        for key, value in update_dict["dynamic_fields"].items():
+            if isinstance(value, dict):
+                print(f"   - {key}: {list(value.keys())}")
+            else:
+                print(f"   - {key}: {value}")
+        
         # Get current lead data to merge properly
         current_lead = await leads_db.get_lead(lead_id)
         current_dynamic_fields = current_lead.get("dynamic_fields", {}) or {}
         
-        # Create a new merged dynamic_fields object
+        print(f"📋 CURRENT LEAD dynamic_fields keys from DB: {list(current_dynamic_fields.keys())}")
+        
+        # Create a new merged dynamic_fields object starting with CURRENT data
         merged_dynamic_fields = dict(current_dynamic_fields)
+        
+        # CRITICAL FIX: Preserve important fields that must never be lost
+        important_fields = ["obligation_data", "eligibility_details", "financial_details", "identity_details", "process"]
         
         # Go through each key in the update and properly merge
         for key, value in update_dict["dynamic_fields"].items():
             if key in current_dynamic_fields and isinstance(value, dict) and isinstance(current_dynamic_fields[key], dict):
                 # For dictionary fields (like forms), merge instead of replace
+                # IMPORTANT: Merge both ways - keep existing fields not in update
                 merged_dynamic_fields[key] = {**current_dynamic_fields[key], **value}
+                print(f"✅ Merged dynamic_fields.{key} (preserved {len(current_dynamic_fields[key])} existing fields, added/updated {len(value)} fields)")
             else:
                 # For other types, just replace
                 merged_dynamic_fields[key] = value
+                print(f"✅ Set dynamic_fields.{key}")
+        
+        # EXTRA SAFETY: Ensure all important fields from current lead are preserved if not in update
+        for field in important_fields:
+            if field not in update_dict["dynamic_fields"] and field in current_dynamic_fields:
+                # Field exists in DB but NOT in update - preserve it!
+                merged_dynamic_fields[field] = current_dynamic_fields[field]
+                print(f"🔒 Preserved dynamic_fields.{field} from database (not in update)")
         
         # Replace with merged data
         update_dict["dynamic_fields"] = merged_dynamic_fields
+        print(f"✅ Final merged dynamic_fields keys: {list(merged_dynamic_fields.keys())}")
     
-    success = await leads_db.update_lead(lead_id, update_dict, user_id)
+    # Final safety check: ensure we have something to update after all processing
+    final_update_data = {k: v for k, v in update_dict.items() if v is not None}
+    if not final_update_data:
+        logger.warning(f"⚠️ After processing, no data to update for lead {lead_id}, returning success")
+        return {"message": "No changes to update"}
     
-    if not success:
+    try:
+        success = await leads_db.update_lead(lead_id, final_update_data, user_id)
+        
+        if not success:
+            logger.error(f"❌ Database update_lead returned False for lead {lead_id}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update lead in database"
+            )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
+    except Exception as e:
+        # Catch any unexpected errors during update
+        logger.error(f"❌ Unexpected error updating lead {lead_id}: {str(e)}")
+        logger.error(f"❌ Update data was: {final_update_data}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update lead"
+            detail=f"Failed to update lead: {str(e)}"
         )
     
     # Clear LoginCRM cache since lead updates might affect login department views
     from app.utils.performance_cache import invalidate_cache_pattern
     await invalidate_cache_pattern("login-department-leads*")
+    
+    # Fetch and return the updated lead so frontend can update its state
+    updated_lead = await leads_db.get_lead(lead_id)
+    if updated_lead:
+        # Convert ObjectId to string for JSON serialization
+        if "_id" in updated_lead:
+            updated_lead["_id"] = str(updated_lead["_id"])
+        # Convert other ObjectIds in nested fields
+        for key, value in updated_lead.items():
+            if isinstance(value, ObjectId):
+                updated_lead[key] = str(value)
+        
+        logger.info(f"✅ Returning updated lead")
+        return updated_lead
     
     return {"message": "Lead updated successfully"}
 

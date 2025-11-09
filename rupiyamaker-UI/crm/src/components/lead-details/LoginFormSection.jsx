@@ -155,20 +155,20 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
         try {
             if (isCoApplicant) {
                 // For co-applicant, update via parent component
+                // CRITICAL FIX: Only send the specific field being updated
                 if (onUpdate) {
                     await onUpdate({
                         dynamic_fields: {
-                            ...leadInfo.dynamic_fields,
                             co_applicant_form: formData
                         }
                     });
                 }
             } else {
                 // For primary applicant, use parent update function
+                // CRITICAL FIX: Only send the specific field being updated
                 if (onUpdate) {
                     await onUpdate({
                         dynamic_fields: {
-                            ...leadInfo.dynamic_fields,
                             applicant_form: formData
                         }
                     });

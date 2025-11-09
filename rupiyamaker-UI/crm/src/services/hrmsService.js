@@ -1181,24 +1181,9 @@ export const hrmsService = {
                         backendFieldName = 'dob'; // Frontend sends date_of_birth, backend expects dob
                     }
                     
-                    // Handle nested objects like addresses
+                    // Handle nested objects
                     if (typeof employeeData[key] === 'object' && !Array.isArray(employeeData[key])) {
-                        // For nested objects, we need to flatten them for the backend
-                        if (key === 'permanent_address') {
-                            if (employeeData[key].address) formData.append('permanent_address', employeeData[key].address);
-                            if (employeeData[key].pincode) formData.append('permanent_pincode', employeeData[key].pincode);
-                            if (employeeData[key].city) formData.append('permanent_city', employeeData[key].city);
-                            if (employeeData[key].state) formData.append('permanent_state', employeeData[key].state);
-                            if (employeeData[key].country) formData.append('permanent_country', employeeData[key].country);
-                        } else if (key === 'current_address') {
-                            if (employeeData[key].address) formData.append('current_address', employeeData[key].address);
-                            if (employeeData[key].pincode) formData.append('current_pincode', employeeData[key].pincode);
-                            if (employeeData[key].city) formData.append('current_city', employeeData[key].city);
-                            if (employeeData[key].state) formData.append('current_state', employeeData[key].state);
-                            if (employeeData[key].country) formData.append('current_country', employeeData[key].country);
-                        } else {
-                            formData.append(backendFieldName, JSON.stringify(employeeData[key]));
-                        }
+                        formData.append(backendFieldName, JSON.stringify(employeeData[key]));
                     } else {
                         formData.append(backendFieldName, employeeData[key]);
                     }

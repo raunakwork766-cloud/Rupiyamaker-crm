@@ -19,20 +19,19 @@ export default defineConfig({
       clientPort: 4521
     },
     proxy: {
-      // Proxy API requests to avoid CORS issues
+      // Proxy API requests to backend via Apache
       '/api': {
-      target: 'https://rupiyamaker.com:8049',
+      target: 'https://rupiyamaker.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, ''),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.error('❌ Proxy Error:', err.message);
             console.error('Request URL:', req.url);
-            console.error('Target:', 'https://rupiyamaker.com:8049');
+            console.error('Target:', 'https://rupiyamaker.com');
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('🚀 Proxying Request:', req.method, req.url, '→', `https://rupiyamaker.com:8049${req.url.replace('/api', '')}`);
+            console.log('🚀 Proxying Request:', req.method, req.url, '→', `https://rupiyamaker.com${req.url}`);
             console.log('Headers:', proxyReq.getHeaders());
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {

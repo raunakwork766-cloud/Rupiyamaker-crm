@@ -1341,7 +1341,6 @@ async def update_user_with_photo(
     blood_group: Optional[str] = Form(None),
     pan_number: Optional[str] = Form(None),
     aadhaar_number: Optional[str] = Form(None),
-    current_city: Optional[str] = Form(None),
     highest_qualification: Optional[str] = Form(None),
     experience_level: Optional[str] = Form(None),
     employee_id: Optional[str] = Form(None),
@@ -1369,18 +1368,6 @@ async def update_user_with_photo(
     work_location: Optional[str] = Form(None),
     mac_address: Optional[str] = Form(None),
     reporting_manager_id: Optional[str] = Form(None),
-    # Address fields
-    permanent_address: Optional[str] = Form(None),
-    permanent_city: Optional[str] = Form(None),
-    permanent_state: Optional[str] = Form(None),
-    permanent_country: Optional[str] = Form(None),
-    permanent_pincode: Optional[str] = Form(None),
-    current_address: Optional[str] = Form(None),
-    current_same_as_permanent: Optional[bool] = Form(None),
-    current_city_field: Optional[str] = Form(None),
-    current_state: Optional[str] = Form(None),
-    current_country: Optional[str] = Form(None),
-    current_pincode: Optional[str] = Form(None),
     # Profile photo upload
     profile_photo: Optional[UploadFile] = File(None),
     # Required parameters
@@ -1513,40 +1500,6 @@ async def update_user_with_photo(
         update_data["mac_address"] = mac_address
     if reporting_manager_id is not None:
         update_data["reporting_manager_id"] = reporting_manager_id
-    
-    # Handle address information
-    if permanent_address is not None:
-        permanent_addr = {
-            "address": permanent_address,
-            "city": permanent_city or "",
-            "state": permanent_state or "",
-            "country": permanent_country or "",
-            "pincode": permanent_pincode or "",
-            "address_type": "permanent"
-        }
-        update_data["permanent_address"] = permanent_addr
-    
-    if current_same_as_permanent and permanent_address:
-        # Copy permanent address to current address
-        current_addr = {
-            "address": permanent_address,
-            "city": permanent_city or "",
-            "state": permanent_state or "",
-            "country": permanent_country or "",
-            "pincode": permanent_pincode or "",
-            "address_type": "current"
-        }
-        update_data["current_address"] = current_addr
-    elif current_address is not None:
-        current_addr = {
-            "address": current_address,
-            "city": current_city_field or "",
-            "state": current_state or "",
-            "country": current_country or "",
-            "pincode": current_pincode or "",
-            "address_type": "current"
-        }
-        update_data["current_address"] = current_addr
     
     # Handle profile photo upload
     photo_path = None

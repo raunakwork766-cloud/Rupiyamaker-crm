@@ -259,7 +259,7 @@ async def list_comprehensive_employees(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """List all employees with comprehensive data including all personal, employment, and address information"""
+    """List all employees with comprehensive data including all personal and employment information"""
     # Check permission
     # await check_permission(user_id, "employees", "show", users_db, roles_db)
     
@@ -632,21 +632,6 @@ async def create_employee_with_all_details(
     mac_address: Optional[str] = Form(None),
     employment_type: str = Form("full_time"),
     
-    # Address Information - Permanent
-    permanent_address: Optional[str] = Form(None),
-    permanent_pincode: Optional[str] = Form(None),
-    permanent_city: Optional[str] = Form(None),
-    permanent_state: Optional[str] = Form(None),
-    permanent_country: str = Form("India"),
-    
-    # Address Information - Current
-    current_same_as_permanent: Optional[bool] = Form(False),
-    current_address: Optional[str] = Form(None),
-    current_pincode: Optional[str] = Form(None),
-    current_city: Optional[str] = Form(None),
-    current_state: Optional[str] = Form(None),
-    current_country: str = Form("India"),
-    
     # Login Credentials
     username: Optional[str] = Form(None),
     password: Optional[str] = Form(None),
@@ -789,38 +774,6 @@ async def create_employee_with_all_details(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid date format for joining date. Use YYYY-MM-DD format."
             )
-    
-    # Handle permanent address
-    if permanent_address:
-        employee_data["permanent_address"] = {
-            "address": permanent_address,
-            "pincode": permanent_pincode,
-            "city": permanent_city,
-            "state": permanent_state,
-            "country": permanent_country,
-            "address_type": "permanent"
-        }
-    
-    # Handle current address
-    if current_same_as_permanent and permanent_address:
-        # Copy permanent address to current address
-        employee_data["current_address"] = {
-            "address": permanent_address,
-            "pincode": permanent_pincode,
-            "city": permanent_city,
-            "state": permanent_state,
-            "country": permanent_country,
-            "address_type": "current"
-        }
-    elif current_address:
-        employee_data["current_address"] = {
-            "address": current_address,
-            "pincode": current_pincode,
-            "city": current_city,
-            "state": current_state,
-            "country": current_country,
-            "address_type": "current"
-        }
     
     # Generate employee ID if not provided
     if not employee_id:

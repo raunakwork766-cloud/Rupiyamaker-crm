@@ -107,16 +107,45 @@ const AssignmentPopup = ({ isOpen, onClose, onAssign, users, title, selectedUser
 };
 
 export default function AboutSection({ leadData, lead, onUpdate, currentUserRole }) {
-    console.log('🚀 AboutSection: Component initialized with props:', {
+    console.log('🚀 AboutSection: Component RENDER with props:', {
         hasLeadData: !!leadData,
         hasLead: !!lead,
+        leadDataId: leadData?._id,
         hasOnUpdate: !!onUpdate,
         hasCurrentUserRole: !!currentUserRole
     });
-    const [editableData, setEditableData] = useState({});
+    
+    // Add mount/unmount tracking
+    useEffect(() => {
+        console.log('✅ AboutSection: Component MOUNTED');
+        return () => {
+            console.log('❌ AboutSection: Component UNMOUNTED');
+        };
+    }, []);
+    
+    // Initialize editableData with proper defaults to prevent undefined values
+    const [editableData, setEditableData] = useState({
+        data_code: '',
+        customer_name: '',
+        loan_type_name: '',
+        phone: '',
+        alternative_phone: '',
+        pincode_city: ''
+    });
+    
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [open, setOpen] = useState(true);
+    
+    // Track if we just saved to prevent immediate overwrite from parent data sync
+    const justSaved = useRef(false);
+    const saveTimeout = useRef(null);
+    const hasInitialized = useRef(false); // Track if we've done initial data load
+
+    // Debug: Track editableData changes
+    useEffect(() => {
+        console.log('📊 editableData state changed:', editableData);
+    }, [editableData]);
 
     // Assignment-related state
     const [assignedTo, setAssignedTo] = useState([]);
@@ -226,18 +255,35 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
     };
 
     useEffect(() => {
-        console.log('🔄 AboutSection: useEffect triggered with leadInfo:', leadInfo);
+        // CRITICAL: Only initialize ONCE on component mount
+        // After that, the 2nd and 3rd useEffect handle syncing from parent
+        if (hasInitialized.current) {
+            console.log('⏭️ AboutSection (1st useEffect): Already initialized, skipping');
+            return;
+        }
+        
+        // Only initialize if we have actual lead data
+        if (!leadInfo || !leadInfo._id) {
+            console.log('⏭️ AboutSection (1st useEffect): No lead data yet, waiting...');
+            return;
+        }
+        
+        console.log('🔄 AboutSection (1st useEffect): INITIAL LOAD with leadInfo:', leadInfo);
+        console.log('🔍 Pincode & City field in leadInfo:', leadInfo.pincode_city);
+        
         const initialData = {
             data_code: leadInfo.data_code || '',
             customer_name: [leadInfo.first_name, leadInfo.last_name].filter(Boolean).join(' ').trim(),
             loan_type_name: leadInfo.loan_type_name || leadInfo.loan_type || '',
             phone: leadInfo.phone || '',
             alternative_phone: leadInfo.alternative_phone || '',
-            pin_code: leadInfo.dynamic_fields?.address?.postal_code || leadInfo.postal_code || '',
-            city: leadInfo.dynamic_fields?.address?.city || leadInfo.city || ''
+            pincode_city: leadInfo.pincode_city || ''
         };
-        console.log('📊 AboutSection: Setting initial data:', initialData);
+        console.log('📊 AboutSection: Setting INITIAL data:', initialData);
         setEditableData(initialData);
+        
+        // Mark as initialized
+        hasInitialized.current = true;
         
         // Track alternative phone edit history
         // Check if alternative phone has ever been saved (not empty/null/none)
@@ -270,63 +316,46 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
         }
     }, [leadInfo]);
 
-    // Additional useEffect to sync when leadData changes from parent (after successful save)
+        // Additional useEffect to sync when leadData changes from parent (after successful save)
     useEffect(() => {
-        if (leadData || lead) {
-            const currentLeadInfo = leadData || lead;
-            console.log('🔄 AboutSection: Parent leadData changed, syncing editable data');
-            console.log('📊 AboutSection: Current leadInfo:', currentLeadInfo);
-            
-            const syncedData = {
-                data_code: currentLeadInfo.data_code || '',
-                customer_name: [currentLeadInfo.first_name, currentLeadInfo.last_name].filter(Boolean).join(' ').trim(),
-                loan_type_name: currentLeadInfo.loan_type_name || currentLeadInfo.loan_type || '',
-                phone: currentLeadInfo.phone || '',
-                alternative_phone: currentLeadInfo.alternative_phone || '',
-                pin_code: currentLeadInfo.dynamic_fields?.address?.postal_code || currentLeadInfo.postal_code || '',
-                city: currentLeadInfo.dynamic_fields?.address?.city || currentLeadInfo.city || ''
-            };
-            
-            console.log('📊 AboutSection: Synced data:', syncedData);
-            console.log('📊 AboutSection: Previous editable data:', editableData);
-            
-            setEditableData(syncedData);
-            
-            // Update lastSavedData to reflect the new saved state
-            lastSavedData.current = { ...syncedData };
-            console.log('📊 AboutSection: Data synced with parent, lastSavedData updated');
+        if (!leadData && !lead) {
+            console.log('⏭️ AboutSection (2nd useEffect): No lead data available');
+            return;
         }
-    }, [leadData, lead, leadData?.updated_at, leadData?._id]);
-
-    // Force re-render when key data changes
-    useEffect(() => {
-        console.log('🔄 AboutSection: Key data changed, checking for updates...');
-        const currentLeadInfo = leadData || lead || {};
         
-        // Check if any field value has changed from what we currently have
-        const latestData = {
+        const currentLeadInfo = leadData || lead;
+        
+        // CRITICAL: Skip sync if we just saved to prevent overwriting user's data
+        if (justSaved.current) {
+            console.log('⏭️ AboutSection (2nd useEffect): Skipping sync - data was just saved');
+            return;
+        }
+        
+        console.log('🔄 AboutSection (2nd useEffect): Syncing from parent leadData');
+        console.log('📊 AboutSection: Current leadInfo:', currentLeadInfo);
+        console.log('🔍 justSaved flag:', justSaved.current);
+        
+        const syncedData = {
             data_code: currentLeadInfo.data_code || '',
             customer_name: [currentLeadInfo.first_name, currentLeadInfo.last_name].filter(Boolean).join(' ').trim(),
             loan_type_name: currentLeadInfo.loan_type_name || currentLeadInfo.loan_type || '',
             phone: currentLeadInfo.phone || '',
             alternative_phone: currentLeadInfo.alternative_phone || '',
-            pin_code: currentLeadInfo.dynamic_fields?.address?.postal_code || currentLeadInfo.postal_code || '',
-            city: currentLeadInfo.dynamic_fields?.address?.city || currentLeadInfo.city || ''
+            pincode_city: currentLeadInfo.pincode_city || ''
         };
         
-        // Check if data is different
-        const hasChanges = Object.keys(latestData).some(key => 
-            latestData[key] !== editableData[key]
-        );
+        console.log('📊 AboutSection: Synced data to set:', syncedData);
+        console.log('📊 Pincode & City in synced data:', syncedData.pincode_city);
+        console.log('📊 AboutSection: Current editable data before sync:', editableData);
         
-        if (hasChanges) {
-            console.log('📊 AboutSection: Backend data has changed, updating UI');
-            console.log('📊 AboutSection: Latest data from backend:', latestData);
-            console.log('📊 AboutSection: Current editable data:', editableData);
-            setEditableData(latestData);
-            lastSavedData.current = { ...latestData };
-        }
-    }, [JSON.stringify(leadData), JSON.stringify(lead)]);
+        // Simple and direct: just set the data from parent
+        setEditableData(syncedData);
+        
+        // Update lastSavedData to reflect the new saved state from backend
+        lastSavedData.current = { ...syncedData };
+        console.log('📊 AboutSection: Data synced with parent, lastSavedData updated');
+        console.log('📊 Pincode & City in lastSavedData:', lastSavedData.current.pincode_city);
+    }, [leadData, lead, leadData?.updated_at, leadData?._id, leadData?.pincode_city]); // Added pincode_city to dependencies
 
     // Fetch current user data and initialize assignments
     useEffect(() => {
@@ -655,14 +684,82 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
         }
     };
 
+    // Format pincode & city field
+    const formatPincodeCity = (value) => {
+        // If empty or user is deleting, allow it
+        if (!value || value.trim() === '') {
+            return '';
+        }
+        
+        // Convert to uppercase
+        value = value.toUpperCase();
+        
+        // Remove existing commas and extra spaces to handle re-formatting
+        let cleaned = value.replace(/,/g, '').replace(/\s+/g, ' ').trim();
+        
+        // Extract digits only for pincode (first 6 characters)
+        const digitsOnly = cleaned.replace(/[^0-9]/g, '');
+        
+        // If less than 6 digits, just return the digits (allow deletion)
+        if (digitsOnly.length < 6) {
+            return digitsOnly;
+        }
+        
+        // If user is at exactly "123456, " and backspacing, remove the comma/space formatting
+        // This happens when the cleaned string has 6 digits but no city text
+        const pincode = digitsOnly.substring(0, 6);
+        
+        // Get the city name part (everything after the first 6 digits)
+        // Find where the 6th digit ends in the original value
+        let pincodeEndIndex = 0;
+        let digitCount = 0;
+        for (let i = 0; i < cleaned.length; i++) {
+            if (/[0-9]/.test(cleaned[i])) {
+                digitCount++;
+                if (digitCount === 6) {
+                    pincodeEndIndex = i + 1;
+                    break;
+                }
+            }
+        }
+        
+        // Get everything after the 6th digit (city name) - already uppercase
+        const cityPart = cleaned.substring(pincodeEndIndex).trim();
+        
+        // If there's city name, include it with formatting
+        if (cityPart) {
+            return `${pincode}, ${cityPart}`;
+        }
+        
+        // If exactly 6 digits with no city, show formatted version
+        // But if user is deleting (original value was shorter), just show digits
+        if (digitsOnly.length === 6) {
+            // Check if the original value already had comma formatting
+            // If yes, keep it; if no (user just typed 6th digit), add it
+            if (value.includes(',')) {
+                return `${pincode}, `;
+            }
+            return `${pincode}, `;
+        }
+        
+        return pincode;
+    };
+
     const handleInputChange = (field, value) => {
         console.log('📝 AboutSection: Input changed:', field, '=', value);
         console.log('🧩 Field being changed:', field);
         console.log('🧩 New value:', value);
         console.log('🧩 Component location: lead-details/AboutSection.jsx');
+        
+        // Handle pincode_city field formatting
+        let processedValue = value;
+        if (field === 'pincode_city') {
+            processedValue = formatPincodeCity(value);
+        }
+        
         setEditableData(prev => ({
             ...prev,
-            [field]: value
+            [field]: processedValue
         }));
     };
 
@@ -700,11 +797,8 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
             case 'alternative_phone':
                 originalValue = leadInfo.alternative_phone || '';
                 break;
-            case 'pin_code':
-                originalValue = leadInfo.dynamic_fields?.address?.postal_code || leadInfo.postal_code || '';
-                break;
-            case 'city':
-                originalValue = leadInfo.dynamic_fields?.address?.city || leadInfo.city || '';
+            case 'pincode_city':
+                originalValue = leadInfo.pincode_city || '';
                 break;
             default:
                 originalValue = '';
@@ -773,22 +867,8 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
                     setAlternativePhoneEditHistory(true);
                     console.log('📱 Alternative phone edit history updated: User has now saved alternative phone once');
                 }
-            } else if (field === 'pin_code') {
-                updateData.postal_code = String(editableData.pin_code || '');
-                // Only update the specific address field we need
-                updateData.dynamic_fields = {
-                    address: {
-                        postal_code: String(editableData.pin_code || '')
-                    }
-                };
-            } else if (field === 'city') {
-                updateData.city = String(editableData.city || '');
-                // Only update the specific address field we need
-                updateData.dynamic_fields = {
-                    address: {
-                        city: String(editableData.city || '')
-                    }
-                };
+            } else if (field === 'pincode_city') {
+                updateData.pincode_city = String(editableData.pincode_city || '');
             }
 
             console.log('📤 AboutSection: Calling onUpdate with data:', updateData);
@@ -816,27 +896,40 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
             console.log('📥 AboutSection: onUpdate result:', result);
             
             if (result !== false) {
-                // Update the lastSavedData to current values after successful save
+                // CRITICAL: Update lastSavedData IMMEDIATELY to prevent overwrites
                 lastSavedData.current[field] = editableData[field];
+                console.log('💾 AboutSection: lastSavedData updated immediately for field:', field, 'value:', editableData[field]);
+                
+                // Set justSaved flag to prevent immediate overwrite from parent sync
+                justSaved.current = true;
+                console.log('🔒 AboutSection: justSaved flag set to true');
+                
+                // Clear the flag after 2000ms (long enough for backend to save and parent to refetch)
+                if (saveTimeout.current) {
+                    clearTimeout(saveTimeout.current);
+                }
+                saveTimeout.current = setTimeout(() => {
+                    justSaved.current = false;
+                    console.log('🔓 AboutSection: justSaved flag cleared after 2000ms');
+                }, 2000);
+                
                 console.log('✅ AboutSection: Save completed successfully for field:', field);
                 console.log('✅ AboutSection: Updated lastSavedData:', lastSavedData.current);
+                
+                // CRITICAL FIX: Also update editableData to ensure the value persists
+                // This prevents the value from being overwritten by stale data in useEffect
+                setEditableData(prev => ({
+                    ...prev,
+                    [field]: editableData[field]
+                }));
+                console.log('✅ AboutSection: editableData also updated to preserve value');
+                
                 setSaveMessage('✅ Data saved successfully');
                 setTimeout(() => setSaveMessage(''), 3000);
                 
-                // Force refresh component data after save to ensure we have latest from backend
-                setTimeout(() => {
-                    console.log('🔄 AboutSection: Refreshing component data after save');
-                    // Update editableData with the latest leadInfo data
-                    setEditableData({
-                        data_code: leadInfo.data_code || '',
-                        customer_name: [leadInfo.first_name, leadInfo.last_name].filter(Boolean).join(' ').trim(),
-                        loan_type_name: leadInfo.loan_type_name || leadInfo.loan_type || '',
-                        phone: leadInfo.phone || '',
-                        alternative_phone: leadInfo.alternative_phone || '',
-                        pin_code: leadInfo.dynamic_fields?.address?.postal_code || leadInfo.postal_code || '',
-                        city: leadInfo.dynamic_fields?.address?.city || leadInfo.city || '',
-                    });
-                }, 500);
+                // Don't force refresh from stale leadInfo - the parent will pass updated data via props
+                // which will trigger the useEffect to update editableData
+                // Forcing refresh here causes the field to reset to old values due to closure
             } else {
                 console.log('❌ AboutSection: Save failed (onUpdate returned false)');
                 setSaveMessage('❌ Failed to save data');
@@ -1085,30 +1178,24 @@ export default function AboutSection({ leadData, lead, onUpdate, currentUserRole
                             </div>
                         </div>
 
-                        {/* Pincode - Editable by all users */}
+                        {/* Pincode & City Field - Editable by all users */}
                         <div>
-                            <label className="block text-xl font-semibold mb-2" style={{ color: "#03b0f5", fontWeight: 600 }}>Pincode</label>
+                            <label className="block text-xl font-semibold mb-2" style={{ color: "#03b0f5", fontWeight: 600 }}>
+                                Pincode & City
+                            </label>
                             <input
                                 type="text"
-                                value={editableData.pin_code}
-                                onChange={e => handleInputChange('pin_code', e.target.value)}
-                                onBlur={() => handleFieldBlur('pin_code')}
+                                value={editableData.pincode_city}
+                                onChange={e => {
+                                    console.log('📝 Pincode & City onChange:', e.target.value);
+                                    handleInputChange('pincode_city', e.target.value);
+                                }}
+                                onBlur={() => {
+                                    console.log('📤 Pincode & City onBlur, current value:', editableData.pincode_city);
+                                    handleFieldBlur('pincode_city');
+                                }}
                                 className="w-full bg-white border border-gray-600 rounded px-4 py-3 text-green-600 font-semibold focus:outline-none focus:border-blue-500 text-base"
-                                placeholder="Enter pincode"
-                            />
-                        </div>
-
-                        {/* City - Editable by all users */}
-                        {/* City - Editable by all users */}
-                        <div>
-                            <label className="block text-xl font-semibold mb-2" style={{ color: "#03b0f5", fontWeight: 600 }}>City</label>
-                            <input
-                                type="text"
-                                value={editableData.city}
-                                onChange={e => handleInputChange('city', e.target.value)}
-                                onBlur={() => handleFieldBlur('city')}
-                                className="w-full bg-white border border-gray-600 rounded px-4 py-3 text-green-600 font-semibold focus:outline-none focus:border-blue-500 text-base"
-                                placeholder="Enter city"
+                                placeholder="Enter 6-digit pincode (auto-formats: 123456, City Name)"
                             />
                         </div>
 

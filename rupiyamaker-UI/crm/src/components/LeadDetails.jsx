@@ -59,40 +59,48 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     // Enhanced function to update a lead with better error handling and data synchronization
     const updateLead = async (updatedData) => {
         console.log('🔄 updateLead called with data:', updatedData);
+        console.log('🔄 updateLead RAW updatedData stringify:', JSON.stringify(updatedData));
+        console.log('🔄 🚨 CRITICAL DEBUG: updatedData keys:', Object.keys(updatedData));
+        console.log('🔄 🚨 CRITICAL DEBUG: Has dynamic_fields?', 'dynamic_fields' in updatedData);
+        console.log('🔄 🚨 CRITICAL DEBUG: Has city?', 'city' in updatedData);
+        console.log('🔄 🚨 CRITICAL DEBUG: Has postal_code?', 'postal_code' in updatedData);
+        if ('dynamic_fields' in updatedData) {
+            console.log('🔄 🚨 CRITICAL DEBUG: dynamic_fields keys:', Object.keys(updatedData.dynamic_fields));
+            console.log('🔄 🚨 CRITICAL DEBUG: Has obligation_data?', 'obligation_data' in updatedData.dynamic_fields);
+            console.log('🔄 🚨 CRITICAL DEBUG: Has address?', 'address' in updatedData.dynamic_fields);
+            if ('address' in updatedData.dynamic_fields) {
+                console.log('🔄 🚨 CRITICAL DEBUG: address keys:', Object.keys(updatedData.dynamic_fields.address));
+            }
+        }
         console.log('🔄 Current leadData state:', leadData);
         console.log('🔄 Lead ID:', leadData?._id);
         try {
+            // Guard: if no fields to update, skip calling API to prevent empty PUTs (which caused 422/500 earlier)
+            if (!updatedData || Object.keys(updatedData).length === 0) {
+                console.log('⚠️ updateLead: empty updatedData received, skipping API call');
+                return true;
+            }
+            
+            // Additional guard: Check if only metadata fields are being sent (no actual data changes)
+            const metadataFields = ['updated_by', 'updated_at', 'created_at', 'created_by'];
+            const dataFields = Object.keys(updatedData).filter(key => !metadataFields.includes(key));
+            if (dataFields.length === 0) {
+                console.log('⚠️ updateLead: only metadata fields in update, skipping API call');
+                return true;
+            }
+            
             setIsLoading(true);
             const userId = localStorage.getItem('userId') || '';
             const token = localStorage.getItem('token') || '';
             console.log('🔄 Using userId:', userId, 'token length:', token?.length);
 
-            // Create the payload by merging with existing lead data
-            const payload = { ...leadData };
+            // 🎯 CRITICAL FIX: Only send the fields being updated, not the entire lead
+            // The backend will handle merging with existing data properly
+            // This prevents data loss when multiple tabs/sections update simultaneously
+            const payload = { ...updatedData };
             
-            // Merge top-level fields
-            Object.keys(updatedData).forEach(key => {
-                if (key !== 'dynamic_fields') {
-                    payload[key] = updatedData[key];
-                }
-            });
-
-            // Handle dynamic_fields merging properly
-            if (updatedData.dynamic_fields) {
-                payload.dynamic_fields = payload.dynamic_fields || {};
-                
-                // Deep merge dynamic_fields
-                Object.keys(updatedData.dynamic_fields).forEach(section => {
-                    if (typeof updatedData.dynamic_fields[section] === 'object' && updatedData.dynamic_fields[section] !== null) {
-                        payload.dynamic_fields[section] = {
-                            ...payload.dynamic_fields[section],
-                            ...updatedData.dynamic_fields[section]
-                        };
-                    } else {
-                        payload.dynamic_fields[section] = updatedData.dynamic_fields[section];
-                    }
-                });
-            }
+            console.log('📦 Payload to send (only updated fields):', payload);
+            console.log('📦 🚨 Payload stringified:', JSON.stringify(payload));
 
             // Validate and fix data types before sending to API
             const sanitizedPayload = { ...payload };
@@ -133,6 +141,21 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 }
             });
 
+            // Defensive merge: if child component sent partial dynamic_fields, merge with current leadData.dynamic_fields
+            // This prevents accidental loss of keys (like obligation_data) when components send only a subset
+            if (sanitizedPayload.dynamic_fields && leadData?.dynamic_fields) {
+                console.log('🔐 updateLead: merging dynamic_fields from payload with current leadData.dynamic_fields to avoid overwrites');
+                try {
+                    sanitizedPayload.dynamic_fields = {
+                        ...leadData.dynamic_fields,
+                        ...sanitizedPayload.dynamic_fields
+                    };
+                } catch (e) {
+                    console.warn('⚠️ Failed to merge dynamic_fields defensively:', e);
+                }
+                console.log('🔐 Merged dynamic_fields keys:', Object.keys(sanitizedPayload.dynamic_fields));
+            }
+
             // Add metadata
             sanitizedPayload.updated_by = userId;
             sanitizedPayload.updated_at = new Date().toISOString();
@@ -156,6 +179,30 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
             console.log('📡 API Response Status:', response.status);
             
+            if (!response.ok) {
+                // Log detailed error information for debugging
+                const errorText = await response.text();
+                console.error('❌ API Error Response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errorText,
+                    payload: sanitizedPayload
+                });
+                
+                // Try to parse as JSON for better error display
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    console.error('❌ Parsed error:', errorJson);
+                    setError(`Failed to update lead: ${errorJson.detail || errorText}`);
+                } catch (e) {
+                    setError(`Failed to update lead: ${response.status} ${errorText}`);
+                }
+                
+                setIsLoading(false);
+                setTimeout(() => setError(''), 5000);
+                return false;
+            }
+            
             if (response.ok) {
                 const responseData = await response.json();
                 console.log('✅ API Response Data:', responseData);
@@ -173,9 +220,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 if (freshDataResponse.ok) {
                     const freshLeadData = await freshDataResponse.json();
                     console.log('✅ Fresh lead data fetched successfully:', freshLeadData);
+                    console.log('🔍 PARENT: XYZ value in fresh data:', freshLeadData.xyz);
                     
                     // Update the leadData state with fresh data from backend
                     setLeadData(freshLeadData);
+                    console.log('🔍 PARENT: setLeadData called with xyz =', freshLeadData.xyz);
                     
                     // Notify parent component about the updated lead
                     if (onLeadUpdate) {

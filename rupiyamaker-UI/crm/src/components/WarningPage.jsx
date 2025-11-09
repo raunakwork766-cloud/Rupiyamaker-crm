@@ -1254,16 +1254,56 @@ const WarningPage = memo(() => {
     const confirmed = window.confirm(`Are you sure you want to delete ${selectedRows.length} warning(s)?`);
     if (!confirmed) return;
 
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Show loading state
+    setLoading(true);
+
     try {
-      const deletePromises = selectedRows.map(id => handleDeleteWarning(id));
-      await Promise.all(deletePromises);
-      
+      // Delete each selected warning
+      for (const warningId of selectedRows) {
+        try {
+          await handleDeleteWarning(warningId);
+          successCount++;
+        } catch (error) {
+          errorCount++;
+          errors.push(`Warning ${warningId}: ${error.message || 'Unknown error'}`);
+          console.error('Error deleting warning:', warningId, error);
+        }
+      }
+
+      // Show result message
+      if (successCount > 0 && errorCount === 0) {
+        showNotification(`Successfully deleted ${successCount} warning(s)`, 'success');
+      } else if (successCount > 0 && errorCount > 0) {
+        showNotification(`Deleted ${successCount} warning(s), but ${errorCount} failed. Check console for details.`, 'warning');
+        console.error('Delete errors:', errors);
+      } else if (errorCount > 0) {
+        showNotification(`Failed to delete warnings. Check console for details.`, 'error');
+        console.error('Delete errors:', errors);
+      }
+
+      // Reset selection state
       setSelectedRows([]);
       setSelectAll(false);
-      showNotification(`${selectedRows.length} warning(s) deleted successfully`, 'success');
+      setShowCheckboxes(false);
+
+      // Reload warnings to reflect changes
+      await loadWarnings();
     } catch (error) {
-      showNotification('Error deleting some warnings', 'error');
+      console.error('Error in bulk delete operation:', error);
+      showNotification('Error deleting warnings', 'error');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleCancelSelection = () => {
+    setSelectedRows([]);
+    setSelectAll(false);
+    setShowCheckboxes(false);
   };
 
   // Handle delete
@@ -1625,26 +1665,25 @@ const WarningPage = memo(() => {
                                   console.log('🔍 Warnings Delete Button Check (Tab 0):', {
                                     'permissions': permissions,
                                     'permissions.can_delete': permissions?.can_delete,
+                                    'isSuperAdmin': isSuperAdmin(),
                                     'showCheckboxes': showCheckboxes,
-                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
                                   });
                                   return null;
                                 })()}
-                                {permissions?.can_delete && !showCheckboxes ? (
+                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
                                     className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                                   >
-                                    {selectedRows.length > 0
-                                      ? `Select (${selectedRows.length})`
-                                      : "Select"}
+                                    Select
                                   </button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
+                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
                                   <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                       <input
                                         type="checkbox"
-                                        className="accent-blue-500 mr-2"
+                                        className="accent-blue-500 mr-2 cursor-pointer"
                                         checked={selectAll}
                                         onChange={handleSelectAll}
                                         style={{ width: 18, height: 18 }}
@@ -1655,33 +1694,20 @@ const WarningPage = memo(() => {
                                       {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
                                     </span>
                                     <button
-                                      className={`px-3 py-1 text-white rounded font-bold transition ${
-                                        selectedRows.length > 0 
-                                          ? 'bg-red-600 hover:bg-red-700 cursor-pointer' 
-                                          : 'bg-red-400 cursor-not-allowed opacity-75'
-                                      }`}
-                                      onClick={selectedRows.length > 0 ? handleDeleteSelected : undefined}
+                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                      onClick={handleDeleteSelected}
                                       disabled={selectedRows.length === 0}
                                     >
                                       Delete ({selectedRows.length})
                                     </button>
                                     <button
                                       className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleShowCheckboxes}
+                                      onClick={handleCancelSelection}
                                     >
                                       Cancel
                                     </button>
                                   </div>
                                 ) : null}
-
-                                <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-2 rounded-lg border border-gray-600">
-                                  {filteredWarnings.length} of {warnings.length} warnings
-                                  {searchTerm && (
-                                    <span className="ml-2">
-                                      matching "<span className="text-[#03b0f5] font-semibold">{searchTerm}</span>"
-                                    </span>
-                                  )}
-                                </div>
                               </div>
                               
                               <div className="flex items-center gap-3">
@@ -1995,14 +2021,6 @@ const WarningPage = memo(() => {
                             {/* Search and Filter Row */}
                             <div className="flex items-center justify-between gap-4 mb-6">
                               <div className="flex items-center gap-3">
-                                <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-2 rounded-lg border border-gray-600">
-                                  {filteredWarnings.length} of {warnings.length} warnings
-                                  {searchTerm && (
-                                    <span className="ml-2">
-                                      matching "<span className="text-[#03b0f5] font-semibold">{searchTerm}</span>"
-                                    </span>
-                                  )}
-                                </div>
                               </div>
                               
                               <div className="flex items-center gap-3">
@@ -2011,26 +2029,25 @@ const WarningPage = memo(() => {
                                   console.log('🔍 Warnings Delete Button Check (Junior Tab):', {
                                     'permissions': permissions,
                                     'permissions.can_delete': permissions?.can_delete,
+                                    'isSuperAdmin': isSuperAdmin(),
                                     'showCheckboxes': showCheckboxes,
-                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
                                   });
                                   return null;
                                 })()}
-                                {permissions?.can_delete && !showCheckboxes ? (
+                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
                                     className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                                   >
-                                    {selectedRows.length > 0
-                                      ? `Select (${selectedRows.length})`
-                                      : "Select"}
+                                    Select
                                   </button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
+                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
                                   <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                       <input
                                         type="checkbox"
-                                        className="accent-blue-500 mr-2"
+                                        className="accent-blue-500 mr-2 cursor-pointer"
                                         checked={selectAll}
                                         onChange={handleSelectAll}
                                         style={{ width: 18, height: 18 }}
@@ -2040,17 +2057,16 @@ const WarningPage = memo(() => {
                                     <span className="text-white font-semibold">
                                       {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
                                     </span>
-                                    {selectedRows.length > 0 && (
-                                      <button
-                                        className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                        onClick={handleDeleteSelected}
-                                      >
-                                        Delete ({selectedRows.length})
-                                      </button>
-                                    )}
+                                    <button
+                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                      onClick={handleDeleteSelected}
+                                      disabled={selectedRows.length === 0}
+                                    >
+                                      Delete ({selectedRows.length})
+                                    </button>
                                     <button
                                       className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleShowCheckboxes}
+                                      onClick={handleCancelSelection}
                                     >
                                       Cancel
                                     </button>
@@ -2263,14 +2279,6 @@ const WarningPage = memo(() => {
                             {/* Search Row */}
                             <div className="flex items-center justify-between gap-4 mb-6">
                               <div className="flex items-center gap-3">
-                                <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-2 rounded-lg border border-gray-600">
-                                  {filteredWarnings.length} of {warnings.length} warnings
-                                  {searchTerm && (
-                                    <span className="ml-2">
-                                      matching "<span className="text-[#03b0f5] font-semibold">{searchTerm}</span>"
-                                    </span>
-                                  )}
-                                </div>
                               </div>
                               
                               <div className="flex items-center gap-3">
@@ -2279,26 +2287,25 @@ const WarningPage = memo(() => {
                                   console.log('🔍 Warnings Delete Button Check (My Warnings Tab):', {
                                     'permissions': permissions,
                                     'permissions.can_delete': permissions?.can_delete,
+                                    'isSuperAdmin': isSuperAdmin(),
                                     'showCheckboxes': showCheckboxes,
-                                    'should_show_button': permissions?.can_delete && !showCheckboxes
+                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
                                   });
                                   return null;
                                 })()}
-                                {permissions?.can_delete && !showCheckboxes ? (
+                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
                                     className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                                   >
-                                    {selectedRows.length > 0
-                                      ? `Select (${selectedRows.length})`
-                                      : "Select"}
+                                    Select
                                   </button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
+                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
                                   <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                       <input
                                         type="checkbox"
-                                        className="accent-blue-500 mr-2"
+                                        className="accent-blue-500 mr-2 cursor-pointer"
                                         checked={selectAll}
                                         onChange={handleSelectAll}
                                         style={{ width: 18, height: 18 }}
@@ -2308,17 +2315,16 @@ const WarningPage = memo(() => {
                                     <span className="text-white font-semibold">
                                       {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
                                     </span>
-                                    {selectedRows.length > 0 && (
-                                      <button
-                                        className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                        onClick={handleDeleteSelected}
-                                      >
-                                        Delete ({selectedRows.length})
-                                      </button>
-                                    )}
+                                    <button
+                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                      onClick={handleDeleteSelected}
+                                      disabled={selectedRows.length === 0}
+                                    >
+                                      Delete ({selectedRows.length})
+                                    </button>
                                     <button
                                       className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleShowCheckboxes}
+                                      onClick={handleCancelSelection}
                                     >
                                       Cancel
                                     </button>
@@ -2490,14 +2496,6 @@ const WarningPage = memo(() => {
                         {/* Search Row */}
                         <div className="flex items-center justify-between gap-4 mb-6">
                           <div className="flex items-center gap-3">
-                            <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-2 rounded-lg border border-gray-600">
-                              {filteredWarnings.length} of {warnings.length} warnings
-                              {searchTerm && (
-                                <span className="ml-2">
-                                  matching "<span className="text-[#03b0f5] font-semibold">{searchTerm}</span>"
-                                </span>
-                              )}
-                            </div>
                           </div>
                           
                           <div className="flex items-center gap-3">
@@ -2506,26 +2504,25 @@ const WarningPage = memo(() => {
                               console.log('🔍 Warnings Delete Button Check (Own Warnings Only):', {
                                 'permissions': permissions,
                                 'permissions.can_delete': permissions?.can_delete,
+                                'isSuperAdmin': isSuperAdmin(),
                                 'showCheckboxes': showCheckboxes,
-                                'should_show_button': permissions?.can_delete && !showCheckboxes
+                                'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
                               });
                               return null;
                             })()}
-                            {permissions?.can_delete && !showCheckboxes ? (
+                            {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                               <button
                                 onClick={handleShowCheckboxes}
                                 className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                               >
-                                {selectedRows.length > 0
-                                  ? `Select (${selectedRows.length})`
-                                  : "Select"}
+                                Select
                               </button>
-                            ) : permissions?.can_delete && showCheckboxes ? (
+                            ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
                               <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                 <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                   <input
                                     type="checkbox"
-                                    className="accent-blue-500 mr-2"
+                                    className="accent-blue-500 mr-2 cursor-pointer"
                                     checked={selectAll}
                                     onChange={handleSelectAll}
                                     style={{ width: 18, height: 18 }}
@@ -2535,17 +2532,16 @@ const WarningPage = memo(() => {
                                 <span className="text-white font-semibold">
                                   {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
                                 </span>
-                                {selectedRows.length > 0 && (
-                                  <button
-                                    className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                    onClick={handleDeleteSelected}
-                                  >
-                                    Delete ({selectedRows.length})
-                                  </button>
-                                )}
+                                <button
+                                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                  onClick={handleDeleteSelected}
+                                  disabled={selectedRows.length === 0}
+                                >
+                                  Delete ({selectedRows.length})
+                                </button>
                                 <button
                                   className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                  onClick={handleShowCheckboxes}
+                                  onClick={handleCancelSelection}
                                 >
                                   Cancel
                                 </button>

@@ -1736,12 +1736,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 } else if (field === 'mobileNumber') {
                     updated.mobile_number = value;
                     updated.phone = value;
-                } else if (field === 'pinCode') {
+                } else if (field === 'pinCode' || field === 'pincode') {
+                    // Support both camelCase and lowercase
                     updated.pincode = value;
                     if (!updated.dynamic_fields) updated.dynamic_fields = {};
                     if (!updated.dynamic_fields.address) updated.dynamic_fields.address = {};
                     updated.dynamic_fields.address.pincode = value;
                 } else if (field === 'city') {
+                    updated.city = value;
                     if (!updated.dynamic_fields) updated.dynamic_fields = {};
                     if (!updated.dynamic_fields.address) updated.dynamic_fields.address = {};
                     updated.dynamic_fields.address.city = value;
@@ -1796,7 +1798,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             mobile_number: value,
                             phone: value
                         }),
-                        ...(field === 'pinCode' && {
+                        ...((field === 'pinCode' || field === 'pincode') && {
                             pincode: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
@@ -1807,6 +1809,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             }
                         }),
                         ...(field === 'city' && {
+                            city: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
                                 address: {
@@ -1846,7 +1849,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             mobile_number: value,
                             phone: value
                         }),
-                        ...(field === 'pinCode' && {
+                        ...((field === 'pinCode' || field === 'pincode') && {
                             pincode: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
@@ -1857,6 +1860,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             }
                         }),
                         ...(field === 'city' && {
+                            city: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
                                 address: {
@@ -1896,7 +1900,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             mobile_number: value,
                             phone: value
                         }),
-                        ...(field === 'pinCode' && {
+                        ...((field === 'pinCode' || field === 'pincode') && {
                             pincode: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
@@ -1907,6 +1911,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             }
                         }),
                         ...(field === 'city' && {
+                            city: value,
                             dynamic_fields: {
                                 ...l.dynamic_fields,
                                 address: {
@@ -1932,7 +1937,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         // Auto-save to API
         try {
             const userId = localStorage.getItem('userId');
-            const apiUrl = `/api/leads/${selectedLead._id}?user_id=${userId}`;
+            const apiUrl = `/api/leads/${selectedLead._id}?user_id=${userId}&_t=${Date.now()}`;
+            
+            console.log('🌐 API CALL DEBUG:');
+            console.log('  - Field:', field);
+            console.log('  - Value:', value);
+            console.log('  - API URL (with cache buster):', apiUrl);
 
             // Prepare the update data based on field type
             let updateData = {};
@@ -1975,37 +1985,49 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     updateData.loan_type_name = value;
                 } else if (field === 'mobileNumber') {
                     updateData.phone = value;
-                } else if (field === 'pinCode' || field === 'city') {
-                    // For address fields, update the dynamic_fields structure
-                    updateData = {
-                        [apiField]: value,
-                        dynamic_fields: {
-                            ...selectedLead.dynamic_fields,
-                            address: {
-                                ...selectedLead.dynamic_fields?.address,
-                                [field === 'pinCode' ? 'pincode' : 'city']: value
-                            }
-                        }
-                    };
+                } else if (field === 'pinCode' || field === 'pincode' || field === 'city') {
+                    // For address fields, just send the top-level pincode/city
+                    // The backend will automatically handle putting them in dynamic_fields.address
+                    // DO NOT send dynamic_fields from frontend - it causes merge issues!
+                    const pincodeField = field === 'pinCode' || field === 'pincode' ? 'pincode' : 'city';
+                    updateData = { [pincodeField]: value };
+                    console.log('  - Sending pincode/city as top-level field only (backend will handle dynamic_fields)');
                 }
             }
 
+            console.log('  - Update Data being sent:', JSON.stringify(updateData, null, 2));
 
+            console.log('🚀 About to make fetch call...');
+            console.log('📋 Request details:', {
+                url: apiUrl,
+                method: 'PUT',
+                body: JSON.stringify(updateData),
+                bodyLength: JSON.stringify(updateData).length
+            });
+            
             const response = await fetch(apiUrl, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
                 },
-                body: JSON.stringify(updateData)
+                body: JSON.stringify(updateData),
+                cache: 'no-store'
             });
+
+            console.log('📨 Fetch completed, response status:', response.status, response.statusText);
 
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error('❌ Response not OK:', response.status, errorText);
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
 
+            console.log('📦 Parsing response JSON...');
             const responseData = await response.json();
+            console.log('✅ Response data received:', responseData);
 
             // Show success feedback with field name and new value
             const getFieldDisplayName = (fieldName) => {
@@ -2128,6 +2150,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // This prevents unnecessary re-renders of the entire page
 
         } catch (error) {
+            console.error('❌ ERROR in handleSelectedLeadFieldChange:', {
+                error: error,
+                message: error.message,
+                stack: error.stack,
+                field: field,
+                value: value
+            });
             message.error(`Failed to save ${field}: ${error.message}`);
 
             // Revert the change on error
@@ -2153,18 +2182,31 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Create adapter functions for proper data synchronization
     const createAboutSectionHandler = (lead) => async (updatedLeadObject) => {
+        console.log('🔍 createAboutSectionHandler called');
+        console.log('  - updatedLeadObject:', updatedLeadObject);
+        console.log('  - lead (current):', {
+            pincode: lead.pincode,
+            city: lead.city,
+            dynamic_fields: lead.dynamic_fields
+        });
 
         // Find what fields have changed by comparing with current lead
         const changes = {};
         Object.keys(updatedLeadObject).forEach(key => {
             if (updatedLeadObject[key] !== lead[key]) {
+                console.log(`  - Change detected for ${key}:`, {
+                    old: lead[key],
+                    new: updatedLeadObject[key]
+                });
                 changes[key] = updatedLeadObject[key];
             }
         });
 
+        console.log('  - Final changes to apply:', changes);
 
         // Apply each change through the proper handler (skip success messages since AboutSection shows its own)
         for (const [field, value] of Object.entries(changes)) {
+            console.log(`  - Calling handleSelectedLeadFieldChange for ${field}:`, value);
             await handleSelectedLeadFieldChange(field, value, true);
         }
 

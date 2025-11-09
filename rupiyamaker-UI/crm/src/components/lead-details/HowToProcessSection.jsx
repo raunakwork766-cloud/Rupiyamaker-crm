@@ -78,12 +78,12 @@ export default function HowToProcessSection({ leadData, lead, process, onUpdate,
         console.log('💾 HowToProcess: Change detected, saving...');
         setIsSaving(true);
         try {
+            // CRITICAL FIX: Only send the specific fields being updated
+            // Don't spread entire dynamic_fields as it might be stale and overwrite obligation_data
             const updateData = {
                 loan_amount: parseFloat(editableData.loan_amount_applied) || 0,
                 dynamic_fields: {
-                    ...leadInfo.dynamic_fields,
                     financial_details: {
-                        ...leadInfo.dynamic_fields?.financial_details,
                         bank_name: editableData.bank_name
                     },
                     product_need: editableData.product_need,
@@ -92,6 +92,8 @@ export default function HowToProcessSection({ leadData, lead, process, onUpdate,
                     tenure_in_years: editableData.tenure_in_years
                 }
             };
+            
+            console.log('📤 HowToProcess: Sending minimal update (preserving other dynamic_fields):', updateData);
             
             const result = await updateHandler(updateData);
             if (result !== false) {

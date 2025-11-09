@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -102,33 +103,46 @@ const InterviewPanel = () => {
   const [hrManagersAndAdmins, setHrManagersAndAdmins] = useState([]);
 
   // Permission state for interview module (like Tickets/Warnings)
-  const [permissions, setPermissions] = useState({
-    can_view_all: false,
-    can_delete: false,
-    can_add: false,
-    can_edit: false
-  });
+  // Initialize as empty object, will be populated in useEffect
+  const [permissions, setPermissions] = useState({});
 
   // Check user permissions for interviews (like Tickets/Warnings)
   const checkInterviewPermissions = () => {
     const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
     
-    console.log('🔍 Checking Interview Permissions:', userPermissions);
+    console.log('🔍 checkInterviewPermissions - userPermissions:', userPermissions);
+    console.log('🔍 checkInterviewPermissions - isSuperAdmin():', isSuperAdmin());
+    
+    // If super admin, grant all permissions
+    if (isSuperAdmin()) {
+      console.log('✅ Super Admin detected - granting all permissions');
+      return {
+        can_view_all: true,
+        can_delete: true,
+        can_add: true,
+        can_edit: true
+      };
+    }
     
     // Check for explicit delete OR all permission
     const hasDeletePermission = () => {
       if (Array.isArray(userPermissions)) {
         for (const perm of userPermissions) {
           if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
+            console.log('🔍 Found interview permission:', perm);
             if (Array.isArray(perm.actions)) {
               // Check for explicit delete OR all permission
-              return perm.actions.includes('delete') || perm.actions.includes('all');
+              const hasDelete = perm.actions.includes('delete') || perm.actions.includes('all');
+              console.log('🔍 Has delete permission?', hasDelete, 'Actions:', perm.actions);
+              return hasDelete;
             } else if (perm.actions === 'delete' || perm.actions === 'all' || perm.actions === '*') {
+              console.log('🔍 Has delete permission? TRUE (string match)');
               return true;
             }
           }
         }
       }
+      console.log('🔍 Has delete permission? FALSE (no match found)');
       return false;
     };
 
@@ -155,8 +169,66 @@ const InterviewPanel = () => {
       can_edit: true  // Default to true for now
     };
 
-    console.log('📋 Interview Permissions:', calculatedPermissions);
+    console.log('📋 Calculated Permissions:', calculatedPermissions);
     return calculatedPermissions;
+  };
+
+  // Check if user is super admin (can see and do everything)
+  const isSuperAdmin = () => {
+    const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+    const designation = localStorage.getItem('designation')?.toLowerCase();
+    const roleName = localStorage.getItem('roleName')?.toLowerCase();
+    const userRole = localStorage.getItem('userRole')?.toLowerCase();
+    const role = localStorage.getItem('role')?.toLowerCase();
+    
+    console.log('🔍 isSuperAdmin Check - All Values:', {
+      designation,
+      roleName,
+      userRole,
+      role,
+      userPermissions
+    });
+    
+    // Check if user has admin designation or role
+    if (
+      designation === 'admin' || 
+      designation === 'super admin' || 
+      designation === 'superadmin' ||
+      designation === 'administrator' ||
+      roleName === 'admin' ||
+      roleName === 'super admin' ||
+      roleName === 'superadmin' ||
+      roleName === 'administrator' ||
+      userRole === 'admin' ||
+      userRole === 'super admin' ||
+      userRole === 'superadmin' ||
+      role === 'admin' ||
+      role === 'super admin' ||
+      role === 'superadmin'
+    ) {
+      console.log('✅ isSuperAdmin: TRUE (by designation/role)');
+      return true;
+    }
+    
+    // Check if user has global wildcard permission
+    if (Array.isArray(userPermissions)) {
+      for (const perm of userPermissions) {
+        if (perm && (perm.page === '*' || perm.page === 'Global' || perm.page === 'global')) {
+          console.log('✅ isSuperAdmin: TRUE (by global permission)');
+          return true;
+        }
+        // Check for interview with all permissions
+        if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
+          if (perm.actions === '*' || perm.actions === 'all' || (Array.isArray(perm.actions) && (perm.actions.includes('*') || perm.actions.includes('all')))) {
+            console.log('✅ isSuperAdmin: TRUE (by interview all permission)');
+            return true;
+          }
+        }
+      }
+    }
+    
+    console.log('❌ isSuperAdmin: FALSE');
+    return false;
   };
 
   // Load job opening and interview type options from backend
@@ -166,7 +238,32 @@ const InterviewPanel = () => {
 
   // Load permissions on mount (like Tickets/Warnings)
   useEffect(() => {
+    console.log('📋 ============ LOADING INTERVIEW PERMISSIONS ============');
+    console.log('📋 localStorage.userPermissions:', localStorage.getItem('userPermissions'));
+    console.log('📋 localStorage.designation:', localStorage.getItem('designation'));
+    console.log('📋 localStorage.roleName:', localStorage.getItem('roleName'));
+    console.log('📋 localStorage.userId:', localStorage.getItem('userId'));
+    
     const userPermissions = checkInterviewPermissions();
+    
+    console.log('📋 Checked Permissions Result:', userPermissions);
+    
+    // If user is admin, force can_delete to true
+    if (isSuperAdmin()) {
+      console.log('🔑 User is Super Admin - Granting all permissions');
+      userPermissions.can_delete = true;
+      userPermissions.can_view_all = true;
+      userPermissions.can_add = true;
+      userPermissions.can_edit = true;
+    }
+    
+    console.log('📋 ============ FINAL PERMISSIONS SET ============');
+    console.log('📋 can_delete:', userPermissions.can_delete);
+    console.log('📋 can_view_all:', userPermissions.can_view_all);
+    console.log('📋 can_add:', userPermissions.can_add);
+    console.log('📋 can_edit:', userPermissions.can_edit);
+    console.log('📋 ================================================');
+    
     setPermissions(userPermissions);
   }, []);
 
@@ -175,6 +272,19 @@ const InterviewPanel = () => {
     const handlePermissionUpdate = () => {
       console.log('🔄 Interviews - Permissions updated, reloading...');
       const userPermissions = checkInterviewPermissions();
+      
+      console.log('📋 Reloaded Permissions:', userPermissions);
+      
+      // If user is admin, force can_delete to true
+      if (isSuperAdmin()) {
+        console.log('🔑 User is Super Admin - Granting all permissions');
+        userPermissions.can_delete = true;
+        userPermissions.can_view_all = true;
+        userPermissions.can_add = true;
+        userPermissions.can_edit = true;
+      }
+      
+      console.log('📋 Final Reloaded Permissions:', userPermissions);
       setPermissions(userPermissions);
     };
     
@@ -1252,30 +1362,58 @@ const InterviewPanel = () => {
 
     if (!confirmDelete) return;
 
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
       
-      // Delete interviews one by one
+      // Delete interviews one by one with error tracking
       for (const interviewId of selectedInterviews) {
-        await fetch(`${API_BASE_URL}/interviews/${interviewId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        try {
+          const response = await fetch(`${API_BASE_URL}/interviews/${interviewId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+            errors.push(`Interview ${interviewId}: ${response.statusText}`);
+          }
+        } catch (error) {
+          errorCount++;
+          errors.push(`Interview ${interviewId}: ${error.message}`);
+          console.error('Error deleting interview:', interviewId, error);
+        }
       }
 
-      toast.success(`Successfully deleted ${selectedInterviews.length} interview(s)`);
+      // Show result message
+      if (successCount > 0 && errorCount === 0) {
+        toast.success(`Successfully deleted ${successCount} interview(s)`);
+      } else if (successCount > 0 && errorCount > 0) {
+        toast.warning(`Deleted ${successCount} interview(s), but ${errorCount} failed. Check console for details.`);
+        console.error('Delete errors:', errors);
+      } else if (errorCount > 0) {
+        toast.error('Failed to delete interviews. Check console for details.');
+        console.error('Delete errors:', errors);
+      }
       
       // Reset selection
       setSelectedInterviews([]);
       setSelectAll(false);
+      setCheckboxVisible(false);
       
       // Reload interviews
       await loadInterviews();
     } catch (error) {
       toast.error('Failed to delete interviews');
+      console.error('Bulk delete error:', error);
     } finally {
       setLoading(false);
     }
@@ -1805,55 +1943,60 @@ const InterviewPanel = () => {
       {/* Filters and Search Row - Matching LeadCRM styling */}
       <div className="flex flex-wrap gap-4 mb-6 items-center justify-between">
         <div className="flex items-center gap-3">
-          {/* Select Button */}
+          {/* Select Button - Show for users with delete permission or Super Admin */}
           {(() => {
-            console.log('🔍 Interview Delete Button Check:', {
-              'permissions': permissions,
-              'permissions.can_delete': permissions?.can_delete,
-              'checkboxVisible': checkboxVisible,
-              'should_show_button': permissions?.can_delete && !checkboxVisible
-            });
+            console.log('🎯 ========== SELECT BUTTON DEBUG ==========');
+            console.log('🎯 permissions object:', permissions);
+            console.log('🎯 permissions.can_delete:', permissions?.can_delete);
+            console.log('🎯 typeof permissions:', typeof permissions);
+            console.log('🎯 Object.keys(permissions):', Object.keys(permissions || {}));
+            console.log('🎯 checkboxVisible:', checkboxVisible);
+            console.log('🎯 isSuperAdmin():', isSuperAdmin());
+            console.log('🎯 FINAL CONDITION (permissions?.can_delete || isSuperAdmin()):', (permissions?.can_delete || isSuperAdmin()));
+            console.log('🎯 ==========================================');
             return null;
           })()}
-          {permissions?.can_delete && !checkboxVisible ? (
-            <button
-              className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-              onClick={handleShowCheckboxes}
-            >
-              {selectedInterviews.length > 0
-                ? `Select (${selectedInterviews.length})`
-                : "Select"}
-            </button>
-          ) : permissions?.can_delete && checkboxVisible ? (
-            <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-              <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                <input
-                  type="checkbox"
-                  className="accent-blue-500 mr-2"
-                  checked={selectAll}
-                  onChange={handleSelectAll}
-                  style={{ width: 18, height: 18 }}
-                />
-                Select All
-              </label>
-              <span className="text-white font-semibold">
-                {selectedInterviews.length} interview{selectedInterviews.length !== 1 ? "s" : ""} selected
-              </span>
+          
+          {/* Show button if user has delete permission OR is super admin */}
+          {(permissions?.can_delete || isSuperAdmin()) && (
+            !checkboxVisible ? (
               <button
-                className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                onClick={handleBulkDelete}
-                disabled={selectedInterviews.length === 0}
+                className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
+                onClick={handleShowCheckboxes}
               >
-                Delete ({selectedInterviews.length})
+                Select
               </button>
-              <button
-                className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                onClick={handleCancelSelection}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : null}
+            ) : (
+              <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
+                <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
+                  <input
+                    type="checkbox"
+                    className="accent-blue-500 mr-2 cursor-pointer"
+                    checked={selectAll}
+                    onChange={handleSelectAll}
+                    style={{ width: 18, height: 18 }}
+                  />
+                  Select All
+                </label>
+                <span className="text-white font-semibold">
+                  {selectedInterviews.length} interview{selectedInterviews.length !== 1 ? "s" : ""} selected
+                </span>
+                <button
+                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                  onClick={handleBulkDelete}
+                  disabled={selectedInterviews.length === 0}
+                >
+                  Delete ({selectedInterviews.length})
+                </button>
+                <button
+                  className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
+                  onClick={handleCancelSelection}
+                >
+                  Cancel
+                </button>
+              </div>
+            )
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Filter Button - Matching LeadCRM exactly */}

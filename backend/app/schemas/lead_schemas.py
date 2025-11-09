@@ -190,6 +190,8 @@ class LeadBase(BaseModel):
     campaign_name: Optional[str] = None
     data_code: Optional[str] = None
     product_name: Optional[str] = None
+    xyz: Optional[str] = None  # Added XYZ field
+    pincode_city: Optional[str] = None  # Added Pincode & City field (combined)
     
     # Assignment and tracking fields
     department_id: Optional[str] = None
@@ -277,6 +279,8 @@ class LeadUpdate(BaseModel):
     source: Optional[str] = None
     campaign_name: Optional[str] = None  # Added campaign_name
     data_code: Optional[str] = None      # Added data_code
+    xyz: Optional[str] = None            # Added xyz field
+    pincode_city: Optional[str] = None   # Added pincode_city field (combined)
     department_id: Optional[str] = None
     assigned_to: Optional[Union[str, List[str], List[Dict[str, str]]]] = None  # Support string, list of strings, or list of objects
     assign_report_to: Optional[Union[str, List[str], List[Dict[str, str]]]] = None  # Support string, list of strings, or list of objects

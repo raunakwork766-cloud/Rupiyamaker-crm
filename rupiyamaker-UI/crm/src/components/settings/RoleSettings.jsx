@@ -12,7 +12,6 @@ const RoleSettings = () => {
     const [loading, setLoading] = useState(false);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
-    const [collapsedNodes, setCollapsedNodes] = useState(new Set());
     const [deleteModalVisible, setDeleteModalVisible] = useState(false);
     const [roleToDelete, setRoleToDelete] = useState(null);
     
@@ -220,75 +219,44 @@ const RoleSettings = () => {
             return [];
         }
         
-        // For roles with multiple reporting relationships, we'll create separate instances
-        // This allows the same role to appear under multiple managers in the tree
-        const expandedItems = [];
-        const itemMap = new Map();
+        // Handle both old reporting_id and new reporting_ids format
+        const map = new Map(items.map((item, i) => [item.id || item._id, { ...item, children: [] }]));
+        const tree = [];
+        
+        console.log('📋 buildTree: Created map with', map.size, 'items');
         
         items.forEach(item => {
-            const itemId = item.id || item._id;
-            itemMap.set(itemId, item);
+            const itemCopy = map.get(item.id || item._id);
+            
+            // Check if this role reports to anyone
+            let hasParent = false;
             
             // Support both new reporting_ids (array) and old reporting_id (single)
             const reportingIds = item.reporting_ids || (item.reporting_id ? [item.reporting_id] : []);
             
-            if (reportingIds.length === 0) {
-                // Top-level role - add once
-                expandedItems.push({ ...item, children: [], _originalId: itemId });
-            } else {
-                // Role with reporting relationships - create an instance for each parent
-                reportingIds.forEach((reportingId, index) => {
-                    expandedItems.push({
-                        ...item,
-                        children: [],
-                        _originalId: itemId,
-                        _parentId: reportingId,
-                        _isMultipleReporting: reportingIds.length > 1,
-                        _reportingIndex: index,
-                        _allReportingIds: reportingIds
-                    });
-                });
-            }
-        });
-        
-        console.log('📋 buildTree: Created', expandedItems.length, 'expanded items from', items.length, 'original items');
-        
-        // Now build the tree from expanded items
-        const tree = [];
-        const expandedMap = new Map();
-        
-        expandedItems.forEach((item, idx) => {
-            const uniqueKey = item._parentId 
-                ? `${item._originalId}_${item._parentId}` 
-                : item._originalId;
-            expandedMap.set(uniqueKey, item);
-        });
-        
-        expandedItems.forEach(item => {
-            const itemId = item._originalId;
-            const parentId = item._parentId;
+            console.log(`📌 Processing role: ${item.name}, reporting_ids:`, reportingIds);
             
-            console.log(`📌 Processing: ${item.name}, parentId:`, parentId);
-            
-            if (!parentId) {
-                // Top-level role
-                tree.push(item);
-                console.log(`   ⭐ Added ${item.name} as top-level role`);
-            } else {
-                // Find parent - check all expanded items for this parent
-                let parentFound = false;
-                expandedItems.forEach(potentialParent => {
-                    if (potentialParent._originalId === parentId) {
-                        potentialParent.children.push(item);
-                        parentFound = true;
-                        console.log(`   ✅ Added ${item.name} as child of ${potentialParent.name}`);
-                    }
-                });
+            if (reportingIds.length > 0) {
+                // For roles with multiple reporting relationships, 
+                // add them as child to the FIRST reporting role only (to avoid duplication in tree)
+                const primaryReportingId = reportingIds[0];
                 
-                if (!parentFound) {
-                    console.log(`   ⚠️ Parent ${parentId} not found, adding to top level`);
-                    tree.push(item);
+                console.log(`   Primary reporting ID for ${item.name}:`, primaryReportingId);
+                
+                if (map.has(primaryReportingId)) {
+                    const parent = map.get(primaryReportingId);
+                    parent.children.push(itemCopy);
+                    hasParent = true;
+                    console.log(`   ✅ Added ${item.name} as child of ${parent.name}`);
+                } else {
+                    console.log(`   ⚠️ Parent role ${primaryReportingId} not found in map`);
                 }
+            }
+            
+            // If no parent relationship found, it's a top-level role
+            if (!hasParent) {
+                tree.push(itemCopy);
+                console.log(`   ⭐ Added ${item.name} as top-level role`);
             }
         });
         
@@ -296,16 +264,6 @@ const RoleSettings = () => {
         console.log('🌲 Tree structure:', tree);
         
         return tree;
-    };
-
-    const toggleCollapse = (nodeId) => {
-        const newCollapsed = new Set(collapsedNodes);
-        if (newCollapsed.has(nodeId)) {
-            newCollapsed.delete(nodeId);
-        } else {
-            newCollapsed.add(nodeId);
-        }
-        setCollapsedNodes(newCollapsed);
     };
 
     const togglePermissionCollapse = (module) => {
@@ -1514,6 +1472,239 @@ const RoleSettings = () => {
         }, 0);
     };
 
+    const renderRoleTableRows = (nodes, level = 0, parentName = null) => {
+        const rows = [];
+        
+        nodes.forEach((node, index) => {
+            // Check if has direct reports
+            const hasDirectReports = roles.some(r => {
+                const reportingIds = r.reporting_ids || (r.reporting_id ? [r.reporting_id] : []);
+                return reportingIds.includes(node.id || node._id);
+            });
+            
+            // Get reporting role names (support multiple)
+            const reportingIds = node.reporting_ids || (node.reporting_id ? [node.reporting_id] : []);
+            const reportingRoleNames = reportingIds
+                .map(rid => {
+                    const reportingRole = roles.find(r => (r.id || r._id) === rid);
+                    return reportingRole ? reportingRole.name : null;
+                })
+                .filter(name => name);
+            
+            const hasMultipleManagers = reportingRoleNames.length > 1;
+            const isTopLevel = reportingRoleNames.length === 0;
+            const hasChildren = node.children && node.children.length > 0;
+            
+            // Add section header for top-level roles (managers)
+            if (isTopLevel && level === 0) {
+                rows.push(
+                    <tr key={`header-${node.id || node._id}`} className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border-t-2 border-indigo-500/50">
+                        <td colSpan="5" className="px-6 py-4">
+                            <div className="flex items-center space-x-3">
+                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-500/30 border-2 border-indigo-400">
+                                    <Users className="h-5 w-5 text-indigo-300" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-lg font-bold text-white">{node.name}</span>
+                                        <span className="bg-yellow-500/20 text-yellow-300 text-xs font-semibold px-3 py-1 rounded-full border border-yellow-500/50">
+                                            ⭐ TOP LEVEL
+                                        </span>
+                                        {hasChildren && (
+                                            <span className="bg-indigo-500/30 text-indigo-300 text-xs font-semibold px-3 py-1 rounded-full">
+                                                {node.children.length} {node.children.length === 1 ? 'Report' : 'Reports'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {node.department_id && (
+                                        <div className="mt-1 flex items-center space-x-2">
+                                            <span className="text-xs text-gray-400">Department:</span>
+                                            <span className="bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded text-xs">
+                                                {getDepartmentName(node.department_id)}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1"></div>
+                                <div className="flex items-center space-x-4">
+                                    <div className="text-right">
+                                        <div className="text-xs text-gray-400">Permissions</div>
+                                        <div className="text-sm font-semibold text-white">
+                                            {getPermissionsCount(node.permissions)} permissions
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={() => openModal(node)}
+                                            className="bg-gray-700/50 hover:bg-gray-600 text-white p-2 rounded-lg transition-all hover:scale-105"
+                                            title="Edit role"
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => showDeleteConfirmation(node)}
+                                            disabled={hasDirectReports}
+                                            className={`p-2 rounded-lg transition-all ${
+                                                hasDirectReports 
+                                                    ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed opacity-50' 
+                                                    : 'bg-gray-700/50 hover:bg-red-600 text-white hover:scale-105'
+                                            }`}
+                                            title={hasDirectReports ? 'Cannot delete - has direct reports' : 'Delete role'}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                );
+            }
+            
+            // Regular row for non-top-level roles
+            if (!isTopLevel || level > 0) {
+                rows.push(
+                    <tr 
+                        key={node.id || node._id}
+                        className={`transition-colors duration-200 border-b border-white/5 ${
+                            level === 1 
+                                ? 'bg-gray-800/60 hover:bg-gray-700/70' 
+                                : level === 2
+                                ? 'bg-gray-800/40 hover:bg-gray-700/50'
+                                : 'bg-gray-800/20 hover:bg-gray-700/30'
+                        }`}
+                    >
+                        {/* Role Name */}
+                        <td className="px-6 py-4">
+                            <div className="flex items-center">
+                                {/* Hierarchy connector */}
+                                {level > 0 && (
+                                    <div className="flex items-center mr-2">
+                                        <div className="flex flex-col items-center" style={{ width: `${(level - 1) * 24}px` }}>
+                                            {level > 1 && (
+                                                <span className="text-gray-600">│</span>
+                                            )}
+                                        </div>
+                                        <span className="text-indigo-400 text-lg mr-2">
+                                            {index === node.parent?.children?.length - 1 ? '└' : '├'}─
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                {/* Role Icon and Name */}
+                                <div className="flex items-center space-x-3">
+                                    <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+                                        level === 1 
+                                            ? 'bg-blue-500/20 border border-blue-400/50' 
+                                            : 'bg-gray-600/30 border border-gray-500/50'
+                                    }`}>
+                                        <Users className={`h-4 w-4 ${level === 1 ? 'text-blue-300' : 'text-gray-400'}`} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`font-medium ${level === 1 ? 'text-white text-base' : 'text-gray-200 text-sm'}`}>
+                                                {node.name}
+                                            </span>
+                                            {hasChildren && (
+                                                <span className="bg-gray-700 text-gray-300 text-xs font-semibold px-2 py-0.5 rounded-full">
+                                                    +{node.children.length}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        
+                        {/* Department */}
+                        <td className="px-6 py-4">
+                            {node.department_id ? (
+                                <span className="bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-md text-xs inline-block">
+                                    {getDepartmentName(node.department_id)}
+                                </span>
+                            ) : (
+                                <span className="text-gray-500 text-xs">-</span>
+                            )}
+                        </td>
+                        
+                        {/* Reports To */}
+                        <td className="px-6 py-4">
+                            {reportingRoleNames.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                    {reportingRoleNames.map((name, idx) => (
+                                        <div key={idx} className="flex items-center space-x-2">
+                                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                            </svg>
+                                            <span className={`font-medium text-sm ${
+                                                hasMultipleManagers && idx > 0
+                                                    ? 'text-orange-300'
+                                                    : 'text-green-300'
+                                            }`}>
+                                                {name}
+                                            </span>
+                                            {hasMultipleManagers && idx > 0 && (
+                                                <span className="text-xs text-orange-400">(Secondary)</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="text-gray-500 text-xs">-</span>
+                            )}
+                        </td>
+                        
+                        {/* Permissions */}
+                        <td className="px-6 py-4">
+                            <span className="text-gray-300 text-sm">
+                                {getPermissionsCount(node.permissions) > 0 ? (
+                                    <span className="flex items-center space-x-2">
+                                        <Shield className="h-4 w-4 text-indigo-400" />
+                                        <span>{getPermissionsCount(node.permissions)}</span>
+                                    </span>
+                                ) : (
+                                    <span className="text-gray-500 text-xs">None</span>
+                                )}
+                            </span>
+                        </td>
+                        
+                        {/* Actions */}
+                        <td className="px-6 py-4">
+                            <div className="flex items-center justify-center space-x-2">
+                                <button
+                                    onClick={() => openModal(node)}
+                                    className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-lg transition-all"
+                                    title="Edit role"
+                                >
+                                    <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                    onClick={() => showDeleteConfirmation(node)}
+                                    disabled={hasDirectReports}
+                                    className={`p-2 rounded-lg transition-all ${
+                                        hasDirectReports 
+                                            ? 'text-gray-600 cursor-not-allowed opacity-50' 
+                                            : 'text-gray-400 hover:text-red-400 hover:bg-gray-700'
+                                    }`}
+                                    title={hasDirectReports ? 'Cannot delete - has direct reports' : 'Delete role'}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                );
+            }
+            
+            // Always show children rows recursively
+            if (hasChildren) {
+                rows.push(...renderRoleTableRows(node.children, level + 1, node.name));
+            }
+        });
+        
+        return rows;
+    };
+
     const renderRoleTree = (nodes, isChild = false) => {
         return nodes.map(node => {
             // Check both old and new format for direct reports
@@ -1643,10 +1834,18 @@ const RoleSettings = () => {
     const someSelected = selectedPermissions > 0 && selectedPermissions < totalPermissions;
 
     return (
-        <div className="max-w-7xl mx-auto bg-gray-900/90 backdrop-blur-sm border border-white/10 rounded-xl shadow-2xl p-6 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="max-w-7xl mx-auto bg-gradient-to-br from-gray-900 to-gray-800 backdrop-blur-sm border border-white/20 rounded-2xl shadow-2xl p-8 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-6 px-2">
-                <h1 className="text-3xl font-bold text-white">Roles & Permissions</h1>
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-4xl font-bold text-white mb-2 flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                            <Shield className="h-7 w-7 text-white" />
+                        </div>
+                        <span>Roles & Permissions</span>
+                    </h1>
+                    <p className="text-gray-400 text-sm ml-15">Manage organizational hierarchy and access control</p>
+                </div>
                 <div className="flex items-center space-x-3">
                     {/* Export Buttons */}
                     <div className="flex items-center space-x-2">
@@ -1657,59 +1856,125 @@ const RoleSettings = () => {
                                 console.log('PDF button clicked');
                                 exportToPDF();
                             }}
-                            className="bg-gradient-to-r from-red-500 to-red-600 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transform hover:scale-105 transition-transform"
+                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center space-x-2 transform hover:scale-105 transition-all shadow-lg"
                             title="Export to PDF"
                             type="button"
                         >
                             <Download className="h-4 w-4" />
-                            <span>PDF</span>
+                            <span>Export PDF</span>
                         </button>
                     </div>
                     
                     {/* Add Role Button */}
                     <button 
                         onClick={() => openModal()}
-                        className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-2 px-5 rounded-lg flex items-center space-x-2 transform hover:scale-105 transition-transform"
+                        className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center space-x-2 transform hover:scale-105 transition-all shadow-lg"
                     >
                         <Plus className="h-5 w-5" />
-                        <span>Add Role</span>
+                        <span>Add New Role</span>
                     </button>
                 </div>
             </div>
 
-            {/* Column Headers */}
-            <div className="item-content text-gray-400 uppercase text-xs font-semibold tracking-wide mb-2 px-4 grid grid-cols-12 gap-4">
-                <div className="col-span-2">Role Name</div>
-                <div className="col-span-2">Department</div>
-                <div className="col-span-3">Reports To</div>
-                <div className="col-span-3">Permissions</div>
-                <div className="col-span-2 text-center">Actions</div>
+            {/* Info Cards */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-blue-400 text-sm font-medium">Total Roles</div>
+                            <div className="text-2xl font-bold text-white mt-1">{roles.length}</div>
+                        </div>
+                        <div className="bg-blue-500/20 p-3 rounded-lg">
+                            <Users className="h-6 w-6 text-blue-400" />
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-purple-400 text-sm font-medium">Top Level Roles</div>
+                            <div className="text-2xl font-bold text-white mt-1">
+                                {roles.filter(r => !r.reporting_id && (!r.reporting_ids || r.reporting_ids.length === 0)).length}
+                            </div>
+                        </div>
+                        <div className="bg-purple-500/20 p-3 rounded-lg">
+                            <Shield className="h-6 w-6 text-purple-400" />
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/30 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-green-400 text-sm font-medium">Departments</div>
+                            <div className="text-2xl font-bold text-white mt-1">{departments.length}</div>
+                        </div>
+                        <div className="bg-green-500/20 p-3 rounded-lg">
+                            <svg className="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            {/* Scroll hint */}
-            {!loading && treeData && treeData.length > 5 && (
-                <div className="text-xs text-gray-500 mb-4 px-4">
-                    Showing {treeData.length} roles - scroll to view all
-                </div>
-            )}
-
-            {/* Role Tree */}
+            {/* Role Table */}
             {loading ? (
                 <div className="flex justify-center items-center h-64">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
                 </div>
             ) : (
-                <div className="relative">
-                    <div className="h-[calc(100vh-160px)] overflow-hidden space-y-2 border border-white/10 rounded-lg p-4 bg-gray-800/30">
-                        <div className="h-full overflow-y-auto pr-2" style={{
-                            scrollbarWidth: 'thin',
-                            scrollbarColor: '#4f46e5 #374151'
-                        }}>
-                            {renderRoleTree(treeData)}
-                        </div>
+                <div className="relative border-2 border-white/20 rounded-xl overflow-hidden bg-gray-900/50 shadow-2xl">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-300 uppercase bg-gradient-to-r from-gray-800 to-gray-900 sticky top-0 z-10 border-b-2 border-indigo-500/50">
+                                <tr>
+                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
+                                        <div className="flex items-center space-x-2">
+                                            <Users className="h-4 w-4 text-indigo-400" />
+                                            <span>ROLE NAME</span>
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                            </svg>
+                                            <span>DEPARTMENT</span>
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                            </svg>
+                                            <span>REPORTS TO</span>
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide">
+                                        <div className="flex items-center space-x-2">
+                                            <Shield className="h-4 w-4 text-indigo-400" />
+                                            <span>PERMISSIONS</span>
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-4 font-bold tracking-wide text-center">
+                                        <span>ACTIONS</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {renderRoleTableRows(treeData)}
+                            </tbody>
+                        </table>
                     </div>
-                    {/* Scroll indicator */}
-                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-900/90 to-transparent pointer-events-none rounded-b-lg"></div>
+                    {treeData && treeData.length === 0 && (
+                        <div className="text-center py-16 text-gray-400">
+                            <div className="bg-gray-800/50 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
+                                <Users className="h-10 w-10 opacity-50" />
+                            </div>
+                            <p className="text-lg font-medium mb-2">No roles found</p>
+                            <p className="text-sm text-gray-500">Click "Add New Role" to create your first role</p>
+                        </div>
+                    )}
                 </div>
             )}
 

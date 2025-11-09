@@ -840,8 +840,6 @@ function useCreateLeadLogic() {
   const [status, setStatus] = useState("not_a_lead"); // Set default status to enable Create Lead button
   const [customerName, setCustomerName] = useState("");
   const [alternateNumber, setAlternateNumber] = useState("");
-  const [pincode, setPincode] = useState("");
-  const [city, setCity] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [salary, setSalary] = useState("");
@@ -913,7 +911,6 @@ function useCreateLeadLogic() {
   const [isCompanyLoading, setIsCompanyLoading] = useState(false);
 
   const leadFormRef = useRef(null);
-
 
   useEffect(() => {
     // Use parseINR directly as it now returns a number
@@ -1227,102 +1224,6 @@ function useCreateLeadLogic() {
 
   const handleDataCodeDropdownToggle = () => {
     setShowDataCodeDropdown(!showDataCodeDropdown);
-  };
-
-  // --- Pincode Change Handler ---
-  const handlePincodeChange = async (pincode, setAvailableCities, setCity) => {
-    if (!pincode || pincode.length !== 6) {
-      setAvailableCities([]);
-      setCity(""); // Clear city when pincode is invalid
-      return;
-    }
-
-    // Clear city while loading new options
-    setCity("");
-
-    try {
-      // Using a free postal code API to fetch cities
-      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
-      const data = await response.json();
-      if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice) {
-        // Log the first office to see available fields
-
-
-        // Extract city names using multiple strategies
-        const cityNames = [];
-
-        data[0].PostOffice.forEach(office => {
-          // Strategy 1: Try common city name fields in order
-          let cityName = office.Block || office.Region || office.Taluk || office.Circle;
-
-          // Strategy 2: If no city found, try Name field but clean it
-          if (!cityName || cityName === 'undefined' || cityName.trim() === '') {
-            cityName = office.Name;
-          }
-
-          // Strategy 3: If still no city, try District as fallback
-          if (!cityName || cityName === 'undefined' || cityName.trim() === '') {
-            cityName = office.District;
-          }
-
-          // Clean and validate the city name
-          if (cityName &&
-            cityName !== 'undefined' &&
-            cityName !== null &&
-            typeof cityName === 'string' &&
-            cityName.trim() !== '' &&
-            cityName.toLowerCase() !== 'na' &&
-            cityName.toLowerCase() !== 'n/a' &&
-            cityName.toLowerCase() !== 'null') {
-            cityNames.push({
-              name: cityName.trim(),
-              district: office.District || 'Unknown District'
-            });
-          }
-        });
-
-        // Remove duplicates by city name and create city options
-        const uniqueCityNames = new Set();
-        const uniqueCities = cityNames.filter(city => {
-          if (!uniqueCityNames.has(city.name)) {
-            uniqueCityNames.add(city.name);
-            return true;
-          }
-          return false;
-        });
-
-        if (uniqueCities.length > 0) {
-          setAvailableCities(uniqueCities);
-
-          // Only auto-select if there's exactly one city and no city is currently selected
-          if (uniqueCities.length === 1 && !city) {
-            setTimeout(() => {
-              setCity(uniqueCities[0].name.toUpperCase());
-            }, 100); // Small delay to ensure state updates properly
-          }
-        } else {
-          // If no valid cities found, show a fallback message
-
-          setAvailableCities([{
-            name: 'Unknown',
-            district: 'City information not available'
-          }]);
-        }
-      } else {
-        // Handle API error or invalid pincode
-
-        setAvailableCities([{
-          name: 'Invalid',
-          district: 'Invalid pincode'
-        }]);
-      }
-    } catch (error) {
-
-      setAvailableCities([{
-        name: 'Error',
-        district: 'Error fetching city data'
-      }]);
-    }
   };
 
   // --- Check Eligibility Handlers ---
@@ -2170,8 +2071,7 @@ const handleMobileNumberChange = (e) => {
           setMobileNumber(existingLeadData.mobile_number || existingLeadData.mobileNumber || '');
           setCustomerName(existingLeadData.name || existingLeadData.customer_name || existingLeadData.customerName || '');
           setAlternateNumber(existingLeadData.alternate_number || existingLeadData.alternateNumber || '');
-          setPincode(existingLeadData.pincode || '');
-          setCity(existingLeadData.city || '');
+          
           setCompanyName(existingLeadData.company_name || existingLeadData.companyName || '');
           setCompanyType(existingLeadData.company_type || existingLeadData.companyType || '');
           setCompanyCategory(existingLeadData.company_category || existingLeadData.companyCategory || '');
@@ -2221,8 +2121,6 @@ const handleMobileNumberChange = (e) => {
               mobile_number: existingLeadData.mobile_number || existingLeadData.mobileNumber || '',
               customer_name: existingLeadData.name || existingLeadData.customer_name || existingLeadData.customerName || '',
               alternate_number: existingLeadData.alternate_number || existingLeadData.alternateNumber || '',
-              pincode: existingLeadData.pincode || '',
-              city: existingLeadData.city || '',
               company_name: existingLeadData.company_name || existingLeadData.companyName || '',
               company_type: existingLeadData.company_type || existingLeadData.companyType || '',
               company_category: existingLeadData.company_category || existingLeadData.companyCategory || '',
@@ -2575,8 +2473,6 @@ const handleMobileNumberChange = (e) => {
         mobileNumber,
         customerName,
         alternateNumber,
-        pincode,
-        city,
         companyName,
         companyType,
         companyCategory,
@@ -2651,8 +2547,6 @@ const handleMobileNumberChange = (e) => {
           mobileNumber,
           customerName,
           alternateNumber,
-          pincode,
-          city,
           companyName,
           companyType,
           companyCategory,
@@ -2874,8 +2768,6 @@ const handleMobileNumberChange = (e) => {
           mobileNumber: '',
           customerName: '',
           alternateNumber: '',
-          pincode: '',
-          city: '',
           companyName: '',
           companyType: '',
           campaignName: '',
@@ -2918,8 +2810,6 @@ const handleMobileNumberChange = (e) => {
         setMobileValidationError(""); // Reset mobile validation error
         setCustomerName(initialState.customerName);
         setAlternateNumber(initialState.alternateNumber);
-        setPincode(initialState.pincode);
-        setCity(initialState.city);
         setCompanyName(initialState.companyName);
         setCompanyType(initialState.companyType);
         setCampaignName(initialState.campaignName);
@@ -3035,8 +2925,8 @@ const handleMobileNumberChange = (e) => {
     companyCategory, setCompanyCategory, assignedTo, setAssignedTo, handleRemoveAssignee, handleAddAssignee,
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
-    alternateNumber, setAlternateNumber, handleAlternateNumberChange, pincode, setPincode,
-    city, setCity, companyName, setCompanyName, companyType, setCompanyType,
+    alternateNumber, setAlternateNumber, handleAlternateNumberChange,
+    companyName, setCompanyName, companyType, setCompanyType,
     salary, handleSalaryChange, partnerSalary, handlePartnerSalaryChange, yearlyBonus, handleYearlyBonusChange,
     bonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
     foirPercent, handleFoirPercentChange, eligibility, leadFormRef, handleCheckMobile,
@@ -3071,8 +2961,6 @@ const handleMobileNumberChange = (e) => {
     ceMultiplier, handleCeMultiplierChange,
     loanEligibilityStatus,
     checkEligibilityCompanyCategories, formatINR, parseINR,
-    // Pincode functionality
-    handlePincodeChange,
     // Obligation tracking
     obligationHasUnsavedChanges, obligationIsSaving, obligationDataSaved, handleObligationDataUpdate,
     handleSaveObligationData, handleClearObligationChanges,
@@ -4672,9 +4560,6 @@ function CreateLead() {
   const [activeTab, setActiveTab] = useState("all");
   const [leadSection, setLeadSection] = useState("leadinfo");
 
-  // Additional state for pincode and city functionality
-  const [localPincode, setLocalPincode] = useState('');
-  const [availableCities, setAvailableCities] = useState([]);
   const [pincodeError, setPincodeError] = useState('');
   const lastChanged = useRef(null);
 
@@ -4700,8 +4585,8 @@ function CreateLead() {
     handleRemoveAssignee, handleAddAssignee,
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
-    alternateNumber, setAlternateNumber, handleAlternateNumberChange, pincode, setPincode,
-    city, setCity, companyName, setCompanyName, companyType, setCompanyType,
+    alternateNumber, setAlternateNumber, handleAlternateNumberChange,
+    companyName, setCompanyName, companyType, setCompanyType,
     salary, setSalary, partnerSalary, setPartnerSalary, yearlyBonus, setYearlyBonus,
     bonusDivision, setBonusDivision, loanRequired, setLoanRequired,
     foirPercent, setFoirPercent, eligibility, leadFormRef, handleCheckMobile,
@@ -4736,8 +4621,6 @@ function CreateLead() {
     ceMultiplier, handleCeMultiplierChange,
     loanEligibilityStatus,
     checkEligibilityCompanyCategories, formatINR, parseINR,
-    // Pincode functionality
-    handlePincodeChange,
     // Obligation tracking
     obligationHasUnsavedChanges, obligationIsSaving, obligationDataSaved, handleObligationDataUpdate,
     // Enhanced obligation handlers  
@@ -4762,16 +4645,6 @@ function CreateLead() {
     hasAddLeadPermission,
     hasReassignmentPopupPermission
   } = useCreateLeadLogic();
-
-  // Debug city selection and ensure proper state management
-  useEffect(() => {
-    console.log("City state changed:", {
-      city,
-      availableCitiesLength: availableCities.length,
-      pincode,
-      availableCities: availableCities.map(c => c.name)
-    });
-  }, [city, availableCities, pincode]);
 
   // Handle section change
   const handleSectionChange = (section) => {
@@ -6318,59 +6191,6 @@ function CreateLead() {
                               </p>
                             )}
                           </div>
-                          {/* Column 3 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label">
-                              Pincode
-                            </label>
-                            <input
-                              type="text"
-                              className="w-full px-3 py-2 text-black border rounded-lg form-control border-neutral-800 focus:outline-none focus:border-sky-400"
-                              id="pincode"
-                              maxLength={6}
-                              placeholder="6-digit Pincode"
-                              value={pincode}
-                              onChange={(e) => {
-                                const inputVal = e.target.value;
-                                if (/^\d*$/.test(inputVal)) {
-                                  setPincode(inputVal); // Update main form pincode
-                                  setLocalPincode(inputVal); // Update local pincode for API calls
-                                  setCity(''); // Clear city when pincode changes
-
-                                  // Fetch cities when pincode is complete
-                                  handlePincodeChange(inputVal, setAvailableCities, setCity);
-                                }
-                              }}
-                            />
-                            {pincodeError && <p style={{ color: 'red', fontSize: '0.8em' }} className="text-red-600 text-sm mt-1">{pincodeError}</p>}
-                          </div>
-
-
-                          {/* Column 1 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label">
-                              City
-                            </label>
-                            <SearchableSelect
-                              key={`city-selector-${pincode}-${availableCities.length}`}
-                              options={availableCities.map((cityOption, index) => ({
-                                value: cityOption.name.toUpperCase(),
-                                label: `${cityOption.name} - ${cityOption.district}`,
-                                key: `city-option-${cityOption.name}-${index}`
-                              }))}
-                              value={city}
-                              onChange={(value) => {
-                                console.log("City selected:", value); // Debug log
-                                lastChanged.current = "city";
-                                setCity(value);
-                              }}
-                              placeholder={availableCities.length === 0 ? "Enter PIN code first" : "Select City"}
-                              searchPlaceholder="Search cities..."
-                              disabled={availableCities.length === 0}
-                              variant="light"
-                              className="form-control"
-                            />
-                          </div>
                           {/* State input can go here if you decide to add it */}
 
                           {/* <div className="form-group">
@@ -6419,8 +6239,6 @@ function CreateLead() {
                       // Reset only the lead form data, NOT the product type and mobile number
                       setCustomerName('');
                       setAlternateNumber('');
-                      setPincode('');
-                      setCity('');
                       setCampaignName('');
                       setDataCode('');
                       setStatus('');

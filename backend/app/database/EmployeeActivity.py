@@ -180,7 +180,6 @@ class EmployeeActivityDB:
             'ifsc_code': 'IFSC Code',
             'pan_number': 'PAN Number',
             'aadhar_number': 'Aadhar Number',
-            'address': 'Address',
             'status': 'Employee Status',
             'is_active': 'Login Status',
             'username': 'Username',
@@ -193,23 +192,8 @@ class EmployeeActivityDB:
                 
             old_value = original_data.get(field)
             
-            # Handle special cases
-            if field == 'address' and isinstance(new_value, dict) and isinstance(old_value, dict):
-                # Track address subfield changes
-                address_changes = {}
-                for addr_field, addr_new_val in new_value.items():
-                    addr_old_val = old_value.get(addr_field) if old_value else None
-                    if addr_old_val != addr_new_val:
-                        address_changes[addr_field] = {
-                            'from': addr_old_val,
-                            'to': addr_new_val
-                        }
-                if address_changes:
-                    field_changes[field] = {
-                        'label': field_labels.get(field, field.replace('_', ' ').title()),
-                        'changes': address_changes
-                    }
-            elif old_value != new_value:
+            # Handle value changes
+            if old_value != new_value:
                 field_changes[field] = {
                     'label': field_labels.get(field, field.replace('_', ' ').title()),
                     'from': old_value,

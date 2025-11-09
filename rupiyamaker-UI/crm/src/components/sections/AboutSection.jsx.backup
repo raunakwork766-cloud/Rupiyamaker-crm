@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
 
 // API base URL - Use proxy in development
@@ -171,6 +171,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [loanTypes, setLoanTypes] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [dataCodes, setDataCodes] = useState([]);
+  const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(false);
   
   // User permissions state
@@ -187,6 +188,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   
   // Validation states
   const [validationErrors, setValidationErrors] = useState({});
+  const [isValidatingPincode, setIsValidatingPincode] = useState(false);
   
   // Duplicate checking states
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
@@ -202,9 +204,11 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
   const [showDataCodeDropdown, setShowDataCodeDropdown] = useState(false);
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [campaignSearchTerm, setCampaignSearchTerm] = useState('');
   const [dataCodeSearchTerm, setDataCodeSearchTerm] = useState('');
+  const [citySearchTerm, setCitySearchTerm] = useState('');
   
   // Helper function to safely extract field values from lead data
   const extractFieldValue = (fieldName) => {
@@ -246,14 +250,24 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       case 'mobileNumber':
         return lead.mobile_number || lead.phone || lead.mobileNumber || "";
       
+      case 'pinCode':
+        // Try multiple sources for pincode
+        return lead.dynamic_fields?.address?.pincode || 
+               lead.pincode || 
+               lead.pin_code || 
+               lead.pinCode || "";
+      
+      case 'city':
+        // Try multiple sources for city
+        return lead.dynamic_fields?.address?.city || 
+               lead.city || 
+               lead.City || "";
+      
       case 'alternateNumber':
         return lead.alternative_phone || 
                lead.alternate_phone || 
                lead.alternateNumber || 
                lead.alternate_number || "";
-      
-      case 'pincode_city':
-        return lead.pincode_city || "";
       
       default:
         return "";
@@ -278,8 +292,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       return fullName || lead?.customerName || "";
     })(),
     mobileNumber: lead?.mobile_number || lead?.phone || lead?.mobileNumber || "",
+    pinCode: lead?.dynamic_fields?.address?.pincode || lead?.pincode || lead?.pin_code || lead?.pinCode || "",
+    city: lead?.dynamic_fields?.address?.city || lead?.city || lead?.City || "",
     alternateNumber: lead?.alternative_phone || lead?.alternate_phone || lead?.alternateNumber || lead?.alternate_number || "",
-    pincode_city: lead?.pincode_city || "",
   }));
   
   // Update local state if the lead prop changes from parent
@@ -288,23 +303,20 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     if (lead) {
       console.log('📊 AboutSection: Updating fields from lead data:', lead);
       
-      // CRITICAL FIX: Preserve existing field values when updating from lead
-      // This prevents fields from being cleared when one field is updated
-      setFields(prevFields => {
-        return {
-          id: extractFieldValue('id') || prevFields.id,
-          productName: extractFieldValue('productName') || prevFields.productName,
-          loanTypeId: extractFieldValue('loanTypeId') || prevFields.loanTypeId,
-          loan_type: extractFieldValue('loan_type') || prevFields.loan_type,
-          loan_type_id: extractFieldValue('loan_type_id') || prevFields.loan_type_id,
-          loan_type_name: extractFieldValue('loan_type_name') || prevFields.loan_type_name,
-          campaignName: extractFieldValue('campaignName') || prevFields.campaignName,
-          dataCode: extractFieldValue('dataCode') || prevFields.dataCode,
-          customerName: extractFieldValue('customerName') || prevFields.customerName,
-          mobileNumber: extractFieldValue('mobileNumber') || prevFields.mobileNumber,
-          alternateNumber: extractFieldValue('alternateNumber') || prevFields.alternateNumber,
-          pincode_city: extractFieldValue('pincode_city') || prevFields.pincode_city,
-        };
+      setFields({
+        id: extractFieldValue('id'),
+        productName: extractFieldValue('productName'),
+        loanTypeId: extractFieldValue('loanTypeId'),
+        loan_type: extractFieldValue('loan_type'),
+        loan_type_id: extractFieldValue('loan_type_id'),
+        loan_type_name: extractFieldValue('loan_type_name'),
+        campaignName: extractFieldValue('campaignName'),
+        dataCode: extractFieldValue('dataCode'),
+        customerName: extractFieldValue('customerName'),
+        mobileNumber: extractFieldValue('mobileNumber'),
+        pinCode: extractFieldValue('pinCode'),
+        city: extractFieldValue('city'),
+        alternateNumber: extractFieldValue('alternateNumber'),
       });
       
       console.log('📊 AboutSection: Fields updated to:', {
@@ -314,8 +326,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         dataCode: extractFieldValue('dataCode'),
         customerName: extractFieldValue('customerName'),
         mobileNumber: extractFieldValue('mobileNumber'),
+        pinCode: extractFieldValue('pinCode'),
+        city: extractFieldValue('city'),
         alternateNumber: extractFieldValue('alternateNumber'),
-        pincode_city: extractFieldValue('pincode_city'),
       });
       
       // 🔍 Detailed debugging for campaign_name and data_code
@@ -474,6 +487,24 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     checkUserPermissions();
   }, []);
 
+  // Fetch cities when pincode changes
+  useEffect(() => {
+    if (fields.pinCode && fields.pinCode.length === 6) {
+      fetchCitiesByPincode(fields.pinCode);
+    } else if (fields.pinCode && fields.pinCode.length > 0 && fields.pinCode.length < 6) {
+      // Clear cities and set validation error for incomplete pincode
+      setCities([]);
+      setValidationErrors(prev => ({
+        ...prev,
+        pinCode: `Pincode must be 6 digits (${fields.pinCode.length} digits entered)`
+      }));
+    } else if (!fields.pinCode || fields.pinCode.length === 0) {
+      // Clear everything when pincode is empty
+      setCities([]);
+      setValidationErrors(prev => ({ ...prev, pinCode: null }));
+    }
+  }, [fields.pinCode]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -481,9 +512,11 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         setShowProductDropdown(false);
         setShowCampaignDropdown(false);
         setShowDataCodeDropdown(false);
+        setShowCityDropdown(false);
         setProductSearchTerm('');
         setCampaignSearchTerm('');
         setDataCodeSearchTerm('');
+        setCitySearchTerm('');
       }
     };
 
@@ -857,6 +890,59 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     }
   };
 
+  // Fetch cities by pincode using the provided API structure
+  const fetchCitiesByPincode = async (pincode) => {
+    try {
+      setLoading(true);
+      setIsValidatingPincode(true);
+      
+      // Clear previous validation errors
+      setValidationErrors(prev => ({ ...prev, pinCode: null }));
+      
+      // Using Indian Postal API or similar service
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0] && data[0].Status === 'Success' && data[0].PostOffice) {
+          const cityList = data[0].PostOffice.map(office => ({
+            name: office.Name,
+            district: office.District,
+            state: office.State,
+            pincode: office.Pincode
+          }));
+          setCities(cityList);
+          
+          // Clear pincode error if validation successful
+          setValidationErrors(prev => ({ ...prev, pinCode: null }));
+        } else {
+          setCities([]);
+          // Set validation error for invalid pincode
+          setValidationErrors(prev => ({ 
+            ...prev, 
+            pinCode: 'Invalid pincode.' 
+          }));
+        }
+      } else {
+        setCities([]);
+        setValidationErrors(prev => ({ 
+          ...prev, 
+          pinCode: '' 
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      setCities([]);
+      setValidationErrors(prev => ({ 
+        ...prev, 
+        pinCode: 'Error validating pincode. Please try again.' 
+      }));
+    } finally {
+      setLoading(false);
+      setIsValidatingPincode(false);
+    }
+  };
+
   // Filter functions for dropdown search
   const getFilteredLoanTypes = () => {
     if (!productSearchTerm) return loanTypes;
@@ -876,6 +962,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     if (!dataCodeSearchTerm) return dataCodes;
     return dataCodes.filter(dataCode => 
       dataCode.name.toLowerCase().includes(dataCodeSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredCities = () => {
+    if (!citySearchTerm) return cities;
+    return cities.filter(city => 
+      city.name.toLowerCase().includes(citySearchTerm.toLowerCase()) ||
+      city.district.toLowerCase().includes(citySearchTerm.toLowerCase())
     );
   };
 
@@ -926,79 +1020,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     }
   };
 
-  // Format pincode & city field
-  const formatPincodeCity = (value) => {
-    // If empty or user is deleting, allow it
-    if (!value || value.trim() === '') {
-      return '';
-    }
-    
-    // Convert to uppercase
-    value = value.toUpperCase();
-    
-    // Remove existing commas and extra spaces to handle re-formatting
-    let cleaned = value.replace(/,/g, '').replace(/\s+/g, ' ').trim();
-    
-    // Extract digits only for pincode (first 6 characters)
-    const digitsOnly = cleaned.replace(/[^0-9]/g, '');
-    
-    // If less than 6 digits, just return the digits (allow deletion)
-    if (digitsOnly.length < 6) {
-      return digitsOnly;
-    }
-    
-    // If user is at exactly "123456, " and backspacing, remove the comma/space formatting
-    // This happens when the cleaned string has 6 digits but no city text
-    const pincode = digitsOnly.substring(0, 6);
-    
-    // Get the city name part (everything after the first 6 digits)
-    // Find where the 6th digit ends in the original value
-    let pincodeEndIndex = 0;
-    let digitCount = 0;
-    for (let i = 0; i < cleaned.length; i++) {
-      if (/[0-9]/.test(cleaned[i])) {
-        digitCount++;
-        if (digitCount === 6) {
-          pincodeEndIndex = i + 1;
-          break;
-        }
-      }
-    }
-    
-    // Get everything after the 6th digit (city name) - already uppercase
-    const cityPart = cleaned.substring(pincodeEndIndex).trim();
-    
-    // If there's city name, include it with formatting
-    if (cityPart) {
-      return `${pincode}, ${cityPart}`;
-    }
-    
-    // If exactly 6 digits with no city, show formatted version
-    // But if user is deleting (original value was shorter), just show digits
-    if (digitsOnly.length === 6) {
-      // Check if the original value already had comma formatting
-      // If yes, keep it; if no (user just typed 6th digit), add it
-      if (value.includes(',')) {
-        return `${pincode}, `;
-      }
-      return `${pincode}, `;
-    }
-    
-    return pincode;
-  };
-
   const handleChange = (field, value) => {
     console.log(`📝 AboutSection: Input changed - ${field}: ${value}`);
     
     // Convert text fields to uppercase (exclude numeric fields)
     let processedValue = value;
     
-    // Handle pincode_city field formatting
-    if (field === 'pincode_city') {
-      processedValue = formatPincodeCity(value);
-    }
     // Handle specific field validations
-    else if (field === 'alternateNumber') {
+    if (field === 'alternateNumber') {
       // Only allow numbers, limit to 10 digits
       processedValue = value.replace(/\D/g, '').slice(0, 10);
       
@@ -1063,7 +1092,23 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         // Clear the error if they're now different
         setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
       }
-    } else if (typeof value === 'string' && !['mobileNumber', 'alternateNumber'].includes(field)) {
+    } else if (field === 'pinCode') {
+      // Only allow numbers, limit to 6 digits
+      processedValue = value.replace(/\D/g, '').slice(0, 6);
+      
+      // Clear cities when pincode is not 6 digits
+      if (processedValue.length !== 6) {
+        setCities([]);
+        if (processedValue.length > 0) {
+          setValidationErrors(prev => ({
+            ...prev,
+            pinCode: `Pincode must be 6 digits (${processedValue.length} digits entered)`
+          }));
+        } else {
+          setValidationErrors(prev => ({ ...prev, pinCode: null }));
+        }
+      }
+    } else if (typeof value === 'string' && !['mobileNumber', 'alternateNumber', 'pinCode'].includes(field)) {
       processedValue = value.toUpperCase();
     }
     
@@ -1169,8 +1214,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         dataCode: 'data_code',
         customerName: 'name',
         mobileNumber: 'mobile_number',
-        alternateNumber: 'alternative_phone',
-        pincode_city: 'pincode_city'
+        pinCode: 'postal_code',  // Changed: send as top-level field
+        city: 'city',            // Changed: send as top-level field
+        alternateNumber: 'alternative_phone'
       };
 
       const apiField = apiFieldMap[field] || field;
@@ -1208,35 +1254,22 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         updatePayload = { [apiField]: value };
       }
 
-      console.log(`📤 AboutSection: Update payload for ${field}:`, updatePayload);
+      console.log(`📤 AboutSection: Sending minimal update for ${field}:`, updatePayload);
       
-      // Try parent onSave first (if available)
-      // Otherwise fallback to direct API call for backward compatibility
-      let savedViaParent = false;
-      if (onSave && typeof onSave === 'function') {
-        try {
-          console.log(`📡 AboutSection: Calling parent onSave`);
-          const result = onSave(updatePayload);
-          if (result instanceof Promise) {
-            await result;
-          }
-          savedViaParent = true;
-          console.log(`✅ AboutSection: Saved via parent callback`);
-        } catch (error) {
-          console.warn(`⚠️ AboutSection: Parent onSave failed, falling back to direct API:`, error);
+      // Call the parent's onSave function with minimal payload
+      // Parent (LeadDetails.updateLead) will merge with existing dynamic_fields
+      if (onSave) {
+        console.log(`� AboutSection: Calling parent onSave (with defensive merge)`);
+        
+        const result = onSave(updatePayload);
+        if (result instanceof Promise) {
+          await result;
         }
+        
+        console.log(`✅ AboutSection: Successfully saved ${field}`);
+      } else {
+        console.warn(`⚠️ AboutSection: No onSave function provided - changes will not be saved!`);
       }
-      
-      // Fallback to direct API call if no parent callback or if it failed
-      if (!savedViaParent && lead?._id) {
-        console.log(`📡 AboutSection: Using direct API call (backward compatibility)`);
-        await saveToAPI(field, value, updatePayload);
-      }
-      
-      // CRITICAL FIX: Keep the field value visible in UI after save
-      // The local state was already updated at the start, so ensure it persists
-      setFields(prev => ({ ...prev, [field]: value }));
-      console.log(`✅ AboutSection: Confirmed ${field} value in UI: ${value}`);
       
       // Show success message
       setSaveStatus('✅ Saved successfully!');
@@ -1281,7 +1314,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   };
 
   // Enhanced function to save about data to backend API
-  const saveToAPI = async (field, value, updatePayload = null) => {
+  const saveToAPI = async (field, value) => {
     if (!lead?._id) {
       console.warn('AboutSection: No lead ID available, cannot save to API');
       return false;
@@ -1302,68 +1335,6 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       
       console.log(`📡 AboutSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
 
-      // Use provided updatePayload if available
-      if (updatePayload) {
-        console.log(`📡 AboutSection: Using pre-built updatePayload:`, updatePayload);
-        
-        const response = await fetch(apiUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(updatePayload)
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-        }
-
-        const responseData = await response.json();
-        console.log(`✅ AboutSection: Successfully saved ${field} via updatePayload:`, responseData);
-        
-        // Fetch updated lead data to refresh the UI and keep it in sync
-        try {
-          const refreshResponse = await fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          });
-          
-          if (refreshResponse.ok) {
-            const updatedLeadData = await refreshResponse.json();
-            console.log('✅ AboutSection: Fetched updated lead data after updatePayload save:', updatedLeadData);
-            
-            // Update ALL fields in local state with fresh data from backend
-            // CRITICAL: Only update fields that exist in response, preserve current values for others
-            setFields(prevFields => ({
-              ...prevFields,
-              id: updatedLeadData.custom_lead_id || updatedLeadData.id || prevFields.id,
-              productName: updatedLeadData.loan_type || prevFields.productName,
-              loanTypeId: updatedLeadData.loan_type_id || prevFields.loanTypeId,
-              loan_type: updatedLeadData.loan_type || prevFields.loan_type,
-              loan_type_id: updatedLeadData.loan_type_id || prevFields.loan_type_id,
-              loan_type_name: updatedLeadData.loan_type_name || updatedLeadData.loan_type || prevFields.loan_type_name,
-              campaignName: updatedLeadData.campaign_name || prevFields.campaignName,
-              dataCode: updatedLeadData.data_code || prevFields.dataCode,
-              customerName: updatedLeadData.name || prevFields.customerName,
-              mobileNumber: updatedLeadData.mobile_number || updatedLeadData.phone || prevFields.mobileNumber,
-              alternateNumber: updatedLeadData.alternative_phone || updatedLeadData.alternate_phone || prevFields.alternateNumber,
-            }));
-            console.log(`✅ AboutSection: Updated all fields in UI after updatePayload save`);
-          }
-        } catch (refreshError) {
-          console.error(`⚠️ AboutSection: Error refreshing after updatePayload save:`, refreshError);
-        }
-        
-        return true;
-      }
-      
-      // Fallback: Build update payload from scratch (backward compatibility)
-      console.log(`⚠️ AboutSection: No updatePayload provided, building from field/value`);
       
       // Map fields to appropriate API fields
       const apiFieldMap = {
@@ -1374,6 +1345,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         dataCode: 'data_code',
         customerName: 'name',
         mobileNumber: 'mobile_number',
+        pinCode: 'dynamic_fields.address.pincode',
+        city: 'dynamic_fields.address.city',
         alternateNumber: 'alternative_phone'
       };
 
@@ -1459,26 +1432,19 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         
         if (refreshResponse.ok) {
           const updatedLeadData = await refreshResponse.json();
-          console.log('✅ AboutSection: Fetched updated lead data after field update:', updatedLeadData);
+          console.log('Fetched updated lead data after field update:', updatedLeadData);
           
-          // Update ALL fields in local state with fresh data from backend
-          // This ensures UI stays in sync with database
-          // CRITICAL: Only update fields that exist in response, preserve current values for others
-          setFields(prevFields => ({
-            ...prevFields,
-            id: updatedLeadData.custom_lead_id || updatedLeadData.id || prevFields.id,
-            productName: updatedLeadData.loan_type || prevFields.productName,
-            loanTypeId: updatedLeadData.loan_type_id || prevFields.loanTypeId,
-            loan_type: updatedLeadData.loan_type || prevFields.loan_type,
-            loan_type_id: updatedLeadData.loan_type_id || prevFields.loan_type_id,
-            loan_type_name: updatedLeadData.loan_type_name || updatedLeadData.loan_type || prevFields.loan_type_name,
-            campaignName: updatedLeadData.campaign_name || prevFields.campaignName,
-            dataCode: updatedLeadData.data_code || prevFields.dataCode,
-            customerName: updatedLeadData.name || prevFields.customerName,
-            mobileNumber: updatedLeadData.mobile_number || updatedLeadData.phone || prevFields.mobileNumber,
-            alternateNumber: updatedLeadData.alternative_phone || updatedLeadData.alternate_phone || prevFields.alternateNumber,
-          }));
-          console.log(`✅ AboutSection: Updated all fields in UI with fresh data from server`);
+          // Update any related fields in local state with fresh data from backend
+          if (field === 'productName' || field === 'loanTypeId' || field === 'loan_type' || field === 'loan_type_id' || field === 'loan_type_name') {
+            setFields(prevFields => ({
+              ...prevFields,
+              productName: updatedLeadData.loan_type || prevFields.productName,
+              loanTypeId: updatedLeadData.loan_type_id || prevFields.loanTypeId,
+              loan_type: updatedLeadData.loan_type || prevFields.loan_type,
+              loan_type_id: updatedLeadData.loan_type_id || prevFields.loan_type_id,
+              loan_type_name: updatedLeadData.loan_type_name || updatedLeadData.loan_type || prevFields.loan_type_name
+            }));
+          }
         }
       } catch (refreshError) {
         console.error(`Error refreshing lead data after updating ${field}:`, refreshError);
@@ -1756,6 +1722,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                     // Close all other dropdowns first
                     setShowCampaignDropdown(false);
                     setShowDataCodeDropdown(false);
+                    setShowCityDropdown(false);
                     // Then toggle this dropdown
                     setShowProductDropdown(!showProductDropdown);
                   }
@@ -1814,6 +1781,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                     // Close all other dropdowns first
                     setShowProductDropdown(false);
                     setShowDataCodeDropdown(false);
+                    setShowCityDropdown(false);
                     // Then toggle this dropdown
                     setShowCampaignDropdown(!showCampaignDropdown);
                   }
@@ -1872,6 +1840,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                     // Close all other dropdowns first
                     setShowProductDropdown(false);
                     setShowCampaignDropdown(false);
+                    setShowCityDropdown(false);
                     // Then toggle this dropdown
                     setShowDataCodeDropdown(!showDataCodeDropdown);
                   }
@@ -1962,6 +1931,97 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             </div>
           </div>
           <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>PIN CODE</label>
+            <div className="flex-1">
+              <input
+                className={`w-full p-3 border-2 rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
+                  validationErrors.pinCode ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
+                }`}
+                value={fields.pinCode}
+                onChange={e => canEdit && handleChange("pinCode", e.target.value)}
+                onBlur={e => canEdit && handleBlur("pinCode", e.target.value)}
+                readOnly={!canEdit}
+                placeholder={!canEdit ? "Read-only: No edit permission" : "Enter 6-digit PIN"}
+                maxLength="6"
+                pattern="[0-9]{6}"
+              />
+              {validationErrors.pinCode && (
+                <div className="text-red-500 text-sm mt-1 font-normal">
+                  {validationErrors.pinCode}
+                </div>
+              )}
+              {isValidatingPincode && (
+                <div className="text-blue-500 text-sm mt-1 font-normal">
+                  Validating pincode...
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>CITY</label>
+            <div className="relative w-full dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit || loading || cities.length === 0 ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                }`}
+                onClick={() => {
+                  if (canEdit && !loading && cities.length > 0) {
+                    // Close all other dropdowns first
+                    setShowProductDropdown(false);
+                    setShowCampaignDropdown(false);
+                    setShowDataCodeDropdown(false);
+                    // Then toggle this dropdown
+                    setShowCityDropdown(!showCityDropdown);
+                  }
+                }}
+              >
+                <span>
+                  {fields.city || 
+                   (loading ? "Loading cities..." : 
+                    cities.length === 0 ? "Enter PIN code first" : "Select City")}
+                </span>
+                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showCityDropdown && canEdit && !loading && cities.length > 0 && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search cities..."
+                      value={citySearchTerm}
+                      onChange={(e) => setCitySearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {getFilteredCities().length > 0 ? (
+                      getFilteredCities().map((city, index) => (
+                        <div
+                          key={index}
+                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            handleChange("city", city.name.toUpperCase());
+                            handleBlur("city", city.name.toUpperCase());
+                            setShowCityDropdown(false);
+                            setCitySearchTerm('');
+                          }}
+                        >
+                          {city.name} - {city.district}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">No cities found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>ALTERNATE NUMBER</label>
             <div className="flex-1">
               <input
@@ -1996,19 +2056,6 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 </div>
               )}
             </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>PINCODE & CITY</label>
-            <input
-              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              value={fields.pincode_city}
-              onChange={e => canEdit && handleChange("pincode_city", e.target.value)}
-              onBlur={e => canEdit && handleBlur("pincode_city", e.target.value)}
-              readOnly={!canEdit}
-              placeholder={!canEdit ? "Read-only: No edit permission" : "Enter 6-digit pincode (auto-formats: 123456, City Name)"}
-            />
           </div>
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>ASSIGNED TL</label>
