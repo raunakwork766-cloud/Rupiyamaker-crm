@@ -45,11 +45,15 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
     };
 
     const handleNoteChange = (e) => {
-        setNewNote(e.target.value.toUpperCase());
+        setNewNote(e.target.value);
         if (textareaRef.current) {
             textareaRef.current.style.height = "auto";
             textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
         }
+    };
+
+    const handleNoteBlur = () => {
+        setNewNote((prev) => prev.toUpperCase());
     };
 
     const addNote = async () => {
@@ -155,7 +159,7 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                     <label className="text-sm font-medium text-gray-600">Note Type:</label>
                     <select
                         value={noteType}
-                        onChange={(e) => setNoteType(e.target.value.toUpperCase())}
+                        onChange={(e) => setNoteType(e.target.value)}
                         className="text-black bg-white border border-gray-600 rounded px-2 py-1 text-sm"
                     >
                         {noteTypes.map(type => (
@@ -170,6 +174,7 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                         ref={textareaRef}
                         value={newNote}
                         onChange={canEdit ? handleNoteChange : undefined}
+                        onBlur={canEdit ? handleNoteBlur : undefined}
                         disabled={!canEdit}
                         placeholder="Enter note content..."
                         className="flex-1 bg-white border border-gray-600 rounded-lg px-2 py-0.5 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none overflow-hidden text-lg uppercase"

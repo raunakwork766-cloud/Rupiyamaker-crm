@@ -4268,7 +4268,7 @@ async def get_lead_obligations(
             "partnerSalary": dynamic_fields.get("partnerSalary", financial_details.get("partner_salary", "")),
             "yearlyBonus": dynamic_fields.get("yearlyBonus", financial_details.get("yearly_bonus", "")),
             "bonusDivision": dynamic_fields.get("bonusDivision", financial_details.get("bonus_division", None)),
-            "loanRequired": dynamic_fields.get("loanRequired", lead.get("loan_amount", "") if lead else ""),
+            "loanRequired": dynamic_fields.get("loanRequired", financial_details.get("loanRequired", financial_details.get("loan_required", lead.get("loan_amount", "") if lead else ""))),
             "companyName": dynamic_fields.get("companyName", personal_details.get("company_name", "")),
             "companyType": dynamic_fields.get("companyType", personal_details.get("company_type", [])),
             "companyCategory": dynamic_fields.get("companyCategory", personal_details.get("company_category", [])),

@@ -220,12 +220,19 @@ const NotificationManagementPage = () => {
 
   // Handler for textarea change with auto-resize
   const handleNotificationDetailsChange = (e) => {
-    setFormData({ ...formData, message: e.target.value.toUpperCase() });
+    setFormData({ ...formData, message: e.target.value });
     
     // Auto-resize textarea
     if (e.target) {
       e.target.style.height = 'auto';
       e.target.style.height = e.target.scrollHeight + 'px';
+    }
+  };
+
+  // Handle blur for uppercase conversion
+  const handleBlur = (field) => {
+    if (typeof formData[field] === 'string') {
+      setFormData((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
     }
   };
 
@@ -1546,7 +1553,8 @@ const NotificationManagementPage = () => {
                 <input
                   type="text"
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value.toUpperCase() })}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  onBlur={() => handleBlur('title')}
                   className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
                   placeholder="Enter announcement subject"
                   required

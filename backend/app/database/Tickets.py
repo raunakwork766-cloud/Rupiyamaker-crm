@@ -56,8 +56,8 @@ class TicketsDB:
         # Add initial history entry
         initial_history = {
             "history_id": str(ObjectId()),
-            "action": "Created ticket",
-            "details": f"Subject: {ticket_data.get('subject', 'N/A')}",
+            "action": "CREATED",
+            "details": f"CREATED TICKET - SUBJECT: {ticket_data.get('subject', 'N/A').upper()}",
             "user_name": ticket_data.get("created_by_name", "Unknown"),
             "timestamp": ticket_data["created_at"]
         }
@@ -123,7 +123,15 @@ class TicketsDB:
         """Update a ticket with timestamp and optional history logging"""
         if not ObjectId.is_valid(ticket_id):
             return False
-            
+        
+        # Get current ticket to check for status changes
+        current_ticket = await self.get_ticket(ticket_id)
+        if not current_ticket:
+            return False
+        
+        old_status = current_ticket.get("status", "").lower()
+        new_status = update_fields.get("status", "").lower() if "status" in update_fields else old_status
+        
         update_fields["updated_at"] = datetime.now()
         result = await self.collection.update_one(
             {"_id": ObjectId(ticket_id)},
@@ -132,8 +140,23 @@ class TicketsDB:
         
         # Add history entry if user_name is provided
         if result.modified_count == 1 and user_name:
-            details = action_details or "Ticket updated"
-            await self.add_history_entry(ticket_id, "Updated ticket", details, user_name)
+            # Check if status changed
+            if old_status != new_status:
+                # Map status values to readable names
+                status_names = {
+                    "open": "Open",
+                    "closed": "Closed",
+                    "failed": "Failed"
+                }
+                old_status_name = status_names.get(old_status, old_status.capitalize())
+                new_status_name = status_names.get(new_status, new_status.capitalize())
+                
+                # Create clear status change message
+                status_change_details = f"Status changed: {old_status_name} → {new_status_name}"
+                await self.add_history_entry(ticket_id, "Status", status_change_details, user_name)
+            elif action_details and action_details != "Ticket updated":
+                # Regular update without status change - only add if there are meaningful details
+                await self.add_history_entry(ticket_id, "Updated ticket", action_details, user_name)
         
         return result.modified_count == 1
         
@@ -165,7 +188,7 @@ class TicketsDB:
             comment_preview = comment_data.get("content", "")
             if len(comment_preview) > 100:
                 comment_preview = comment_preview[:100] + "..."
-            await self.add_history_entry(ticket_id, "Added comment", f'"{comment_preview}"', user_name)
+            await self.add_history_entry(ticket_id, "Comment Added", f'Comment: "{comment_preview}"', user_name)
         
         return result.modified_count == 1
         
@@ -204,10 +227,10 @@ class TicketsDB:
         # Add history entry if successful and user names are provided
         if result.modified_count == 1 and assigned_by_name:
             if assigned_user_names:
-                details = f"Assigned to: {', '.join(assigned_user_names)}"
+                details = f"Assigned To: {', '.join(assigned_user_names)}"
             else:
                 details = f"Assigned to {len(user_ids)} user(s)"
-            await self.add_history_entry(ticket_id, "Updated assignments", details, assigned_by_name)
+            await self.add_history_entry(ticket_id, "Assignment Updated", details, assigned_by_name)
         
         return result.modified_count == 1
         
@@ -316,10 +339,10 @@ class TicketsDB:
         
         # Add history entry if successful and user_name is provided
         if result.modified_count == 1 and closed_by_name:
-            details = f"Changed from OPEN to CLOSED"
+            details = f"Status changed: Open → Closed"
             if reason:
-                details += f". Reason: {reason}"
-            await self.add_history_entry(ticket_id, "Closed ticket", details, closed_by_name)
+                details += f" | Reason: {reason}"
+            await self.add_history_entry(ticket_id, "Status", details, closed_by_name)
         
         return result.modified_count == 1
         
@@ -345,7 +368,7 @@ class TicketsDB:
         
         # Add history entry if successful and user_name is provided
         if result.modified_count == 1 and reopened_by_name:
-            await self.add_history_entry(ticket_id, "Reopened ticket", "Changed from CLOSED to OPEN", reopened_by_name)
+            await self.add_history_entry(ticket_id, "Status", "Status changed: Closed → Open", reopened_by_name)
         
         return result.modified_count == 1
         

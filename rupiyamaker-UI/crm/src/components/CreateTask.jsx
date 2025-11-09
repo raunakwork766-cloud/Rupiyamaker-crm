@@ -291,19 +291,20 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   }, [form.message]);
 
   const handleChange = (field, value) => {
-    // Fields that should not be converted to uppercase (IDs, types, etc.)
+    console.log(`📝 CreateTask: Field ${field} changed to: ${value}`);
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Handle blur - apply uppercase when user leaves the field
+  const handleBlur = (field) => {
     const excludeFromUppercase = [
       'type', 'assignTo', 'priority', 'deadline', 'leadId', 'taskType', 
       'repeatOption', 'repeatCustomDays', 'dueDateOption', 'customDate'
     ];
-
-    // Convert to uppercase if it's a text field (mainly subject, message, notes)
-    const processedValue = excludeFromUppercase.includes(field) || typeof value !== 'string'
-      ? value
-      : value.toUpperCase();
-
-    console.log(`📝 CreateTask: Field ${field} changed to: ${processedValue}`);
-    setForm((prev) => ({ ...prev, [field]: processedValue }));
+    if (excludeFromUppercase.includes(field) || typeof form[field] !== 'string') {
+      return;
+    }
+    setForm((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
   };
 
   const handleFileChange = (e) => {
@@ -593,7 +594,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
               type="text"
               className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
               value={form.subject}
-              onChange={(e) => handleChange("subject", e.target.value.toUpperCase())}
+              onChange={(e) => handleChange("subject", e.target.value)}
+              onBlur={() => handleBlur("subject")}
               placeholder="Enter subject"
               required
             />
@@ -612,7 +614,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
               className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden"
               rows={3}
               value={form.message}
-              onChange={(e) => handleChange("message", e.target.value.toUpperCase())}
+              onChange={(e) => handleChange("message", e.target.value)}
+              onBlur={() => handleBlur("message")}
               placeholder="Enter message"
               required
               style={{
@@ -1184,7 +1187,7 @@ function AssociatePopup({ onClose, onSelect, loanTypes, leads, loadingLoanTypes,
                     placeholder={`Search ${selectedLoanType}`}
                     className="border px-4 py-2 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-cyan-500 text-black"
                     value={searchTerm}
-                    onChange={(e) => handleSearchChange(e.target.value.toUpperCase())}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                   />
                   {searchTerm && (
                     <button

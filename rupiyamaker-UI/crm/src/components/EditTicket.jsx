@@ -313,6 +313,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [activityFilter, setActivityFilter] = useState('all'); // Filter state for history
 
   // Reference for textarea to auto-resize
   const messageRef = useRef(null);
@@ -502,18 +503,18 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     }
   };
  
+  // Handle field change - no uppercase conversion during typing (voice typing compatibility)
   const handleChange = (field, value) => {
-    // Fields that should not be converted to uppercase (IDs, numbers, etc.)
-    const excludeFromUppercase = [
-      'id', 'assignTo', 'priority', 'status', 'ticketNumber'
-    ];
+    setTicket((prev) => ({ ...prev, [field]: value }));
+  };
 
-    // Convert to uppercase if it's a text field (mainly subject, message, newComment, createdBy)
-    const processedValue = excludeFromUppercase.includes(field) || typeof value !== 'string'
-      ? value
-      : value.toUpperCase();
-
-    setTicket((prev) => ({ ...prev, [field]: processedValue }));
+  // Handle blur - apply uppercase when user leaves the field
+  const handleBlur = (field) => {
+    const excludeFromUppercase = ['id', 'assignTo', 'priority', 'status', 'ticketNumber'];
+    if (excludeFromUppercase.includes(field) || typeof ticket[field] !== 'string') {
+      return;
+    }
+    setTicket((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
   };
  
   const handleCommentSubmit = async (e) => {
@@ -617,17 +618,13 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     try {
       setIsLoading(true);
       
-      // Update ticket status to 'closed' using the updateTicket API
+      // Update ticket status to 'closed' - ONLY send status field
       const ticketData = {
-        subject: ticket.subject,
-        description: ticket.description || ticket.message,
-        priority: ticket.priority || "medium",
-        assigned_users: ticket.assigned_users || [],
-        status: 'closed' // Set status to closed
+        status: 'closed'
       };
       
       await API.tickets.updateTicket(ticket.id, ticketData);
-      toast.success("Ticket completed successfully");
+      toast.success("Ticket closed successfully");
       
       // Update local state
       const updatedTicket = {
@@ -654,8 +651,8 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
       
     } catch (error) {
       console.error("Error completing ticket:", error);
-      toast.error("Failed to complete ticket");
-      addHistoryItem("Failed to complete ticket", "Complete operation failed");
+      toast.error("Failed to close ticket");
+      addHistoryItem("Failed to close ticket", "Close operation failed");
     } finally {
       setIsLoading(false);
     }
@@ -666,13 +663,9 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     try {
       setIsLoading(true);
       
-      // Update ticket status to 'failed' using the updateTicket API
+      // Update ticket status to 'failed' - ONLY send status field
       const ticketData = {
-        subject: ticket.subject,
-        description: ticket.description || ticket.message,
-        priority: ticket.priority || "medium",
-        assigned_users: ticket.assigned_users || [],
-        status: 'failed' // Set status to failed
+        status: 'failed'
       };
       
       await API.tickets.updateTicket(ticket.id, ticketData);
@@ -715,13 +708,9 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     try {
       setIsLoading(true);
       
-      // Update ticket status to 'open' using the updateTicket API
+      // Update ticket status to 'open' - ONLY send status field
       const ticketData = {
-        subject: ticket.subject,
-        description: ticket.description || ticket.message,
-        priority: ticket.priority || "medium",
-        assigned_users: ticket.assigned_users || [],
-        status: 'open' // Set status to open
+        status: 'open'
       };
       
       await API.tickets.updateTicket(ticket.id, ticketData);
@@ -962,6 +951,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                 className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!isEditing ? 'bg-gray-100' : ''}`}
                 value={ticket.subject}
                 onChange={(e) => handleChange("subject", e.target.value)}
+                onBlur={() => handleBlur("subject")}
                 placeholder="Enter subject"
                 required
                 readOnly={!isEditing}
@@ -982,6 +972,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                 rows={3}
                 value={ticket.message}
                 onChange={(e) => handleChange("message", e.target.value)}
+                onBlur={() => handleBlur("message")}
                 placeholder="Enter ticket details..."
                 required
                 readOnly={!isEditing}
@@ -1208,14 +1199,14 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
               {/* Show different buttons based on ticket status */}
               {ticket.status === "OPEN" ? (
                 <>
-                  {/* Complete Ticket Button */}
+                  {/* Close Ticket Button */}
                   <button
                     type="button"
                     className="flex-1 px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition text-lg"
                     onClick={handleCompleteTicket}
                     disabled={isLoading}
                   >
-                    {isLoading ? "Processing..." : "Complete Ticket"}
+                    {isLoading ? "Processing..." : "Close Ticket"}
                   </button>
 
                   {/* Failed Ticket Button */}
@@ -1330,182 +1321,292 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
             {showComments && (
               <>
                 <form onSubmit={handleCommentSubmit} className="mt-4">
-                  <div className="flex space-x-3">
-                    <input
-                      type="text"
+                  <div className="bg-white border-2 border-green-200 rounded-lg p-3 shadow-sm">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">💬 ADD COMMENT</label>
+                    <textarea
                       value={ticket.newComment}
                       onChange={(e) => handleChange("newComment", e.target.value)}
-                      placeholder="Add a comment..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-black focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      onBlur={() => handleBlur("newComment")}
+                      placeholder="Type your comment here... (Press Enter for new line, Ctrl+Enter to submit)"
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-black font-semibold focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
                       disabled={isSubmittingComment}
+                      rows={3}
+                      style={{ minHeight: '80px' }}
+                      onKeyDown={(e) => {
+                        // Submit on Ctrl+Enter
+                        if (e.ctrlKey && e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCommentSubmit(e);
+                        }
+                      }}
                     />
-                    <button
-                      type="submit"
-                      disabled={!ticket.newComment.trim() || isSubmittingComment}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        !ticket.newComment.trim() || isSubmittingComment
-                          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                          : "bg-green-500 text-white hover:bg-green-600"
-                      }`}
-                    >
-                      {isSubmittingComment ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                          <span>Adding...</span>
-                        </div>
-                      ) : (
-                        "Add"
-                      )}
-                    </button>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-xs text-gray-500">Press <kbd className="px-1 py-0.5 bg-gray-200 rounded">Ctrl+Enter</kbd> to submit</span>
+                      <button
+                        type="submit"
+                        disabled={!ticket.newComment.trim() || isSubmittingComment}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                          !ticket.newComment.trim() || isSubmittingComment
+                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                            : "bg-green-600 text-white hover:bg-green-700 hover:shadow-md"
+                        }`}
+                      >
+                        {isSubmittingComment ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            <span>ADDING...</span>
+                          </div>
+                        ) : (
+                          "➤ ADD COMMENT"
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </form>
                 
-                {/* Comments Display */}
-                <div className="mt-4 space-y-3 max-h-[250px] overflow-y-auto">
+                {/* Comments Display - Modern Chat Style */}
+                <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto pr-2">
                   {isLoadingComments ? (
-                    <div className="text-center py-4">
+                    <div className="text-center py-8 bg-white rounded-lg border-2 border-gray-200">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
-                      <p className="text-gray-500 mt-2">Loading comments...</p>
+                      <p className="text-gray-500 mt-2 font-bold">LOADING COMMENTS...</p>
                     </div>
                   ) : ticket.comments && ticket.comments.length > 0 ? (
-                    ticket.comments.map((comment, idx) => (
-                      <div key={comment.id || idx} className="bg-gray-50 p-3 rounded-lg shadow-sm">
-                        <div className="flex justify-between text-sm text-gray-600 mb-1">
-                          <span className="font-bold">{comment.user}</span>
-                          <span>{comment.time}</span>
-                        </div>
-                        <div className="text-gray-800">{comment.text}</div>
+                    <>
+                      <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
+                        💬 {ticket.comments.length} {ticket.comments.length === 1 ? 'Comment' : 'Comments'}
                       </div>
-                    ))
+                      {ticket.comments.map((comment, idx) => (
+                        <div key={comment.id || idx} className="bg-gradient-to-r from-white to-green-50 border-2 border-green-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200">
+                          {/* Comment Header */}
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-green-200">
+                            <div className="flex items-center gap-2">
+                              {/* User Avatar */}
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">
+                                {(comment.user || 'U').charAt(0).toUpperCase()}
+                              </div>
+                              {/* User Name */}
+                              <span className="font-bold text-gray-800 text-sm">
+                                {(comment.user || 'UNKNOWN USER').toUpperCase()}
+                              </span>
+                              {/* Comment Number Badge */}
+                              <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                                #{idx + 1}
+                              </span>
+                            </div>
+                            {/* Timestamp */}
+                            <div className="flex items-center gap-1 text-xs text-gray-600">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/>
+                              </svg>
+                              <span className="font-semibold">{comment.time}</span>
+                            </div>
+                          </div>
+                          
+                          {/* Comment Content */}
+                          <div className="text-sm font-semibold text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+                            {comment.text}
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   ) : (
-                    <div className="text-center text-gray-500 py-4">
-                      No comments yet. Be the first to add one!
+                    <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-green-50 rounded-lg border-2 border-dashed border-green-300">
+                      <div className="text-5xl mb-3">💬</div>
+                      <p className="text-gray-600 font-bold text-lg">NO COMMENTS YET</p>
+                      <p className="text-sm text-gray-500 mt-1">Be the first to share your thoughts!</p>
                     </div>
                   )}
                 </div>
               </>
             )}
             
-            {/* History Section - Live Dynamic Data */}
+            {/* History Section - Modern Table Design */}
             {showHistory && (
-              <div className="mt-4 max-h-[350px] overflow-y-auto">
+              <div className="mt-4">
                 {isLoadingHistory ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
-                    <p className="text-gray-500 mt-2">Loading history...</p>
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-500 mx-auto"></div>
+                    <p className="text-gray-500 mt-3 font-medium">Loading activity history...</p>
                   </div>
                 ) : historyItems && historyItems.length > 0 ? (
-                  <div className="overflow-hidden border border-gray-200 rounded-lg shadow">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wider">
-                            #
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wider">
-                            Date
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wider">
-                            Time
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wider">
-                            Created By
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wider">
-                            Activity & Details
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {historyItems.map((item, index) => {
-                          // Format date and time from timestamp
-                          let formattedDate = "Unknown Date";
-                          let formattedTime = "Unknown Time";
-                          if (item.time) {
-                            try {
-                              const date = new Date(item.time);
-                              formattedDate = date.toLocaleDateString('en-GB', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              });
-                              formattedTime = date.toLocaleTimeString('en-GB', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: true
-                              });
-                            } catch (e) {
-                              console.error("Date formatting error:", e);
-                            }
-                          }
-                          
-                          // Display action and details together
-                          let actionText = item.action || "Unknown Action";
-                          if (item.details && item.details.trim()) {
-                            actionText += ` - ${item.details}`;
-                          }
-                          
-                          return (
-                            <tr key={item.id || index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {index + 1}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {formattedDate}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {formattedTime}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {(item.user || "UNKNOWN").toUpperCase()}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-800 break-words">
-                                <div className="flex items-center gap-2">
-                                  {/* Action type indicator */}
-                                  {item.action && item.action.toLowerCase().includes('created') && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                      📝 CREATED
-                                    </span>
-                                  )}
-                                  {item.action && (item.action.toLowerCase().includes('status') || item.action.toLowerCase().includes('updated')) && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                      🔄 STATUS
-                                    </span>
-                                  )}
-                                  {item.action && item.action.toLowerCase().includes('comment') && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      💬 COMMENT
-                                    </span>
-                                  )}
-                                  {item.action && (item.action.toLowerCase().includes('assign') || item.action.toLowerCase().includes('reassign')) && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                      👤 ASSIGNMENT
-                                    </span>
-                                  )}
-                                  {item.action && (item.action.toLowerCase().includes('edit') || item.action.toLowerCase().includes('modify')) && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                                      ✏️ UPDATED
-                                    </span>
-                                  )}
-                                  {(!item.action || !['created', 'status', 'updated', 'comment', 'assign', 'reassign', 'edit', 'modify'].some(keyword => item.action.toLowerCase().includes(keyword))) && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                      ❓ ACTIVITY
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="mt-1 text-sm uppercase font-medium">
-                                  {actionText.toUpperCase()}
-                                </div>
-                              </td>
+                  <>
+                    {/* Filter Section */}
+                    <div className="mb-4 flex items-center justify-between bg-white p-4 rounded-lg border-2 border-gray-200 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-gray-700">📊 FILTER:</span>
+                        <select
+                          value={activityFilter}
+                          onChange={(e) => setActivityFilter(e.target.value)}
+                          className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm font-semibold text-gray-700 bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
+                        >
+                          <option value="all">ALL ACTIVITIES ({historyItems.length})</option>
+                          <option value="created">📝 CREATED ({historyItems.filter(item => item.action && item.action.toUpperCase().includes('CREATED')).length})</option>
+                          <option value="status">🔄 STATUS ({historyItems.filter(item => item.action && item.action.toUpperCase().includes('STATUS')).length})</option>
+                          <option value="comment">💬 COMMENTS ({historyItems.filter(item => item.action && item.action.toUpperCase().includes('COMMENT')).length})</option>
+                          <option value="assignment">👤 ASSIGNMENTS ({historyItems.filter(item => item.action && (item.action.toUpperCase().includes('ASSIGN') || item.action.toUpperCase().includes('UPDATED TICKET'))).length})</option>
+                          <option value="updated">✏️ UPDATES ({historyItems.filter(item => item.action && item.action.toUpperCase().includes('UPDATE')).length})</option>
+                        </select>
+                      </div>
+                      <div className="text-sm font-bold text-gray-600">
+                        SHOWING: <span className="text-blue-600">{(() => {
+                          const filtered = historyItems.filter(item => {
+                            if (activityFilter === 'all') return true;
+                            const action = (item.action || '').toUpperCase();
+                            if (activityFilter === 'created') return action.includes('CREATED');
+                            if (activityFilter === 'status') return action.includes('STATUS');
+                            if (activityFilter === 'comment') return action.includes('COMMENT');
+                            if (activityFilter === 'assignment') return action.includes('ASSIGN') || action.includes('UPDATED TICKET');
+                            if (activityFilter === 'updated') return action.includes('UPDATE');
+                            return false;
+                          });
+                          return filtered.length;
+                        })()}</span> OF <span className="text-blue-600">{historyItems.length}</span>
+                      </div>
+                    </div>
+
+                    {/* Modern Table */}
+                    <div className="bg-white rounded-lg border-2 border-gray-200 shadow-sm overflow-hidden">
+                      <div className="max-h-[500px] overflow-y-auto">
+                        <table className="w-full">
+                          {/* Table Header - Sticky */}
+                          <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">#</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">TYPE</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">DETAILS</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">USER</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">DATE & TIME</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                          </thead>
+                          
+                          {/* Table Body */}
+                          <tbody className="divide-y divide-gray-200">
+                            {(() => {
+                              const filtered = historyItems.filter(item => {
+                                if (activityFilter === 'all') return true;
+                                const action = (item.action || '').toUpperCase();
+                                if (activityFilter === 'created') return action.includes('CREATED');
+                                if (activityFilter === 'status') return action.includes('STATUS');
+                                if (activityFilter === 'comment') return action.includes('COMMENT');
+                                if (activityFilter === 'assignment') return action.includes('ASSIGN') || action.includes('UPDATED TICKET');
+                                if (activityFilter === 'updated') return action.includes('UPDATE');
+                                return false;
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan="5" className="px-4 py-12 text-center">
+                                      <div className="text-4xl mb-3">🔍</div>
+                                      <p className="text-gray-500 font-bold">NO ACTIVITIES FOUND</p>
+                                      <p className="text-sm text-gray-400 mt-1">Try selecting a different filter</p>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return filtered.map((item, index) => {
+                                // Format date and time
+                                let formattedDate = "UNKNOWN DATE";
+                                let formattedTime = "UNKNOWN TIME";
+                                if (item.time) {
+                                  try {
+                                    const date = new Date(item.time);
+                                    formattedDate = date.toLocaleDateString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    }).toUpperCase();
+                                    formattedTime = date.toLocaleTimeString('en-GB', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    }).toUpperCase();
+                                  } catch (e) {
+                                    console.error("Date formatting error:", e);
+                                  }
+                                }
+
+                                const action = (item.action || '').toUpperCase();
+                                const details = (item.details || '').toUpperCase();
+                                
+                                // Determine activity type and styling
+                                let activityIcon = '📌';
+                                let activityLabel = 'ACTIVITY';
+                                let badgeColor = 'bg-gray-100 text-gray-800';
+                                let rowBg = index % 2 === 0 ? 'bg-gray-50' : 'bg-white';
+
+                                if (action.includes('CREATED')) {
+                                  activityIcon = '📝';
+                                  activityLabel = 'CREATED';
+                                  badgeColor = 'bg-blue-100 text-blue-800';
+                                } else if (action.includes('STATUS')) {
+                                  activityIcon = '🔄';
+                                  activityLabel = 'STATUS';
+                                  badgeColor = 'bg-green-100 text-green-800';
+                                } else if (action.includes('COMMENT')) {
+                                  activityIcon = '💬';
+                                  activityLabel = 'COMMENT';
+                                  badgeColor = 'bg-purple-100 text-purple-800';
+                                } else if (action.includes('ASSIGN') || action.includes('UPDATED TICKET')) {
+                                  activityIcon = '👤';
+                                  activityLabel = 'ASSIGNMENT';
+                                  badgeColor = 'bg-orange-100 text-orange-800';
+                                } else if (action.includes('UPDATE')) {
+                                  activityIcon = '✏️';
+                                  activityLabel = 'UPDATED';
+                                  badgeColor = 'bg-yellow-100 text-yellow-800';
+                                }
+
+                                return (
+                                  <tr key={item.id || index} className={`${rowBg} hover:bg-blue-50 transition-colors`}>
+                                    {/* Serial Number */}
+                                    <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
+                                      {index + 1}
+                                    </td>
+                                    
+                                    {/* Activity Type Badge */}
+                                    <td className="px-4 py-3 border-r border-gray-200">
+                                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeColor}`}>
+                                        {activityIcon} {activityLabel}
+                                      </span>
+                                    </td>
+                                    
+                                    {/* Details */}
+                                    <td className="px-4 py-3 text-sm font-semibold text-gray-800 border-r border-gray-200">
+                                      {details || action}
+                                    </td>
+                                    
+                                    {/* User */}
+                                    <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+                                          {(item.user || 'U').charAt(0).toUpperCase()}
+                                        </div>
+                                        {(item.user || 'UNKNOWN').toUpperCase()}
+                                      </div>
+                                    </td>
+                                    
+                                    {/* Date & Time */}
+                                    <td className="px-4 py-3 text-sm">
+                                      <div className="font-bold text-gray-700">{formattedDate}</div>
+                                      <div className="font-semibold text-gray-500 text-xs">{formattedTime}</div>
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
                 ) : (
-                  <div className="text-center text-gray-500 py-4">
-                    No history available for this ticket.
+                  <div className="text-center py-12 bg-white rounded-lg border-2 border-gray-200 shadow-sm">
+                    <div className="text-5xl mb-3">📋</div>
+                    <p className="text-gray-600 font-bold text-lg">NO ACTIVITY HISTORY</p>
+                    <p className="text-sm text-gray-400 mt-2">Activity will appear here as actions are performed</p>
                   </div>
                 )}
               </div>

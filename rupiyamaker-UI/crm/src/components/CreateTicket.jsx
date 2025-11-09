@@ -321,6 +321,15 @@ export default function CreateTicket({ onClose, onSubmit }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Handle blur - apply uppercase when user leaves the field
+  const handleBlur = (field) => {
+    const excludeFromUppercase = ['id', 'assignTo', 'priority', 'status'];
+    if (excludeFromUppercase.includes(field) || typeof form[field] !== 'string') {
+      return;
+    }
+    setForm((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
+  };
+
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -465,7 +474,8 @@ export default function CreateTicket({ onClose, onSubmit }) {
                   type="text"
                   className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
                   value={form.createdBy}
-                  onChange={(e) => handleChange("createdBy", e.target.value.toUpperCase())}
+                  onChange={(e) => handleChange("createdBy", e.target.value)}
+                  onBlur={() => handleBlur("createdBy")}
                   required
                 />
               </div>
@@ -483,7 +493,8 @@ export default function CreateTicket({ onClose, onSubmit }) {
                 type="text"
                 className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
                 value={form.subject}
-                onChange={(e) => handleChange("subject", e.target.value.toUpperCase())}
+                onChange={(e) => handleChange("subject", e.target.value)}
+                onBlur={() => handleBlur("subject")}
                 placeholder="Enter subject"
                 required
               />
@@ -502,7 +513,8 @@ export default function CreateTicket({ onClose, onSubmit }) {
                 className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden"
                 rows={3}
                 value={form.details}
-                onChange={(e) => handleChange("details", e.target.value.toUpperCase())}
+                onChange={(e) => handleChange("details", e.target.value)}
+                onBlur={() => handleBlur("details")}
                 placeholder="Enter ticket details..."
                 required
                 style={{

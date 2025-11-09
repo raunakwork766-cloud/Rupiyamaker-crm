@@ -1677,7 +1677,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
 
           {/* Date and Time Field */}
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>DATE & TIME</label>
+            <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
             <input
               className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
               value={lead?.created_at ? new Date(lead.created_at).toLocaleString('en-IN', {

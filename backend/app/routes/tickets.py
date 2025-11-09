@@ -570,21 +570,25 @@ async def update_ticket(
         user_details = await get_user_details(current_user_id, users_db)
         user_name = user_details.get("name", "Unknown")
         
-        # Create action details for history
+        # Create action details for history (exclude status as it's handled separately)
         details_list = []
-        if "subject" in update_data:
+        if "subject" in update_data and update_data["subject"] != ticket.get("subject"):
             details_list.append(f"Subject: {update_data['subject']}")
-        if "priority" in update_data:
+        if "priority" in update_data and update_data["priority"] != ticket.get("priority"):
             details_list.append(f"Priority: {update_data['priority']}")
         if "assigned_users" in update_data:
-            # Get assigned user names
-            assigned_names = []
-            for user_id in update_data["assigned_users"]:
-                user_details_assigned = await get_user_details(user_id, users_db)
-                assigned_names.append(user_details_assigned.get("name", "Unknown"))
-            details_list.append(f"Assigned to: {', '.join(assigned_names)}")
+            # Only add to history if assignment actually changed
+            old_assignees = set(ticket.get("assigned_users", []))
+            new_assignees = set(update_data["assigned_users"])
+            if old_assignees != new_assignees:
+                # Get assigned user names
+                assigned_names = []
+                for user_id in update_data["assigned_users"]:
+                    user_details_assigned = await get_user_details(user_id, users_db)
+                    assigned_names.append(user_details_assigned.get("name", "Unknown"))
+                details_list.append(f"Assigned To: {', '.join(assigned_names)}")
         
-        action_details = ", ".join(details_list) if details_list else "Ticket updated"
+        action_details = ", ".join(details_list) if details_list else None
         
         success = await tickets_db.update_ticket(ticket_id, update_data, user_name, action_details)
         if not success:
