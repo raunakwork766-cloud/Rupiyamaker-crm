@@ -394,6 +394,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   // Track if backend eligibility data was loaded (to preserve backend final_eligibility)
   const [backendEligibilityLoaded, setBackendEligibilityLoaded] = useState(false);
   const [backendFinalEligibility, setBackendFinalEligibility] = useState(null);
+  const [justSavedEligibility, setJustSavedEligibility] = useState(false); // Flag to prevent overwrite after save
   
   // Check Eligibility section states - moved here to be available for useEffects
   const [loanEligibilityStatus, setLoanEligibilityStatus] = useState('Not Eligible');
@@ -1975,7 +1976,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         console.log('🔍 Formatted backend final eligibility:', formattedBackendFinalElig);
         
         // Store backend final eligibility separately to preserve it
-        if (numericValue > 0) {
+        // BUT: Don't overwrite if we just saved (within the same session)
+        if (justSavedEligibility) {
+          console.log('⏭️  SKIPPING backend eligibility update - we just saved, keeping our calculated value');
+          console.log('⏭️  Current backendFinalEligibility:', backendFinalEligibility);
+          setJustSavedEligibility(false); // Reset the flag for next time
+        } else if (numericValue > 0) {
           console.log('✅ ═══════════════════════════════════════════════════');
           console.log('✅ PRESERVING BACKEND FINAL ELIGIBILITY');
           console.log('✅ Original Value:', backendFinalElig);
@@ -2922,13 +2928,20 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           multiplier: ceMultiplier || null,
           loan_eligibility_status: loanEligibilityStatus || 'Not Eligible'
         },
-        eligibility_details: eligibility || {
-          totalIncome: '',
-          foirAmount: '',
-          totalObligations: '',
-          totalBtPos: '',
-          finalEligibility: '',
-          multiplierEligibility: ''
+        eligibility_details: {
+          // Send both camelCase and snake_case for maximum compatibility
+          totalIncome: eligibility?.totalIncome || '',
+          total_income: eligibility?.totalIncome || '',
+          foirAmount: eligibility?.foirAmount || '',
+          foir_amount: eligibility?.foirAmount || '',
+          totalObligations: eligibility?.totalObligations || '',
+          total_obligations: eligibility?.totalObligations || '',
+          totalBtPos: eligibility?.totalBtPos || '',
+          total_bt_pos: eligibility?.totalBtPos || '',
+          finalEligibility: eligibility?.finalEligibility || '',
+          final_eligibility: eligibility?.finalEligibility || '', // Backend expects snake_case
+          multiplierEligibility: eligibility?.multiplierEligibility || '',
+          multiplier_eligibility: eligibility?.multiplierEligibility || ''
         },
         obligations: obligations.map((obl, index) => {
           // Make sure bank name is properly captured from the row
@@ -2988,6 +3001,21 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           roi: ceRoi || null,
           multiplier: ceMultiplier || null,
           loan_eligibility_status: loanEligibilityStatus || 'Not Eligible'
+        },
+        eligibility_details: {
+          // Send both camelCase and snake_case for maximum compatibility
+          totalIncome: eligibility?.totalIncome || '',
+          total_income: eligibility?.totalIncome || '',
+          foirAmount: eligibility?.foirAmount || '',
+          foir_amount: eligibility?.foirAmount || '',
+          totalObligations: eligibility?.totalObligations || '',
+          total_obligations: eligibility?.totalObligations || '',
+          totalBtPos: eligibility?.totalBtPos || '',
+          total_bt_pos: eligibility?.totalBtPos || '',
+          finalEligibility: eligibility?.finalEligibility || '',
+          final_eligibility: eligibility?.finalEligibility || '', // Backend expects snake_case
+          multiplierEligibility: eligibility?.multiplierEligibility || '',
+          multiplier_eligibility: eligibility?.multiplierEligibility || ''
         }
       }
     };
@@ -3002,6 +3030,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     console.log('  - dynamic_fields structure: comprehensive field name coverage');
     console.log('  - dynamic_details structure: new system compatibility');
     console.log('  - Alternative field names: income, employer, required_loan, etc.');
+    console.log('💾 FINAL ELIGIBILITY DATA BEING SAVED:');
+    console.log('  - eligibility state:', eligibility);
+    console.log('  - finalEligibility (camelCase):', eligibility?.finalEligibility);
+    console.log('  - dynamic_fields.eligibility_details.final_eligibility (snake_case):', obligationData.dynamic_fields.eligibility_details.final_eligibility);
+    console.log('  - dynamic_details.eligibility_details.final_eligibility (snake_case):', obligationData.dynamic_details.eligibility_details.final_eligibility);
     console.log('=================================================================');
     
     // 🎯 LEAD CREATION DATA BACKUP - Store for recovery if send-to-login fails
@@ -3101,6 +3134,17 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     try {
       const obligationData = prepareObligationDataForSave();
       
+      console.log('💾 ═══════════════════════════════════════════════════');
+      console.log('💾 FINAL ELIGIBILITY BEING SAVED:');
+      console.log('💾 Current eligibility state:', eligibility);
+      console.log('💾 finalEligibility (display):', eligibility?.finalEligibility);
+      console.log('💾 Sending to backend:');
+      console.log('💾   - dynamic_fields.eligibility_details.final_eligibility:', 
+        obligationData?.dynamic_fields?.eligibility_details?.final_eligibility);
+      console.log('💾   - dynamic_details.eligibility_details.final_eligibility:', 
+        obligationData?.dynamic_details?.eligibility_details?.final_eligibility);
+      console.log('💾 ═══════════════════════════════════════════════════');
+      
       console.log('💾 Prepared obligation data for save:', {
         loanRequired: obligationData.loanRequired,
         loan_required: obligationData.loan_required,
@@ -3128,6 +3172,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
       
       setHasUnsavedChanges(false);
+      
+      // 🔥 IMPORTANT: Update backend final eligibility with the current calculated value
+      // This ensures that after save, the backend value matches what we just saved
+      if (eligibility?.finalEligibility) {
+        console.log('💾 Updating backendFinalEligibility with saved value:', eligibility.finalEligibility);
+        setBackendFinalEligibility(eligibility.finalEligibility);
+        setBackendEligibilityLoaded(true);
+        setJustSavedEligibility(true); // Mark that we just saved to prevent overwrite on reload
+      }
+      
       setHasUserInteraction(false); // Reset user interaction flag after saving
       
       console.log('🔄 Refreshing table data after save to ensure UI reflects latest state...');
@@ -3160,6 +3214,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             
             if (response.ok) {
               const refreshedData = await response.json();
+              console.log('🔄 ═══════════════════════════════════════════════════');
+              console.log('🔄 FRESH DATA RECEIVED FROM API AFTER SAVE:');
+              console.log('🔄 Eligibility in response:');
+              console.log('🔄   - dynamic_fields.eligibility_details:', refreshedData?.dynamic_fields?.eligibility_details);
+              console.log('🔄   - dynamic_details.eligibility_details:', refreshedData?.dynamic_details?.eligibility_details);
+              console.log('🔄   - eligibility_details.final_eligibility:', 
+                refreshedData?.dynamic_fields?.eligibility_details?.final_eligibility ||
+                refreshedData?.dynamic_details?.eligibility_details?.final_eligibility);
+              console.log('🔄 ═══════════════════════════════════════════════════');
               console.log('🔄 Fresh data received from API:', {
                 hasData: !!(refreshedData && Object.keys(refreshedData).length > 0),
                 loanRequiredInResponse: refreshedData?.loan_required || refreshedData?.loanRequired,
