@@ -449,6 +449,53 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     }
   }, [leadData?.file_sent_to_login, debugState.fileSentToLogin]);
 
+  // Handle scroll events to close dropdowns and handle click outside
+  useEffect(() => {
+    // Function to close dropdowns on scroll (but not when scrolling inside dropdown)
+    const handleScroll = (event) => {
+      // Check if the scroll is happening inside a dropdown
+      const isDropdownScroll = event.target.closest('[data-dropdown-scroll]') || 
+                               event.target.hasAttribute('data-dropdown-scroll');
+      
+      // Only close dropdowns if scrolling outside the dropdown
+      if (!isDropdownScroll) {
+        const hasOpenDropdowns = Object.values(safeProductSearchStates).some(state => state?.isOpen) ||
+                                 Object.values(safeBankSearchStates).some(state => state?.isOpen);
+        
+        if (hasOpenDropdowns) {
+          closeAllDropdowns();
+        }
+      }
+    };
+    
+    // Function to handle click outside dropdowns
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      
+      // Check if click is inside a dropdown or dropdown trigger
+      const isDropdownClick = target.closest('[data-dropdown-container]') || 
+                             target.closest('[data-dropdown-trigger]') ||
+                             target.closest('[data-search-input]');
+      
+      if (!isDropdownClick) {
+        // Close all dropdowns
+        closeAllDropdowns();
+      }
+    };
+    
+    // Add event listeners
+    window.addEventListener('scroll', handleScroll, true); // Use capture phase to catch all scrolls
+    window.addEventListener('resize', closeAllDropdowns); // Close on resize too
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', closeAllDropdowns);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [safeProductSearchStates, safeBankSearchStates]); // Re-run when dropdown states change
+
   // Permission check function for download obligation button
   const hasDownloadObligationPermission = () => {
     try {
@@ -654,7 +701,28 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           setSavedData(apiResponse); // Store in state for monitoring
           const savedData = apiResponse; // Keep local variable for backward compatibility
           
-          // 🚨 COMPREHENSIVE BACKEND DATA ANALYSIS - LOGIN TRANSFER DEBUG
+          // � IMMEDIATE LOAN REQUIRED DEBUG - Check what API returned
+          console.log('🔍 ==================== LOAN REQUIRED API CHECK ====================');
+          console.log('API Response loanRequired fields:', {
+            'savedData.loanRequired': savedData?.loanRequired,
+            'savedData.loan_required': savedData?.loan_required,
+            'savedData.loan_amount': savedData?.loan_amount,
+            'savedData.dynamic_fields': savedData?.dynamic_fields ? 'EXISTS' : 'NULL',
+            'savedData.dynamic_fields.loanRequired': savedData?.dynamic_fields?.loanRequired,
+            'savedData.dynamic_fields.loan_required': savedData?.dynamic_fields?.loan_required,
+            'savedData.dynamic_fields.financial_details': savedData?.dynamic_fields?.financial_details ? 'EXISTS' : 'NULL',
+            'savedData.dynamic_fields.financial_details.loanRequired': savedData?.dynamic_fields?.financial_details?.loanRequired,
+            'savedData.dynamic_fields.financial_details.loan_required': savedData?.dynamic_fields?.financial_details?.loan_required,
+            'savedData.dynamic_details': savedData?.dynamic_details ? 'EXISTS' : 'NULL',
+            'savedData.dynamic_details.financial_details.loanRequired': savedData?.dynamic_details?.financial_details?.loanRequired,
+          });
+          console.log('Full savedData keys:', Object.keys(savedData || {}));
+          if (savedData?.dynamic_fields) {
+            console.log('dynamic_fields keys:', Object.keys(savedData.dynamic_fields));
+          }
+          console.log('==================================================================');
+          
+          // �🚨 COMPREHENSIVE BACKEND DATA ANALYSIS - LOGIN TRANSFER DEBUG
           console.log('🚨 ==========================================');
           console.log('🚨 ENHANCED API RESPONSE DEBUGGING');
           console.log('🚨 ==========================================');
@@ -1400,17 +1468,23 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       ]);
       
       const extractedLoanRequired = getFieldValueEnhanced([
+        // Direct backend fields - prioritize loanRequired (camelCase)
+        'loanRequired',        // Primary backend field name (camelCase)
+        'loan_required',       // Alternative snake_case
+        'loan_amount',
+        
+        // Dynamic_fields root level (where backend GET expects it)
+        'dynamic_fields.loanRequired',
+        'dynamic_fields.loan_required',
+        'dynamic_fields.loan_amount',
+        
         // Primary dynamic_details paths
+        'dynamic_details.financial_details.loanRequired',
         'dynamic_details.financial_details.loan_required',
         'dynamic_details.financial_details.loan_amount',
-        'dynamic_details.financial_details.loanRequired',
+        'dynamic_details.loanRequired',
         'dynamic_details.loan_required',
         'dynamic_details.loan_amount',
-        
-        // Direct backend fields
-        'loan_required',
-        'loanRequired', 
-        'loan_amount',
         
         // 🎯 LEAD CREATION SPECIFIC PATHS
         'required_loan',        // Common in lead creation forms
@@ -1468,14 +1542,30 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       console.log('💰 DETAILED LOAN REQUIRED EXTRACTION:', {
         extractedValue: extractedLoanRequired,
         hasExtractedData: !!extractedLoanRequired,
+        rawDataInspection: {
+          'leadData.loanRequired': leadData?.loanRequired,
+          'leadData.loan_required': leadData?.loan_required,
+          'leadData.loan_amount': leadData?.loan_amount,
+          'leadData.dynamic_details': leadData?.dynamic_details,
+          'leadData.dynamic_fields': leadData?.dynamic_fields,
+          'leadData.dynamic_fields.loanRequired': leadData?.dynamic_fields?.loanRequired,
+          'leadData.dynamic_fields.financial_details': leadData?.dynamic_fields?.financial_details,
+          'leadData.dynamic_fields.financial_details.loanRequired': leadData?.dynamic_fields?.financial_details?.loanRequired,
+          'savedData.loanRequired': savedData?.loanRequired,
+          'savedData.loan_required': savedData?.loan_required,
+          'savedData.loan_amount': savedData?.loan_amount,
+          'savedData.dynamic_fields': savedData?.dynamic_fields,
+          'savedData.dynamic_fields.loanRequired': savedData?.dynamic_fields?.loanRequired,
+          'savedData.dynamic_fields.financial_details.loanRequired': savedData?.dynamic_fields?.financial_details?.loanRequired,
+        },
         dataSourceKeys: savedData ? Object.keys(savedData) : [],
         leadDataKeys: leadData ? Object.keys(leadData) : [],
         leadId: leadData?._id,
         file_sent_to_login: leadData?.file_sent_to_login,
         searchedPaths: [
-          'dynamic_details.financial_details.loan_required',
+          'loanRequired',
           'loan_required',
-          'loanRequired', 
+          'dynamic_details.financial_details.loanRequired',
           'loan_amount',
           'dynamic_fields.financial_details.loan_required'
         ],
@@ -1548,6 +1638,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         'dynamic_fields.process.processing_bank',  // Process section
         'dynamic_fields.login_form.processing_bank'
       ]);
+      
+      // Convert company_type to array if it's a comma-separated string (for backward compatibility)
+      let normalizedCompanyType = extractedCompanyType;
+      if (typeof extractedCompanyType === 'string' && extractedCompanyType.includes(',')) {
+        normalizedCompanyType = extractedCompanyType.split(',').map(bank => bank.trim()).filter(Boolean);
+      } else if (extractedCompanyType && !Array.isArray(extractedCompanyType)) {
+        normalizedCompanyType = [extractedCompanyType];
+      }
       
       const extractedCompanyCategory = getFieldValueEnhanced([
         'dynamic_details.personal_details.company_category',  // Primary path: dynamic_details
@@ -1764,8 +1862,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       if (shouldAlwaysUpdate || cibilScoreValue !== cibilScore) setCibilScore(cibilScoreValue);
       
       // Set company type (Processing Bank) - always update for login leads or new leads
-      const companyTypeValue = extractedCompanyType ? 
-        (Array.isArray(extractedCompanyType) ? extractedCompanyType : [extractedCompanyType]) : 
+      const companyTypeValue = normalizedCompanyType ? 
+        (Array.isArray(normalizedCompanyType) ? normalizedCompanyType : [normalizedCompanyType]) : 
         (shouldAlwaysUpdate ? [] : companyType);
       if (shouldAlwaysUpdate || JSON.stringify(companyTypeValue) !== JSON.stringify(companyType)) setCompanyType(companyTypeValue);
       
@@ -2866,6 +2964,17 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       
       // 🎯 ENHANCED NESTED STRUCTURE FOR LEAD CREATION → LOGIN COMPATIBILITY
       dynamic_fields: {
+        // Root-level fields for backward compatibility (backend GET expects these at root)
+        salary,
+        partnerSalary,
+        yearlyBonus,
+        bonusDivision,
+        loanRequired,
+        companyName: effectiveCompanyName,
+        companyType,
+        companyCategory,
+        cibilScore,
+        
         financial_details: {
           // Primary field names (current system)
           monthly_income: salary ? parseINR(salary) : null,
@@ -2874,6 +2983,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           bonus_division: bonusDivision || null,
           cibil_score: cibilScore ? String(cibilScore) : null,
           loan_required: loanRequired ? parseINR(loanRequired) : null,
+          loanRequired: loanRequired ? parseINR(loanRequired) : null,  // Backend camelCase field name
           
           // 🎯 LEAD CREATION ALTERNATIVE FIELD NAMES (for compatibility)
           salary: salary ? parseINR(salary) : null,              // Alternative name
@@ -2886,7 +2996,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         personal_details: {
           // Primary company field names (current system)
           company_name: effectiveCompanyName || '', // Use empty string instead of null
-          company_type: companyType ? String(companyType) : null,
+          company_type: Array.isArray(companyType) ? companyType : (companyType ? [companyType] : []), // Save as array
           
           // 🎯 LEAD CREATION ALTERNATIVE COMPANY FIELD NAMES (for compatibility)
           employer: effectiveCompanyName || '',                    // Common in lead forms
@@ -2984,6 +3094,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           bonus_division: bonusDivision || null,
           cibil_score: cibilScore ? String(cibilScore) : null,
           loan_required: loanRequired ? parseINR(loanRequired) : null,
+          loanRequired: loanRequired ? parseINR(loanRequired) : null,  // Backend camelCase field name
           loan_amount: loanRequired ? parseINR(loanRequired) : null,
           required_loan: loanRequired ? parseINR(loanRequired) : null
         },
@@ -2993,7 +3104,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           employer_name: effectiveCompanyName || '',
           company: effectiveCompanyName || '',
           organization: effectiveCompanyName || '',
-          company_type: companyType ? String(companyType) : null,
+          company_type: Array.isArray(companyType) ? companyType : (companyType ? [companyType] : []), // Save as array
           company_category: companyCategory
         },
         check_eligibility: {
@@ -4320,12 +4431,37 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const handleRemoveBank = (bankToRemove) => {
     if (bankToRemove) {
       // Remove specific bank from companyType array
-      setCompanyType(prev => prev.filter(bank => bank !== bankToRemove));
+      setCompanyType(prev => {
+        const updatedBanks = prev.filter(bank => bank !== bankToRemove);
+        
+        // Notify parent component of changes immediately for unsaved changes detection
+        if (handleChangeFunc) {
+          handleChangeFunc('company_type', updatedBanks);
+        }
+        
+        return updatedBanks;
+      });
       console.log('Removed bank:', bankToRemove);
+      
+      // Mark as changed to trigger auto-save
+      markAsChanged();
+      setHasUnsavedChanges(true);
+      setHasUserInteraction(true);
     } else {
       // Clear all banks
       setCompanyType([]);
+      
+      // Notify parent component of changes immediately for unsaved changes detection
+      if (handleChangeFunc) {
+        handleChangeFunc('company_type', []);
+      }
+      
       console.log('All banks cleared');
+      
+      // Mark as changed to trigger auto-save
+      markAsChanged();
+      setHasUnsavedChanges(true);
+      setHasUserInteraction(true);
     }
   };
 
@@ -4723,6 +4859,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     
     console.log('Bank added to selection:', newBankName);
     console.log('Multiple bank selection enabled');
+    
+    // Mark as changed to trigger auto-save
+    markAsChanged();
+    setHasUnsavedChanges(true);
+    setHasUserInteraction(true);
     
     // Also add to bankList if not already included, for obligations dropdown
     setBankList(prevBanks => {
@@ -6114,12 +6255,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       setLoanRequired(value);
                       
                       // Mark as changed to trigger save button
+                      markAsChanged();
                       setHasUserInteraction(true);
                       setHasUnsavedChanges(true);
                       
                       // Notify parent component of changes immediately for unsaved changes detection
+                      // Use 'loanRequired' (camelCase) to match backend field name
                       if (handleChangeFunc) {
-                        handleChangeFunc('loan_required', value);
+                        handleChangeFunc('loanRequired', value);
                       }
                       
                       console.log("Loan required changed:", value);
@@ -7049,7 +7192,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   disabled={!canEdit}
                 >
                   <option value="" className="text-gray-400 font-bold">Select Category</option>
-                  {(dynamicCompanyCategories.length > 0 ? dynamicCompanyCategories : checkEligibilityCompanyCategories).map((opt) => (
+                  {checkEligibilityCompanyCategories.map((opt) => (
                     <option key={opt.value || opt.id} value={opt.value || opt.id} className="text-white font-bold bg-gray-700">
                       {opt.label || opt.display_text || opt.category_name}
                     </option>
@@ -7487,18 +7630,28 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             
             if (isRemove) {
               // Remove bank from selection
-              setCompanyType(prev => prev.filter(b => b !== bank));
+              setCompanyType(prev => {
+                const updatedBanks = prev.filter(b => b !== bank);
+                
+                // Notify parent component of changes immediately for unsaved changes detection
+                if (handleChangeFunc) {
+                  handleChangeFunc('company_type', updatedBanks);
+                }
+                
+                return updatedBanks;
+              });
               console.log('Bank removed from selection:', bank);
+              
+              // Mark as changed to trigger auto-save
+              markAsChanged();
+              setHasUnsavedChanges(true);
+              setHasUserInteraction(true);
             } else {
               // Add bank to selection
               handleAddBank(bank);
             }
             
             // Don't close popup automatically - allow multiple selections
-            
-            // Mark as having unsaved changes, but don't auto-save
-            // User needs to click the save button to trigger API save
-            setHasUnsavedChanges(true);
             
             // Notification - auto-save will trigger automatically
             console.log('Bank selection updated. Data will auto-save immediately.');
