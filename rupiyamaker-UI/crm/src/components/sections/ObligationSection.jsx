@@ -310,6 +310,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if data is being initially loaded
   const [hasUserInteraction, setHasUserInteraction] = useState(false); // Track if user has actually made any changes
   
+  // Auto-save states
+  const [autoSaveStatus, setAutoSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const autoSaveTimeoutRef = useRef(null);
+  
   // Force re-render state for Credit Card button updates
   const [forceRender, setForceRender] = useState(0);
   const [renderKey, setRenderKey] = useState(Date.now());
@@ -3100,9 +3105,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const dropdownRefs = useRef({});
   
   // Handler for save button click
+  // Save function - Now used by auto-save (manual save button removed)
   const handleSaveObligations = async () => {
     console.log('💾 ========================================');
-    console.log('💾 SAVE BUTTON CLICKED');
+    console.log('💾 SAVE OPERATION TRIGGERED (AUTO-SAVE)');
     console.log('💾 ========================================');
     console.log('💾 Current data being saved:', {
       salary,
@@ -3380,6 +3386,101 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       setIsSaving(false);
     }
   };
+
+  // 🚀 AUTO-SAVE FUNCTIONALITY (Similar to AboutSection)
+  const triggerAutoSave = async () => {
+    if (!leadData?._id || isInitialLoad || !hasUserInteraction) {
+      console.log('⏭️ Skipping autosave:', {
+        noLeadId: !leadData?._id,
+        isInitialLoad,
+        noUserInteraction: !hasUserInteraction
+      });
+      return;
+    }
+
+    console.log('💾 Auto-save triggered...');
+    setIsAutoSaving(true);
+    setAutoSaveStatus('saving');
+
+    try {
+      const obligationData = prepareObligationDataForSave();
+      
+      console.log('💾 AUTO-SAVE: Saving obligation data...');
+      
+      if (leadData?._id) {
+        await saveObligationDataToAPI(obligationData);
+        
+        // Update backend final eligibility with the current calculated value
+        if (eligibility?.finalEligibility) {
+          setBackendFinalEligibility(eligibility.finalEligibility);
+          setBackendEligibilityLoaded(true);
+          setJustSavedEligibility(true);
+        }
+        
+        console.log('✅ AUTO-SAVE: Successfully saved to API');
+        setAutoSaveStatus('saved');
+        setHasUnsavedChanges(false);
+        
+        // Clear save status after 3 seconds
+        setTimeout(() => setAutoSaveStatus(''), 3000);
+      } else {
+        saveObligationData(obligationData);
+        console.log('✅ AUTO-SAVE: Successfully saved to localStorage');
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus(''), 3000);
+      }
+    } catch (error) {
+      console.error('❌ AUTO-SAVE ERROR:', error);
+      setAutoSaveStatus('error');
+      setTimeout(() => setAutoSaveStatus(''), 5000);
+    } finally {
+      setIsAutoSaving(false);
+    }
+  };
+
+  // Debounced autosave - triggers 2 seconds after user stops typing/changing
+  useEffect(() => {
+    if (hasUserInteraction && hasUnsavedChanges && !isInitialLoad) {
+      // Clear existing timeout
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+
+      // Set new timeout for autosave
+      autoSaveTimeoutRef.current = setTimeout(() => {
+        console.log('⏰ Autosave timeout reached, triggering save...');
+        triggerAutoSave();
+      }, 300); // 300ms delay for near-immediate save
+
+      // Cleanup
+      return () => {
+        if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+        }
+      };
+    }
+  }, [
+    salary, 
+    partnerSalary, 
+    yearlyBonus, 
+    bonusDivision, 
+    loanRequired,
+    companyName,
+    companyType,
+    companyCategory,
+    cibilScore,
+    obligations,
+    ceFoirPercent,
+    ceCustomFoirPercent,
+    ceMonthlyEmiCanPay,
+    ceTenureMonths,
+    ceTenureYears,
+    ceRoi,
+    ceMultiplier,
+    hasUserInteraction,
+    hasUnsavedChanges,
+    isInitialLoad
+  ]);
   
   // Set unsaved changes flag whenever key data changes (but only after initial load and with user interaction)
   useEffect(() => {
@@ -6305,7 +6406,45 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           </div>
           {/* Customer Obligation Section - with enhanced styling and logic */}
           <div className="mb-4">
-            <div className="mb-4 text-3xl font-bold text-center text-green-400">Customer Obligations</div>
+            <div className="mb-4 flex items-center justify-center gap-4">
+              <div className="text-3xl font-bold text-center text-green-400">Customer Obligations</div>
+              
+              {/* Auto-save status indicator */}
+              {autoSaveStatus && (
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${
+                  autoSaveStatus === 'saving' ? 'bg-blue-500/20 text-blue-400 border border-blue-500' :
+                  autoSaveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border border-green-500' :
+                  autoSaveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500' :
+                  ''
+                }`}>
+                  {autoSaveStatus === 'saving' && (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Auto-saving...</span>
+                    </>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <>
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span>Auto-saved</span>
+                    </>
+                  )}
+                  {autoSaveStatus === 'error' && (
+                    <>
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                      <span>Auto-save failed</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             
             {/* Summary fields with enhanced styling */}
             <div className="flex flex-wrap items-center gap-6 p-6 mb-4 bg-black/90 border-2 border-gray-600 rounded-lg shadow-lg">
@@ -7361,8 +7500,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             // User needs to click the save button to trigger API save
             setHasUnsavedChanges(true);
             
-            // Notification for user to save changes
-            console.log('Bank selection updated. Click "SAVE CHANGES" to save data to API.');
+            // Notification - auto-save will trigger automatically
+            console.log('Bank selection updated. Data will auto-save immediately.');
           }}
           multiSelect={true}
           companyTypes={companyTypes}
@@ -7465,17 +7604,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         />
       )}
       
-      {/* Save Changes Button (Moved to the Bottom) */}
-      <div className="flex justify-center gap-4 p-6 mt-8 mb-8 bg-black border-2 border-gray-600 rounded-lg shadow-lg">
-        <button
-          className={`px-8 py-4 font-bold text-xl text-white ${hasUnsavedChanges || hasUserInteraction ? 'bg-green-600 border-2 border-green-700 hover:bg-green-700 hover:border-green-800' : 'bg-gray-600 border-2 border-gray-700'} rounded-lg transition-all duration-200`}
-          onClick={handleSaveObligationsWithChangeTracking}
-          disabled={isSaving}
-          type="button"
-        >
-          {isSaving ? 'SAVING...' : (hasUnsavedChanges || hasUserInteraction) ? 'SAVE CHANGES' : 'SAVED'}
-        </button>
-      </div>
+      {/* Save button removed - Using auto-save instead */}
 
       {/* Unsaved Changes Modal */}
       {showUnsavedChangesModal && (
