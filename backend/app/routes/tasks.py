@@ -1724,34 +1724,70 @@ async def delete_task(
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Delete a task (soft delete)"""
-    # No permission check needed - ownership will be verified below
+    
+    print(f"[DELETE TASK] Task ID: {task_id}, User ID: {user_id}")
     
     # Get existing task
     task = await tasks_db.get_task(task_id)
     if not task:
+        print(f"[DELETE TASK] Task {task_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
     
-    # Check if user can delete this task (only creator can delete)
-    user_object_id = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
-    can_delete = task.get("created_by") == user_object_id
+    print(f"[DELETE TASK] Task found. Created by: {task.get('created_by')}")
     
-    if not can_delete:
+    # Get user for permission check
+    user = await users_db.get_user(user_id)
+    if not user:
+        print(f"[DELETE TASK] User {user_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    user_role = await roles_db.get_role(user.get("role_id")) if user else None
+    user_permissions = user_role.get("permissions", []) if user_role else []
+    
+    print(f"[DELETE TASK] User role: {user_role.get('name') if user_role else 'No role'}")
+    print(f"[DELETE TASK] User permissions: {user_permissions}")
+
+    # Use visibility filter to check if user can access this task
+    visibility_filter = await tasks_db.get_visible_tasks_filter(
+        user_id=user_id,
+        user_role=user_role,
+        user_permissions=user_permissions,
+        roles_db=roles_db
+    )
+    
+    print(f"[DELETE TASK] Visibility filter created: {list(visibility_filter.keys())}")
+
+    # Check if this specific task matches the visibility filter
+    visibility_filter["_id"] = ObjectId(task_id)
+    accessible_task = await tasks_db.collection.find_one(visibility_filter)
+    
+    print(f"[DELETE TASK] Accessible task check result: {accessible_task is not None}")
+    
+    if not accessible_task:
+        print(f"[DELETE TASK] Permission denied for user {user_id} to delete task {task_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete tasks you created"
+            detail="You don't have permission to delete this task"
         )
+    
+    print(f"[DELETE TASK] Permission granted. Proceeding with deletion.")
     
     # Delete task
     success = await tasks_db.delete_task(task_id, user_id)
     if not success:
+        print(f"[DELETE TASK] Failed to delete task {task_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete task"
         )
     
+    print(f"[DELETE TASK] Task {task_id} successfully deleted")
     return {"message": "Task deleted successfully"}
 
 @router.post("/{task_id}/attachments")

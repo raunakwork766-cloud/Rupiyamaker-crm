@@ -540,6 +540,7 @@ export default function EditTask({
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [activityFilter, setActivityFilter] = useState('all'); // Filter for history activities
 
   // State for API data (similar to CreateTask)
   const [users, setUsers] = useState([]);
@@ -2538,93 +2539,153 @@ export default function EditTask({
                   <p className="text-gray-500 mt-3 font-medium">Loading history...</p>
                 </div>
               ) : historyData && historyData.length > 0 ? (
-                <div className="bg-white rounded-lg border-2 border-gray-200 shadow-sm overflow-hidden">
-                  <div className="max-h-[500px] overflow-y-auto">
-                    <table className="w-full">
-                      {/* Table Header - Sticky */}
-                      <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">#</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">TYPE</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">DETAILS</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">USER</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">DATE & TIME</th>
-                        </tr>
-                      </thead>
-                      
-                      {/* Table Body */}
-                      <tbody className="divide-y divide-gray-200">
-                        {historyData.map((item, index) => {
-                          const rowBg = index % 2 === 0 ? 'bg-gray-50' : 'bg-white';
-                          
-                          // Determine activity type and styling
-                          let activityIcon = '📌';
-                          let activityLabel = 'ACTIVITY';
-                          let badgeColor = 'bg-gray-100 text-gray-800';
-
-                          if (item.actionType === 'created') {
-                            activityIcon = '📝';
-                            activityLabel = 'CREATED';
-                            badgeColor = 'bg-blue-100 text-blue-800';
-                          } else if (item.actionType === 'status_changed') {
-                            activityIcon = '🔄';
-                            activityLabel = 'STATUS';
-                            badgeColor = 'bg-green-100 text-green-800';
-                          } else if (item.actionType === 'comment_added') {
-                            activityIcon = '💬';
-                            activityLabel = 'COMMENT';
-                            badgeColor = 'bg-purple-100 text-purple-800';
-                          } else if (item.actionType === 'assignment_changed') {
-                            activityIcon = '👤';
-                            activityLabel = 'ASSIGNMENT';
-                            badgeColor = 'bg-orange-100 text-orange-800';
-                          } else if (item.actionType === 'updated') {
-                            activityIcon = '✏️';
-                            activityLabel = 'UPDATED';
-                            badgeColor = 'bg-yellow-100 text-yellow-800';
-                          }
-
-                          return (
-                            <tr key={item.id || index} className={`${rowBg} hover:bg-blue-50 transition-colors`}>
-                              {/* Serial Number */}
-                              <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
-                                {index + 1}
-                              </td>
-                              
-                              {/* Activity Type Badge */}
-                              <td className="px-4 py-3 border-r border-gray-200">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeColor}`}>
-                                  {activityIcon} {activityLabel}
-                                </span>
-                              </td>
-                              
-                              {/* Details */}
-                              <td className="px-4 py-3 text-sm font-semibold text-gray-800 border-r border-gray-200">
-                                {item.changes}
-                              </td>
-                              
-                              {/* User */}
-                              <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
-                                    {(item.createdBy || 'U').charAt(0).toUpperCase()}
-                                  </div>
-                                  {(item.createdBy || 'UNKNOWN').toUpperCase()}
-                                </div>
-                              </td>
-                              
-                              {/* Date & Time */}
-                              <td className="px-4 py-3 text-sm">
-                                <div className="font-bold text-gray-700">{item.date}</div>
-                                <div className="font-semibold text-gray-500 text-xs">{item.time}</div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                <>
+                  {/* Filter Section */}
+                  <div className="mb-4 flex items-center justify-between bg-white p-4 rounded-lg border-2 border-gray-200 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-gray-700">📊 FILTER:</span>
+                      <select
+                        value={activityFilter}
+                        onChange={(e) => setActivityFilter(e.target.value)}
+                        className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm font-semibold text-gray-700 bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
+                      >
+                        <option value="all">ALL ACTIVITIES ({historyData.length})</option>
+                        <option value="created">📝 CREATED ({historyData.filter(item => item.actionType === 'created').length})</option>
+                        <option value="status">🔄 STATUS ({historyData.filter(item => item.actionType === 'status_changed').length})</option>
+                        <option value="comment">💬 COMMENTS ({historyData.filter(item => item.actionType === 'comment_added').length})</option>
+                        <option value="assignment">👤 ASSIGNMENTS ({historyData.filter(item => item.actionType === 'assignment_changed').length})</option>
+                        <option value="updated">✏️ UPDATES ({historyData.filter(item => item.actionType === 'updated').length})</option>
+                      </select>
+                    </div>
+                    <div className="text-sm font-bold text-gray-600">
+                      SHOWING: <span className="text-blue-600">{(() => {
+                        const filtered = historyData.filter(item => {
+                          if (activityFilter === 'all') return true;
+                          if (activityFilter === 'created') return item.actionType === 'created';
+                          if (activityFilter === 'status') return item.actionType === 'status_changed';
+                          if (activityFilter === 'comment') return item.actionType === 'comment_added';
+                          if (activityFilter === 'assignment') return item.actionType === 'assignment_changed';
+                          if (activityFilter === 'updated') return item.actionType === 'updated';
+                          return false;
+                        });
+                        return filtered.length;
+                      })()}</span> OF <span className="text-blue-600">{historyData.length}</span>
+                    </div>
                   </div>
-                </div>
+
+                  {/* Modern Table */}
+                  <div className="bg-white rounded-lg border-2 border-gray-200 shadow-sm overflow-hidden">
+                    <div className="max-h-[500px] overflow-y-auto">
+                      <table className="w-full">
+                        {/* Table Header - Sticky */}
+                        <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">#</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">TYPE</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">DETAILS</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">USER</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">DATE & TIME</th>
+                          </tr>
+                        </thead>
+                        
+                        {/* Table Body */}
+                        <tbody className="divide-y divide-gray-200">
+                          {(() => {
+                            const filtered = historyData.filter(item => {
+                              if (activityFilter === 'all') return true;
+                              if (activityFilter === 'created') return item.actionType === 'created';
+                              if (activityFilter === 'status') return item.actionType === 'status_changed';
+                              if (activityFilter === 'comment') return item.actionType === 'comment_added';
+                              if (activityFilter === 'assignment') return item.actionType === 'assignment_changed';
+                              if (activityFilter === 'updated') return item.actionType === 'updated';
+                              return false;
+                            });
+
+                            if (filtered.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan="5" className="px-4 py-12 text-center">
+                                    <div className="text-4xl mb-3">🔍</div>
+                                    <p className="text-gray-500 font-bold">NO ACTIVITIES FOUND</p>
+                                    <p className="text-sm text-gray-400 mt-1">Try selecting a different filter</p>
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return filtered.map((item, index) => {
+                              const rowBg = index % 2 === 0 ? 'bg-gray-50' : 'bg-white';
+                              
+                              // Determine activity type and styling
+                              let activityIcon = '📌';
+                              let activityLabel = 'ACTIVITY';
+                              let badgeColor = 'bg-gray-100 text-gray-800';
+
+                              if (item.actionType === 'created') {
+                                activityIcon = '📝';
+                                activityLabel = 'CREATED';
+                                badgeColor = 'bg-blue-100 text-blue-800';
+                              } else if (item.actionType === 'status_changed') {
+                                activityIcon = '🔄';
+                                activityLabel = 'STATUS';
+                                badgeColor = 'bg-green-100 text-green-800';
+                              } else if (item.actionType === 'comment_added') {
+                                activityIcon = '💬';
+                                activityLabel = 'COMMENT';
+                                badgeColor = 'bg-purple-100 text-purple-800';
+                              } else if (item.actionType === 'assignment_changed') {
+                                activityIcon = '👤';
+                                activityLabel = 'ASSIGNMENT';
+                                badgeColor = 'bg-orange-100 text-orange-800';
+                              } else if (item.actionType === 'updated') {
+                                activityIcon = '✏️';
+                                activityLabel = 'UPDATED';
+                                badgeColor = 'bg-yellow-100 text-yellow-800';
+                              }
+
+                              return (
+                                <tr key={item.id || index} className={`${rowBg} hover:bg-blue-50 transition-colors`}>
+                                  {/* Serial Number */}
+                                  <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
+                                    {index + 1}
+                                  </td>
+                                  
+                                  {/* Activity Type Badge */}
+                                  <td className="px-4 py-3 border-r border-gray-200">
+                                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeColor}`}>
+                                      {activityIcon} {activityLabel}
+                                    </span>
+                                  </td>
+                                  
+                                  {/* Details */}
+                                  <td className="px-4 py-3 text-sm font-semibold text-gray-800 border-r border-gray-200">
+                                    {item.changes}
+                                  </td>
+                                  
+                                  {/* User */}
+                                  <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+                                        {(item.createdBy || 'U').charAt(0).toUpperCase()}
+                                      </div>
+                                      {(item.createdBy || 'UNKNOWN').toUpperCase()}
+                                    </div>
+                                  </td>
+                                  
+                                  {/* Date & Time */}
+                                  <td className="px-4 py-3 text-sm">
+                                    <div className="font-bold text-gray-700">{item.date}</div>
+                                    <div className="font-semibold text-gray-500 text-xs">{item.time}</div>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="text-center py-12 bg-white rounded-lg border-2 border-gray-200 shadow-sm">
                   <div className="text-5xl mb-3">📋</div>

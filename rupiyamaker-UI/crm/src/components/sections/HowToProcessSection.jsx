@@ -122,6 +122,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   const [fields, setFields] = useState({
     processingBank: safetyProcess.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
     loanAmountRequired: safetyProcess.loan_amount_required ? formatINR(safetyProcess.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : ""),
+    purposeOfLoan: safetyProcess.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
     howToProcess: safetyProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
     loanType: safetyProcess.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
     requiredTenure: safetyProcess.required_tenure ? `${safetyProcess.required_tenure} months` : (lead?.dynamic_fields?.process?.required_tenure ? `${lead.dynamic_fields.process.required_tenure} months` : ""),
@@ -135,6 +136,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   
   // Ref for the auto-expanding textarea
   const howToProcessTextareaRef = useRef(null);
+  const purposeOfLoanTextareaRef = useRef(null);
   
   // Auto-resize function for textarea
   const autoResizeTextarea = (textarea) => {
@@ -146,10 +148,12 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     }
   };
   
-  // Enhanced handleChange function to handle auto-resize for howToProcess field
+  // Enhanced handleChange function to handle auto-resize for howToProcess and purposeOfLoan fields
   const handleChangeWithResize = (fieldName, value) => {
-    // Convert text to uppercase for the howToProcess field
-    const processedValue = fieldName === 'howToProcess' ? value.toUpperCase() : value;
+    console.log(`📝 handleChangeWithResize called - Field: ${fieldName}, Value: ${value}`);
+    // Convert text to uppercase for the howToProcess and purposeOfLoan fields
+    const processedValue = (fieldName === 'howToProcess' || fieldName === 'purposeOfLoan') ? value.toUpperCase() : value;
+    console.log(`📝 Processed value (uppercase): ${processedValue}`);
     setFields(prev => ({ ...prev, [fieldName]: processedValue }));
     
     // Auto-resize the textarea if it's the howToProcess field
@@ -159,16 +163,31 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         autoResizeTextarea(howToProcessTextareaRef.current);
       }, 0);
     }
+    
+    // Auto-resize the textarea if it's the purposeOfLoan field
+    if (fieldName === 'purposeOfLoan' && purposeOfLoanTextareaRef.current) {
+      setTimeout(() => {
+        autoResizeTextarea(purposeOfLoanTextareaRef.current);
+      }, 0);
+    }
   };
   
   // Update local state if the process prop changes from parent - but only on initial load or lead ID change
   useEffect(() => {
+    console.log(`🔄 HowToProcessSection useEffect triggered`);
+    console.log(`📊 lead?.dynamic_fields?.process:`, lead?.dynamic_fields?.process);
+    console.log(`📊 process prop:`, process);
+    
     const currentProcess = process || lead?.dynamic_fields?.process || {};
     const tenure = currentProcess.required_tenure || lead?.dynamic_fields?.process?.required_tenure;
+    
+    console.log(`📊 Loading purposeOfLoan from:`, currentProcess.purpose_of_loan);
+    console.log(`📊 Loading howToProcess from:`, currentProcess.how_to_process);
     
     setFields({
       processingBank: currentProcess.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
       loanAmountRequired: currentProcess.loan_amount_required ? formatINR(currentProcess.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : ""),
+      purposeOfLoan: currentProcess.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
       howToProcess: currentProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
       loanType: currentProcess.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
       requiredTenure: tenure ? `${tenure} months` : "",
@@ -184,7 +203,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         setSelectedLoanType(matchedLoanType);
       }
     }
-  }, [lead?._id, loanTypes]); // Only depend on lead ID and loanTypes, not the entire lead object
+  }, [lead?._id, process, lead?.dynamic_fields?.process, loanTypes]); // Added process and lead.dynamic_fields.process to dependencies
   
   // Load loan types
   useEffect(() => {
@@ -192,12 +211,15 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     loadBankOptions();
   }, []);
 
-  // Auto-resize textarea when howToProcess content changes
+  // Auto-resize textarea when howToProcess or purposeOfLoan content changes
   useEffect(() => {
     if (howToProcessTextareaRef.current && fields.howToProcess) {
       autoResizeTextarea(howToProcessTextareaRef.current);
     }
-  }, [fields.howToProcess]);
+    if (purposeOfLoanTextareaRef.current && fields.purposeOfLoan) {
+      autoResizeTextarea(purposeOfLoanTextareaRef.current);
+    }
+  }, [fields.howToProcess, fields.purposeOfLoan]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -325,6 +347,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       const processFieldMap = {
         processingBank: 'processing_bank',
         loanAmountRequired: 'loan_amount_required',
+        purposeOfLoan: 'purpose_of_loan',
         howToProcess: 'how_to_process',
         loanType: 'loan_type',
         requiredTenure: 'required_tenure',
@@ -350,10 +373,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       // Remove suffixes and compare as numbers
       normalizedValue = parseInt(value.toString().replace(/[^\d]/g, '')) || 0;
       normalizedOriginal = parseInt(originalValue) || 0;
+    } else {
+      // For text fields (purposeOfLoan, howToProcess, etc.), trim and compare
+      normalizedValue = (value || "").toString().trim();
+      normalizedOriginal = (originalValue || "").toString().trim();
     }
     
     // Only save if the value has actually changed from the original
-    if (normalizedValue === normalizedOriginal || (normalizedValue === 0 && normalizedOriginal === "")) {
+    if (normalizedValue === normalizedOriginal) {
       console.log(`⏭️ HowToProcessSection: No change detected for ${field}, skipping save`);
       return;
     }
@@ -449,6 +476,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       const processFieldMap = {
         processingBank: 'processing_bank',
         loanAmountRequired: 'loan_amount_required',
+        purposeOfLoan: 'purpose_of_loan',
         howToProcess: 'how_to_process',
         loanType: 'loan_type',
         requiredTenure: 'required_tenure',
@@ -457,6 +485,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       };
 
       const processField = processFieldMap[field] || field;
+      console.log(`🗺️ Field mapping: ${field} → ${processField}`);
       
       // Process the value based on field type
       let processedValue = value;
@@ -466,19 +495,43 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         // Remove suffixes and save as numbers
         processedValue = parseInt(value.toString().replace(/[^\d]/g, '')) || null;
       }
+      
+      console.log(`💾 Processed value for ${processField}: ${processedValue}`);
+      console.log(`📦 Current lead object:`, lead);
+      console.log(`📦 Current lead.dynamic_fields:`, lead?.dynamic_fields);
+      console.log(`📦 Current lead.dynamic_fields.process:`, lead?.dynamic_fields?.process);
+
+      // Ensure lead has dynamic_fields structure
+      if (!lead.dynamic_fields) {
+        lead.dynamic_fields = {};
+      }
+      if (!lead.dynamic_fields.process) {
+        lead.dynamic_fields.process = {};
+      }
 
       // Create update object for dynamic_fields.process
+      // IMPORTANT: Only send the process section to avoid overwriting other sections
       const updateData = {
         dynamic_fields: {
-          ...lead.dynamic_fields,
           process: {
-            ...lead.dynamic_fields?.process,
+            ...lead.dynamic_fields.process,
             [processField]: processedValue
+          }
+        },
+        // Add activity tracking for this specific field change
+        activity: {
+          activity_type: "field_update",
+          description: `Updated ${processField.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} in How To Process section`,
+          details: {
+            section: "process",
+            field: processField,
+            old_value: lead.dynamic_fields.process[processField] || null,
+            new_value: processedValue
           }
         }
       };
 
-      console.log(`📡 HowToProcessSection: Making API call to update process.${processField}:`, updateData);
+      console.log(`📡 HowToProcessSection: Making API call to update process.${processField}:`, JSON.stringify(updateData, null, 2));
 
       const response = await fetch(apiUrl, {
         method: 'PUT',
@@ -491,11 +544,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ API Error Response:`, errorText);
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const responseData = await response.json();
-      console.log(`✅ HowToProcessSection: Successfully saved process.${processField} to API:`, responseData);
+      console.log(`✅ HowToProcessSection: Successfully saved process.${processField} to API`);
+      console.log(`📨 Backend response:`, responseData);
+      console.log(`✅ Activity should have been created for: ${processField}`);
       
       // Update the lead object in memory to reflect the change
       if (lead.dynamic_fields) {
@@ -503,6 +559,20 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           lead.dynamic_fields.process = {};
         }
         lead.dynamic_fields.process[processField] = processedValue;
+      }
+      
+      // Call onSave callback if provided to notify parent component
+      if (onSave && typeof onSave === 'function') {
+        // If backend returned updated lead data, use it; otherwise pass the field that changed
+        if (responseData && responseData.dynamic_fields) {
+          onSave(responseData);
+        } else {
+          onSave({ 
+            processField, 
+            processedValue,
+            dynamic_fields: { process: lead.dynamic_fields?.process }
+          });
+        }
       }
       
       return true;
@@ -734,8 +804,26 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
         </div>
 
-        {/* Third Row: How to Process (Full Width) */}
-        <div className="mb-0">
+        {/* Third Row: Purpose of Loan and How to Process */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-0">
+          {/* Purpose of Loan */}
+          <div className="flex flex-col gap-2">
+            <label className={labelClass} style={labelStyle}>PURPOSE OF LOAN</label>
+            <textarea
+              ref={purposeOfLoanTextareaRef}
+              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] resize-y min-h-[80px] font-inherit ${
+                !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
+              value={fields.purposeOfLoan || ""}
+              onChange={(e) => handleChangeWithResize('purposeOfLoan', e.target.value)}
+              onBlur={() => canEdit && handleBlur('purposeOfLoan', fields.purposeOfLoan)}
+              readOnly={!canEdit}
+              placeholder="Enter purpose of loan..."
+              rows="4"
+            />
+          </div>
+
+          {/* How to Process */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>HOW TO PROCESS</label>
             <textarea
@@ -743,9 +831,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
               className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] resize-y min-h-[80px] font-inherit ${
                 !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
               }`}
-              value={fields.howToProcess}
-              onChange={e => canEdit && handleChangeWithResize("howToProcess", e.target.value)}
-              onBlur={e => canEdit && handleBlur("howToProcess", e.target.value)}
+              value={fields.howToProcess || ""}
+              onChange={(e) => handleChangeWithResize("howToProcess", e.target.value)}
+              onBlur={() => canEdit && handleBlur("howToProcess", fields.howToProcess)}
               readOnly={!canEdit}
               placeholder="Enter processing remarks and instructions here..."
               rows="4"

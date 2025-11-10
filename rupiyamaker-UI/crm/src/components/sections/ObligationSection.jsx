@@ -6359,16 +6359,29 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       data-dropdown-trigger="true"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-                      {/* Arrow button to open Zaubacorp website */}
+                      {/* Search button to open Zaubacorp website */}
                       <button
                         type="button"
                         onClick={() => {
                           window.open('https://www.zaubacorp.com/', '_blank', 'noopener,noreferrer');
                         }}
-                        className="p-1 text-green-600  hover:text-blue-300 transition-colors duration-200 rounded-md hover:bg-gray-600"
-                        title="Open Zaubacorp website"
+                        className="p-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-md transition-all duration-200 flex items-center justify-center"
+                        title="Search on Zaubacorp"
                       >
-                        <ExternalLink className="h-5 w-5" />
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          className="h-4 w-4" 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor"
+                        >
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
+                          />
+                        </svg>
                       </button>
                       {isCompanyLoading && (
                         <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-sky-400"></div>
