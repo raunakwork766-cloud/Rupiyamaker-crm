@@ -604,17 +604,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
                                 {/* Login Form Section */}
                                 <LoginFormSection
-                                    leadData={{
-                                        ...leadData,
-                                        // Ensure applicant form is accessible in both formats
-                                        dynamic_fields: {
-                                            ...leadData.dynamic_fields,
-                                            // If we're in login department, support both legacy loginForm and new dynamic_fields.applicant_form
-                                            applicant_form: userDepartment === 'login' 
-                                                ? (leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}) 
-                                                : (leadData.dynamic_fields?.applicant_form || {})
-                                        }
-                                    }}
+                                    leadData={leadData}
                                     onUpdate={updateLead}
                                     onGenerateShareableLink={generateShareableLink}
                                     shareableLink={shareableLink}
@@ -639,31 +629,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                             </button>
                                         </div>
                                         <LoginFormSection
-                                            leadData={{ 
-                                                ...leadData, 
-                                                dynamic_fields: { 
-                                                    ...leadData.dynamic_fields,
-                                                    // Support both formats for co-applicant form
-                                                    applicant_form: userDepartment === 'login'
-                                                        ? (leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {})
-                                                        : (leadData.dynamic_fields?.co_applicant_form || {})
-                                                }
-                                            }}
-                                            onUpdate={(updatedData) => {
-                                                console.log("Updating co-applicant data:", updatedData);
-                                                
-                                                // Update only the co_applicant_form part of dynamic_fields
-                                                const currentDynamicFields = leadData.dynamic_fields || {};
-                                                const updatedDynamicFields = {
-                                                    ...currentDynamicFields,
-                                                    co_applicant_form: updatedData.dynamic_fields?.applicant_form || {}
-                                                };
-                                                
-                                                // Update the lead data with the new co-applicant form
-                                                updateLead({ 
-                                                    dynamic_fields: updatedDynamicFields
-                                                });
-                                            }}
+                                            leadData={leadData}
+                                            onUpdate={updateLead}
                                             isCoApplicant={true}
                                             shareableLink={shareableLink}
                                             onGenerateShareableLink={generateShareableLink}

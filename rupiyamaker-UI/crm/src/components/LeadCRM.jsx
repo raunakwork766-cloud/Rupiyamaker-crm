@@ -2141,6 +2141,21 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             const displayName = getFieldDisplayName(field);
             const fieldValue = getFieldValue(field, responseData, value);
 
+            // CRITICAL FIX: Update selectedLead with the RESPONSE data from backend
+            // This ensures we have the latest data including any backend transformations
+            console.log('🔄 Updating selectedLead with response data...');
+            console.log('🔄 responseData.dynamic_fields:', responseData.dynamic_fields);
+            setSelectedLead(prev => ({
+                ...prev,
+                ...responseData,
+                // Ensure dynamic_fields is properly merged
+                dynamic_fields: {
+                    ...prev?.dynamic_fields,
+                    ...responseData.dynamic_fields
+                }
+            }));
+            console.log('✅ selectedLead updated with fresh backend data');
+
             // Only show success message if not skipped (to avoid double messages from sections)
             if (!skipSuccessMessage) {
                 message.success(`${displayName}: ${fieldValue}`);
@@ -2287,6 +2302,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     + Add Co-Applicant
                                 </button>
                             </div>
+                            {console.log('🔍 [LeadCRM] Preparing to render LoginFormSection')}
+                            {console.log('🔍 lead.dynamic_fields:', lead.dynamic_fields)}
+                            {console.log('🔍 lead.dynamic_fields?.applicant_form:', lead.dynamic_fields?.applicant_form)}
+                            {console.log('🔍 lead.loginForm:', lead.loginForm)}
+                            {console.log('🔍 Final data being passed:', lead.dynamic_fields?.applicant_form || lead.loginForm || {})}
                             <LoginFormSection
                                 data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
                                 onSave={updated => handleFieldChange("applicant_form", updated)}
@@ -5921,12 +5941,44 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         return checkedRows.length === count && count > 0;
     }, [checkedRows.length, getFilteredLeadsCount]);
 
-    const handleRowClick = (rowIdx) => {
+    const handleRowClick = async (rowIdx) => {
         // Reset obligation changes state when selecting a new lead
         setHasUnsavedObligationChanges(false);
-        setSelectedLead(getFilteredLeadByIndex(rowIdx));
+        const selectedLeadData = getFilteredLeadByIndex(rowIdx);
+        console.log('🔍 handleRowClick - Lead clicked, ID:', selectedLeadData?._id);
+        
+        // Set initial data from cache immediately for responsive UI
+        setSelectedLead(selectedLeadData);
         setActiveTab(0);
         setOpenSections([0]); // Auto-open the About section (index 0) when opening a lead
+        
+        // Then fetch complete lead data including applicant_form from API
+        if (selectedLeadData?._id) {
+            try {
+                console.log('� Fetching full lead data from API...');
+                const apiUrl = `/api/leads/${selectedLeadData._id}?user_id=${userId}`;
+                const response = await fetch(apiUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const fullLeadData = await response.json();
+                    console.log('✅ Full lead data fetched');
+                    console.log('🔍 fullLeadData.dynamic_fields:', fullLeadData?.dynamic_fields);
+                    console.log('🔍 fullLeadData.dynamic_fields.applicant_form:', fullLeadData?.dynamic_fields?.applicant_form);
+                    
+                    // Update selectedLead with complete data including applicant_form
+                    setSelectedLead(fullLeadData);
+                } else {
+                    console.error('❌ Failed to fetch full lead data:', response.status);
+                }
+            } catch (error) {
+                console.error('❌ Error fetching full lead data:', error);
+            }
+        }
     };
 
     const handleBackToTable = () => {

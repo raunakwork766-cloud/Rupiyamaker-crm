@@ -123,6 +123,7 @@ class CheckEligibilitySchema(BaseModel):
 class ProcessSchema(BaseModel):
     processing_bank: Optional[str] = None
     loan_amount_required: Optional[float] = None
+    purpose_of_loan: Optional[str] = None
     how_to_process: Optional[str] = "None"
     loan_type: Optional[str] = None
     required_tenure: Optional[int] = None  # in months

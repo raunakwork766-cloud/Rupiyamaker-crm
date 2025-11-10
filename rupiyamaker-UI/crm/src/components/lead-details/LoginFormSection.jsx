@@ -6,6 +6,10 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
     // Handle prop naming differences between components (leadData vs lead)
     const leadInfo = leadData || lead || {};
     
+    console.log('🔄 LoginFormSection render - leadInfo._id:', leadInfo._id);
+    console.log('🔄 LoginFormSection render - isCoApplicant:', isCoApplicant);
+    console.log('🔄 LoginFormSection render - leadInfo.dynamic_fields:', leadInfo.dynamic_fields);
+    
     const [formData, setFormData] = useState({});
     const [isSaving, setIsSaving] = useState(false);
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -24,93 +28,95 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
     const lastSavedData = useRef({});
 
     useEffect(() => {
+        console.log('🔄 LoginFormSection useEffect triggered');
+        console.log('📦 leadInfo:', leadInfo);
+        console.log('🎯 isCoApplicant:', isCoApplicant);
+        
         const dynamicFields = leadInfo.dynamic_fields || {};
+        console.log('📋 dynamicFields:', dynamicFields);
+        console.log('📋 dynamicFields keys:', Object.keys(dynamicFields));
+        
         // Select the appropriate form data based on whether this is a co-applicant form
         const formSource = isCoApplicant 
             ? dynamicFields.co_applicant_form || {}
-            : dynamicFields.login_form || {};
+            : dynamicFields.applicant_form || dynamicFields.login_form || {};
+        
+        console.log('📝 formSource data:', formSource);
+        console.log('📝 formSource keys:', Object.keys(formSource));
+        console.log('📝 formSource.referenceNameForLogin:', formSource.referenceNameForLogin);
+        console.log('📝 formSource.reference_name:', formSource.reference_name);
+        console.log('📝 formSource.aadharNumber:', formSource.aadharNumber);
+        console.log('📝 formSource.aadhar_number:', formSource.aadhar_number);
+        
+        // Create a hash of the formSource to detect changes
+        const formSourceHash = JSON.stringify(formSource);
+        console.log('🔑 formSource hash:', formSourceHash.substring(0, 200) + '...');
 
-        setFormData({
-            reference_name: formSource.reference_name || '',
-            aadhar_number: formSource.aadhar_number || (isCoApplicant ? '' : dynamicFields.identity_details?.aadhar_number || ''),
+        const newFormData = {
+            // Support BOTH snake_case (from backend) AND camelCase (from sections/LoginFormSection)
+            reference_name: formSource.reference_name || formSource.referenceNameForLogin || '',
+            aadhar_number: formSource.aadhar_number || formSource.aadharNumber || (isCoApplicant ? '' : dynamicFields.identity_details?.aadhar_number || ''),
             qualification: formSource.qualification || '',
             qualification_type: formSource.qualification_type || '',
             customer_name: isCoApplicant 
-                ? formSource.customer_name || `${leadInfo.first_name || ''} ${leadInfo.last_name || ''} (Co-Applicant)`.trim()
-                : `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim(),
-            pan_number: formSource.pan_number || (isCoApplicant ? '' : dynamicFields.identity_details?.pan_number || ''),
-            salary_bank_name: formSource.salary_bank_name || (isCoApplicant ? '' : dynamicFields.financial_details?.bank_name || ''),
+                ? formSource.customer_name || formSource.customerName || `${leadInfo.first_name || ''} ${leadInfo.last_name || ''} (Co-Applicant)`.trim()
+                : formSource.customer_name || formSource.customerName || `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim(),
+            pan_number: formSource.pan_number || formSource.panCard || (isCoApplicant ? '' : dynamicFields.identity_details?.pan_number || ''),
+            salary_bank_name: formSource.salary_bank_name || formSource.salaryAccountBank || (isCoApplicant ? '' : dynamicFields.financial_details?.bank_name || ''),
             cibil_score: formSource.cibil_score || (isCoApplicant ? '' : dynamicFields.financial_details?.cibil_score || dynamicFields.cibil_score || ''),
-            mobile_number: isCoApplicant ? formSource.mobile_number || '' : leadInfo.phone || '',
-            alternate_mobile: isCoApplicant ? formSource.alternate_mobile || '' : leadInfo.alternative_phone || '',
-            personal_email: formSource.personal_email || (isCoApplicant ? '' : leadInfo.email || ''),
-            work_email: formSource.work_email || '',
+            mobile_number: formSource.mobile_number || formSource.mobileNumber || (isCoApplicant ? '' : leadInfo.phone || ''),
+            alternate_mobile: formSource.alternate_mobile || formSource.alternateNumber || (isCoApplicant ? '' : leadInfo.alternative_phone || ''),
+            personal_email: formSource.personal_email || formSource.personalEmail || (isCoApplicant ? '' : leadInfo.email || ''),
+            work_email: formSource.work_email || formSource.workEmail || '',
             product_type: formSource.product_type || (isCoApplicant ? '' : leadInfo.loan_type || ''),
             date_of_birth: formSource.date_of_birth || (isCoApplicant ? '' : dynamicFields.date_of_birth || ''),
-            father_name: formSource.father_name || '',
-            mother_name: formSource.mother_name || '',
-            marital_status: formSource.marital_status || (isCoApplicant ? '' : dynamicFields.marital_status || ''),
-            current_address: formSource.current_address || (isCoApplicant ? '' : dynamicFields.address?.street || ''),
-            current_landmark: formSource.current_landmark || '',
-            current_address_type: formSource.current_address_type || '',
-            current_address_proof_type: formSource.current_address_proof_type || '',
-            years_at_current_address: formSource.years_at_current_address || '',
-            years_in_current_city: formSource.years_in_current_city || '',
-            permanent_address: formSource.permanent_address || '',
-            permanent_landmark: formSource.permanent_landmark || '',
-            company_name: formSource.company_name || dynamicFields.personal_details?.employer_name || '',
-            designation: formSource.designation || '',
-            department: formSource.department || '',
-            date_of_joining: formSource.date_of_joining || '',
-            current_work_experience: formSource.current_work_experience || dynamicFields.personal_details?.years_of_experience || '',
-            total_work_experience: formSource.total_work_experience || '',
-            office_address: formSource.office_address || '',
-            office_landmark: formSource.office_landmark || '',
+            father_name: formSource.father_name || formSource.fathersName || '',
+            mother_name: formSource.mother_name || formSource.mothersName || '',
+            marital_status: formSource.marital_status || formSource.maritalStatus || (isCoApplicant ? '' : dynamicFields.marital_status || ''),
+            current_address: formSource.current_address || formSource.currentAddress || (isCoApplicant ? '' : dynamicFields.address?.street || ''),
+            current_landmark: formSource.current_landmark || formSource.currentAddressLandmark || '',
+            current_address_type: formSource.current_address_type || formSource.currentAddressType || '',
+            current_address_proof_type: formSource.current_address_proof_type || formSource.currentAddressProof || '',
+            years_at_current_address: formSource.years_at_current_address || formSource.yearsAtCurrentAddress || '',
+            years_in_current_city: formSource.years_in_current_city || formSource.yearsInCurrentCity || '',
+            permanent_address: formSource.permanent_address || formSource.permanentAddress || '',
+            permanent_landmark: formSource.permanent_landmark || formSource.permanentAddressLandmark || '',
+            company_name: formSource.company_name || formSource.companyName || dynamicFields.personal_details?.employer_name || '',
+            designation: formSource.designation || formSource.yourDesignation || '',
+            department: formSource.department || formSource.yourDepartment || '',
+            date_of_joining: formSource.date_of_joining || formSource.dojCurrentCompany || '',
+            current_work_experience: formSource.current_work_experience || formSource.currentWorkExperience || dynamicFields.personal_details?.years_of_experience || '',
+            total_work_experience: formSource.total_work_experience || formSource.totalWorkExperience || '',
+            office_address: formSource.office_address || formSource.officeAddress || '',
+            office_landmark: formSource.office_landmark || formSource.officeAddressLandmark || '',
+            // Handle references - could be in either format
             references: formSource.references || [
-                { name: '', mobile: '', relation: '', address: '' },
-                { name: '', mobile: '', relation: '', address: '' }
-            ]
-        });
-
-        lastSavedData.current = {
-            reference_name: formSource.reference_name || '',
-            aadhar_number: formSource.aadhar_number || dynamicFields.identity_details?.aadhar_number || '',
-            qualification: formSource.qualification || '',
-            qualification_type: formSource.qualification_type || '',
-            customer_name: `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim(),
-            pan_number: formSource.pan_number || dynamicFields.identity_details?.pan_number || '',
-            salary_bank_name: formSource.salary_bank_name || dynamicFields.financial_details?.bank_name || '',
-            cibil_score: formSource.cibil_score || dynamicFields.financial_details?.cibil_score || dynamicFields.cibil_score || '',
-            mobile_number: leadInfo.phone || '',
-            alternate_mobile: leadInfo.alternative_phone || '',
-            personal_email: formSource.personal_email || leadInfo.email || '',
-            work_email: formSource.work_email || '',
-            product_type: formSource.product_type || leadInfo.loan_type || '',
-            date_of_birth: formSource.date_of_birth || dynamicFields.date_of_birth || '',
-            father_name: formSource.father_name || '',
-            mother_name: formSource.mother_name || '',
-            marital_status: formSource.marital_status || dynamicFields.marital_status || '',
-            current_address: formSource.current_address || dynamicFields.address?.street || '',
-            current_landmark: formSource.current_landmark || '',
-            current_address_type: formSource.current_address_type || '',
-            current_address_proof_type: formSource.current_address_proof_type || '',
-            years_at_current_address: formSource.years_at_current_address || '',
-            years_in_current_city: formSource.years_in_current_city || '',
-            permanent_address: formSource.permanent_address || '',
-            permanent_landmark: formSource.permanent_landmark || '',
-            company_name: formSource.company_name || dynamicFields.personal_details?.employer_name || '',
-            designation: formSource.designation || '',
-            department: formSource.department || '',
-            date_of_joining: formSource.date_of_joining || '',
-            current_work_experience: formSource.current_work_experience || dynamicFields.personal_details?.years_of_experience || '',
-            total_work_experience: formSource.total_work_experience || '',
-            office_address: formSource.office_address || '',
-            office_landmark: formSource.office_landmark || '',
-            references: formSource.references || [
-                { name: '', mobile: '', relation: '', address: '' },
-                { name: '', mobile: '', relation: '', address: '' }
+                { 
+                    name: formSource.ref1Name || '', 
+                    mobile: formSource.ref1Mobile || '', 
+                    relation: formSource.ref1Relation || '', 
+                    address: formSource.ref1Address || '' 
+                },
+                { 
+                    name: formSource.ref2Name || '', 
+                    mobile: formSource.ref2Mobile || '', 
+                    relation: formSource.ref2Relation || '', 
+                    address: formSource.ref2Address || '' 
+                }
             ]
         };
+        
+        console.log('✅ newFormData created with keys:', Object.keys(newFormData));
+        console.log('✅ newFormData.reference_name:', newFormData.reference_name);
+        console.log('✅ newFormData.aadhar_number:', newFormData.aadhar_number);
+        console.log('✅ newFormData.pan_number:', newFormData.pan_number);
+        console.log('✅ newFormData.mobile_number:', newFormData.mobile_number);
+        console.log('✅ Full newFormData:', newFormData);
+        console.log('✅ Setting formData state...');
+        setFormData(newFormData);
+
+        // Also update lastSavedData with the same mapping
+        lastSavedData.current = { ...newFormData };
 
         const currentAddr = formSource.current_address || dynamicFields.address?.street || '';
         const permanentAddr = formSource.permanent_address || '';
@@ -121,7 +127,29 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
             currentLandmark === permanentLandmark) {
             setIsPermanentSameAsCurrent(true);
         }
-    }, [leadInfo]);
+    }, [
+        leadInfo, 
+        isCoApplicant, 
+        // Use JSON.stringify to create a stable dependency that changes when data changes
+        JSON.stringify(leadInfo?.dynamic_fields?.applicant_form || {}),
+        JSON.stringify(leadInfo?.dynamic_fields?.co_applicant_form || {})
+    ]);
+    
+    // Additional useEffect to log when leadData prop changes
+    useEffect(() => {
+        console.log('🔔 leadData/lead prop changed!');
+        console.log('🔔 New leadData._id:', leadInfo._id);
+        console.log('🔔 New applicant_form:', leadInfo?.dynamic_fields?.applicant_form);
+        console.log('🔔 New co_applicant_form:', leadInfo?.dynamic_fields?.co_applicant_form);
+    }, [leadData, lead]);
+    
+    // Additional useEffect to log formData state changes
+    useEffect(() => {
+        console.log('📊 formData state updated:', formData);
+        console.log('📊 formData.reference_name:', formData.reference_name);
+        console.log('📊 formData.aadhar_number:', formData.aadhar_number);
+        console.log('📊 formData.pan_number:', formData.pan_number);
+    }, [formData]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({
@@ -147,15 +175,26 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
     };
 
     const handleFieldBlur = async (field) => {
+        console.log(`🔵 handleFieldBlur called for field: ${field}`);
+        console.log(`🔵 Current value: ${formData[field]}`);
+        console.log(`🔵 Last saved value: ${lastSavedData.current[field]}`);
+        
         if (formData[field] === lastSavedData.current[field]) {
+            console.log(`⏭️ Skipping save - value unchanged`);
             return;
         }
         
+        console.log(`💾 Saving field: ${field} with value:`, formData[field]);
         setIsSaving(true);
+        
+        // Optimistically update lastSavedData immediately to prevent duplicate saves
+        const previousValue = lastSavedData.current[field];
+        lastSavedData.current = { ...formData };
+        
         try {
             if (isCoApplicant) {
+                console.log('📤 Saving co-applicant form data:', formData);
                 // For co-applicant, update via parent component
-                // CRITICAL FIX: Only send the specific field being updated
                 if (onUpdate) {
                     await onUpdate({
                         dynamic_fields: {
@@ -164,21 +203,27 @@ export default function LoginFormSection({ leadData, lead, onUpdate, onGenerateS
                     });
                 }
             } else {
+                console.log('📤 Saving applicant form data:', formData);
                 // For primary applicant, use parent update function
-                // CRITICAL FIX: Only send the specific field being updated
                 if (onUpdate) {
-                    await onUpdate({
+                    const updatePayload = {
                         dynamic_fields: {
                             applicant_form: formData
                         }
-                    });
+                    };
+                    console.log('📦 Update payload:', JSON.stringify(updatePayload, null, 2));
+                    await onUpdate(updatePayload);
+                    console.log('✅ onUpdate completed - parent should refresh data now');
                 }
             }
             
-            lastSavedData.current = { ...formData };
+            console.log('✅ Save successful! Data updated in backend');
             setSaveMessage(`✅ ${isCoApplicant ? 'Co-Applicant' : 'Applicant'} form data saved`);
             setTimeout(() => setSaveMessage(''), 3000);
         } catch (error) {
+            console.error('❌ Save failed:', error);
+            // Revert optimistic update on error
+            lastSavedData.current[field] = previousValue;
             setSaveMessage(`❌ Failed to update: ${error.message}`);
             setTimeout(() => setSaveMessage(''), 3000);
         } finally {

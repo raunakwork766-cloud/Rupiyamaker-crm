@@ -150,11 +150,15 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   
   // Enhanced handleChange function to handle auto-resize for howToProcess and purposeOfLoan fields
   const handleChangeWithResize = (fieldName, value) => {
-    console.log(`📝 handleChangeWithResize called - Field: ${fieldName}, Value: ${value}`);
+    console.log(`📝 handleChangeWithResize called - Field: ${fieldName}, Value: "${value}"`);
     // Convert text to uppercase for the howToProcess and purposeOfLoan fields
     const processedValue = (fieldName === 'howToProcess' || fieldName === 'purposeOfLoan') ? value.toUpperCase() : value;
-    console.log(`📝 Processed value (uppercase): ${processedValue}`);
-    setFields(prev => ({ ...prev, [fieldName]: processedValue }));
+    console.log(`📝 Processed value (uppercase): "${processedValue}"`);
+    setFields(prev => {
+      const newFields = { ...prev, [fieldName]: processedValue };
+      console.log(`📝 Updated fields state:`, newFields);
+      return newFields;
+    });
     
     // Auto-resize the textarea if it's the howToProcess field
     if (fieldName === 'howToProcess' && howToProcessTextareaRef.current) {
@@ -341,6 +345,13 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   const handleBlur = async (field, value) => {
     console.log(`🔍 HowToProcessSection: handleBlur called for field: ${field}, value: ${value}`);
     console.log(`🔍 Current field value: ${fields[field]}`);
+    console.log(`🔍 Value type: ${typeof value}, Value length: ${value?.length}`);
+    
+    // Skip if value is undefined or null
+    if (value === undefined || value === null) {
+      console.log(`⏭️ HowToProcessSection: Skipping save - value is ${value}`);
+      return;
+    }
     
     // Get the original value from the lead data to compare against
     const getOriginalValue = (field) => {
@@ -360,7 +371,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     };
     
     const originalValue = getOriginalValue(field);
-    console.log(`🔍 Original lead value for ${field}: ${originalValue}`);
+    console.log(`🔍 Original lead value for ${field}: "${originalValue}"`);
     
     // For loan amount, tenure, and year fields, we need to compare numbers properly
     let normalizedValue = value;
@@ -379,8 +390,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       normalizedOriginal = (originalValue || "").toString().trim();
     }
     
+    console.log(`🔍 Normalized new value: "${normalizedValue}"`);
+    console.log(`🔍 Normalized original value: "${normalizedOriginal}"`);
+    
+    // TEMPORARY: Force save for purposeOfLoan to debug
+    const forceSave = (field === 'purposeOfLoan' || field === 'howToProcess');
+    
     // Only save if the value has actually changed from the original
-    if (normalizedValue === normalizedOriginal) {
+    if (!forceSave && normalizedValue === normalizedOriginal) {
       console.log(`⏭️ HowToProcessSection: No change detected for ${field}, skipping save`);
       return;
     }
@@ -451,6 +468,10 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   
   // Function to save process data to backend API - like AboutSection
   const saveToAPI = async (field, value) => {
+    console.log(`\n========== SAVE TO API START ==========`);
+    console.log(`📤 saveToAPI called with field: "${field}", value: "${value}"`);
+    console.log(`📤 Value type: ${typeof value}, Value length: ${value?.length}`);
+    
     if (!lead?._id) {
       console.warn('HowToProcessSection: No lead ID available, cannot save to API');
       return false;
@@ -470,6 +491,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         : `/api/leads/${lead._id}?user_id=${userId}`;
       
       console.log(`📡 HowToProcessSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+      console.log(`📡 API URL: ${apiUrl}`);
 
       
       // Map field names to process schema field names
@@ -531,7 +553,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         }
       };
 
-      console.log(`📡 HowToProcessSection: Making API call to update process.${processField}:`, JSON.stringify(updateData, null, 2));
+      console.log(`\n========== UPDATE DATA STRUCTURE ==========`);
+      console.log(`📦 updateData.dynamic_fields.process:`, JSON.stringify(updateData.dynamic_fields.process, null, 2));
+      console.log(`📦 updateData.activity:`, JSON.stringify(updateData.activity, null, 2));
+      console.log(`📦 Full request body that will be sent:`, JSON.stringify(updateData, null, 2));
+      console.log(`========== END UPDATE DATA ==========\n`);
 
       const response = await fetch(apiUrl, {
         method: 'PUT',
@@ -542,6 +568,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         body: JSON.stringify(updateData)
       });
 
+      console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ API Error Response:`, errorText);
@@ -551,6 +579,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       const responseData = await response.json();
       console.log(`✅ HowToProcessSection: Successfully saved process.${processField} to API`);
       console.log(`📨 Backend response:`, responseData);
+      console.log(`📨 Backend returned process data:`, responseData?.dynamic_fields?.process);
+      console.log(`📨 Verify purpose_of_loan in response:`, responseData?.dynamic_fields?.process?.purpose_of_loan);
       console.log(`✅ Activity should have been created for: ${processField}`);
       
       // Update the lead object in memory to reflect the change
@@ -559,6 +589,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           lead.dynamic_fields.process = {};
         }
         lead.dynamic_fields.process[processField] = processedValue;
+        console.log(`✅ Updated lead.dynamic_fields.process in memory:`, lead.dynamic_fields.process);
       }
       
       // Call onSave callback if provided to notify parent component

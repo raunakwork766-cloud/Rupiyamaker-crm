@@ -92,6 +92,16 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
   // Sync fields with data prop changes
   useEffect(() => {
+    console.log('🔄 [sections/LoginFormSection] useEffect triggered');
+    console.log('📦 data prop:', data);
+    console.log('📦 data keys:', Object.keys(data || {}));
+    console.log('📦 data.referenceNameForLogin:', data?.referenceNameForLogin);
+    console.log('📦 data.aadharNumber:', data?.aadharNumber);
+    console.log('📦 data.panCard:', data?.panCard);
+    console.log('📦 leadCustomerName:', leadCustomerName);
+    console.log('📦 mobileNumber:', mobileNumber);
+    console.log('📦 bankName:', bankName);
+    
     setFields({
       // For co-applicants, only use their own data, not fallback to primary applicant's data
       referenceNameForLogin: isCoApplicant ? (data?.referenceNameForLogin || "") : (data?.referenceNameForLogin || ""),
@@ -137,6 +147,10 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       ref2Relation: data?.ref2Relation || "",
       ref2Address: data?.ref2Address || "",
     });
+    
+    console.log('✅ [sections/LoginFormSection] Fields updated');
+    console.log('✅ fields will be set with referenceNameForLogin:', data?.referenceNameForLogin);
+    console.log('✅ fields will be set with aadharNumber:', data?.aadharNumber);
   }, [data, bankName, mobileNumber, isCoApplicant, isPublic]);
 
   // Sync bankSearch with the actual field value when it changes externally
