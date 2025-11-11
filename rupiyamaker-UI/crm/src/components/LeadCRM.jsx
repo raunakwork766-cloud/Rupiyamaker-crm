@@ -5419,7 +5419,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Handle status change from dropdown - supports hierarchical navigation and sub-status selection
     const handleStatusChange = async (rowIdx, selectedItem, isMainStatus = false) => {
-        const lead = filteredLeadsData[rowIdx];
+        // Handle header dropdown - use selectedLead directly
+        const lead = rowIdx === 'header' ? selectedLead : filteredLeadsData[rowIdx];
+        
+        if (!lead) {
+            message.error('Lead not found');
+            return;
+        }
 
         // Handle if selectedItem is an object with name property
         const selectedValue = typeof selectedItem === 'object' ? selectedItem.name : selectedItem;
@@ -5533,7 +5539,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         const updatedLeads = [...filteredLeads];
                         const shouldUpdateCreatedAt = currentLeadIsNotALead && !newStatusIsNotALead;
                         const updatedLeadData = { 
-                            ...updatedLeads[rowIdx], 
+                            ...updatedLeads[rowIdx === 'header' ? filteredLeads.findIndex(l => l._id === lead._id) : rowIdx], 
                             status: mainStatusName,
                             sub_status: selectedValue,
                             parent_status: parentStatus,
@@ -5542,7 +5548,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 created_at: updatePayload.created_at 
                             })
                         };
-                        updatedLeads[rowIdx] = updatedLeadData;
+                        
+                        // Update the array
+                        if (rowIdx === 'header') {
+                            const idx = filteredLeads.findIndex(l => l._id === lead._id);
+                            if (idx !== -1) {
+                                updatedLeads[idx] = updatedLeadData;
+                            }
+                        } else {
+                            updatedLeads[rowIdx] = updatedLeadData;
+                        }
                         
                         setFilteredLeads(updatedLeads);
 
@@ -5566,6 +5581,34 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         
                         // Update filteredLeads to refresh the table display
                         setFilteredLeads(allLeadsUpdated);
+                        
+                        // ✅ CRITICAL: Update selectedLead if this is the header dropdown
+                        if (rowIdx === 'header' && selectedLead && selectedLead._id === lead._id) {
+                            setSelectedLead({
+                                ...selectedLead,
+                                status: mainStatusName,
+                                sub_status: selectedValue,
+                                parent_status: parentStatus,
+                                ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                                ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
+                                    created_at: updatePayload.created_at 
+                                })
+                            });
+                            
+                            // Force update filteredLeadsData to trigger re-render in table
+                            setFilteredLeadsData(prev => 
+                                prev.map(l => l._id === lead._id ? {
+                                    ...l,
+                                    status: mainStatusName,
+                                    sub_status: selectedValue,
+                                    parent_status: parentStatus,
+                                    ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                                    ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
+                                        created_at: updatePayload.created_at 
+                                    })
+                                } : l)
+                            );
+                        }
                         
                         // Immediately update status counts to reflect the change
                         // Status counts will update automatically via memoized statusCounts
@@ -6332,10 +6375,72 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         {"←"}
                     </button>
                     <User className="text-cyan-300 w-8 h-6 sm:w-10 sm:h-8 drop-shadow" />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <h1 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-cyan-300 tracking-wide drop-shadow">
-                            {selectedLead.name || 'Lead Details'}
+                            {`${selectedLead.first_name || ''} ${selectedLead.last_name || ''}`.trim() || 
+                             selectedLead.customer_name || 
+                             selectedLead.name || 
+                             'Lead Details'}
                         </h1>
+                        
+                        {/* Status Dropdown - Same as table */}
+                        {canUpdateStatus() && (
+                            <div 
+                                className="relative status-dropdown-container"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <button
+                                    className="bg-gray-800 text-white py-2 px-3 rounded-md border border-gray-600 hover:bg-gray-700 transition-colors min-w-[180px] max-w-[280px] flex justify-between items-center gap-2 status-dropdown-button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Use a special identifier for header dropdown
+                                        handleStatusDropdownClick('header', e);
+                                    }}
+                                >
+                                    <div className="font-medium text-white text-sm text-left flex-1 overflow-hidden">
+                                        {(() => {
+                                            if (selectedLead.sub_status) {
+                                                const subStatusName = typeof selectedLead.sub_status === 'object' 
+                                                    ? (selectedLead.sub_status.name || 'Unknown Sub-Status') 
+                                                    : (selectedLead.sub_status || 'Unknown Sub-Status');
+                                                const statusName = typeof selectedLead.status === 'object' 
+                                                    ? (selectedLead.status.name || 'Unknown Status') 
+                                                    : (selectedLead.status || 'Unknown Status');
+                                                    
+                                                return (
+                                                    <div className="leading-tight">
+                                                        <div className="font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                                                            {subStatusName}
+                                                        </div>
+                                                        <div className="text-xs text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">
+                                                            {statusName}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            } else {
+                                                const statusName = typeof selectedLead.status === 'object' 
+                                                    ? (selectedLead.status.name || 'Select Status') 
+                                                    : (selectedLead.status || 'Select Status');
+                                                return (
+                                                    <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                                                        {statusName}
+                                                    </div>
+                                                );
+                                            }
+                                        })()}
+                                    </div>
+                                    <svg
+                                        className={`w-5 h-5 flex-shrink-0 transition-transform ${showStatusDropdown === 'header' ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+                            </div>
+                        )}
+                        
                         {selectedLead?.file_sent_to_login && (
                             <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center">
                                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -6441,6 +6546,119 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         )}
                     </div>
                 </div>
+
+                {/* Header Status Dropdown Menu - Same as table dropdown */}
+                {showStatusDropdown === 'header' && selectedLead && (
+                    <div
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-xl z-[9999] status-dropdown-menu flex flex-col"
+                        style={{
+                            top: `${dropdownPosition.top}px`,
+                            left: `${dropdownPosition.left}px`,
+                            minWidth: '280px',
+                            maxWidth: '400px',
+                            maxHeight: `${dropdownPosition.maxHeight}px`,
+                            backgroundColor: 'white',
+                            zIndex: 9999,
+                            overflowY: 'hidden'
+                        }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
+                        }}
+                    >
+                        {/* Header with navigation */}
+                        <div className="p-3 border-b border-gray-200 bg-white z-10 rounded-t-lg">
+                            {department === "leads" && !showMainStatuses && selectedMainStatus && (
+                                <div className="flex items-center justify-between mb-2">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleBackToMainStatuses();
+                                        }}
+                                        className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                    >
+                                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                        Back to Main Statuses
+                                    </button>
+                                    <span className="text-xs text-gray-600 font-medium">{selectedMainStatus}</span>
+                                </div>
+                            )}
+                            
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
+                                <input
+                                    type="text"
+                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:border-sky-400"
+                                    placeholder={department === "leads" ? (showMainStatuses ? "Search statuses..." : "Search sub-statuses...") : "Search status options..."}
+                                    value={statusSearchTerm}
+                                    onChange={(e) => setStatusSearchTerm(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        {/* Options list */}
+                        <div className="overflow-y-auto bg-white rounded-b-lg flex-1" style={{ overflowY: 'auto', maxHeight: 'calc(100% - 80px)' }}>
+                            {getFilteredStatusOptions().length > 0 ? (
+                                getFilteredStatusOptions().map((status, statusIndex) => {
+                                    const statusName = typeof status === 'object' ? status.name : status;
+                                    const isMainStatusView = department === "leads" && showMainStatuses && !statusSearchTerm;
+                                    const isActualMainStatus = statusHierarchy[statusName] && statusHierarchy[statusName].length > 0;
+                                    const shouldTreatAsMainStatus = isMainStatusView && isActualMainStatus;
+                                    
+                                    const isCurrentStatus = (
+                                        (typeof selectedLead.sub_status === 'object' ? (selectedLead.sub_status?.name || '') === statusName : selectedLead.sub_status === statusName) || 
+                                        (typeof selectedLead.status === 'object' ? (selectedLead.status?.name || '') === statusName : selectedLead.status === statusName)
+                                    );
+                                    
+                                    return (
+                                        <div
+                                            key={`header-status-${statusIndex}-${statusName}`}
+                                            className="px-4 py-3 cursor-pointer text-black hover:bg-blue-200 transition-colors border-b border-gray-100 last:border-b-0"
+                                            style={{
+                                                backgroundColor: isCurrentStatus ? '#FFFF00' : '',
+                                                fontWeight: isCurrentStatus ? 'bold' : 'normal'
+                                            }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setClickedStatusOption(statusName);
+                                                setTimeout(() => {
+                                                    handleStatusChange('header', status, shouldTreatAsMainStatus);
+                                                    setTimeout(() => setClickedStatusOption(null), 100);
+                                                }, 150);
+                                            }}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-sm font-medium text-left select-none">
+                                                    {statusName}
+                                                    {statusSearchTerm && getMainStatusForSubStatus(statusName) && (
+                                                        <div className="text-xs text-gray-500 mt-1">
+                                                            Main Status: {getMainStatusForSubStatus(statusName)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {shouldTreatAsMainStatus && (
+                                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <div className="px-4 py-3 text-center text-gray-500">No matching statuses found</div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* FileSentToLogin Modal */}
                 {showFileSentToLoginModal && selectedLead && (

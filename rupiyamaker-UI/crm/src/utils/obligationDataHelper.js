@@ -55,7 +55,7 @@ export const saveObligationDataToAPIDebounced = debounce(async (leadId, userId, 
     console.error('Error saving obligation data to API:', error);
     throw error;
   }
-}, 1000); // 1000ms debounce
+}, 2000); // 2000ms debounce - increased to reduce frequent saves
 
 // Helper function to batch prepare obligation data
 export const prepareObligationData = (formData) => {

@@ -223,6 +223,8 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       case 'update':
       case 'updated':
         return '✏️';
+      case 'field_update':
+        return '📝';
       case 'status_changed':
       case 'status_change':
         return '🔄';
@@ -264,6 +266,8 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       case 'update':
       case 'updated':
         return 'border-blue-500 bg-blue-900/20';
+      case 'field_update':
+        return 'border-indigo-500 bg-indigo-900/20';
       case 'status_changed':
       case 'status_change':
         return 'border-purple-500 bg-purple-900/20';
@@ -306,6 +310,24 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       case 'update':
       case 'updated':
         return `Lead details updated by ${activity.user_name || 'System'}`;
+      case 'field_update':
+        // 🎯 NEW: Individual field update - simple text, details shown separately
+        const fieldName = activity.details?.field_display_name || activity.details?.field_name || 'Field';
+        
+        // Special labels for obligation-related fields
+        if (activity.details?.field_name === 'obligations') {
+          return `Obligations updated by ${activity.user_name || 'System'}`;
+        } else if (activity.details?.field_name === 'check_eligibility') {
+          return `Check Eligibility updated by ${activity.user_name || 'System'}`;
+        } else if (activity.details?.field_name === 'totalObligation') {
+          return `Total Obligation updated by ${activity.user_name || 'System'}`;
+        } else if (activity.details?.field_name === 'cibilScore') {
+          return `CIBIL Score updated by ${activity.user_name || 'System'}`;
+        } else if (activity.details?.field_name === 'totalBtPos') {
+          return `Total BT POS updated by ${activity.user_name || 'System'}`;
+        }
+        
+        return `${fieldName} updated by ${activity.user_name || 'System'}`;
       case 'status_changed':
       case 'status_change':
         const fromStatus = activity.details?.from_status || activity.details?.old_status || 'N/A';
@@ -373,6 +395,9 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       case 'updated':
         return activityType === 'updated' || activityType === 'update';
       
+      case 'field_update':
+        return activityType === 'field_update';
+      
       case 'assigned':
         return activityType === 'assigned' || activityType === 'assignment';
       
@@ -423,6 +448,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
     { value: 'all', label: 'All Activities' },
     { value: 'created', label: 'Created' },
     { value: 'updated', label: 'Updated' },
+    { value: 'field_update', label: 'Field Changes' },
     { value: 'status_changed', label: 'Status Changes' },
     { value: 'sub_status_change', label: 'Sub-Status Changes' },
     { value: 'assigned', label: 'Assignments' },
@@ -566,6 +592,139 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                 </div>
                                 {activity.details && Object.keys(activity.details).length > 0 && (
                                   <div className="text-sm text-gray-600">
+                                    {/* 🎯 NEW: Show field changes in clean format */}
+                                    {(activity.action === 'field_update' || activity.activity_type === 'field_update') && (
+                                      <div className="mt-2">
+                                        {/* Special handling for Obligations data */}
+                                        {activity.details.is_obligation_data || activity.details.field_name === 'obligations' ? (
+                                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-md">
+                                            <div className="space-y-3">
+                                              {/* Old Obligations */}
+                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
+                                                <div>
+                                                  <span className="font-semibold text-gray-700 block mb-2">📋 Previous Obligations:</span>
+                                                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm space-y-3">
+                                                    {activity.details.old_value.split('\n\n').map((row, idx) => (
+                                                      <div key={idx} className="bg-white border border-red-300 rounded p-2">
+                                                        {row.split('\n').map((line, lineIdx) => (
+                                                          <div key={lineIdx} className={`text-red-800 py-0.5 ${lineIdx === 0 ? 'font-bold text-red-900' : 'pl-2'}`}>
+                                                            {line}
+                                                          </div>
+                                                        ))}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {/* Arrow separator */}
+                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
+                                                <div className="text-center text-gray-400">
+                                                  <span className="text-2xl">⬇</span>
+                                                </div>
+                                              )}
+                                              
+                                              {/* New Obligations */}
+                                              <div>
+                                                <span className="font-semibold text-gray-700 block mb-2">✅ Updated Obligations:</span>
+                                                <div className="bg-green-50 border border-green-200 rounded p-3 text-sm space-y-3">
+                                                  {activity.details.new_value.split('\n\n').map((row, idx) => (
+                                                    <div key={idx} className="bg-white border border-green-300 rounded p-2">
+                                                      {row.split('\n').map((line, lineIdx) => (
+                                                        <div key={lineIdx} className={`text-green-800 py-0.5 ${lineIdx === 0 ? 'font-bold text-green-900' : 'pl-2'}`}>
+                                                          {line}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : (activity.details.is_check_eligibility || activity.details.field_name === 'check_eligibility') ? (
+                                          /* Special handling for Check Eligibility data */
+                                          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500 p-4 rounded-r-md">
+                                            <div className="space-y-3">
+                                              {/* Old Check Eligibility */}
+                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
+                                                <div>
+                                                  <span className="font-semibold text-gray-700 block mb-2">📊 Previous Eligibility:</span>
+                                                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm">
+                                                    {activity.details.old_value.split('\n').map((line, idx) => (
+                                                      <div key={idx} className="text-red-800 py-1 flex items-start">
+                                                        <span className="mr-2">•</span>
+                                                        <span className="font-medium">{line}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {/* Arrow separator */}
+                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
+                                                <div className="text-center text-gray-400">
+                                                  <span className="text-2xl">⬇</span>
+                                                </div>
+                                              )}
+                                              
+                                              {/* New Check Eligibility */}
+                                              <div>
+                                                <span className="font-semibold text-gray-700 block mb-2">✅ Updated Eligibility:</span>
+                                                <div className="bg-green-50 border border-green-200 rounded p-3 text-sm">
+                                                  {activity.details.new_value.split('\n').map((line, idx) => (
+                                                    <div key={idx} className="text-green-800 py-1 flex items-start">
+                                                      <span className="mr-2">•</span>
+                                                      <span className="font-medium">{line}</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : (activity.details.field_name === 'totalObligation' || activity.details.field_name === 'totalBtPos' || activity.details.field_name === 'cibilScore') ? (
+                                          /* Special handling for financial/score fields */
+                                          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 p-4 rounded-r-md">
+                                            <div className="flex items-center justify-center space-x-4">
+                                              <div className="text-center">
+                                                <div className="text-xs text-gray-600 mb-1">Previous Value</div>
+                                                <div className="px-4 py-2 bg-red-100 text-red-800 rounded-lg font-semibold text-lg">
+                                                  {activity.details.field_name === 'cibilScore' 
+                                                    ? (activity.details.old_value || 'Not set')
+                                                    : `₹${activity.details.old_value || '0'}`
+                                                  }
+                                                </div>
+                                              </div>
+                                              <div className="text-gray-400 text-3xl">→</div>
+                                              <div className="text-center">
+                                                <div className="text-xs text-gray-600 mb-1">New Value</div>
+                                                <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold text-lg">
+                                                  {activity.details.field_name === 'cibilScore' 
+                                                    ? activity.details.new_value
+                                                    : `₹${activity.details.new_value}`
+                                                  }
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          /* Regular field update display */
+                                          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-md">
+                                            <div className="flex items-center space-x-2">
+                                              <span className="font-medium text-gray-700">FROM:</span>
+                                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
+                                                {activity.details.old_value || 'Not set'}
+                                              </span>
+                                              <span className="text-gray-500">→</span>
+                                              <span className="font-medium text-gray-700">TO:</span>
+                                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
+                                                {activity.details.new_value}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    
                                     {/* Show comments/notes */}
                                     {activity.details.comment && (
                                       <p className="italic">"{activity.details.comment}"</p>

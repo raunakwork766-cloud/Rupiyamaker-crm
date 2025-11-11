@@ -803,12 +803,24 @@ class LeadsDB:
             old_fields = current_lead.get("dynamic_fields", {})
             new_fields = update_data["dynamic_fields"]
             
-            # Find changed fields
+            # Find changed fields with DEEP comparison for complex objects
             changed_fields = {}
             for key, value in new_fields.items():
-                if key not in old_fields or old_fields[key] != value:
+                old_value = old_fields.get(key)
+                
+                # Deep comparison for complex structures
+                if isinstance(value, (dict, list)) and isinstance(old_value, (dict, list)):
+                    # Use JSON serialization for deep comparison
+                    import json
+                    if json.dumps(value, sort_keys=True, default=str) != json.dumps(old_value, sort_keys=True, default=str):
+                        changed_fields[key] = {
+                            "from": old_value,
+                            "to": value
+                        }
+                elif old_value != value:
+                    # Simple value comparison
                     changed_fields[key] = {
-                        "from": old_fields.get(key),
+                        "from": old_value,
                         "to": value
                     }
                     
@@ -836,25 +848,247 @@ class LeadsDB:
         if changes:
             # Check if we have changes other than the specifically handled ones
             special_fields = {"status", "sub_status", "assigned_to", "department_id", "assign_report_to"}
-            has_other_changes = any(field not in special_fields for field in changes.keys())
             
-            # Create general update activity if there are non-special field changes
-            # or if only special fields changed but no specific activity was created
-            if has_other_changes:
-                # Get user name for activity
-                updated_by_name = await self._get_user_name(user_id)
+            # Get user name once for all activities
+            updated_by_name = await self._get_user_name(user_id)
+            
+            # 🎯 NEW: Create INDIVIDUAL activity for EACH field change (better visibility)
+            for field_name, change_data in changes.items():
+                # Skip already handled special fields
+                if field_name in special_fields:
+                    continue
                 
-                activity_data = {
-                    "lead_id": lead_id,
-                    "user_id": user_id,
-                    "user_name": updated_by_name,
-                    "activity_type": "update",
-                    "description": "Lead information updated",
-                    "details": {"changes": changes},
-                    "created_at": update_data["updated_at"]
-                }
-                await self.activity_collection.insert_one(activity_data)
-                print(f"✅ Recorded general update activity with {len(changes)} field changes")
+                # Format field name for better readability
+                field_display_name = field_name.replace('_', ' ').title()
+                
+                # Handle nested dynamic_fields changes
+                if field_name == "dynamic_fields" and isinstance(change_data, dict):
+                    # Track which fields we've already created activities for to avoid duplicates
+                    processed_obligation_fields = set()
+                    
+                    # Fields to skip - these are internal/redundant or tracked elsewhere
+                    skip_fields = {"financial_details", "eligibility_details", "identity_details"}
+                    
+                    # Create separate activity for each nested field in dynamic_fields
+                    for nested_field, nested_change in change_data.items():
+                        # Skip if this is an obligation-related field that we've already processed
+                        if nested_field in processed_obligation_fields:
+                            continue
+                        
+                        # Skip internal/redundant fields
+                        if nested_field in skip_fields:
+                            continue
+                        
+                        nested_display_name = nested_field.replace('_', ' ').title()
+                        
+                        # Format old and new values
+                        old_val = nested_change.get("from", "Not Set")
+                        new_val = nested_change.get("to", "")
+                        
+                        # Truncate long values for readability
+                        if isinstance(old_val, str) and len(old_val) > 100:
+                            old_val = old_val[:100] + "..."
+                        if isinstance(new_val, str) and len(new_val) > 100:
+                            new_val = new_val[:100] + "..."
+                        
+                        # Handle dict/object values - IMPROVED for better readability
+                        # Special handling for obligations (array of objects)
+                        if nested_field == "obligations" and isinstance(new_val, list):
+                            # Format obligations array nicely with FRONTEND labels
+                            # Show ONLY fields that have values (not empty/zero)
+                            obligation_summary = []
+                            for idx, obl in enumerate(new_val, 1):
+                                if isinstance(obl, dict):
+                                    obl_details = [f"Row {idx}:"]
+                                    
+                                    # Only show fields that have actual values
+                                    if obl.get('bankName') and obl.get('bankName') != '':
+                                        obl_details.append(f"  • Bank Name: {obl.get('bankName')}")
+                                    if obl.get('product') and obl.get('product') != '':
+                                        obl_details.append(f"  • Product: {obl.get('product')}")
+                                    if obl.get('emi') and obl.get('emi') not in ['0', '', 0]:
+                                        obl_details.append(f"  • EMI: ₹{obl.get('emi')}")
+                                    if obl.get('outstanding') and obl.get('outstanding') not in ['0', '', 0]:
+                                        obl_details.append(f"  • Outstanding: ₹{obl.get('outstanding')}")
+                                    if obl.get('totalLoan') and obl.get('totalLoan') not in ['0', '', 0]:
+                                        obl_details.append(f"  • Total Loan: ₹{obl.get('totalLoan')}")
+                                    if obl.get('tenure') and obl.get('tenure') not in ['', 'N/A', 0]:
+                                        obl_details.append(f"  • Tenure: {obl.get('tenure')} months")
+                                    if obl.get('roi') and obl.get('roi') not in ['', 'N/A', 0]:
+                                        obl_details.append(f"  • ROI: {obl.get('roi')}%")
+                                    if obl.get('action') and obl.get('action') != '':
+                                        obl_details.append(f"  • Action: {obl.get('action')}")
+                                    
+                                    # Only add if there are actual details (more than just "Row X:")
+                                    if len(obl_details) > 1:
+                                        obligation_summary.append("\n".join(obl_details))
+                            
+                            new_val = "\n\n".join(obligation_summary) if obligation_summary else "No obligations"
+                            
+                            # Format old obligations if exists - also show only filled fields
+                            if isinstance(old_val, list):
+                                old_obligation_summary = []
+                                for idx, obl in enumerate(old_val, 1):
+                                    if isinstance(obl, dict):
+                                        obl_details = [f"Row {idx}:"]
+                                        
+                                        # Only show fields that have actual values
+                                        if obl.get('bankName') and obl.get('bankName') != '':
+                                            obl_details.append(f"  • Bank Name: {obl.get('bankName')}")
+                                        if obl.get('product') and obl.get('product') != '':
+                                            obl_details.append(f"  • Product: {obl.get('product')}")
+                                        if obl.get('emi') and obl.get('emi') not in ['0', '', 0]:
+                                            obl_details.append(f"  • EMI: ₹{obl.get('emi')}")
+                                        if obl.get('outstanding') and obl.get('outstanding') not in ['0', '', 0]:
+                                            obl_details.append(f"  • Outstanding: ₹{obl.get('outstanding')}")
+                                        if obl.get('totalLoan') and obl.get('totalLoan') not in ['0', '', 0]:
+                                            obl_details.append(f"  • Total Loan: ₹{obl.get('totalLoan')}")
+                                        if obl.get('tenure') and obl.get('tenure') not in ['', 'N/A', 0]:
+                                            obl_details.append(f"  • Tenure: {obl.get('tenure')} months")
+                                        if obl.get('roi') and obl.get('roi') not in ['', 'N/A', 0]:
+                                            obl_details.append(f"  • ROI: {obl.get('roi')}%")
+                                        if obl.get('action') and obl.get('action') != '':
+                                            obl_details.append(f"  • Action: {obl.get('action')}")
+                                        
+                                        # Only add if there are actual details
+                                        if len(obl_details) > 1:
+                                            old_obligation_summary.append("\n".join(obl_details))
+                                
+                                old_val = "\n\n".join(old_obligation_summary) if old_obligation_summary else "No obligations"
+                            else:
+                                old_val = "Not Set"
+                        
+                        # Special handling for check_eligibility (object with eligibility data)
+                        elif nested_field == "check_eligibility" and isinstance(new_val, dict):
+                            # Format check_eligibility nicely with FRONTEND labels
+                            # Show ONLY fields that have values
+                            check_fields = []
+                            if new_val.get('company_category'):
+                                cat = new_val['company_category']
+                                cat_name = cat.get('name') if isinstance(cat, dict) else cat
+                                if cat_name:
+                                    check_fields.append(f"Company Category: {cat_name}")
+                            if new_val.get('foir_percent') and new_val.get('foir_percent') not in [0, '', None]:
+                                check_fields.append(f"FOIR %: {new_val['foir_percent']}%")
+                            if new_val.get('custom_foir_percent') and new_val.get('custom_foir_percent') not in [0, '', None]:
+                                check_fields.append(f"Custom FOIR %: {new_val['custom_foir_percent']}%")
+                            if new_val.get('monthly_emi_can_pay') and new_val.get('monthly_emi_can_pay') not in [0, '', None]:
+                                check_fields.append(f"Monthly EMI Can Pay: ₹{new_val['monthly_emi_can_pay']}")
+                            if new_val.get('tenure_months') and new_val.get('tenure_months') not in [0, '', None]:
+                                check_fields.append(f"Tenure (Months): {new_val['tenure_months']}")
+                            if new_val.get('tenure_years') and new_val.get('tenure_years') not in [0, '', None]:
+                                check_fields.append(f"Tenure (Years): {new_val['tenure_years']}")
+                            if new_val.get('roi') and new_val.get('roi') not in [0, '', None]:
+                                check_fields.append(f"Rate of Interest (ROI): {new_val['roi']}%")
+                            if new_val.get('multiplier') and new_val.get('multiplier') not in [0, '', None, '0']:
+                                check_fields.append(f"Multiplier: {new_val['multiplier']}")
+                            if new_val.get('total_bt_pos') and new_val.get('total_bt_pos') not in [0, '', None]:
+                                check_fields.append(f"Total BT POS: ₹{new_val['total_bt_pos']}")
+                            if new_val.get('total_obligation') and new_val.get('total_obligation') not in [0, '', None]:
+                                check_fields.append(f"Total Obligation: ₹{new_val['total_obligation']}")
+                            
+                            new_val = "\n".join(check_fields) if check_fields else "No eligibility data"
+                            
+                            # Format old check_eligibility if exists - also show only filled fields
+                            if isinstance(old_val, dict):
+                                old_check_fields = []
+                                if old_val.get('company_category'):
+                                    cat = old_val['company_category']
+                                    cat_name = cat.get('name') if isinstance(cat, dict) else cat
+                                    if cat_name:
+                                        old_check_fields.append(f"Company Category: {cat_name}")
+                                if old_val.get('foir_percent') and old_val.get('foir_percent') not in [0, '', None]:
+                                    old_check_fields.append(f"FOIR %: {old_val['foir_percent']}%")
+                                if old_val.get('custom_foir_percent') and old_val.get('custom_foir_percent') not in [0, '', None]:
+                                    old_check_fields.append(f"Custom FOIR %: {old_val['custom_foir_percent']}%")
+                                if old_val.get('monthly_emi_can_pay') and old_val.get('monthly_emi_can_pay') not in [0, '', None]:
+                                    old_check_fields.append(f"Monthly EMI Can Pay: ₹{old_val['monthly_emi_can_pay']}")
+                                if old_val.get('tenure_months') and old_val.get('tenure_months') not in [0, '', None]:
+                                    old_check_fields.append(f"Tenure (Months): {old_val['tenure_months']}")
+                                if old_val.get('tenure_years') and old_val.get('tenure_years') not in [0, '', None]:
+                                    old_check_fields.append(f"Tenure (Years): {old_val['tenure_years']}")
+                                if old_val.get('roi') and old_val.get('roi') not in [0, '', None]:
+                                    old_check_fields.append(f"Rate of Interest (ROI): {old_val['roi']}%")
+                                if old_val.get('multiplier') and old_val.get('multiplier') not in [0, '', None, '0']:
+                                    old_check_fields.append(f"Multiplier: {old_val['multiplier']}")
+                                if old_val.get('total_bt_pos') and old_val.get('total_bt_pos') not in [0, '', None]:
+                                    old_check_fields.append(f"Total BT POS: ₹{old_val['total_bt_pos']}")
+                                if old_val.get('total_obligation') and old_val.get('total_obligation') not in [0, '', None]:
+                                    old_check_fields.append(f"Total Obligation: ₹{old_val['total_obligation']}")
+                                
+                                old_val = "\n".join(old_check_fields) if old_check_fields else "No eligibility data"
+                            else:
+                                old_val = "Not Set"
+                        
+                        # Handle other dict/list/object values
+                        elif isinstance(old_val, dict):
+                            old_val = f"[Object with {len(old_val)} fields]"
+                        elif isinstance(old_val, list):
+                            old_val = f"[Array with {len(old_val)} items]"
+                        
+                        if isinstance(new_val, dict):
+                            new_val = f"[Object with {len(new_val)} fields]"
+                        elif isinstance(new_val, list) and nested_field != "obligations":
+                            new_val = f"[Array with {len(new_val)} items]"
+                        
+                        activity_data = {
+                            "lead_id": lead_id,
+                            "user_id": user_id,
+                            "user_name": updated_by_name,
+                            "activity_type": "field_update",
+                            "description": f"{nested_display_name} updated",
+                            "details": {
+                                "field_name": nested_field,
+                                "field_display_name": nested_display_name,
+                                "old_value": old_val,
+                                "new_value": new_val,
+                                "parent_field": "dynamic_fields",
+                                "is_obligation_data": nested_field == "obligations",  # Flag for frontend
+                                "is_check_eligibility": nested_field == "check_eligibility"  # Flag for frontend
+                            },
+                            "created_at": update_data["updated_at"]
+                        }
+                        await self.activity_collection.insert_one(activity_data)
+                        print(f"✅ Recorded field update: {nested_display_name} changed from '{old_val}' to '{new_val}'")
+                        
+                        # Mark obligation-related fields as processed to avoid duplicates
+                        if nested_field == "obligations":
+                            processed_obligation_fields.add("obligations")
+                        elif nested_field == "check_eligibility":
+                            processed_obligation_fields.add("check_eligibility")
+                else:
+                    # Regular field change (not nested)
+                    old_val = change_data.get("from", "Not Set")
+                    new_val = change_data.get("to", "")
+                    
+                    # Truncate long values for readability
+                    if isinstance(old_val, str) and len(old_val) > 100:
+                        old_val = old_val[:100] + "..."
+                    if isinstance(new_val, str) and len(new_val) > 100:
+                        new_val = new_val[:100] + "..."
+                    
+                    # Handle dict/object values
+                    if isinstance(old_val, dict):
+                        old_val = f"[Object with {len(old_val)} fields]"
+                    if isinstance(new_val, dict):
+                        new_val = f"[Object with {len(new_val)} fields]"
+                    
+                    activity_data = {
+                        "lead_id": lead_id,
+                        "user_id": user_id,
+                        "user_name": updated_by_name,
+                        "activity_type": "field_update",
+                        "description": f"{field_display_name} updated",
+                        "details": {
+                            "field_name": field_name,
+                            "field_display_name": field_display_name,
+                            "old_value": old_val,
+                            "new_value": new_val
+                        },
+                        "created_at": update_data["updated_at"]
+                    }
+                    await self.activity_collection.insert_one(activity_data)
+                    print(f"✅ Recorded field update: {field_display_name} changed from '{old_val}' to '{new_val}'")
             
         return True
         

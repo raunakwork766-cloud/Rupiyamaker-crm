@@ -355,6 +355,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     }
   }, [hasUnsavedChanges, onUnsavedChangesUpdate]);
   
+  // Cleanup blur save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (blurSaveTimerRef.current) {
+        clearTimeout(blurSaveTimerRef.current);
+        console.log('💾 [CLEANUP] Cleared blur save timer on component unmount');
+      }
+    };
+  }, []);
+  
   // Force immediate DOM update when save happens
   useLayoutEffect(() => {
     if (lastSaveTime > 0) {
@@ -3863,10 +3873,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     
     console.log("Salary changed to:", formattedValue);
     
-    // Notify parent component of changes immediately for unsaved changes detection
-    if (handleChangeFunc) {
-      handleChangeFunc('salary', formattedValue);
-    }
+    // DO NOT notify parent on every keystroke - only on blur/save
+    // if (handleChangeFunc) {
+    //   handleChangeFunc('salary', formattedValue);
+    // }
   };
 
   const handlePartnerSalaryChange = (e) => {
@@ -3875,10 +3885,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     setPartnerSalary(formattedValue);
     markAsChanged();
     
-    // Notify parent component of changes immediately for unsaved changes detection
-    if (handleChangeFunc) {
-      handleChangeFunc('partner_salary', formattedValue);
-    }
+    // DO NOT notify parent on every keystroke - only on blur/save
+    // if (handleChangeFunc) {
+    //   handleChangeFunc('partner_salary', formattedValue);
+    // }
   };
 
   const handleYearlyBonusChange = (e) => {
@@ -3890,16 +3900,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     // Clear division when bonus is cleared
     if (!raw) {
       setBonusDivision(null);
-      // Notify parent of division change too
-      if (handleChangeFunc) {
-        handleChangeFunc('bonus_division', null);
-      }
+      // DO NOT notify parent on every keystroke
+      // if (handleChangeFunc) {
+      //   handleChangeFunc('bonus_division', null);
+      // }
     }
     
-    // Notify parent component of changes immediately for unsaved changes detection
-    if (handleChangeFunc) {
-      handleChangeFunc('yearly_bonus', formattedValue);
-    }
+    // DO NOT notify parent on every keystroke - only on blur/save
+    // if (handleChangeFunc) {
+    //   handleChangeFunc('yearly_bonus', formattedValue);
+    // }
   };
 
   // Handle bonus division toggle (like credit card buttons)
@@ -3921,10 +3931,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       
       markAsChanged();
       
-      // Notify parent component of changes immediately for unsaved changes detection
-      if (handleChangeFunc) {
-        handleChangeFunc('bonus_division', newDivision);
-      }
+      // DO NOT notify parent immediately - will be called on blur/save
+      // if (handleChangeFunc) {
+      //   handleChangeFunc('bonus_division', newDivision);
+      // }
     }
   };
 
@@ -4036,15 +4046,53 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         // The sorting will be handled by the dropdown change handler
         return newObligations;
       } else {
-        // Notify parent component of changes immediately for unsaved changes detection
-        if (handleChangeFunc) {
-          handleChangeFunc('obligations', newObligations);
-        }
+        // DO NOT notify parent component during typing - only on blur
+        // This prevents auto-save from triggering on every keystroke
+        // if (handleChangeFunc) {
+        //   handleChangeFunc('obligations', newObligations);
+        // }
         
         markAsChanged();
         return newObligations;
       }
     });
+  };
+
+  // Ref to store debounce timer for blur events
+  const blurSaveTimerRef = useRef(null);
+
+  // Handler for blur events on obligation input fields - triggers debounced save
+  const handleObligationFieldBlur = () => {
+    // Only proceed if there are unsaved changes and we have user interaction
+    if (!hasUnsavedChanges || !hasUserInteraction || !leadData?._id) {
+      console.log('💾 [BLUR] Skipping save - no changes or no lead ID');
+      return;
+    }
+
+    console.log('💾 [BLUR] Field unfocused, scheduling save in 500ms...');
+    
+    // Clear any existing timer
+    if (blurSaveTimerRef.current) {
+      clearTimeout(blurSaveTimerRef.current);
+      console.log('💾 [BLUR] Cleared previous save timer');
+    }
+    
+    // Set a new timer - will only save if no more blur events happen within 500ms
+    blurSaveTimerRef.current = setTimeout(async () => {
+      console.log('💾 [BLUR] 500ms elapsed with no more changes, saving now...');
+      
+      // Notify parent component about the final obligation state
+      if (handleChangeFunc) {
+        handleChangeFunc('obligations', obligations);
+      }
+      
+      try {
+        await handleSaveObligations();
+        console.log('✅ [BLUR] Save completed successfully');
+      } catch (error) {
+        console.error('❌ [BLUR] Save failed:', error);
+      }
+    }, 500); // Wait 500ms (0.5 seconds) after last blur before saving
   };
 
   // Handle credit card tenure (4%) selection with mutual exclusivity
@@ -4221,6 +4269,17 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
       
       console.log(`Deleted obligation row at index ${index}. ${newObligations.length} rows remaining.`);
+      
+      // Trigger immediate save after deletion
+      console.log('💾 [DELETE] Row deleted, triggering immediate save...');
+      setTimeout(async () => {
+        try {
+          await handleSaveObligations();
+          console.log('✅ [DELETE] Save completed successfully after row deletion');
+        } catch (error) {
+          console.error('❌ [DELETE] Save failed after row deletion:', error);
+        }
+      }, 100); // Small delay to ensure state is updated
     } else {
       // If it's the last row, just clear the values but keep the row
       console.log("Can't delete the last row. Clearing values instead.");
@@ -4262,10 +4321,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     setHasUnsavedChanges(true);
     console.log("Company category changed:", value);
     
-    // Notify parent component of changes immediately for unsaved changes detection
-    if (handleChangeFunc) {
-      handleChangeFunc('ce_company_category', value);
-    }
+    // DO NOT notify parent on every change - only on blur/save
+    // if (handleChangeFunc) {
+    //   handleChangeFunc('ce_company_category', value);
+    // }
   };
 
   const handleCeFoirPercentChange = (e) => {
@@ -4281,10 +4340,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       setCeCustomFoirPercent('');
     }
     
-    // Notify parent component of changes immediately for unsaved changes detection
-    if (handleChangeFunc) {
-      handleChangeFunc('ce_foir_percent', value);
-    }
+    // DO NOT notify parent on every change - only on blur/save
+    // if (handleChangeFunc) {
+    //   handleChangeFunc('ce_foir_percent', value);
+    // }
     
     console.log("FOIR percent changed:", value);
   };
@@ -6174,6 +6233,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     className="w-full px-3 py-2 text-white bg-gray-700 border text-lg rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
                     value={formatINR(salary)}
                     onChange={canEdit ? handleSalaryChange : undefined}
+                    onBlur={handleObligationFieldBlur}
                     disabled={!canEdit}
                     placeholder="In Rupees"
                     inputMode="numeric"
@@ -6187,6 +6247,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     className="w-full px-3 py-2 text-lg text-white bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
                     value={formatINR(partnerSalary)}
                     onChange={canEdit ? handlePartnerSalaryChange : undefined}
+                    onBlur={handleObligationFieldBlur}
                     disabled={!canEdit}
                     
                     placeholder="In Rupees"
@@ -6203,6 +6264,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       className="flex-1 px-3 py-2 text-lg text-white bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
                       value={formatINR(yearlyBonus)}
                       onChange={canEdit ? handleYearlyBonusChange : undefined}
+                      onBlur={handleObligationFieldBlur}
                       disabled={!canEdit}
                       placeholder="In Rupees"
                       inputMode="numeric"
@@ -6259,14 +6321,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       setHasUserInteraction(true);
                       setHasUnsavedChanges(true);
                       
-                      // Notify parent component of changes immediately for unsaved changes detection
-                      // Use 'loanRequired' (camelCase) to match backend field name
-                      if (handleChangeFunc) {
-                        handleChangeFunc('loanRequired', value);
-                      }
+                      // DO NOT notify parent on every keystroke - only on blur/save
+                      // if (handleChangeFunc) {
+                      //   handleChangeFunc('loanRequired', value);
+                      // }
                       
                       console.log("Loan required changed:", value);
                     }}
+                    onBlur={handleObligationFieldBlur}
                     disabled={!canEdit}
                     placeholder="In Rupees"
                     inputMode="numeric"
@@ -6934,6 +6996,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                                 }
                               }, 0);
                             }}
+                            onBlur={handleObligationFieldBlur}
                           />
                         )}
                       </td>
@@ -7023,6 +7086,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                                 }
                               }, 0);
                             }}
+                            onBlur={handleObligationFieldBlur}
                           />
                         )}
                       </td>
@@ -7040,6 +7104,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             const raw = e.target.value.replace(/[^0-9.]/g, "");
                             handleObligationChange(idx, "totalLoan", formatINR(raw));
                           }}
+                          onBlur={handleObligationFieldBlur}
                           inputMode="numeric"
                         />
                       </td>
@@ -7057,6 +7122,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             const raw = e.target.value.replace(/[^0-9.]/g, "");
                             handleObligationChange(idx, "outstanding", formatINR(raw));
                           }}
+                          onBlur={handleObligationFieldBlur}
                           inputMode="numeric"
                         />
                       </td>
@@ -7074,6 +7140,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             const raw = e.target.value.replace(/[^0-9.]/g, "");
                             handleObligationChange(idx, "emi", formatINR(raw));
                           }}
+                          onBlur={handleObligationFieldBlur}
                           readOnly={isCreditCard(row.product)}
                           inputMode="numeric"
                         />
