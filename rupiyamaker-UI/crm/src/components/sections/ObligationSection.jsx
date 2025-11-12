@@ -4546,6 +4546,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       pdfContainer.style.fontFamily = 'Arial, sans-serif';
       pdfContainer.style.color = 'black';
       
+      // Helper function to format numbers as INR with commas
+      const formatPDFValue = (value) => {
+        if (!value) return '0';
+        const strValue = String(value);
+        const number = parseFloat(strValue.replace(/[^0-9.]/g, ''));
+        if (isNaN(number)) return '0';
+        return new Intl.NumberFormat('en-IN').format(number);
+      };
+      
       // Create the PDF content HTML that matches the UI exactly
       pdfContainer.innerHTML = `
         <div style="background: white; color: black; padding: 20px; width: 100%; box-sizing: border-box;">
@@ -4565,15 +4574,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
               <div style="flex: 1; min-width: 200px;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: black; margin-bottom: 5px;">Salary</label>
-                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${salary || '0'}</div>
+                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(salary)}</div>
               </div>
               <div style="flex: 1; min-width: 200px;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: black; margin-bottom: 5px;">Partner's Salary</label>
-                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${partnerSalary || '0'}</div>
+                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(partnerSalary)}</div>
               </div>
               <div style="flex: 1; min-width: 200px;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: black; margin-bottom: 5px;">Bonus ${bonusDivision ? `(Divide by ${bonusDivision} Month${bonusDivision === 1 ? '' : 's'})` : ''}</label>
-                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${yearlyBonus || '0'}</div>
+                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(yearlyBonus)}</div>
               </div>
             </div>
 
@@ -4581,7 +4590,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
               <div style="flex: 1; min-width: 200px;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: black; margin-bottom: 5px;">Loan Amount Required</label>
-                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${loanRequired || '0'}</div>
+                <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(loanRequired)}</div>
               </div>
               <div style="flex: 1; min-width: 200px;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: black; margin-bottom: 5px;">Company Name</label>
@@ -4623,11 +4632,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             <div style="display: flex; gap: 20px; margin-bottom: 30px; justify-content: center;">
               <div style="text-align: center;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: #10b981; margin-bottom: 10px;">TOTAL BT POS</label>
-                <div style="background: #10b981; color: black; padding: 15px 30px; border-radius: 8px; font-size: 24px; font-weight: bold; min-width: 200px;">₹${totalBtPos}</div>
+                <div style="background: #10b981; color: black; padding: 15px 30px; border-radius: 8px; font-size: 24px; font-weight: bold; min-width: 200px;">₹${formatPDFValue(totalBtPos)}</div>
               </div>
               <div style="text-align: center;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: #facc15; margin-bottom: 10px;">TOTAL OBLIGATION</label>
-                <div style="background: #facc15; color: black; padding: 15px 30px; border-radius: 8px; font-size: 24px; font-weight: bold; min-width: 200px;">₹${totalObligation}</div>
+                <div style="background: #facc15; color: black; padding: 15px 30px; border-radius: 8px; font-size: 24px; font-weight: bold; min-width: 200px;">₹${formatPDFValue(totalObligation)}</div>
               </div>
               <div style="text-align: center;">
                 <label style="display: block; font-weight: bold; font-size: 18px; color: #60a5fa; margin-bottom: 10px;">CIBIL SCORE</label>
@@ -4695,9 +4704,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       <td style="padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px;">${obl.bankName || 'N/A'}</td>
                       <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.tenure || 'N/A'}</td>
                       <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.roi || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.totalLoan ? '₹' + obl.totalLoan : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.outstanding ? '₹' + obl.outstanding : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.emi ? '₹' + obl.emi : 'N/A'}</td>
+                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.totalLoan ? '₹' + formatPDFValue(obl.totalLoan) : 'N/A'}</td>
+                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.outstanding ? '₹' + formatPDFValue(obl.outstanding) : 'N/A'}</td>
+                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.emi ? '₹' + formatPDFValue(obl.emi) : 'N/A'}</td>
                       <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; background: ${actionBg}; color: ${actionColor}; font-weight: bold; font-size: 12px;">${obl.action || 'N/A'}</td>
                     </tr>
                   `;
@@ -4715,7 +4724,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <!-- Total Income -->
               <div style="flex: 1; min-width: 150px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">Total Income</label>
-                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${eligibility.totalIncome || '0'}</div>
+                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(eligibility.totalIncome)}</div>
               </div>
               <!-- Company Category -->
               <div style="flex: 1; min-width: 150px;">
@@ -4730,12 +4739,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <!-- FOIR Amount -->
               <div style="flex: 1; min-width: 160px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">FOIR Amount</label>
-                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${eligibility.foirAmount || '0'}</div>
+                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(eligibility.foirAmount)}</div>
               </div>
               <!-- Total Obligation -->
               <div style="flex: 1; min-width: 180px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">Total Obligation</label>
-                <div style="padding: 8px; background: #facc15; color: black; border: 2px solid #eab308; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${eligibility.totalObligations || totalObligation || '0'}</div>
+                <div style="padding: 8px; background: #facc15; color: black; border: 2px solid #eab308; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(eligibility.totalObligations || totalObligation)}</div>
               </div>
             </div>
 
@@ -4744,7 +4753,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <!-- Monthly EMI Can Pay -->
               <div style="flex: 1; min-width: 180px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">Monthly EMI Can Pay</label>
-                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${ceMonthlyEmiCanPay || '0'}</div>
+                <div style="padding: 8px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(ceMonthlyEmiCanPay)}</div>
               </div>
               <!-- Tenure (Months) -->
               <div style="flex: 1; min-width: 180px;">
@@ -4764,7 +4773,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <!-- TOTAL BT POS -->
               <div style="flex: 1; min-width: 180px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">TOTAL BT POS</label>
-                <div style="padding: 8px; background: #22c55e; color: black; border: 2px solid #16a34a; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${eligibility.totalBtPos || totalBtPos || '0'}</div>
+                <div style="padding: 8px; background: #22c55e; color: black; border: 2px solid #16a34a; border-radius: 6px; font-size: 18px; font-weight: bold;">₹${formatPDFValue(eligibility.totalBtPos || totalBtPos)}</div>
               </div>
             </div>
 
@@ -4773,13 +4782,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <!-- FOIR Eligibility -->
               <div style="flex: 1; min-width: 280px;">
                 <label style="display: block; font-weight: bold; font-size: 16px; color: black; margin-bottom: 5px;">FOIR Eligibility</label>
-                <div style="padding: 20px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center;">${
-                  (() => {
-                    const value = eligibility.finalEligibility || '0';
-                    // If value already has ₹, return as is, otherwise add ₹
-                    return value.includes('₹') ? value : `₹${value}`;
-                  })()
-                }</div>
+                <div style="padding: 20px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center;">₹${formatPDFValue(eligibility.finalEligibility)}</div>
               </div>
               <!-- Multiplier Eligibility -->
               <div style="flex: 1; min-width: 280px;">
@@ -4790,7 +4793,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <div style="padding: 4px 8px; background: #facc15; color: black; border: 2px solid #eab308; border-radius: 4px; font-weight: bold; font-size: 14px;">${ceMultiplier || '0'}</div>
                   </div>
                 </div>
-                <div style="padding: 20px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center;">₹${eligibility.multiplierEligibility || '0'}</div>
+                <div style="padding: 20px; background: black; color: white; border: 2px solid #6b7280; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center;">₹${formatPDFValue(eligibility.multiplierEligibility)}</div>
               </div>
             </div>
 
