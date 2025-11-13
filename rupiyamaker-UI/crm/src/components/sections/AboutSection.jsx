@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
+import { formatDateTimeIST } from '../../utils/timezoneUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -1680,16 +1681,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
             <input
               className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-              value={lead?.created_at ? new Date(lead.created_at).toLocaleString('en-IN', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-                timeZone: 'Asia/Kolkata'
-              }) : 'N/A'}
+              value={lead?.created_at ? formatDateTimeIST(lead.created_at) : 'N/A'}
               readOnly={true}
               placeholder="Date & Time (Read-only)"
               title="Lead creation date and time (IST)"

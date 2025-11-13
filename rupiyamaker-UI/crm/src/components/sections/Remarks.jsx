@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Plus, Trash2, Calendar, Edit3, Send } from 'lucide-react';
+import { formatDateTimeIST } from '../../utils/timezoneUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
@@ -216,7 +217,7 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                                     {/* Created Date */}
                                     <span className="text-black text-md flex items-center">
                                         <Calendar className="w-3 h-3 mr-1" />
-                                        {formatDate ? formatDate(note.created_at) : new Date(note.created_at).toLocaleString()}
+                                        {formatDate ? formatDate(note.created_at) : formatDateTimeIST(note.created_at)}
                                     </span>
                                 </div>
 

@@ -7,7 +7,8 @@ import {
   clearTempLeadData,
   hasCompleteLeadData,
   loadSavedLeadInfoData,
-  getTempLeadData
+  getTempLeadData,
+  saveObligationData
 } from "../utils/leadDataHelper";
 import { leadEvents } from "../utils/auth";
 
@@ -848,6 +849,7 @@ function useCreateLeadLogic() {
   const [bonusDivision, setBonusDivision] = useState("12");
   const [loanRequired, setLoanRequired] = useState("");
   const [foirPercent, setFoirPercent] = useState("60");
+  const [customFoirPercent, setCustomFoirPercent] = useState("");
 
   // Form validation states
   const [formValidationErrors, setFormValidationErrors] = useState({
@@ -872,6 +874,7 @@ function useCreateLeadLogic() {
   // --- Check Eligibility Section State ---
   const [ceCompanyCategory, setCeCompanyCategory] = useState("");
   const [ceFoirPercent, setCeFoirPercent] = useState("");
+  const [ceCustomFoirPercent, setCeCustomFoirPercent] = useState("");
   const [ceTenureMonths, setCeTenureMonths] = useState("");
   const [ceTenureYears, setCeTenureYears] = useState("");
   const [ceRoi, setCeRoi] = useState("");
@@ -2601,7 +2604,7 @@ const handleMobileNumberChange = (e) => {
         yearlyBonus,
         bonusDivision,
         foirPercent,
-        customFoirPercent: undefined, // Add if available in hook
+        customFoirPercent: customFoirPercent || undefined,
         obligations,
         loanRequired,
         companyName,
@@ -2615,7 +2618,7 @@ const handleMobileNumberChange = (e) => {
         // Add Check Eligibility section values if available in hook
         ceCompanyCategory: ceCompanyCategory || undefined,
         ceFoirPercent: ceFoirPercent || undefined,
-        ceCustomFoirPercent: undefined, // Add if available in hook
+        ceCustomFoirPercent: ceCustomFoirPercent || undefined,
         ceMonthlyEmiCanPay: ceMonthlyEmiCanPay || undefined,
         ceTenureMonths: ceTenureMonths || undefined,
         ceTenureYears: ceTenureYears || undefined,
@@ -2626,9 +2629,27 @@ const handleMobileNumberChange = (e) => {
         processingBank: currentObligationData.processingBank || undefined
       };
 
+      console.log('🔍 HOOKSTATE DEBUG - Obligation Data Being Passed:', {
+        salary,
+        partnerSalary,
+        yearlyBonus,
+        obligationsCount: obligations?.length || 0,
+        obligations: obligations,
+        cibilScore,
+        totalBtPos,
+        totalObligation
+      });
 
 
       const leadData = getFinalLeadData(parseINR, hookState);
+
+      console.log('📦 FINAL LEAD DATA - Checking Obligation Fields:', {
+        hasDynamicFields: !!leadData.dynamic_fields,
+        hasFinancialDetails: !!leadData.dynamic_fields?.financial_details,
+        monthlyIncome: leadData.dynamic_fields?.financial_details?.monthly_income,
+        obligationsCount: leadData.dynamic_fields?.obligations?.length || 0,
+        obligations: leadData.dynamic_fields?.obligations
+      });
 
 
 
@@ -2716,7 +2737,12 @@ const handleMobileNumberChange = (e) => {
 
       // --- Step 10: Log Final Data ---
       // Log the complete lead data being sent to the API
-
+      console.log('🚀 FINAL LEAD DATA BEING SENT TO API:');
+      console.log('📋 Full leadData object:', JSON.stringify(leadData, null, 2));
+      console.log('💰 Financial Details:', leadData.dynamic_fields?.financial_details);
+      console.log('📊 Obligations:', leadData.dynamic_fields?.obligations);
+      console.log('🏢 Personal Details:', leadData.dynamic_fields?.personal_details);
+      console.log('✅ Check Eligibility:', leadData.dynamic_fields?.check_eligibility);
 
 
       // --- Step 11: Make API Call ---
@@ -2929,7 +2955,7 @@ const handleMobileNumberChange = (e) => {
     companyName, setCompanyName, companyType, setCompanyType,
     salary, handleSalaryChange, partnerSalary, handlePartnerSalaryChange, yearlyBonus, handleYearlyBonusChange,
     bonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
-    foirPercent, handleFoirPercentChange, eligibility, leadFormRef, handleCheckMobile,
+    foirPercent, handleFoirPercentChange, customFoirPercent, setCustomFoirPercent, eligibility, leadFormRef, handleCheckMobile,
     // API data
     loanTypes, campaignNames, dataCodes, companyCategories, assignableUsers,
     loadingLoanTypes, loadingSettings,
@@ -2953,7 +2979,7 @@ const handleMobileNumberChange = (e) => {
     companyTypes, statusOptions, bonusDivisions, foirPercents,
     // Check Eligibility Section
     ceCompanyCategory, handleCeCompanyCategoryChange,
-    ceFoirPercent, handleCeFoirPercentChange,
+    ceFoirPercent, handleCeFoirPercentChange, ceCustomFoirPercent, setCeCustomFoirPercent,
     ceTenureMonths, handleCeTenureMonthsChange,
     ceTenureYears, handleCeTenureYearsChange,
     ceRoi, handleCeRoiChange,
@@ -4589,7 +4615,7 @@ function CreateLead() {
     companyName, setCompanyName, companyType, setCompanyType,
     salary, setSalary, partnerSalary, setPartnerSalary, yearlyBonus, setYearlyBonus,
     bonusDivision, setBonusDivision, loanRequired, setLoanRequired,
-    foirPercent, setFoirPercent, eligibility, leadFormRef, handleCheckMobile,
+    foirPercent, setFoirPercent, customFoirPercent, setCustomFoirPercent, eligibility, leadFormRef, handleCheckMobile,
     // API data
     loanTypes, campaignNames, dataCodes, companyCategories, assignableUsers,
     loadingLoanTypes, loadingSettings,
@@ -4613,7 +4639,7 @@ function CreateLead() {
     companyTypes, statusOptions, bonusDivisions, foirPercents,
     // Check Eligibility Section
     ceCompanyCategory, handleCeCompanyCategoryChange,
-    ceFoirPercent, handleCeFoirPercentChange,
+    ceFoirPercent, handleCeFoirPercentChange, ceCustomFoirPercent, setCeCustomFoirPercent,
     ceTenureMonths, handleCeTenureMonthsChange,
     ceTenureYears, handleCeTenureYearsChange,
     ceRoi, handleCeRoiChange,
@@ -5920,7 +5946,8 @@ function CreateLead() {
                   >
                     Lead Information
                   </button>
-                  <button
+                  {/* OBLIGATION TAB - COMMENTED OUT */}
+                  {/* <button
                     className={`flex-1 px-6 py-3 text-lg font-bold uppercase rounded-t-md border-b-4 transition relative ${leadSection === "obligation"
                       ? "border-sky-400 text-sky-400 bg-neutral-900"
                       : "border-transparent text-[#03B0F5] bg-neutral-800 hover:text-sky-300"
@@ -5942,7 +5969,7 @@ function CreateLead() {
                         <span className="text-red-400">❌</span>
                       )}
                     </span>
-                  </button>
+                  </button> */}
                 </div>
 
                 {/* Lead Information Section */}
@@ -6222,11 +6249,143 @@ function CreateLead() {
                 )}
 
                 {/* OBLIGATION SECTION - CONSOLIDATED */}
-                {leadSection === "obligation" && (
+                {/* COMMENTED OUT - OBLIGATION TAB HIDDEN */}
+                {/* {leadSection === "obligation" && (
                   <CustomerObligationForm 
+                    leadData={{
+                      _id: null, // Creating new lead, no ID yet
+                      dynamic_fields: {
+                        financial_details: {
+                          monthly_income: salary,
+                          partner_salary: partnerSalary,
+                          yearly_bonus: yearlyBonus,
+                          bonus_division: bonusDivision,
+                          foir_percent: foirPercent,
+                          custom_foir_percent: customFoirPercent
+                        },
+                        obligations: obligations,
+                        personal_details: {
+                          loan_required: loanRequired,
+                          company_name: companyName,
+                          company_type: companyType,
+                          company_category: companyCategory,
+                          cibil_score: cibilScore
+                        },
+                        check_eligibility: {
+                          company_category: ceCompanyCategory,
+                          foir_percent: ceFoirPercent,
+                          custom_foir_percent: ceCustomFoirPercent,
+                          monthly_emi_can_pay: ceMonthlyEmiCanPay,
+                          tenure_months: ceTenureMonths,
+                          tenure_years: ceTenureYears,
+                          roi: ceRoi,
+                          multiplier: ceMultiplier
+                        }
+                      }
+                    }}
+                    handleChangeFunc={(field, value) => {
+                      // Update parent component state when obligation data changes
+                      console.log('Obligation field changed:', field, value);
+                      
+                      // Handle different field updates
+                      if (field === 'salary') setSalary(value);
+                      else if (field === 'partnerSalary') setPartnerSalary(value);
+                      else if (field === 'yearlyBonus') setYearlyBonus(value);
+                      else if (field === 'bonusDivision') setBonusDivision(value);
+                      else if (field === 'foirPercent') setFoirPercent(value);
+                      else if (field === 'customFoirPercent') setCustomFoirPercent(value);
+                      else if (field === 'obligations') setObligations(value);
+                      else if (field === 'loanRequired') setLoanRequired(value);
+                      else if (field === 'companyName') setCompanyName(value);
+                      else if (field === 'companyType') setCompanyType(value);
+                      else if (field === 'companyCategory') setCompanyCategory(value);
+                      else if (field === 'cibilScore') setCibilScore(value);
+                      else if (field === 'totalBtPos') setTotalBtPos(value);
+                      else if (field === 'totalObligation') setTotalObligation(value);
+                      else if (field === 'ceCompanyCategory') setCeCompanyCategory(value);
+                      else if (field === 'ceFoirPercent') setCeFoirPercent(value);
+                      else if (field === 'ceCustomFoirPercent') setCeCustomFoirPercent(value);
+                      else if (field === 'ceMonthlyEmiCanPay') setCeMonthlyEmiCanPay(value);
+                      else if (field === 'ceTenureMonths') setCeTenureMonths(value);
+                      else if (field === 'ceTenureYears') setCeTenureYears(value);
+                      else if (field === 'ceRoi') setCeRoi(value);
+                      else if (field === 'ceMultiplier') setCeMultiplier(value);
+                      else if (field === 'loanEligibilityStatus') setLoanEligibilityStatus(value);
+                      else if (field === 'eligibility') {
+                        // Handle eligibility object updates
+                        setEligibility(value);
+                      }
+                      
+                    }}
                     onDataUpdate={handleObligationDataUpdate}
+                    canEdit={true}
                   />
-                )}
+                )} */}
+                
+                {/* Save Obligation Data Button - Only shown during lead creation */}
+                {/* COMMENTED OUT - OBLIGATION TAB HIDDEN */}
+                {/* {leadSection === "obligation" && (
+                  <div className="flex justify-center mt-4 mb-4">
+                    <button
+                      type="button"
+                      className="px-6 py-3 font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 shadow-lg"
+                      onClick={() => {
+                        const obligationDataToSave = {
+                          salary,
+                          partnerSalary,
+                          yearlyBonus,
+                          bonusDivision,
+                          foirPercent,
+                          customFoirPercent,
+                          obligations,
+                          loanRequired,
+                          companyName,
+                          companyType,
+                          companyCategory,
+                          cibilScore,
+                          totalBtPos,
+                          totalObligation,
+                          eligibility,
+                          ceCompanyCategory,
+                          ceFoirPercent,
+                          ceCustomFoirPercent,
+                          ceMonthlyEmiCanPay,
+                          ceTenureMonths,
+                          ceTenureYears,
+                          ceRoi,
+                          ceMultiplier,
+                          loanEligibilityStatus
+                        };
+                        
+                        console.log('💾 =====================================');
+                        console.log('💾 SAVING OBLIGATION DATA TO TEMP STORAGE');
+                        console.log('💾 =====================================');
+                        console.log('💾 Data being saved:', obligationDataToSave);
+                        console.log('💾 Salary:', obligationDataToSave.salary);
+                        console.log('💾 Obligations count:', obligationDataToSave.obligations?.length || 0);
+                        console.log('💾 Obligations array:', obligationDataToSave.obligations);
+                        console.log('💾 CIBIL Score:', obligationDataToSave.cibilScore);
+                        
+                        saveObligationData(obligationDataToSave);
+                        
+                        // Verify it was saved
+                        const savedData = getTempLeadData();
+                        console.log('✅ =====================================');
+                        console.log('✅ VERIFICATION AFTER SAVE');
+                        console.log('✅ =====================================');
+                        console.log('✅ All temp data:', savedData);
+                        console.log('✅ Obligation data specifically:', savedData.obligation);
+                        console.log('✅ Salary in saved data:', savedData.obligation?.salary);
+                        console.log('✅ Obligations in saved data:', savedData.obligation?.obligations);
+                        
+                        alert('✅ Obligation data saved successfully!\n\nNow click "Create Lead" to save the lead with this obligation data.');
+                      }}
+                    >
+                      💾 Save Changes
+                    </button>
+                  </div>
+                )} */}
+
 
                 <div className="flex justify-end gap-4 mt-8 form-actions">
                   <button 

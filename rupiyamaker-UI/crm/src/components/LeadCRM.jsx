@@ -3,6 +3,8 @@ import { Search, Filter, CheckSquare, Plus, Eye, Edit, Trash2, User, Building, C
 import { checkForDirectLeadView, handleDirectLeadViewOnMount } from '../utils/leadDirectViewFallback';
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
 import { leadEvents } from '../utils/auth';
+import { getCurrentIST, formatDateIST, formatTimeIST, formatDateTimeIST, formatShortDateIST, convertToIST } from '../utils/timezoneUtils';
+
 
 // ⚡ PERFORMANCE: Debounce hook for optimizing search/filter inputs
 function useDebounce(value, delay) {
@@ -1118,8 +1120,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [selectedFilterCategory, setSelectedFilterCategory] = useState('leadDate');
     // Get current month date range
     const getCurrentMonthRange = () => {
-        // Get current date in IST
-        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        // Get current date in IST using utility function
+        const now = getCurrentIST();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         
@@ -2533,28 +2535,37 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for performance
+        // Support multiple search terms separated by spaces (same as main filter)
         if (debouncedSearchTerm) {
-            const searchLower = debouncedSearchTerm.toLowerCase();
-            filtered = filtered.filter(lead =>
-                (typeof lead.name === 'string' && lead.name.toLowerCase().includes(searchLower)) ||
-                (typeof lead.first_name === 'string' && lead.first_name.toLowerCase().includes(searchLower)) ||
-                (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
-                (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
-                (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
-                (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
-                (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
-                (typeof lead.department_name === 'object' && lead.department_name?.name && lead.department_name.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
-                (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
-                (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
-                ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
-                (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
-            );
+            // Split search term by spaces and filter out empty strings
+            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
+            
+            filtered = filtered.filter(lead => {
+                // Lead matches if ANY of the search terms match ANY of the fields
+                return searchTerms.some(searchTerm => {
+                    const searchLower = searchTerm.toLowerCase();
+                    return (
+                        (typeof lead.name === 'string' && lead.name.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.first_name === 'string' && lead.first_name.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
+                        (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
+                        (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
+                        (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.department_name === 'object' && lead.department_name?.name && lead.department_name.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
+                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
+                    );
+                });
+            });
         }
 
         // Apply filter options - Combined status filtering
@@ -3060,28 +3071,53 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for smooth typing
+        // Support multiple search terms separated by spaces
         if (debouncedSearchTerm) {
-            const searchLower = debouncedSearchTerm.toLowerCase();
-            filtered = filtered.filter(lead =>
-                (typeof lead.name === 'string' && lead.name.toLowerCase().includes(searchLower)) ||
-                (typeof lead.first_name === 'string' && lead.first_name.toLowerCase().includes(searchLower)) ||
-                (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
-                (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
-                (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
-                (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
-                (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
-                (typeof lead.department_name === 'object' && lead.department_name?.name && lead.department_name.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
-                (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
-                ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
-                (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
-                ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
-                (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
-                (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
-            );
+            // Split search term by spaces and filter out empty strings
+            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔍 Multi-Search Active:', { 
+                    originalSearch: debouncedSearchTerm,
+                    searchTerms: searchTerms,
+                    termCount: searchTerms.length
+                });
+            }
+            
+            filtered = filtered.filter(lead => {
+                // Lead matches if ANY of the search terms match ANY of the fields
+                const matches = searchTerms.some(searchTerm => {
+                    const searchLower = searchTerm.toLowerCase();
+                    return (
+                        (typeof lead.name === 'string' && lead.name.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.first_name === 'string' && lead.first_name.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
+                        (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
+                        (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
+                        (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
+                        (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.department_name === 'object' && lead.department_name?.name && lead.department_name.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
+                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
+                        (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
+                    );
+                });
+                return matches;
+            });
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔍 Multi-Search Results:', { 
+                    matchedLeads: filtered.length,
+                    searchTerms: searchTerms
+                });
+            }
         }
 
         // Apply filter options - Combined status filtering
@@ -5519,8 +5555,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     
                     // If changing from "NOT A LEAD" to another status, update created date
                     if (currentLeadIsNotALead && !newStatusIsNotALead) {
-                        // Use IST for created_at timestamp
-                        const istDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+                        // Use IST for created_at timestamp using utility function
+                        const istDate = getCurrentIST();
                         updatePayload.created_at = istDate.toISOString();
                     }
                     
@@ -6110,32 +6146,23 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     // Format date in DD Month YYYY format (IST timezone)
     const formatDate = (date) => {
         if (!date) return '-';
-        const dateObj = new Date(date);
-        // Convert to IST timezone
-        const istDate = new Date(dateObj.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-        const day = istDate.getDate().toString().padStart(2, '0');
-        const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        const month = monthNames[istDate.getMonth()];
-        const year = istDate.getFullYear();
-        return `${day} ${month} ${year}`;
+        // Use utility function to format date in IST
+        return formatDateIST(date);
     };
 
     // Calculate days old from current date (IST timezone)
     const calculateDaysOld = (date) => {
         if (!date) return 0;
-        // Get current date in IST
-        const currentDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        // Get current date in IST using utility function
+        const currentDate = getCurrentIST();
         // Convert input date to IST
-        const leadDate = new Date(new Date(date).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const leadDate = convertToIST(date);
         const timeDifference = currentDate.getTime() - leadDate.getTime();
         const daysDifference = Math.floor(timeDifference / (1000 * 3600 * 24));
         return daysDifference;
     };
 
-    // Format date with days old
+    // Format date with age
     const formatDateWithAge = (date) => {
         if (!date) return '-';
         const formattedDate = formatDate(date);
@@ -6539,7 +6566,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         {selectedLead?.file_sent_to_login && (
                             <div className="flex items-center gap-1 bg-green-500/20 border border-green-500 text-green-400 px-3 py-1 rounded-full text-sm">
                                 <span>Sent on {selectedLead?.login_department_sent_date ?
-                                    new Date(selectedLead.login_department_sent_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) :
+                                    formatShortDateIST(selectedLead.login_department_sent_date) :
                                     'unknown date'}
                                 </span>
                             </div>
@@ -7097,7 +7124,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             <div className="relative w-[320px]">
                                 <input
                                     type="text"
-                                    placeholder="Search leads..."
+                                    placeholder="Search leads (use spaces for multiple terms)..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full py-3 pl-10 pr-10 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-base placeholder-gray-500 transition-all duration-200 ease-in-out"

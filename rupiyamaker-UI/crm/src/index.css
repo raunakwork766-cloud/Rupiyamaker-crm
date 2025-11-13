@@ -2,9 +2,13 @@
 
 /* styles/globals.css or wherever your global styles are */
 
-/* ENABLE text selection by default for all text content */
+/* ENABLE text selection by default for ALL content */
 * {
   cursor: default;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
 }
 
 /* Allow text selection for text content */
@@ -34,43 +38,44 @@ label, .form-label, p, span, div.text-content, td, th, h1, h2, h3, h4, h5, h6 {
   cursor: text !important;
 }
 
-/* Buttons and clickable elements show pointer cursor */
+/* Buttons and clickable elements show pointer cursor but ALLOW text selection */
 button, a, [role="button"], .cursor-pointer, [onclick], [onDoubleClick] {
   cursor: pointer !important;
-  user-select: none !important;
+  /* REMOVED: user-select: none - Allow copying button text if needed */
 }
 
-/* Dropdown and status elements should be clickable - NO text selection */
+/* Dropdown and status elements should be clickable but ALLOW text selection */
 .status-dropdown, .dropdown-item, select, option {
   cursor: pointer !important;
-  user-select: none !important;
+  /* REMOVED: user-select: none - Allow copying dropdown text if needed */
 }
 
-/* Navigation and menu items - NO text selection */
+/* Navigation and menu items - ALLOW text selection */
 .nav-item, .menu-item, .tab {
   cursor: pointer !important;
-  user-select: none !important;
+  /* REMOVED: user-select: none - Allow copying menu text if needed */
 }
 
-/* Icons and interactive elements - NO text selection */
+/* Icons and interactive elements - NO text selection (icons don't have text) */
 svg, .icon, .toggle-icon {
   cursor: pointer !important;
   user-select: none !important;
 }
 
-/* Modal and popup content - NO text selection */
+/* Modal and popup content - ALLOW text selection */
 .modal, .popup, .dropdown-menu {
   cursor: default !important;
-  user-select: none !important;
+  /* REMOVED: user-select: none - Allow copying modal text */
 }
 
-/* FORCE disable text selection on absolutely everything except inputs */
+/* COMMENTED OUT - This was blocking all text selection
 html *, *::before, *::after {
   user-select: none !important;
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   -ms-user-select: none !important;
 }
+*/
 
 /* ONLY these elements can have text selection */
 input, textarea, [contenteditable="true"] {

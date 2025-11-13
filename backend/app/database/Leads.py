@@ -1036,15 +1036,11 @@ class LeadsDB:
                             "user_id": user_id,
                             "user_name": updated_by_name,
                             "activity_type": "field_update",
-                            "description": f"{nested_display_name} updated",
+                            "description": nested_display_name,  # Just the field name, no " updated"
                             "details": {
-                                "field_name": nested_field,
                                 "field_display_name": nested_display_name,
                                 "old_value": old_val,
-                                "new_value": new_val,
-                                "parent_field": "dynamic_fields",
-                                "is_obligation_data": nested_field == "obligations",  # Flag for frontend
-                                "is_check_eligibility": nested_field == "check_eligibility"  # Flag for frontend
+                                "new_value": new_val
                             },
                             "created_at": update_data["updated_at"]
                         }
@@ -1078,9 +1074,8 @@ class LeadsDB:
                         "user_id": user_id,
                         "user_name": updated_by_name,
                         "activity_type": "field_update",
-                        "description": f"{field_display_name} updated",
+                        "description": field_display_name,  # Just the field name, no " updated"
                         "details": {
-                            "field_name": field_name,
                             "field_display_name": field_display_name,
                             "old_value": old_val,
                             "new_value": new_val

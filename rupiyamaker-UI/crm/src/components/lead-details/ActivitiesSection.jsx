@@ -100,29 +100,33 @@ export default function ActivitiesSection({ leadId, userId, formatDate }) {
   };
 
   const formatActivityDescription = (activity) => {
-    switch (activity.action) {
+    const action = activity.action || activity.activity_type;
+    switch (action) {
       case 'created':
-        return `Lead created by ${activity.user_name || 'System'}`;
+        return 'Lead created';
       case 'updated':
-        return `Lead details updated by ${activity.user_name || 'System'}`;
+        return 'Lead details updated';
+      case 'field_update':
+        // Simple format: Just the field display name
+        return activity.details?.field_display_name || 'Field updated';
       case 'status_changed':
-        return `Status changed from "${activity.details?.old_status || 'N/A'}" to "${activity.details?.new_status || 'N/A'}" by ${activity.user_name || 'System'}`;
+        return `Status: "${activity.details?.old_status || 'N/A'}" → "${activity.details?.new_status || 'N/A'}"`;
       case 'assigned':
-        return `Lead assigned to ${activity.details?.assigned_to_name || 'Unknown'} by ${activity.user_name || 'System'}`;
+        return `Lead assigned to ${activity.details?.assigned_to_name || 'Unknown'}`;
       case 'remark_added':
-        return `Remark added by ${activity.user_name || 'System'}`;
+        return 'Remark added';
       case 'attachment_uploaded':
-        return `Attachment "${activity.details?.filename || 'Unknown'}" uploaded by ${activity.user_name || 'System'}`;
+        return `Attachment "${activity.details?.filename || 'Unknown'}" uploaded`;
       case 'task_added':
-        return `Task "${activity.details?.task_title || 'Unknown'}" added by ${activity.user_name || 'System'}`;
+        return `Task "${activity.details?.task_title || 'Unknown'}" added`;
       case 'task_completed':
-        return `Task "${activity.details?.task_title || 'Unknown'}" completed by ${activity.user_name || 'System'}`;
+        return `Task "${activity.details?.task_title || 'Unknown'}" completed`;
       case 'login_form_updated':
-        return `Login form updated by ${activity.user_name || 'System'}`;
+        return 'Login form updated';
       case 'transferred':
-        return `Lead transferred to ${activity.details?.department || 'Unknown Department'} by ${activity.user_name || 'System'}`;
+        return `Lead transferred to ${activity.details?.department || 'Unknown Department'}`;
       default:
-        return activity.description || `${activity.action} by ${activity.user_name || 'System'}`;
+        return activity.description || action;
     }
   };
 
