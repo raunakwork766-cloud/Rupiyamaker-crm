@@ -472,6 +472,171 @@ class WarningDB:
         except Exception as e:
             logger.error(f"Error getting warnings by employee and type: {e}")
             return []
+    
+    # Warning Types Management
+    async def get_warning_types(self) -> List[Dict[str, Any]]:
+        """Get all warning types from database"""
+        try:
+            # Use a separate collection for warning types
+            types_collection = self.db.warning_types
+            cursor = types_collection.find({}).sort("value", ASCENDING)
+            types = await cursor.to_list(None)
+            
+            # Convert ObjectIds to strings
+            result = []
+            for t in types:
+                if '_id' in t:
+                    t['_id'] = str(t['_id'])
+                    t['id'] = str(t['_id'])
+                result.append(t)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting warning types: {e}")
+            return []
+    
+    async def create_warning_type(self, type_data: Dict[str, Any]) -> str:
+        """Create a new warning type"""
+        try:
+            types_collection = self.db.warning_types
+            result = await types_collection.insert_one(type_data)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error creating warning type: {e}")
+            raise
+    
+    async def update_warning_type(self, type_id: str, type_data: Dict[str, Any]) -> bool:
+        """Update an existing warning type"""
+        try:
+            types_collection = self.db.warning_types
+            result = await types_collection.update_one(
+                {"_id": ObjectId(type_id)},
+                {"$set": type_data}
+            )
+            return result.modified_count > 0 or result.matched_count > 0
+        except Exception as e:
+            logger.error(f"Error updating warning type: {e}")
+            return False
+    
+    async def delete_warning_type(self, type_id: str) -> bool:
+        """Delete a warning type"""
+        try:
+            types_collection = self.db.warning_types
+            result = await types_collection.delete_one({"_id": ObjectId(type_id)})
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"Error deleting warning type: {e}")
+            return False
+
+    # Mistake Types Management Methods
+    
+    async def get_mistake_types(self) -> List[Dict[str, Any]]:
+        """Get all mistake types from database"""
+        try:
+            types_collection = self.db.mistake_types
+            cursor = types_collection.find({}).sort("value", ASCENDING)
+            types = await cursor.to_list(None)
+            
+            # Convert ObjectIds to strings
+            result = []
+            for t in types:
+                if '_id' in t:
+                    t['_id'] = str(t['_id'])
+                    t['id'] = str(t['_id'])
+                result.append(t)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting mistake types: {e}")
+            return []
+    
+    async def create_mistake_type(self, type_data: Dict[str, Any]) -> str:
+        """Create a new mistake type"""
+        try:
+            types_collection = self.db.mistake_types
+            result = await types_collection.insert_one(type_data)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error creating mistake type: {e}")
+            raise
+    
+    async def update_mistake_type(self, type_id: str, type_data: Dict[str, Any]) -> bool:
+        """Update an existing mistake type"""
+        try:
+            types_collection = self.db.mistake_types
+            result = await types_collection.update_one(
+                {"_id": ObjectId(type_id)},
+                {"$set": type_data}
+            )
+            return result.modified_count > 0 or result.matched_count > 0
+        except Exception as e:
+            logger.error(f"Error updating mistake type: {e}")
+            return False
+    
+    async def delete_mistake_type(self, type_id: str) -> bool:
+        """Delete a mistake type"""
+        try:
+            types_collection = self.db.mistake_types
+            result = await types_collection.delete_one({"_id": ObjectId(type_id)})
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"Error deleting mistake type: {e}")
+            return False
+
+    # Warning Actions Management Methods
+    
+    async def get_warning_actions(self) -> List[Dict[str, Any]]:
+        """Get all warning actions from database"""
+        try:
+            actions_collection = self.db.warning_actions
+            cursor = actions_collection.find({}).sort("value", ASCENDING)
+            actions = await cursor.to_list(None)
+            
+            # Convert ObjectIds to strings
+            result = []
+            for a in actions:
+                if '_id' in a:
+                    a['_id'] = str(a['_id'])
+                    a['id'] = str(a['_id'])
+                result.append(a)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting warning actions: {e}")
+            return []
+    
+    async def create_warning_action(self, action_data: Dict[str, Any]) -> str:
+        """Create a new warning action"""
+        try:
+            actions_collection = self.db.warning_actions
+            result = await actions_collection.insert_one(action_data)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error creating warning action: {e}")
+            raise
+    
+    async def update_warning_action(self, action_id: str, action_data: Dict[str, Any]) -> bool:
+        """Update an existing warning action"""
+        try:
+            actions_collection = self.db.warning_actions
+            result = await actions_collection.update_one(
+                {"_id": ObjectId(action_id)},
+                {"$set": action_data}
+            )
+            return result.modified_count > 0 or result.matched_count > 0
+        except Exception as e:
+            logger.error(f"Error updating warning action: {e}")
+            return False
+    
+    async def delete_warning_action(self, action_id: str) -> bool:
+        """Delete a warning action"""
+        try:
+            actions_collection = self.db.warning_actions
+            result = await actions_collection.delete_one({"_id": ObjectId(action_id)})
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"Error deleting warning action: {e}")
+            return False
 
 # Legacy support - warning_db is now initialized in __init__.py
 # Use get_database_instances() from app.database to get warning_db instance

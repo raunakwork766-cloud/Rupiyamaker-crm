@@ -82,6 +82,8 @@ const WarningPage = memo(() => {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [warningTypes, setWarningTypes] = useState([]);
+  const [mistakeTypes, setMistakeTypes] = useState([]);
+  const [warningActions, setWarningActions] = useState([]);
   const [permissions, setPermissions] = useState({});
   const [stats, setStats] = useState({});
   const [rankings, setRankings] = useState([]);
@@ -381,6 +383,8 @@ const WarningPage = memo(() => {
     const userPermissions = checkUserPermissions();
     setPermissions(userPermissions);
     loadWarningTypes();
+    loadMistakeTypes();
+    loadWarningActions();
     loadEmployees();
     loadDepartments();
     loadWarnings();
@@ -498,6 +502,46 @@ const WarningPage = memo(() => {
         setWarningTypes(data.warning_types || []);
       }
     } catch (error) {
+    }
+  };
+
+  // Load mistake types from database
+  const loadMistakeTypes = async () => {
+    try {
+      const userId = getCurrentUserId();
+      const queryParams = new URLSearchParams();
+      if (userId) queryParams.append('user_id', userId);
+
+      const response = await fetch(`${API_URL}/warnings/mistake-types/list?${queryParams}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMistakeTypes(data.mistake_types || []);
+      }
+    } catch (error) {
+      console.error('Error loading mistake types:', error);
+    }
+  };
+
+  // Load warning actions from database
+  const loadWarningActions = async () => {
+    try {
+      const userId = getCurrentUserId();
+      const queryParams = new URLSearchParams();
+      if (userId) queryParams.append('user_id', userId);
+
+      const response = await fetch(`${API_URL}/warnings/warning-actions/list?${queryParams}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWarningActions(data.warning_actions || []);
+      }
+    } catch (error) {
+      console.error('Error loading warning actions:', error);
     }
   };
 
@@ -2987,7 +3031,7 @@ const WarningPage = memo(() => {
                       onClick={() => toggleDropdown('warningType')}
                     >
                       <span className={selectedWarningTypeName ? 'text-black' : 'text-gray-500'}>
-                        {selectedWarningTypeName || 'Select Warning Type'}
+                        {selectedWarningTypeName || 'Select Mistake Type'}
                       </span>
                       <svg className={`w-4 h-4 transition-transform ${showWarningTypeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
@@ -3003,7 +3047,7 @@ const WarningPage = memo(() => {
                             </svg>
                             <input
                               type="text"
-                              placeholder="Search warning types..."
+                              placeholder="Search mistake types..."
                               value={warningTypeSearchTerm}
                               onChange={(e) => setWarningTypeSearchTerm(e.target.value)}
                               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-black"
@@ -3012,13 +3056,10 @@ const WarningPage = memo(() => {
                           </div>
                         </div>
                         <div className="max-h-48 overflow-y-auto">
-                          {[
-                            { value: 'Late Arrival', label: 'Late Arrival' },
-                            { value: 'Late Lunch', label: 'Late Lunch' },
-                            { value: 'Abuse', label: 'Abuse' },
-                            { value: 'Early Leave', label: 'Early Leave' }
-                          ]
-                            .filter(type => type.label.toLowerCase().includes(warningTypeSearchTerm.toLowerCase()))
+                          {mistakeTypes
+                            .filter(type => 
+                              (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
+                            )
                             .map((type) => (
                               <div
                                 key={type.value}
@@ -3026,21 +3067,18 @@ const WarningPage = memo(() => {
                                 onClick={() => {
                                   console.log('Selected warning type:', type.value);
                                   handleFormChange('warning_type', type.value);
-                                  setSelectedWarningTypeName(type.label);
+                                  setSelectedWarningTypeName(type.label || type.value);
                                   setWarningTypeSearchTerm('');
                                   setShowWarningTypeDropdown(false);
                                 }}
                               >
-                                {type.label}
+                                {type.label || type.value}
                               </div>
                             ))}
-                          {[
-                            { value: 'Late Arrival', label: 'Late Arrival' },
-                            { value: 'Late Lunch', label: 'Late Lunch' },
-                            { value: 'Abuse', label: 'Abuse' },
-                            { value: 'Early Leave', label: 'Early Leave' }
-                          ].filter(type => type.label.toLowerCase().includes(warningTypeSearchTerm.toLowerCase())).length === 0 && warningTypeSearchTerm && (
-                            <div className="px-4 py-2 text-gray-500">No warning types found</div>
+                          {mistakeTypes.filter(type => 
+                            (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
+                          ).length === 0 && warningTypeSearchTerm && (
+                            <div className="px-4 py-2 text-gray-500">No mistake types found</div>
                           )}
                         </div>
                       </div>
@@ -3081,33 +3119,27 @@ const WarningPage = memo(() => {
                           </div>
                         </div>
                         <div className="max-h-48 overflow-y-auto">
-                          {[
-                            { value: 'verbal warning', label: 'Verbal Warning' },
-                            { value: 'written warning', label: 'Written Warning' },
-                            { value: 'final warning', label: 'Final Warning' },
-                            { value: 'financial penalty', label: 'Financial Penalty' }
-                          ]
-                            .filter(action => action.label.toLowerCase().includes(warningActionSearchTerm.toLowerCase()))
+                          {warningActions
+                            .filter(action => 
+                              (action.label || action.value || '').toLowerCase().includes(warningActionSearchTerm.toLowerCase())
+                            )
                             .map((action) => (
                               <div
                                 key={action.value}
                                 className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-black"
                                 onClick={() => {
                                   handleFormChange('warning_action', action.value);
-                                  setSelectedWarningActionName(action.label);
+                                  setSelectedWarningActionName(action.label || action.value);
                                   setWarningActionSearchTerm('');
                                   setShowWarningActionDropdown(false);
                                 }}
                               >
-                                {action.label}
+                                {action.label || action.value}
                               </div>
                             ))}
-                          {[
-                            { value: 'verbal warning', label: 'Verbal Warning' },
-                            { value: 'written warning', label: 'Written Warning' },
-                            { value: 'final warning', label: 'Final Warning' },
-                            { value: 'financial penalty', label: 'Financial Penalty' }
-                          ].filter(action => action.label.toLowerCase().includes((selectedWarningActionName || '').toLowerCase())).length === 0 && selectedWarningActionName && (
+                          {warningActions.filter(action => 
+                            (action.label || action.value || '').toLowerCase().includes(warningActionSearchTerm.toLowerCase())
+                          ).length === 0 && warningActionSearchTerm && (
                             <div className="px-4 py-2 text-gray-500">No warning actions found</div>
                           )}
                         </div>
@@ -3607,7 +3639,7 @@ const WarningPage = memo(() => {
                     required
                   >
                     <option value="">Select Mistake Type</option>
-                    {warningTypes.map((type) => {
+                    {mistakeTypes.map((type) => {
                       const typeValue = type.value || type;
                       const typeLabel = type.label || type;
                       return (

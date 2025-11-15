@@ -56,13 +56,13 @@ import { hrmsService } from '../services/hrmsService';
 const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
     const [isOpen, setIsOpen] = useState(false);
     
-    // Filter to show only the main tabs that go in the dropdown: campaigns, dataCodes, bankNames, channelNames, companyData, statuses, importantQuestions
+    // Filter to show only the main tabs that go in the dropdown: campaigns, dataCodes, bankNames, channelNames, companyData, statuses, importantQuestions, warningData
     const manageTabs = tabs.filter(tab => 
-        ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(tab.id)
+        ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions', 'warningData'].includes(tab.id)
     );
     
     const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isManageTabActive = ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(activeTab);
+    const isManageTabActive = ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions', 'warningData'].includes(activeTab);
     
     return (
         <div className="relative">
@@ -118,7 +118,7 @@ const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
                         
                         {/* System Management Tabs */}
                         {manageTabs
-                            .filter(tab => ['statuses', 'importantQuestions'].includes(tab.id))
+                            .filter(tab => ['statuses', 'importantQuestions', 'warningData'].includes(tab.id))
                             .map((tab) => (
                                 <button
                                     key={tab.id}
@@ -315,6 +315,8 @@ const SettingsPage = () => {
     const [emailSettings, setEmailSettings] = useState([]);
     const [adminEmails, setAdminEmails] = useState([]);
     const [importantQuestions, setImportantQuestions] = useState([]);
+    const [mistakeTypes, setMistakeTypes] = useState([]);
+    const [warningActions, setWarningActions] = useState([]);
     
     // Attachment type filter and delete state
     const [attachmentTypeFilter, setAttachmentTypeFilter] = useState('');
@@ -528,6 +530,10 @@ const SettingsPage = () => {
     // Function to close modal and reset states
     const handleCloseModal = () => {
         setShowModal(false);
+        // Reset activeTab to warningData when closing modal
+        if (activeTab === 'mistakeType' || activeTab === 'warningAction') {
+            setActiveTab('warningData');
+        }
         // Reset department dropdown states
         setShowDepartmentDropdown(false);
         setSelectedModalDepartment(null);
@@ -577,7 +583,8 @@ const SettingsPage = () => {
         { id: 'adminEmails', label: 'Admin Emails', icon: Shield, color: 'red' },
         { id: 'statuses', label: 'Status Management', icon: CheckCircle, color: 'teal' },
         { id: 'attendance', label: 'Attendance Settings', icon: Clock, color: 'emerald' },
-        { id: 'importantQuestions', label: 'Important Questions', icon: HelpCircle, color: 'violet' }
+        { id: 'importantQuestions', label: 'Important Questions', icon: HelpCircle, color: 'violet' },
+        { id: 'warningData', label: 'Warning Data', icon: AlertCircle, color: 'orange' }
     ];
 
     // Helper functions for department hierarchy
@@ -797,6 +804,10 @@ const SettingsPage = () => {
                 break;
             case 'importantQuestions':
                 loadImportantQuestions();
+                break;
+            case 'warningData':
+                loadMistakeTypes();
+                loadWarningActions();
                 break;
         }
     }, [activeTab]);
@@ -1126,6 +1137,54 @@ const SettingsPage = () => {
         }
     };
 
+    // Mistake types management functions
+    const loadMistakeTypes = async () => {
+        try {
+            console.log('📥 Loading mistake types from API...');
+            const response = await axios.get(`${API_BASE_URL}/warnings/mistake-types/list?user_id=${localStorage.getItem('userId')}`);
+            const typesData = response.data?.mistake_types || response.data || [];
+            console.log('📋 Loaded mistake types (raw):', typesData);
+            // Ensure each type has an id field
+            const typesWithIds = typesData.map(type => {
+                const mappedType = {
+                    ...type,
+                    id: type.id || type._id
+                };
+                console.log('Mapped mistake type:', mappedType);
+                return mappedType;
+            });
+            console.log('✅ Setting mistake types state:', typesWithIds);
+            setMistakeTypes(typesWithIds);
+        } catch (error) {
+            console.error('❌ Error loading mistake types:', error);
+            setMistakeTypes([]);
+        }
+    };
+
+    // Warning actions management functions
+    const loadWarningActions = async () => {
+        try {
+            console.log('📥 Loading warning actions from API...');
+            const response = await axios.get(`${API_BASE_URL}/warnings/warning-actions/list?user_id=${localStorage.getItem('userId')}`);
+            const actionsData = response.data?.warning_actions || response.data || [];
+            console.log('📋 Loaded warning actions (raw):', actionsData);
+            // Ensure each action has an id field
+            const actionsWithIds = actionsData.map(action => {
+                const mappedAction = {
+                    ...action,
+                    id: action.id || action._id
+                };
+                console.log('Mapped warning action:', mappedAction);
+                return mappedAction;
+            });
+            console.log('✅ Setting warning actions state:', actionsWithIds);
+            setWarningActions(actionsWithIds);
+        } catch (error) {
+            console.error('❌ Error loading warning actions:', error);
+            setWarningActions([]);
+        }
+    };
+
     // Status management functions
     const loadStatuses = async () => {
         console.log("Loading statuses from: ${BASE_URL}/admin/statuses");
@@ -1300,6 +1359,11 @@ const updateStatus = async (statusId, statusData) => {
         setModalType('add');
         setEditingItem(null);
         
+        // Update activeTab when adding mistake types or warning actions
+        if (type === 'mistakeType' || type === 'warningAction') {
+            setActiveTab(type);
+        }
+        
         // Initialize form data with default values based on type
         if (type === 'attachmentTypes') {
             setFormData({
@@ -1330,6 +1394,18 @@ const updateStatus = async (statusId, statusData) => {
                 question: '',
                 type: 'checkbox',
                 mandatory: true,
+                is_active: true
+            });
+        } else if (type === 'mistakeType') {
+            setFormData({
+                value: '',
+                label: '',
+                is_active: true
+            });
+        } else if (type === 'warningAction') {
+            setFormData({
+                value: '',
+                label: '',
                 is_active: true
             });
         } else {
@@ -1408,6 +1484,16 @@ const updateStatus = async (statusId, statusData) => {
             }, 100);
         }
         
+        // If editing mistake type or warning action, populate the form fields correctly
+        if (type === 'mistakeType' || type === 'warningAction') {
+            setActiveTab(type);  // Set the activeTab to show correct form fields
+            setFormData({
+                value: itemCopy.value || '',
+                label: itemCopy.label || itemCopy.value || '',
+                is_active: itemCopy.is_active !== false
+            });
+        }
+        
         // Initialize permissions when editing a role
         if (type === 'roles' && itemCopy.permissions) {
             // Format existing permissions into selectedPermissions structure
@@ -1457,6 +1543,14 @@ const updateStatus = async (statusId, statusData) => {
     };
 
     const handleDelete = async (id, type) => {
+        console.log('🗑️ handleDelete called:', { id, type });
+        
+        if (!id) {
+            console.error('❌ Cannot delete - no ID provided');
+            alert('Cannot delete this item - no ID found');
+            return;
+        }
+        
         if (!window.confirm('Are you sure you want to delete this item?')) return;
 
         // Check if item is already being deleted
@@ -1525,9 +1619,20 @@ const updateStatus = async (statusId, statusData) => {
                     endpoint = `/roles/${id}`;
                     console.log('Delete role with ID:', id);
                     break;
+                case 'mistakeType':
+                    endpoint = `/warnings/mistake-types/${id}`;
+                    console.log('🎯 Deleting mistake type:', endpoint);
+                    break;
+                case 'warningAction':
+                    endpoint = `/warnings/warning-actions/${id}`;
+                    console.log('🎯 Deleting warning action:', endpoint);
+                    break;
             }
 
+            console.log('🌐 Making DELETE request to:', `${BASE_URL}${endpoint}?user_id=${user_id}`);
             await axios.delete(`${BASE_URL}${endpoint}?user_id=${user_id}`);
+            
+            console.log('✅ Delete successful, reloading data...');
 
             // Reload data
             switch (type) {
@@ -1562,6 +1667,14 @@ const updateStatus = async (statusId, statusData) => {
                     break;
                 case 'importantQuestions':
                     loadImportantQuestions();
+                    break;
+                case 'mistakeType':
+                    console.log('🔄 Reloading mistake types...');
+                    await loadMistakeTypes();
+                    break;
+                case 'warningAction':
+                    console.log('🔄 Reloading warning actions...');
+                    await loadWarningActions();
                     break;
             }
 
@@ -1797,6 +1910,52 @@ const updateStatus = async (statusId, statusData) => {
                     alert(`Important question ${modalType === 'add' ? 'created' : 'updated'} successfully!`);
                     setLoading(false);
                     return; // Exit early for important questions
+                case 'mistakeType':
+                    // Handle mistake types
+                    const mistakeTypeData = {
+                        value: formData.value,
+                        label: formData.label || formData.value,
+                        is_active: formData.is_active !== false
+                    };
+                    
+                    const mistakeTypeId = editingItem?._id || editingItem?.id;
+                    
+                    // If no ID (editing a default), treat as create; otherwise update
+                    if (modalType === 'add' || !mistakeTypeId) {
+                        await axios.post(`${API_BASE_URL}/warnings/mistake-types?user_id=${localStorage.getItem('userId')}`, mistakeTypeData);
+                    } else {
+                        await axios.put(`${API_BASE_URL}/warnings/mistake-types/${mistakeTypeId}?user_id=${localStorage.getItem('userId')}`, mistakeTypeData);
+                    }
+                    
+                    setShowModal(false);
+                    setActiveTab('warningData');  // Reset to main tab to show the tables
+                    await loadMistakeTypes();
+                    alert(`Mistake type ${modalType === 'add' || !mistakeTypeId ? 'created' : 'updated'} successfully!`);
+                    setLoading(false);
+                    return;
+                case 'warningAction':
+                    // Handle warning actions
+                    const warningActionData = {
+                        value: formData.value,
+                        label: formData.label || formData.value,
+                        is_active: formData.is_active !== false
+                    };
+                    
+                    const warningActionId = editingItem?._id || editingItem?.id;
+                    
+                    // If no ID (editing a default), treat as create; otherwise update
+                    if (modalType === 'add' || !warningActionId) {
+                        await axios.post(`${API_BASE_URL}/warnings/warning-actions?user_id=${localStorage.getItem('userId')}`, warningActionData);
+                    } else {
+                        await axios.put(`${API_BASE_URL}/warnings/warning-actions/${warningActionId}?user_id=${localStorage.getItem('userId')}`, warningActionData);
+                    }
+                    
+                    setShowModal(false);
+                    setActiveTab('warningData');  // Reset to main tab to show the tables
+                    await loadWarningActions();
+                    alert(`Warning action ${modalType === 'add' || !warningActionId ? 'created' : 'updated'} successfully!`);
+                    setLoading(false);
+                    return;
             }
 
             if (modalType === 'add') {
@@ -2375,6 +2534,299 @@ const updateStatus = async (statusId, statusData) => {
         </div>
     );
 
+    const renderWarningDataTables = () => (
+        <div className="space-y-6">
+            {/* Mistake Types Table */}
+            <div className="bg-black rounded-xl shadow-lg overflow-hidden">
+                <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Mistake Types</h3>
+                        <p className="text-sm text-gray-300 mt-1">
+                            Configure mistake types that will be available in the warning system dropdown
+                        </p>
+                    </div>
+                    {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                        <button
+                            onClick={() => handleAdd('mistakeType')}
+                            className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-orange-600 hover:to-orange-700 transition-all"
+                        >
+                            <Plus size={16} />
+                            Add Mistake Type
+                        </button>
+                    )}
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Value</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Display Label</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Created</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-gray-900 divide-y divide-gray-700">
+                            {mistakeTypes.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
+                                        No mistake types configured. Click "Add Mistake Type" to create options for the mistake type dropdown.
+                                    </td>
+                                </tr>
+                            ) : (
+                                mistakeTypes.map((type) => (
+                                    <tr key={type._id || type.id || type.value} className="hover:bg-gray-800 transition-colors">
+                                        <td className="px-6 py-4 text-white">
+                                            <p className="font-medium">{type.value}</p>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-300">
+                                            {type.label || type.value}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                type.is_active !== false
+                                                    ? 'bg-green-100 text-green-800' 
+                                                    : 'bg-red-100 text-red-800'
+                                            }`}>
+                                                {type.is_active !== false ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                            {type.created_at ? new Date(type.created_at).toLocaleDateString() : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
+                                                <button
+                                                    onClick={() => handleEdit(type, 'mistakeType')}
+                                                    className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
+                                                    title="Edit this mistake type"
+                                                >
+                                                    <Edit size={14} />
+                                                    Edit
+                                                </button>
+                                            )}
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
+                                                <button
+                                                    onClick={() => {
+                                                        const id = type._id || type.id;
+                                                        if (!id) {
+                                                            alert('Cannot delete default items. You can edit them to create a custom version.');
+                                                            return;
+                                                        }
+                                                        handleDelete(id, 'mistakeType');
+                                                    }}
+                                                    className="text-red-400 hover:text-red-300 inline-flex items-center gap-1"
+                                                    title={type._id || type.id ? "Delete this mistake type" : "Cannot delete default items"}
+                                                >
+                                                    <Trash2 size={14} />
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Warning Actions Table */}
+            <div className="bg-black rounded-xl shadow-lg overflow-hidden">
+                <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Warning Actions</h3>
+                        <p className="text-sm text-gray-300 mt-1">
+                            Configure warning action types that will be available in the warning system dropdown
+                        </p>
+                    </div>
+                    {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                        <button
+                            onClick={() => handleAdd('warningAction')}
+                            className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-red-600 hover:to-red-700 transition-all"
+                        >
+                            <Plus size={16} />
+                            Add Warning Action
+                        </button>
+                    )}
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Value</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Display Label</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Created</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-gray-900 divide-y divide-gray-700">
+                            {warningActions.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
+                                        No warning actions configured. Click "Add Warning Action" to create options for the warning action dropdown.
+                                    </td>
+                                </tr>
+                            ) : (
+                                warningActions.map((action) => (
+                                    <tr key={action._id || action.id || action.value} className="hover:bg-gray-800 transition-colors">
+                                        <td className="px-6 py-4 text-white">
+                                            <p className="font-medium">{action.value}</p>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-300">
+                                            {action.label || action.value}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                action.is_active !== false
+                                                    ? 'bg-green-100 text-green-800' 
+                                                    : 'bg-red-100 text-red-800'
+                                            }`}>
+                                                {action.is_active !== false ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                            {action.created_at ? new Date(action.created_at).toLocaleDateString() : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
+                                                <button
+                                                    onClick={() => handleEdit(action, 'warningAction')}
+                                                    className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
+                                                    title="Edit this warning action"
+                                                >
+                                                    <Edit size={14} />
+                                                    Edit
+                                                </button>
+                                            )}
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
+                                                <button
+                                                    onClick={() => {
+                                                        const id = action._id || action.id;
+                                                        if (!id) {
+                                                            alert('Cannot delete default items. You can edit them to create a custom version.');
+                                                            return;
+                                                        }
+                                                        handleDelete(id, 'warningAction');
+                                                    }}
+                                                    className="text-red-400 hover:text-red-300 inline-flex items-center gap-1"
+                                                    title={action._id || action.id ? "Delete this warning action" : "Cannot delete default items"}
+                                                >
+                                                    <Trash2 size={14} />
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderWarningTypesTable = () => (
+        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
+            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+                <div>
+                    <h3 className="text-xl font-bold text-white">Warning Types Management</h3>
+                    <p className="text-sm text-gray-300 mt-1">
+                        Configure warning and mistake types that will be available in the warning system dropdowns
+                    </p>
+                </div>
+                {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                    <button
+                        onClick={() => handleAdd('warningData')}
+                        className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-orange-600 hover:to-orange-700 transition-all"
+                    >
+                        <Plus size={16} />
+                        Add Warning Type
+                    </button>
+                )}
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full">
+                    <thead className="bg-gray-800">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Warning Type</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Display Label</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Created</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-gray-900 divide-y divide-gray-700">
+                        {warningTypes.length === 0 ? (
+                            <tr>
+                                <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
+                                    No warning types configured. Click "Add Warning Type" to create warning types for the warning system.
+                                </td>
+                            </tr>
+                        ) : (
+                            warningTypes.map((type) => (
+                                <tr key={type._id || type.id || type.value} className="hover:bg-gray-800 transition-colors">
+                                    <td className="px-6 py-4 text-white">
+                                        <p className="font-medium">{type.value}</p>
+                                    </td>
+                                    <td className="px-6 py-4 text-gray-300">
+                                        {type.label || type.value}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                            type.is_active !== false
+                                                ? 'bg-green-100 text-green-800' 
+                                                : 'bg-red-100 text-red-800'
+                                        }`}>
+                                            {type.is_active !== false ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                        {type.created_at ? new Date(type.created_at).toLocaleDateString() : '-'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
+                                            <button
+                                                onClick={() => handleEdit(type, 'warningData')}
+                                                className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
+                                            >
+                                                <Edit size={14} />
+                                                Edit
+                                            </button>
+                                        )}
+                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
+                                            <button
+                                                onClick={() => handleDelete(type._id || type.id, 'warningData')}
+                                                className="text-red-400 hover:text-red-300 inline-flex items-center gap-1"
+                                            >
+                                                <Trash2 size={14} />
+                                                Delete
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            
+            {warningTypes.length > 0 && (
+                <div className="bg-gray-800 px-6 py-3 border-t border-gray-700">
+                    <p className="text-sm text-gray-400">
+                        <strong>💡 Note:</strong> Warning types are displayed in the warning system dropdowns when creating or editing warnings. 
+                        Active types will appear in the warning/mistake type dropdown options.
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+
     // Render functions
     const renderTabContent = () => {
         switch (activeTab) {
@@ -2461,6 +2913,8 @@ const updateStatus = async (statusId, statusData) => {
                 return <AttendanceSettingsTab userId={user_id} />;
             case 'importantQuestions':
                 return renderImportantQuestionsTable();
+            case 'warningData':
+                return renderWarningDataTables();
             default:
                 return null;
         }
@@ -3651,7 +4105,7 @@ const updateStatus = async (statusId, statusData) => {
                     
                     {/* Content */}
                     <div className="p-6">
-                        <div className="space-y-4" style={{ paddingBottom: '3000px' }}>
+                        <div className="space-y-4">
                         {/* Dynamic form fields based on active tab */}
                         {activeTab === 'campaigns' && (
                             <>
@@ -4233,6 +4687,50 @@ const updateStatus = async (statusId, statusData) => {
                                         <p><strong>Quality Control:</strong> Ensures critical information is checked before advancing leads.</p>
                                         <p><strong>Compliance:</strong> Helps maintain consistent verification processes.</p>
                                         <p><strong>Ordering:</strong> Questions display in the order of their display order value.</p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {(activeTab === 'mistakeType' || activeTab === 'warningAction') && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-black mb-1">
+                                        {activeTab === 'mistakeType' ? 'Mistake Type' : 'Warning Action'} Value *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.value || ''}
+                                        onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                                        placeholder={activeTab === 'mistakeType' ? 'e.g., Late Arrival, Abuse, Early Leave' : 'e.g., Verbal Warning, Written Warning'}
+                                        required
+                                    />
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        This will appear in the {activeTab === 'mistakeType' ? 'mistake type' : 'warning action'} dropdown when issuing warnings.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-black mb-1">Display Label *</label>
+                                    <input
+                                        type="text"
+                                        value={formData.label || ''}
+                                        onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                                        placeholder={formData.value || 'Same as value above'}
+                                        required
+                                    />
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        The display name shown in the dropdown (usually same as value).
+                                    </p>
+                                </div>
+                                <div className={`${activeTab === 'mistakeType' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'} border rounded-lg p-4`}>
+                                    <h4 className="font-semibold text-orange-800 mb-2">💡 Usage Information:</h4>
+                                    <div className="text-sm text-orange-700 space-y-1">
+                                        <p><strong>Warning System:</strong> Types appear in the warning/mistake type dropdown.</p>
+                                        <p><strong>Consistency:</strong> Ensures standardized warning categorization across the system.</p>
+                                        <p><strong>Flexibility:</strong> Easily add or modify warning types as needed.</p>
+                                        <p><strong>Ordering:</strong> Types display in alphabetical order by default.</p>
                                     </div>
                                 </div>
                             </>

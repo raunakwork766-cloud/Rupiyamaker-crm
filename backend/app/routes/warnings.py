@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends, Body
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from datetime import datetime, timedelta
 import os
 from app.utils.permission_helpers import is_super_admin_permission
+from app.utils.timezone import get_ist_now
 
 from ..database.Warnings import WarningDB
 from ..database.Users import UsersDB
@@ -1362,23 +1363,362 @@ async def export_warnings_csv(
 # Additional utility endpoints
 
 @router.get("/types/list")
-async def get_warning_types():
-    """Get list of available warning types"""
+async def get_warning_types(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available warning types from database"""
     try:
-        warning_types = [
-            {"value": "Late Arrival", "label": "Late Arrival"},
-            {"value": "Late Lunch", "label": "Late Lunch"},
-            {"value": "Abuse", "label": "Abuse"},
-            {"value": "Early Leave", "label": "Early Leave"}
-        ]
+        # Try to get from database first
+        warning_types = await warnings_db.get_warning_types()
+        
+        # If no types in database, return default hardcoded types
+        if not warning_types:
+            warning_types = [
+                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
+                {"value": "Late Lunch", "label": "Late Lunch", "is_active": True},
+                {"value": "Abuse", "label": "Abuse", "is_active": True},
+                {"value": "Early Leave", "label": "Early Leave", "is_active": True}
+            ]
+        
+        # Filter only active types for dropdown
+        active_types = [t for t in warning_types if t.get('is_active', True)]
         
         return {
             "success": True,
-            "warning_types": warning_types
+            "warning_types": active_types
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get warning types: {str(e)}")
+
+@router.post("/types")
+async def create_warning_type(
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new warning type"""
+    try:
+        # Validate required fields
+        if not type_data.get('value'):
+            raise HTTPException(status_code=400, detail="Warning type value is required")
+        
+        # Check for duplicates
+        existing_types = await warnings_db.get_warning_types()
+        if any(t.get('value') == type_data['value'] for t in existing_types):
+            raise HTTPException(status_code=400, detail=f"Warning type '{type_data['value']}' already exists")
+        
+        # Add metadata
+        type_data['created_at'] = get_ist_now().isoformat()
+        type_data['created_by'] = user_id
+        type_data['is_active'] = type_data.get('is_active', True)
+        
+        # Create in database
+        type_id = await warnings_db.create_warning_type(type_data)
+        
+        return {
+            "success": True,
+            "id": type_id,
+            "message": "Warning type created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create warning type: {str(e)}")
+
+@router.put("/types/{type_id}")
+async def update_warning_type(
+    type_id: str,
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing warning type"""
+    try:
+        # Add metadata
+        type_data['updated_at'] = get_ist_now().isoformat()
+        type_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_warning_type(type_id, type_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning type not found")
+        
+        return {
+            "success": True,
+            "message": "Warning type updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update warning type: {str(e)}")
+
+@router.delete("/types/{type_id}")
+async def delete_warning_type(
+    type_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a warning type"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_warning_type(type_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning type not found")
+        
+        return {
+            "success": True,
+            "message": "Warning type deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete warning type: {str(e)}")
+
+# Mistake Types Management Endpoints
+
+@router.get("/mistake-types/list")
+async def get_mistake_types(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available mistake types from database"""
+    try:
+        # Try to get from database first
+        mistake_types = await warnings_db.get_mistake_types()
+        
+        # If no types in database, return default hardcoded types
+        if not mistake_types:
+            mistake_types = [
+                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
+                {"value": "Abuse", "label": "Abuse", "is_active": True},
+                {"value": "Early Leave", "label": "Early Leave", "is_active": True},
+                {"value": "Unauthorized Absence", "label": "Unauthorized Absence", "is_active": True}
+            ]
+        
+        # Filter only active types for dropdown
+        active_types = [t for t in mistake_types if t.get('is_active', True)]
+        
+        return {
+            "success": True,
+            "mistake_types": active_types
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get mistake types: {str(e)}")
+
+@router.post("/mistake-types")
+async def create_mistake_type(
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new mistake type"""
+    try:
+        # Validate required fields
+        if not type_data.get('value'):
+            raise HTTPException(status_code=400, detail="Mistake type value is required")
+        
+        # Check for duplicates
+        existing_types = await warnings_db.get_mistake_types()
+        if any(t.get('value') == type_data['value'] for t in existing_types):
+            raise HTTPException(status_code=400, detail=f"Mistake type '{type_data['value']}' already exists")
+        
+        # Add metadata
+        type_data['created_at'] = get_ist_now().isoformat()
+        type_data['created_by'] = user_id
+        type_data['is_active'] = type_data.get('is_active', True)
+        
+        # Create in database
+        type_id = await warnings_db.create_mistake_type(type_data)
+        
+        return {
+            "success": True,
+            "id": type_id,
+            "message": "Mistake type created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create mistake type: {str(e)}")
+
+@router.put("/mistake-types/{type_id}")
+async def update_mistake_type(
+    type_id: str,
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing mistake type"""
+    try:
+        # Add metadata
+        type_data['updated_at'] = get_ist_now().isoformat()
+        type_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_mistake_type(type_id, type_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Mistake type not found")
+        
+        return {
+            "success": True,
+            "message": "Mistake type updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update mistake type: {str(e)}")
+
+@router.delete("/mistake-types/{type_id}")
+async def delete_mistake_type(
+    type_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a mistake type"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_mistake_type(type_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Mistake type not found")
+        
+        return {
+            "success": True,
+            "message": "Mistake type deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete mistake type: {str(e)}")
+
+# Warning Actions Management Endpoints
+
+@router.get("/warning-actions/list")
+async def get_warning_actions(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available warning actions from database"""
+    try:
+        # Try to get from database first
+        warning_actions = await warnings_db.get_warning_actions()
+        
+        # If no actions in database, return default hardcoded actions
+        if not warning_actions:
+            warning_actions = [
+                {"value": "Verbal Warning", "label": "Verbal Warning", "is_active": True},
+                {"value": "Written Warning", "label": "Written Warning", "is_active": True},
+                {"value": "Final Warning", "label": "Final Warning", "is_active": True},
+                {"value": "Suspension", "label": "Suspension", "is_active": True}
+            ]
+        
+        # Filter only active actions for dropdown
+        active_actions = [a for a in warning_actions if a.get('is_active', True)]
+        
+        return {
+            "success": True,
+            "warning_actions": active_actions
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get warning actions: {str(e)}")
+
+@router.post("/warning-actions")
+async def create_warning_action(
+    action_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new warning action"""
+    try:
+        # Validate required fields
+        if not action_data.get('value'):
+            raise HTTPException(status_code=400, detail="Warning action value is required")
+        
+        # Check for duplicates
+        existing_actions = await warnings_db.get_warning_actions()
+        if any(a.get('value') == action_data['value'] for a in existing_actions):
+            raise HTTPException(status_code=400, detail=f"Warning action '{action_data['value']}' already exists")
+        
+        # Add metadata
+        action_data['created_at'] = get_ist_now().isoformat()
+        action_data['created_by'] = user_id
+        action_data['is_active'] = action_data.get('is_active', True)
+        
+        # Create in database
+        action_id = await warnings_db.create_warning_action(action_data)
+        
+        return {
+            "success": True,
+            "id": action_id,
+            "message": "Warning action created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create warning action: {str(e)}")
+
+@router.put("/warning-actions/{action_id}")
+async def update_warning_action(
+    action_id: str,
+    action_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing warning action"""
+    try:
+        # Add metadata
+        action_data['updated_at'] = get_ist_now().isoformat()
+        action_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_warning_action(action_id, action_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning action not found")
+        
+        return {
+            "success": True,
+            "message": "Warning action updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update warning action: {str(e)}")
+
+@router.delete("/warning-actions/{action_id}")
+async def delete_warning_action(
+    action_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a warning action"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_warning_action(action_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning action not found")
+        
+        return {
+            "success": True,
+            "message": "Warning action deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete warning action: {str(e)}")
 
 @router.get("/employees/list")
 async def get_employees_for_warnings(
