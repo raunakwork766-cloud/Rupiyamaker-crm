@@ -468,7 +468,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
   }
 
   return (
-    <div className="space-y-4 bg-white p-4 rounded-lg">
+    <div className="space-y-4 bg-white p-4 rounded-lg overflow-x-hidden break-words">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold text-black flex items-center">
@@ -532,7 +532,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       )}
 
       {/* Activities Timeline */}
-      <div className="space-y-6">
+      <div className="space-y-6 max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden pr-2 break-words">
         {Object.keys(groupedActivities).length === 0 ? (
           <div className="text-center py-8 text-gray-600">
             <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -597,7 +597,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                       <div className="mt-2">
                                         {/* Special handling for Obligations data */}
                                         {activity.details.is_obligation_data || activity.details.field_name === 'obligations' ? (
-                                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-md">
+                                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-md break-words overflow-wrap-anywhere">
                                             <div className="space-y-3">
                                               {/* Old Obligations */}
                                               {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
@@ -628,7 +628,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                               <div>
                                                 <span className="font-semibold text-gray-700 block mb-2">✅ Updated Obligations:</span>
                                                 <div className="bg-green-50 border border-green-200 rounded p-3 text-sm space-y-3">
-                                                  {activity.details.new_value.split('\n\n').map((row, idx) => (
+                                                  {(typeof activity.details.new_value === 'string' ? activity.details.new_value : JSON.stringify(activity.details.new_value || '')).split('\n\n').map((row, idx) => (
                                                     <div key={idx} className="bg-white border border-green-300 rounded p-2">
                                                       {row.split('\n').map((line, lineIdx) => (
                                                         <div key={lineIdx} className={`text-green-800 py-0.5 ${lineIdx === 0 ? 'font-bold text-green-900' : 'pl-2'}`}>
@@ -671,7 +671,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                               <div>
                                                 <span className="font-semibold text-gray-700 block mb-2">✅ Updated Eligibility:</span>
                                                 <div className="bg-green-50 border border-green-200 rounded p-3 text-sm">
-                                                  {activity.details.new_value.split('\n').map((line, idx) => (
+                                                  {(typeof activity.details.new_value === 'string' ? activity.details.new_value : JSON.stringify(activity.details.new_value || '')).split('\n').map((line, idx) => (
                                                     <div key={idx} className="text-green-800 py-1 flex items-start">
                                                       <span className="mr-2">•</span>
                                                       <span className="font-medium">{line}</span>
@@ -699,8 +699,8 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                                 <div className="text-xs text-gray-600 mb-1">New Value</div>
                                                 <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold text-lg">
                                                   {activity.details.field_name === 'cibilScore' 
-                                                    ? activity.details.new_value
-                                                    : `₹${activity.details.new_value}`
+                                                    ? (typeof activity.details.new_value === 'object' ? JSON.stringify(activity.details.new_value) : activity.details.new_value)
+                                                    : `₹${typeof activity.details.new_value === 'object' ? JSON.stringify(activity.details.new_value) : activity.details.new_value}`
                                                   }
                                                 </div>
                                               </div>
@@ -708,16 +708,20 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                           </div>
                                         ) : (
                                           /* Regular field update display */
-                                          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-md">
-                                            <div className="flex items-center space-x-2">
+                                          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-md break-words overflow-wrap-anywhere">
+                                            <div className="flex items-center space-x-2 flex-wrap">
                                               <span className="font-medium text-gray-700">FROM:</span>
-                                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
-                                                {activity.details.old_value || 'Not set'}
+                                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded break-all max-w-[200px]">
+                                                {typeof activity.details.old_value === 'object' && activity.details.old_value !== null
+                                                  ? (activity.details.old_value.company_name || activity.details.old_value.employer || JSON.stringify(activity.details.old_value))
+                                                  : (activity.details.old_value || 'Not set')}
                                               </span>
                                               <span className="text-gray-500">→</span>
                                               <span className="font-medium text-gray-700">TO:</span>
-                                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
-                                                {activity.details.new_value}
+                                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded break-all max-w-[200px]">
+                                                {typeof activity.details.new_value === 'object' && activity.details.new_value !== null
+                                                  ? (activity.details.new_value.company_name || activity.details.new_value.employer || JSON.stringify(activity.details.new_value))
+                                                  : activity.details.new_value}
                                               </span>
                                             </div>
                                           </div>
