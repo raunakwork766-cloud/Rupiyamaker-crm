@@ -182,32 +182,33 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     console.log(`📊 lead?.dynamic_fields?.process:`, lead?.dynamic_fields?.process);
     console.log(`📊 process prop:`, process);
     
-    const currentProcess = process || lead?.dynamic_fields?.process || {};
-    const tenure = currentProcess.required_tenure || lead?.dynamic_fields?.process?.required_tenure;
+    // NEW: Read from process_data first (top-level field), fallback to dynamic_fields.process
+    const currentProcess = process || lead?.process_data || lead?.dynamic_fields?.process || {};
+    const tenure = currentProcess.required_tenure || lead?.process_data?.required_tenure || lead?.dynamic_fields?.process?.required_tenure;
     
-    console.log(`📊 Loading purposeOfLoan from:`, currentProcess.purpose_of_loan);
-    console.log(`📊 Loading howToProcess from:`, currentProcess.how_to_process);
+    console.log(`📊 Loading from process_data (NEW) or dynamic_fields.process (fallback)`);
+    console.log(`📊 currentProcess:`, currentProcess);
     
     setFields({
-      processingBank: currentProcess.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
-      loanAmountRequired: currentProcess.loan_amount_required ? formatINR(currentProcess.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : ""),
-      purposeOfLoan: currentProcess.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
-      howToProcess: currentProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
-      loanType: currentProcess.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
+      processingBank: currentProcess.processing_bank || lead?.process_data?.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
+      loanAmountRequired: currentProcess.loan_amount_required ? formatINR(currentProcess.loan_amount_required) : (lead?.process_data?.loan_amount_required ? formatINR(lead.process_data.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : "")),
+      purposeOfLoan: currentProcess.purpose_of_loan || lead?.process_data?.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
+      howToProcess: currentProcess.how_to_process || lead?.process_data?.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
+      loanType: currentProcess.loan_type || lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
       requiredTenure: tenure ? `${tenure} months` : "",
-      caseType: currentProcess.case_type || lead?.dynamic_fields?.process?.case_type || "",
+      caseType: currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || "",
       year: tenure ? formatYearFromTenure(tenure) : "",
     });
     
     // Set selected loan type from lead if available (match by id or name)
-    if (lead?.dynamic_fields?.process?.loan_type) {
-      const val = lead.dynamic_fields.process.loan_type;
-      const matchedLoanType = loanTypes.find(lt => lt._id === val || lt.name === val);
+    const loanTypeValue = lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type;
+    if (loanTypeValue) {
+      const matchedLoanType = loanTypes.find(lt => lt._id === loanTypeValue || lt.name === loanTypeValue);
       if (matchedLoanType) {
         setSelectedLoanType(matchedLoanType);
       }
     }
-  }, [lead?._id, process, lead?.dynamic_fields?.process, loanTypes]); // Added process and lead.dynamic_fields.process to dependencies
+  }, [lead?._id, process, lead?.process_data, lead?.dynamic_fields?.process, loanTypes]); // Added process_data to dependencies
   
   // Load loan types
   useEffect(() => {
@@ -367,7 +368,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       };
       
       const processField = processFieldMap[field] || field;
-      return lead?.dynamic_fields?.process?.[processField] || "";
+      // CRITICAL FIX: Read from process_data (with fallback to dynamic_fields.process for backward compatibility)
+      return lead?.process_data?.[processField] || lead?.dynamic_fields?.process?.[processField] || "";
     };
     
     const originalValue = getOriginalValue(field);
@@ -486,11 +488,13 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
 
       // Determine if this is a login lead by checking for original_lead_id field
       const isLoginLead = !!lead.original_lead_id || !!lead.login_created_at;
+      
+      // Use standard PUT endpoint with dynamic_fields.process structure
       const apiUrl = isLoginLead 
         ? `/api/lead-login/login-leads/${lead._id}?user_id=${userId}`
         : `/api/leads/${lead._id}?user_id=${userId}`;
       
-      console.log(`📡 HowToProcessSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
+      console.log(`📡 HowToProcessSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} PUT endpoint with process structure`);
       console.log(`📡 API URL: ${apiUrl}`);
 
       
@@ -512,52 +516,31 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       // Process the value based on field type
       let processedValue = value;
       if (field === 'loanAmountRequired' && value) {
-        processedValue = parseFloat(value) || null;
+        processedValue = parseFloat(parseINR(value)) || null;
       } else if ((field === 'requiredTenure' || field === 'year') && value) {
         // Remove suffixes and save as numbers
         processedValue = parseInt(value.toString().replace(/[^\d]/g, '')) || null;
       }
       
       console.log(`💾 Processed value for ${processField}: ${processedValue}`);
-      console.log(`📦 Current lead object:`, lead);
-      console.log(`📦 Current lead.dynamic_fields:`, lead?.dynamic_fields);
-      console.log(`📦 Current lead.dynamic_fields.process:`, lead?.dynamic_fields?.process);
 
-      // Ensure lead has dynamic_fields structure
-      if (!lead.dynamic_fields) {
-        lead.dynamic_fields = {};
-      }
-      if (!lead.dynamic_fields.process) {
-        lead.dynamic_fields.process = {};
-      }
-
-      // Create update object for dynamic_fields.process
-      // IMPORTANT: Only send the process section to avoid overwriting other sections
-      const updateData = {
-        dynamic_fields: {
-          process: {
-            ...lead.dynamic_fields.process,
-            [processField]: processedValue
-          }
-        },
-        // Add activity tracking for this specific field change
-        activity: {
-          activity_type: "field_update",
-          description: `Updated ${processField.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} in How To Process section`,
-          details: {
-            section: "process",
-            field: processField,
-            old_value: lead.dynamic_fields.process[processField] || null,
-            new_value: processedValue
-          }
+      // CRITICAL FIX: Use process_data field (outside dynamic_fields)
+      // This completely separates "How to Process" from "Application Section" (obligation_data)
+      // OPTIMIZATION: Send ONLY the changed field, not all fields
+      // Backend uses MongoDB dot notation to update only this specific field
+      const updatePayload = {
+        process_data: {
+          [processField]: processedValue
         }
       };
 
-      console.log(`\n========== UPDATE DATA STRUCTURE ==========`);
-      console.log(`📦 updateData.dynamic_fields.process:`, JSON.stringify(updateData.dynamic_fields.process, null, 2));
-      console.log(`📦 updateData.activity:`, JSON.stringify(updateData.activity, null, 2));
-      console.log(`📦 Full request body that will be sent:`, JSON.stringify(updateData, null, 2));
-      console.log(`========== END UPDATE DATA ==========\n`);
+      console.log(`\n========== PROCESS UPDATE PAYLOAD (NEW STRUCTURE) ==========`);
+      console.log(`� Sending process_data as TOP-LEVEL field (outside dynamic_fields)`);
+      console.log(`📝 Field: ${processField} = ${processedValue}`);
+      console.log(`📦 Full payload:`, JSON.stringify(updatePayload, null, 2));
+      console.log(`✅ This is COMPLETELY SEPARATE from dynamic_fields!`);
+      console.log(`✅ obligation_data in dynamic_fields will NOT be touched!`);
+      console.log(`========== END PAYLOAD ==========\n`);
 
       const response = await fetch(apiUrl, {
         method: 'PUT',
@@ -565,7 +548,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify(updatePayload)
       });
 
       console.log(`📡 Response status: ${response.status} ${response.statusText}`);
@@ -579,31 +562,22 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       const responseData = await response.json();
       console.log(`✅ HowToProcessSection: Successfully saved process.${processField} to API`);
       console.log(`📨 Backend response:`, responseData);
-      console.log(`📨 Backend returned process data:`, responseData?.dynamic_fields?.process);
-      console.log(`📨 Verify purpose_of_loan in response:`, responseData?.dynamic_fields?.process?.purpose_of_loan);
-      console.log(`✅ Activity should have been created for: ${processField}`);
+      console.log(`✅ process_data stored SEPARATELY - obligation data completely safe!`);
       
-      // Update the lead object in memory to reflect the change
-      if (lead.dynamic_fields) {
-        if (!lead.dynamic_fields.process) {
-          lead.dynamic_fields.process = {};
-        }
-        lead.dynamic_fields.process[processField] = processedValue;
-        console.log(`✅ Updated lead.dynamic_fields.process in memory:`, lead.dynamic_fields.process);
+      // Update the lead object in memory to reflect the change - use process_data now
+      if (!lead.process_data) {
+        lead.process_data = {};
       }
+      lead.process_data[processField] = processedValue;
+      console.log(`✅ Updated lead.process_data in memory:`, lead.process_data);
       
       // Call onSave callback if provided to notify parent component
       if (onSave && typeof onSave === 'function') {
-        // If backend returned updated lead data, use it; otherwise pass the field that changed
-        if (responseData && responseData.dynamic_fields) {
-          onSave(responseData);
-        } else {
-          onSave({ 
-            processField, 
-            processedValue,
-            dynamic_fields: { process: lead.dynamic_fields?.process }
-          });
-        }
+        onSave({ 
+          processField, 
+          processedValue,
+          process_data: lead.process_data  // Changed from dynamic_fields.process
+        });
       }
       
       return true;

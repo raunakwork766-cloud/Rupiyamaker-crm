@@ -447,6 +447,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     dataCleared: false,
     renderCount: 0
   });
+  
+  // 🎯 CRITICAL: Track when user deletes a row to prevent backend overwrite
+  const [hasDeletedRow, setHasDeletedRow] = useState(false);
 
   // Update debug state when leadData changes
   useEffect(() => {
@@ -2312,7 +2315,57 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         timestamp: new Date().toLocaleTimeString()
       });
     }, 100);
-  }, [leadData?._id, bankListLoaded]); // Use leadData._id to ensure reload on lead change
+  }, [leadData?._id, JSON.stringify(leadData?.dynamic_fields?.obligations), bankListLoaded]); // Stringify to detect content changes
+  
+  // Sync obligations when leadData.dynamic_fields.obligations changes (e.g., after parent refetch)
+  useEffect(() => {
+    const leadObligations = leadData?.dynamic_fields?.obligations;
+    
+    // Only sync if we have leadData obligations and they're different from current state
+    if (leadObligations && Array.isArray(leadObligations) && leadObligations.length > 0) {
+      const leadObligationsJson = JSON.stringify(leadObligations);
+      const currentObligationsJson = JSON.stringify(obligations);
+      
+      if (leadObligationsJson !== currentObligationsJson && !hasUnsavedChanges) {
+        console.log('🔄 [SYNC] Obligation sync triggered from leadData:', {
+          leadCount: leadObligations.length,
+          currentCount: obligations.length,
+          leadId: leadData?._id,
+          hasUnsavedChanges,
+          hasDeletedRow,
+          willSync: obligations.length === 0 && !hasDeletedRow // Only sync on initial load
+        });
+        
+        // 🎯 CRITICAL FIX: Only sync obligations from leadData on INITIAL LOAD
+        // Do NOT sync after user actions like delete - this was causing deleted rows to reappear
+        // because the backend response would overwrite the local state
+        if (obligations.length === 0 && !hasDeletedRow) {
+          console.log('✅ [SYNC] Initial load - syncing obligations from leadData');
+          
+          // Process the obligations from leadData and update state
+          const processedObligations = leadObligations.map((obl, index) => ({
+            id: obl.id || `${Date.now()}-sync-${index}`,
+            product: obl.product || '',
+            bankName: obl.bankName || obl.bank_name || '',
+            tenure: obl.tenure || '',
+            roi: obl.roi || '',
+            totalLoan: obl.totalLoan || obl.total_loan || '',
+            outstanding: obl.outstanding || '',
+            emi: obl.emi || '',
+            action: obl.action || 'Obligate',
+            selectedPercentage: obl.selectedPercentage || obl.selected_percentage || null,
+            selectedTenurePercentage: obl.selectedTenurePercentage || obl.selected_tenure_percentage || null,
+            selectedRoiPercentage: obl.selectedRoiPercentage || obl.selected_roi_percentage || null
+          }));
+          
+          setObligations(processedObligations);
+          console.log('✅ [SYNC] Obligations synced from leadData');
+        } else {
+          console.log('⏭️ [SYNC] Skipping sync - obligations already loaded or row was deleted (preventing overwrite)');
+        }
+      }
+    }
+  }, [JSON.stringify(leadData?.dynamic_fields?.obligations), hasUnsavedChanges]);
   
   // Debug state watcher to track changes in key fields (optimized to reduce console spam)
   useEffect(() => {
@@ -2853,7 +2906,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   // Create a function to prepare obligation data that we'll use with the Save button
   // Enhanced for lead creation → login transfer scenarios
-  const prepareObligationDataForSave = () => {
+  const prepareObligationDataForSave = (customObligations = null) => {
+    // Use provided obligations array if given, otherwise use state
+    const obligationsToSave = customObligations !== null ? customObligations : obligations;
+    
     // 🎯 LEAD CREATION → LOGIN DATA PERSISTENCE ENHANCEMENT
     console.log('💾 PREPARING DATA FOR SAVE - Lead Creation → Login Transfer Analysis:', {
       leadInfo: {
@@ -2866,7 +2922,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         salary: salary || '(empty)',
         loanRequired: loanRequired || '(empty)',
         companyName: companyName || '(empty)',
-        obligationsCount: obligations.length
+        obligationsCount: obligationsToSave.length,
+        usingCustomObligations: customObligations !== null
       }
     });
     
@@ -2948,7 +3005,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         return companyCategory;
       })(),
       cibilScore,
-      obligations,
+      obligations: obligationsToSave.map((obl) => ({
+        ...obl,
+        tenure: obl.tenure ? parseINR(obl.tenure) : null,
+        roi: obl.roi ? parseROI(obl.roi) : null,
+        totalLoan: obl.totalLoan ? parseINR(obl.totalLoan) : null,
+        total_loan: obl.totalLoan ? parseINR(obl.totalLoan) : null,
+        outstanding: obl.outstanding ? parseINR(obl.outstanding) : null,
+        emi: obl.emi ? parseINR(obl.emi) : null
+      })),
       foirPercent: ceFoirPercent,
       customFoirPercent: ceCustomFoirPercent,
       totalBtPos,
@@ -4226,7 +4291,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   };
 
   const handleDeleteObligation = (index) => {
+    console.log('🔴🔴🔴 [DELETE BUTTON CLICKED] Index:', index, 'Total rows:', obligations.length);
+    console.log('🔴🔴🔴 [DELETE] Current obligations:', obligations);
+    
     if (obligations.length > 1) {
+      // 🎯 CRITICAL: Set flag to prevent any backend syncs from overwriting our delete
+      setHasDeletedRow(true);
+      console.log('🚫 [DELETE] Setting hasDeletedRow flag to prevent backend overwrite');
+      
       // Create a new array without the deleted row
       const newObligations = obligations.filter((_, i) => i !== index);
       setObligations(newObligations);
@@ -4271,15 +4343,88 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       console.log(`Deleted obligation row at index ${index}. ${newObligations.length} rows remaining.`);
       
       // Trigger immediate save after deletion
-      console.log('💾 [DELETE] Row deleted, triggering immediate save...');
-      setTimeout(async () => {
+      console.log('💾 [DELETE] Row deleted, triggering immediate save with new obligations array...');
+      console.log('💾 [DELETE] New obligations to save:', JSON.stringify(newObligations, null, 2));
+      
+      // CRITICAL: Save MUST happen immediately - don't wrap in async IIFE
+      const saveDeletedData = async () => {
         try {
-          await handleSaveObligations();
-          console.log('✅ [DELETE] Save completed successfully after row deletion');
+          console.log('💾 [DELETE] Starting save process...');
+          setIsSaving(true);
+          
+          // Check if we have a lead ID
+          if (!leadData?._id) {
+            console.error('❌ [DELETE] No lead ID found! Cannot save.');
+            console.error('❌ [DELETE] leadData:', leadData);
+            setIsSaving(false);
+            return;
+          }
+          
+          console.log('✅ [DELETE] Lead ID found:', leadData._id);
+          
+          // Pass the new obligations array explicitly to avoid using stale state
+          const obligationData = prepareObligationDataForSave(newObligations);
+          
+          console.log('💾 [DELETE] Obligation data prepared:', {
+            obligationsCount: obligationData.obligations?.length,
+            firstObligation: obligationData.obligations?.[0],
+            hasLeadId: !!leadData._id
+          });
+          
+          console.log('💾 [DELETE] Calling saveObligationDataToAPI with skipParentUpdate=true...');
+          // Save to backend first (skip parent update to avoid double PUT request)
+          const saveResult = await saveObligationDataToAPI(obligationData, true);
+          console.log('✅ [DELETE] Save API call completed, result:', saveResult);
+          console.log('✅ [DELETE] Backend should now have', newObligations.length, 'obligation rows');
+          
+          // Now fetch the fresh lead data from backend to ensure UI is in sync
+          const userId = getUserId();
+          const token = localStorage.getItem('token');
+          const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+          const apiUrl = isLoginLead
+            ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}?user_id=${userId}`
+            : `${API_BASE_URL}/leads/${leadData._id}?user_id=${userId}`;
+          
+          console.log('🔄 [DELETE] Fetching fresh lead data from backend...');
+          const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (response.ok) {
+            const freshLeadData = await response.json();
+            console.log('✅ [DELETE] Fresh lead data fetched, obligations count:', 
+              freshLeadData?.dynamic_fields?.obligations?.length);
+            
+            // 🎯 CRITICAL FIX: Use the newObligations we just saved, NOT the backend response
+            // The backend may still have old data due to race conditions with LeadCRM updates
+            console.log('🔄 [DELETE] Using saved obligations data instead of fetched data to avoid race condition');
+            console.log('🔄 [DELETE] Setting local state to:', newObligations.length, 'rows');
+            
+            // 🎯 CRITICAL: DO NOT notify parent component here!
+            // This was causing LeadCRM to overwrite with old 4-row data
+            // The parent will be updated by the onDataUpdate callback instead
+            console.log('⏭️ [DELETE] Skipping parent update to prevent overwrite with stale data');
+            
+            setHasUnsavedChanges(false);
+            console.log('✅ [DELETE] Delete operation completed successfully - obligations now:', newObligations.length);
+          } else {
+            console.error('❌ [DELETE] Failed to fetch fresh lead data:', response.status);
+          }
+          
+          setIsSaving(false);
         } catch (error) {
           console.error('❌ [DELETE] Save failed after row deletion:', error);
+          console.error('❌ [DELETE] Error details:', error.message, error.stack);
+          setIsSaving(false);
         }
-      }, 100); // Small delay to ensure state is updated
+      };
+      
+      // Call the save function immediately
+      saveDeletedData();
     } else {
       // If it's the last row, just clear the values but keep the row
       console.log("Can't delete the last row. Clearing values instead.");
@@ -5950,11 +6095,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   }, [obligations]);
 
   // Function to save obligation data to backend API - Using debounced version to avoid excessive API calls
-  const saveObligationDataToAPI = async (obligationData) => {
+  const saveObligationDataToAPI = async (obligationData, skipParentUpdate = false) => {
     if (!leadData?._id) {
       console.warn('No lead ID available, cannot save to API');
       return;
     }
+
+    console.log('🌐 [API SAVE] Starting save to backend...');
+    console.log('🌐 [API SAVE] Lead ID:', leadData._id);
+    console.log('🌐 [API SAVE] Obligations count in data:', obligationData?.obligations?.length);
+    console.log('🌐 [API SAVE] Skip parent update:', skipParentUpdate);
 
     try {
       const userId = getUserId();
@@ -5976,7 +6126,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       };
       
       // Log the data being sent to API for debugging
-      console.log('Sending obligation data to API with bank info:', { 
+      console.log('🌐 [API SAVE] Enriched data obligations count:', enrichedData?.obligations?.length);
+      console.log('🌐 [API SAVE] Bank info:', { 
         processingBank: enrichedData.processingBank,
         processing_bank: enrichedData.processing_bank,
         bankName: enrichedData.bankName,
@@ -5993,6 +6144,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         : `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
       
       console.log(`Making API call to: ${apiUrl} (${isLoginLead ? 'LOGIN' : 'MAIN'} leads)`);
+      console.log('🌐 [API SAVE] Request payload:', JSON.stringify({
+        obligations_count: enrichedData.obligations?.length,
+        obligations: enrichedData.obligations,
+        salary: enrichedData.salary,
+        companyName: enrichedData.companyName
+      }, null, 2));
 
       
       const response = await fetch(apiUrl, {
@@ -6022,7 +6179,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       console.log('API response:', responseData);
       
       // Update parent component if handleChangeFunc is provided - use the correct field structure
-      if (handleChangeFunc) {
+      if (handleChangeFunc && !skipParentUpdate) {
         const updatedDynamicFields = {
           ...leadData.dynamic_fields,
           // Store obligation data in the structure the component expects
@@ -6067,11 +6224,38 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           }
         };
         
-        // Update the dynamic_fields with all the obligation data
-        handleChangeFunc('dynamic_fields', updatedDynamicFields);
+        // Parse obligations array to remove formatting before passing to handleChangeFunc
+        const parsedObligations = (obligationData.obligations || []).map(obl => {
+          const parseValue = (val) => {
+            if (val === null || val === undefined || val === '') return null;
+            if (typeof val === 'number') return val;
+            const parsed = typeof val === 'string' ? parseFloat(val.replace(/,/g, '')) : val;
+            return isNaN(parsed) ? null : parsed;
+          };
+
+          return {
+            ...obl,
+            tenure: parseValue(obl.tenure),
+            roi: parseValue(obl.roi),
+            total_loan: parseValue(obl.total_loan),
+            emi: parseValue(obl.emi),
+            transfer_to_proposed_bank: parseValue(obl.transfer_to_proposed_bank),
+            existing_emi: parseValue(obl.existing_emi),
+            foirEmi: parseValue(obl.foirEmi)
+          };
+        });
+
+        // Create updated dynamic_fields with parsed obligations
+        const updatedDynamicFieldsWithParsed = {
+          ...updatedDynamicFields,
+          obligations: parsedObligations
+        };
         
-        // Also update root-level fields for backward compatibility
-        handleChangeFunc('obligations', obligationData.obligations || []);
+        // Update the dynamic_fields with all the obligation data (now with parsed obligations)
+        handleChangeFunc('dynamic_fields', updatedDynamicFieldsWithParsed);
+        
+        // Also update root-level fields for backward compatibility (with parsed obligations)
+        handleChangeFunc('obligations', parsedObligations);
         handleChangeFunc('salary', obligationData.salary);
         handleChangeFunc('total_obligation', obligationData.totalObligation);
         handleChangeFunc('eligibility', obligationData.eligibility);

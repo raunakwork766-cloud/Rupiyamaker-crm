@@ -108,6 +108,32 @@ class ObligationSchema(BaseModel):
     outstanding: Optional[float] = None
     emi: Optional[float] = None
     action: Optional[str] = None
+    
+    # Additional fields that may come from frontend
+    transfer_to_proposed_bank: Optional[float] = None
+    existing_emi: Optional[float] = None
+    foirEmi: Optional[float] = None
+    
+    @validator('tenure', 'roi', 'total_loan', 'totalLoan', 'outstanding', 'emi', 
+               'transfer_to_proposed_bank', 'existing_emi', 'foirEmi', pre=True)
+    def parse_formatted_numbers(cls, v):
+        """Parse formatted strings like '4,64,334' to numbers"""
+        if v is None or v == '':
+            return None
+        if isinstance(v, (int, float)):
+            return v
+        if isinstance(v, str):
+            # Remove commas and parse
+            cleaned = v.replace(',', '').strip()
+            if cleaned == '':
+                return None
+            try:
+                # Try to parse as float first
+                parsed = float(cleaned)
+                return parsed
+            except ValueError:
+                return None
+        return v
 
 class CheckEligibilitySchema(BaseModel):
     company_category: Optional[str] = None
@@ -286,6 +312,7 @@ class LeadUpdate(BaseModel):
     assigned_to: Optional[Union[str, List[str], List[Dict[str, str]]]] = None  # Support string, list of strings, or list of objects
     assign_report_to: Optional[Union[str, List[str], List[Dict[str, str]]]] = None  # Support string, list of strings, or list of objects
     dynamic_fields: Optional[ComprehensiveDynamicFields] = None
+    process_data: Optional[Dict[str, Any]] = None  # NEW: Separate field for "How to Process" section (outside dynamic_fields) - using Dict to avoid Pydantic auto-filling None values
     transfer_notes: Optional[str] = None
     form_share: Optional[bool] = None  # Added form_share field for public form sharing
     created_at: Optional[datetime] = None  # Allow updating creation timestamp when changing from NOT A LEAD

@@ -169,11 +169,39 @@ class LoginLeadsDB:
         update_data['updated_at'] = get_ist_now()
         update_data['last_updated_by'] = user_id
         
+        # CRITICAL FIX: Use MongoDB dot notation for nested fields (process_data, dynamic_fields)
+        # This preserves other fields when updating only specific nested fields
+        mongodb_update = {}
+        
+        for key, value in update_data.items():
+            if key == "dynamic_fields" and isinstance(value, dict):
+                # Use dot notation for each nested field in dynamic_fields
+                for nested_key, nested_value in value.items():
+                    mongodb_update[f"dynamic_fields.{nested_key}"] = nested_value
+                    print(f"🔧 MongoDB dot notation (login lead): dynamic_fields.{nested_key}")
+            elif key == "process_data" and isinstance(value, dict):
+                # CRITICAL FIX: Use dot notation for process_data fields too!
+                # This preserves other process fields when updating only one field
+                print(f"🔍 LOGIN LEAD PROCESS_DATA UPDATE RECEIVED:")
+                print(f"   Incoming process_data: {value}")
+                print(f"   Current lead process_data: {current_lead.get('process_data', {})}")
+                
+                for process_field, process_value in value.items():
+                    mongodb_update[f"process_data.{process_field}"] = process_value
+                    print(f"🔧 MongoDB dot notation (login lead): process_data.{process_field} = {process_value}")
+            else:
+                # Regular top-level fields
+                mongodb_update[key] = value
+        
+        print(f"✅ Login lead MongoDB update using dot notation - {len(mongodb_update)} fields")
+        
         # Perform update
         result = await self.collection.update_one(
             {"_id": ObjectId(login_lead_id)},
-            {"$set": update_data}
+            {"$set": mongodb_update}
         )
+        
+        print(f"MongoDB result (login lead) - matched: {result.matched_count}, modified: {result.modified_count}")
         
         # Log activity if status changed
         if 'status' in update_data and update_data['status'] != current_lead.get('status'):

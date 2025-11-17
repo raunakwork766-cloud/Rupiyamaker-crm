@@ -460,57 +460,80 @@ class LeadsDB:
         
     async def update_lead(self, lead_id: str, update_data: dict, user_id: str) -> bool:
         """Update a lead with tracking"""
-        print(f"=== DATABASE UPDATE_LEAD DEBUG ===")
-        print(f"Lead ID: {lead_id}")
-        print(f"User ID: {user_id}")
-        print(f"Update data keys: {list(update_data.keys())}")
+        import copy
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🔵 ========== DATABASE update_lead START ==========")
+        logger.info(f"🔵 Lead ID: {lead_id}")
+        logger.info(f"🔵 User ID: {user_id}")
+        logger.info(f"📥 Update data keys: {list(update_data.keys())}")
         
         if not ObjectId.is_valid(lead_id):
-            print(f"❌ Invalid ObjectId: {lead_id}")
+            logger.error(f"❌ Invalid ObjectId: {lead_id}")
             return False
             
         # Get current lead state for activity tracking
         current_lead = await self.get_lead(lead_id)
         if not current_lead:
-            print(f"❌ Lead not found in database: {lead_id}")
+            logger.error(f"❌ Lead not found in database: {lead_id}")
             return False
             
-        print(f"✅ Current lead found: {current_lead.get('first_name', '')} {current_lead.get('last_name', '')}")
+        logger.info(f"✅ Current lead found: {current_lead.get('first_name', '')} {current_lead.get('last_name', '')}")
+        
+        # Log current dynamic_fields state
+        if current_lead.get("dynamic_fields"):
+            logger.info(f"📋 CURRENT dynamic_fields in DB: {list(current_lead['dynamic_fields'].keys())}")
+            if "obligation_data" in current_lead["dynamic_fields"]:
+                logger.info(f"✅ obligation_data EXISTS in current lead ({len(current_lead['dynamic_fields']['obligation_data'])} fields)")
         
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
         
-        # CRITICAL FIX: ALWAYS preserve dynamic_fields when not explicitly being updated
-        # This prevents obligation_data and other nested data from being lost during any update
+        # CRITICAL FIX: Handle dynamic_fields with deep copy to preserve nested structures
         if "dynamic_fields" not in update_data:
-            # No dynamic_fields in update - preserve entire current dynamic_fields
+            # No dynamic_fields in update - preserve entire current dynamic_fields with DEEP COPY
             if current_lead.get("dynamic_fields"):
-                update_data["dynamic_fields"] = current_lead["dynamic_fields"].copy()
-                print("✅ Preserved entire dynamic_fields from current lead (not in update)")
+                update_data["dynamic_fields"] = copy.deepcopy(current_lead["dynamic_fields"])
+                logger.info("✅ Preserved entire dynamic_fields from current lead (not in update) with DEEP COPY")
             else:
                 update_data["dynamic_fields"] = {}
         elif update_data["dynamic_fields"] is None:
-            # dynamic_fields explicitly set to None - use current or empty
+            # dynamic_fields explicitly set to None - use current or empty with DEEP COPY
             if current_lead.get("dynamic_fields"):
-                update_data["dynamic_fields"] = current_lead["dynamic_fields"].copy()
+                update_data["dynamic_fields"] = copy.deepcopy(current_lead["dynamic_fields"])
+                logger.info("✅ Replaced null dynamic_fields with current lead data using DEEP COPY")
             else:
                 update_data["dynamic_fields"] = {}
         else:
-            # dynamic_fields IS present - routes layer already merged it
-            print("⚠️ dynamic_fields already present in update - preserving merged data from routes layer")
+            # dynamic_fields IS present in update - it should already be merged from routes layer
+            logger.info("📥 dynamic_fields present in update from routes layer")
+            logger.info(f"📥 Keys in update dynamic_fields: {list(update_data['dynamic_fields'].keys())}")
+            
             # Ensure it's a dict
             if not isinstance(update_data["dynamic_fields"], dict):
                 update_data["dynamic_fields"] = {}
             
-            # EXTRA SAFETY: Preserve important nested fields that might not be in the merged update
-            important_fields = ["obligation_data", "eligibility_details", "identity_details", "financial_details"]
+            # CRITICAL: Verify obligation_data is preserved
+            if "obligation_data" in update_data["dynamic_fields"]:
+                logger.info(f"✅ obligation_data IS in update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
+            elif "obligation_data" in current_lead.get("dynamic_fields", {}):
+                # Routes layer should have merged this, but double-check as safety net
+                logger.warning(f"⚠️ obligation_data NOT in update but EXISTS in DB - RESTORING with DEEP COPY")
+                update_data["dynamic_fields"]["obligation_data"] = copy.deepcopy(current_lead["dynamic_fields"]["obligation_data"])
+            
+            # EXTRA SAFETY NET: Preserve ALL important nested fields with DEEP COPY
+            important_fields = ["obligation_data", "eligibility_details", "identity_details", "financial_details", "process"]
             for field in important_fields:
-                if field not in update_data["dynamic_fields"]:
-                    # Field not in update - preserve from current lead if exists
-                    current_value = current_lead.get("dynamic_fields", {}).get(field)
-                    if current_value is not None:
-                        update_data["dynamic_fields"][field] = current_value
-                        print(f"✅ Preserved {field} from current lead (not in merged update)")
+                current_value = current_lead.get("dynamic_fields", {}).get(field)
+                if current_value is not None and field not in update_data["dynamic_fields"]:
+                    # Field exists in DB but NOT in update - preserve with DEEP COPY
+                    update_data["dynamic_fields"][field] = copy.deepcopy(current_value)
+                    logger.info(f"🔒 RESTORED {field} from DB using DEEP COPY (missing from update)")
+        
+        logger.info(f"✅ FINAL dynamic_fields keys going to DB: {list(update_data['dynamic_fields'].keys())}")
+        if "obligation_data" in update_data["dynamic_fields"]:
+            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
         
         # Special handling for login form fields
         login_form_fields = [
@@ -582,9 +605,42 @@ class LeadsDB:
         if 'dynamic_fields' in update_data:
             print(f"   {list(update_data['dynamic_fields'].keys())}")
         
+        # Handle process_data separately (outside dynamic_fields)
+        if 'process_data' in update_data:
+            logger.info(f"🟢 process_data field detected - storing OUTSIDE dynamic_fields")
+            logger.info(f"🟢 This prevents conflicts with obligation_data in dynamic_fields")
+        
+        # CRITICAL FIX: Use MongoDB dot notation for dynamic_fields to avoid replacing entire object
+        # This preserves all nested fields like obligation_data when updating only process
+        mongodb_update = {}
+        
+        for key, value in update_data.items():
+            if key == "dynamic_fields" and isinstance(value, dict):
+                # Use dot notation for each nested field in dynamic_fields
+                for nested_key, nested_value in value.items():
+                    mongodb_update[f"dynamic_fields.{nested_key}"] = nested_value
+                    logger.info(f"🔧 MongoDB dot notation: dynamic_fields.{nested_key}")
+            elif key == "process_data" and isinstance(value, dict):
+                # CRITICAL FIX: Use dot notation for process_data fields too!
+                # This preserves other process fields when updating only one field
+                logger.info(f"🔍 PROCESS_DATA UPDATE RECEIVED:")
+                logger.info(f"   Incoming process_data: {value}")
+                logger.info(f"   Current lead process_data: {current_lead.get('process_data', {})}")
+                
+                for process_field, process_value in value.items():
+                    mongodb_update[f"process_data.{process_field}"] = process_value
+                    logger.info(f"🔧 MongoDB dot notation: process_data.{process_field} = {process_value}")
+                    print(f"🔧 Setting process_data.{process_field} = {process_value}")
+            else:
+                # Regular top-level fields
+                mongodb_update[key] = value
+        
+        logger.info(f"✅ MongoDB update using dot notation - {len(mongodb_update)} fields")
+        logger.info(f"✅ This will preserve all other fields not being updated")
+        
         result = await self.collection.update_one(
             {"_id": ObjectId(lead_id)},
-            {"$set": update_data}
+            {"$set": mongodb_update}
         )
         
         print(f"MongoDB result - matched: {result.matched_count}, modified: {result.modified_count}")
@@ -827,6 +883,36 @@ class LeadsDB:
             if changed_fields:
                 changes["dynamic_fields"] = changed_fields
         
+        # Track process_data changes (NEW - for "How to Process" section)
+        if "process_data" in update_data:
+            old_process = current_lead.get("process_data", {})
+            new_process = update_data["process_data"]
+            
+            # Find changed fields with DEEP comparison for complex objects
+            changed_process_fields = {}
+            for key, value in new_process.items():
+                old_value = old_process.get(key)
+                
+                # Deep comparison for complex structures
+                if isinstance(value, (dict, list)) and isinstance(old_value, (dict, list)):
+                    # Use JSON serialization for deep comparison
+                    import json
+                    if json.dumps(value, sort_keys=True, default=str) != json.dumps(old_value, sort_keys=True, default=str):
+                        changed_process_fields[key] = {
+                            "from": old_value,
+                            "to": value
+                        }
+                elif old_value != value:
+                    # Simple value comparison
+                    changed_process_fields[key] = {
+                        "from": old_value,
+                        "to": value
+                    }
+                    
+            if changed_process_fields:
+                changes["process_data"] = changed_process_fields
+                logger.info(f"🟢 process_data changes detected: {list(changed_process_fields.keys())}")
+        
         # Check for custom activity data passed from the frontend
         if "activity" in update_data:
             custom_activity = update_data.pop("activity")  # Remove from update data
@@ -894,69 +980,90 @@ class LeadsDB:
                         # Handle dict/object values - IMPROVED for better readability
                         # Special handling for obligations (array of objects)
                         if nested_field == "obligations" and isinstance(new_val, list):
-                            # Format obligations array nicely with FRONTEND labels
-                            # Show ONLY fields that have values (not empty/zero)
-                            obligation_summary = []
-                            for idx, obl in enumerate(new_val, 1):
-                                if isinstance(obl, dict):
-                                    obl_details = [f"Row {idx}:"]
-                                    
-                                    # Only show fields that have actual values
-                                    if obl.get('bankName') and obl.get('bankName') != '':
-                                        obl_details.append(f"  • Bank Name: {obl.get('bankName')}")
-                                    if obl.get('product') and obl.get('product') != '':
-                                        obl_details.append(f"  • Product: {obl.get('product')}")
-                                    if obl.get('emi') and obl.get('emi') not in ['0', '', 0]:
-                                        obl_details.append(f"  • EMI: ₹{obl.get('emi')}")
-                                    if obl.get('outstanding') and obl.get('outstanding') not in ['0', '', 0]:
-                                        obl_details.append(f"  • Outstanding: ₹{obl.get('outstanding')}")
-                                    if obl.get('totalLoan') and obl.get('totalLoan') not in ['0', '', 0]:
-                                        obl_details.append(f"  • Total Loan: ₹{obl.get('totalLoan')}")
-                                    if obl.get('tenure') and obl.get('tenure') not in ['', 'N/A', 0]:
-                                        obl_details.append(f"  • Tenure: {obl.get('tenure')} months")
-                                    if obl.get('roi') and obl.get('roi') not in ['', 'N/A', 0]:
-                                        obl_details.append(f"  • ROI: {obl.get('roi')}%")
-                                    if obl.get('action') and obl.get('action') != '':
-                                        obl_details.append(f"  • Action: {obl.get('action')}")
-                                    
-                                    # Only add if there are actual details (more than just "Row X:")
-                                    if len(obl_details) > 1:
-                                        obligation_summary.append("\n".join(obl_details))
+                            # ENHANCED: Create ONE activity per ROW showing all changes in that row
+                            # This shows "Row 2: EMI: ₹5,000 → ₹6,000, Tenure: 24 months → 36 months"
                             
-                            new_val = "\n\n".join(obligation_summary) if obligation_summary else "No obligations"
+                            old_obligations = old_val if isinstance(old_val, list) else []
+                            new_obligations = new_val
                             
-                            # Format old obligations if exists - also show only filled fields
-                            if isinstance(old_val, list):
-                                old_obligation_summary = []
-                                for idx, obl in enumerate(old_val, 1):
-                                    if isinstance(obl, dict):
-                                        obl_details = [f"Row {idx}:"]
-                                        
-                                        # Only show fields that have actual values
-                                        if obl.get('bankName') and obl.get('bankName') != '':
-                                            obl_details.append(f"  • Bank Name: {obl.get('bankName')}")
-                                        if obl.get('product') and obl.get('product') != '':
-                                            obl_details.append(f"  • Product: {obl.get('product')}")
-                                        if obl.get('emi') and obl.get('emi') not in ['0', '', 0]:
-                                            obl_details.append(f"  • EMI: ₹{obl.get('emi')}")
-                                        if obl.get('outstanding') and obl.get('outstanding') not in ['0', '', 0]:
-                                            obl_details.append(f"  • Outstanding: ₹{obl.get('outstanding')}")
-                                        if obl.get('totalLoan') and obl.get('totalLoan') not in ['0', '', 0]:
-                                            obl_details.append(f"  • Total Loan: ₹{obl.get('totalLoan')}")
-                                        if obl.get('tenure') and obl.get('tenure') not in ['', 'N/A', 0]:
-                                            obl_details.append(f"  • Tenure: {obl.get('tenure')} months")
-                                        if obl.get('roi') and obl.get('roi') not in ['', 'N/A', 0]:
-                                            obl_details.append(f"  • ROI: {obl.get('roi')}%")
-                                        if obl.get('action') and obl.get('action') != '':
-                                            obl_details.append(f"  • Action: {obl.get('action')}")
-                                        
-                                        # Only add if there are actual details
-                                        if len(obl_details) > 1:
-                                            old_obligation_summary.append("\n".join(obl_details))
+                            # Compare each row
+                            max_rows = max(len(old_obligations), len(new_obligations))
+                            
+                            for row_idx in range(max_rows):
+                                old_row = old_obligations[row_idx] if row_idx < len(old_obligations) else {}
+                                new_row = new_obligations[row_idx] if row_idx < len(new_obligations) else {}
                                 
-                                old_val = "\n\n".join(old_obligation_summary) if old_obligation_summary else "No obligations"
-                            else:
-                                old_val = "Not Set"
+                                # Field mapping for better readability
+                                field_labels = {
+                                    'bankName': 'Bank Name',
+                                    'product': 'Product',
+                                    'emi': 'EMI',
+                                    'outstanding': 'Outstanding',
+                                    'totalLoan': 'Total Loan',
+                                    'tenure': 'Tenure',
+                                    'roi': 'ROI',
+                                    'action': 'Action'
+                                }
+                                
+                                # Collect all changes in this row
+                                row_changes = []
+                                
+                                # Check each field in this row
+                                for field_key, field_label in field_labels.items():
+                                    old_field_val = old_row.get(field_key) if isinstance(old_row, dict) else None
+                                    new_field_val = new_row.get(field_key) if isinstance(new_row, dict) else None
+                                    
+                                    # Normalize values for comparison (handle empty strings, zeros, None)
+                                    old_normalized = str(old_field_val).strip() if old_field_val not in [None, '', 0, '0', 'N/A'] else None
+                                    new_normalized = str(new_field_val).strip() if new_field_val not in [None, '', 0, '0', 'N/A'] else None
+                                    
+                                    # If the field changed, add to row changes
+                                    if old_normalized != new_normalized:
+                                        # Format display values
+                                        old_display = old_field_val if old_normalized else "Not Set"
+                                        new_display = new_field_val if new_normalized else "Removed"
+                                        
+                                        # Add currency/percentage formatting
+                                        if field_key in ['emi', 'outstanding', 'totalLoan'] and new_normalized:
+                                            new_display = f"₹{new_field_val}"
+                                        if field_key in ['emi', 'outstanding', 'totalLoan'] and old_normalized:
+                                            old_display = f"₹{old_field_val}"
+                                        if field_key == 'tenure' and new_normalized:
+                                            new_display = f"{new_field_val} months"
+                                        if field_key == 'tenure' and old_normalized:
+                                            old_display = f"{old_field_val} months"
+                                        if field_key == 'roi' and new_normalized:
+                                            new_display = f"{new_field_val}%"
+                                        if field_key == 'roi' and old_normalized:
+                                            old_display = f"{old_field_val}%"
+                                        
+                                        # Add this field change to the row changes list
+                                        row_changes.append(f"{field_label}: {old_display} → {new_display}")
+                                
+                                # If there are changes in this row, create ONE activity for the entire row
+                                if row_changes:
+                                    # Join all changes with line breaks for readability
+                                    changes_text = "\n".join(row_changes)
+                                    
+                                    activity_data = {
+                                        "lead_id": lead_id,
+                                        "user_id": user_id,
+                                        "user_name": updated_by_name,
+                                        "activity_type": "field_update",
+                                        "description": f"Obligation Row {row_idx + 1}",
+                                        "details": {
+                                            "field_display_name": f"Obligation Row {row_idx + 1}",
+                                            "old_value": "Updated",
+                                            "new_value": changes_text
+                                        },
+                                        "created_at": update_data["updated_at"]
+                                    }
+                                    await self.activity_collection.insert_one(activity_data)
+                                    print(f"✅ Recorded obligation row update: Row {row_idx + 1} - {len(row_changes)} field(s) changed")
+                            
+                            # Skip the default activity creation since we created row-based activities
+                            processed_obligation_fields.add("obligations")
+                            continue
                         
                         # Special handling for check_eligibility (object with eligibility data)
                         elif nested_field == "check_eligibility" and isinstance(new_val, dict):
@@ -1052,6 +1159,90 @@ class LeadsDB:
                             processed_obligation_fields.add("obligations")
                         elif nested_field == "check_eligibility":
                             processed_obligation_fields.add("check_eligibility")
+                
+                # Handle nested process_data changes (NEW - for "How to Process" section)
+                elif field_name == "process_data" and isinstance(change_data, dict):
+                    # Create separate activity for each nested field in process_data
+                    for process_field, process_change in change_data.items():
+                        # Map snake_case field names to readable labels
+                        field_labels = {
+                            "processing_bank": "Processing Bank",
+                            "how_to_process": "How to Process",
+                            "loan_type": "Loan Type",
+                            "case_type": "Case Type",
+                            "required_loan_amount": "Required Loan Amount",
+                            "processing_fees": "Processing Fees",
+                            "loan_tenure": "Loan Tenure",
+                            "rate_of_interest": "Rate of Interest",
+                            "other_charges": "Other Charges",
+                            "remarks": "Remarks"
+                        }
+                        
+                        process_display_name = field_labels.get(process_field, process_field.replace('_', ' ').title())
+                        
+                        # Format old and new values
+                        old_val = process_change.get("from", "Not Set")
+                        new_val = process_change.get("to", "")
+                        
+                        # Format specific field types for better readability
+                        if process_field == "required_loan_amount" and new_val and new_val != "Not Set":
+                            try:
+                                new_val = f"₹{int(new_val):,}"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if process_field == "required_loan_amount" and old_val and old_val != "Not Set":
+                            try:
+                                old_val = f"₹{int(old_val):,}"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if process_field == "loan_tenure" and new_val and new_val != "Not Set":
+                            try:
+                                new_val = f"{new_val} months"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if process_field == "loan_tenure" and old_val and old_val != "Not Set":
+                            try:
+                                old_val = f"{old_val} months"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if process_field == "rate_of_interest" and new_val and new_val != "Not Set":
+                            try:
+                                new_val = f"{new_val}%"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if process_field == "rate_of_interest" and old_val and old_val != "Not Set":
+                            try:
+                                old_val = f"{old_val}%"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Truncate long values for readability
+                        if isinstance(old_val, str) and len(old_val) > 100:
+                            old_val = old_val[:100] + "..."
+                        if isinstance(new_val, str) and len(new_val) > 100:
+                            new_val = new_val[:100] + "..."
+                        
+                        activity_data = {
+                            "lead_id": lead_id,
+                            "user_id": user_id,
+                            "user_name": updated_by_name,
+                            "activity_type": "field_update",
+                            "description": process_display_name,  # Just the field name
+                            "details": {
+                                "field_display_name": process_display_name,
+                                "old_value": str(old_val) if old_val is not None else "Not Set",
+                                "new_value": str(new_val) if new_val is not None else ""
+                            },
+                            "created_at": update_data["updated_at"]
+                        }
+                        await self.activity_collection.insert_one(activity_data)
+                        print(f"✅ Recorded process field update: {process_display_name} changed from '{old_val}' to '{new_val}'")
+                
                 else:
                     # Regular field change (not nested)
                     old_val = change_data.get("from", "Not Set")

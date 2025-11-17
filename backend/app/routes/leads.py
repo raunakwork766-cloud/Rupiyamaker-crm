@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Form, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Form, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse, FileResponse
 from typing import List, Dict, Optional, Any, Union, Set
 from bson import ObjectId
@@ -14,6 +14,7 @@ import traceback
 import time
 import asyncio
 import logging
+import copy
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -1765,6 +1766,20 @@ async def update_lead(
     update_dict = {k: v for k, v in lead_update.dict().items() if v is not None}
     logger.info(f"🔍 update_dict AFTER filtering None values: {update_dict}")
     
+    # NEW: Handle process_data separately (outside dynamic_fields to avoid conflicts)
+    if "process_data" in update_dict:
+        logger.info(f"🟢 ========== PROCESS_DATA UPDATE (SEPARATE FROM DYNAMIC_FIELDS) ==========")
+        logger.info(f"🟢 Lead ID: {lead_id}")
+        logger.info(f"📥 INCOMING process_data: {update_dict['process_data']}")
+        
+        # CRITICAL: Remove None values from process_data to avoid setting fields to null
+        if isinstance(update_dict['process_data'], dict):
+            update_dict['process_data'] = {k: v for k, v in update_dict['process_data'].items() if v is not None}
+            logger.info(f"✅ Cleaned process_data (removed None values): {update_dict['process_data']}")
+        
+        logger.info(f"✅ This is stored OUTSIDE dynamic_fields - obligation_data safe!")
+        logger.info(f"🟢 ========== PROCESS_DATA UPDATE END ===========")
+    
     # Special handling for assigned_to if it's a string representation of JSON array
     if "assigned_to" in update_dict and isinstance(update_dict["assigned_to"], str):
         import json
@@ -1782,50 +1797,32 @@ async def update_lead(
             # If it's not valid JSON, leave as is
             print(f"Could not parse assigned_to as JSON: {update_dict['assigned_to']}")
     
-    # Special handling for dynamic_fields to ensure proper merging of all fields
+    # Handle dynamic_fields - but remove process from it if process_data is being used
     if "dynamic_fields" in update_dict:
-        print(f"⚠️ DYNAMIC_FIELDS RECEIVED IN UPDATE:")
-        print(f"   Keys in update_dict.dynamic_fields: {list(update_dict['dynamic_fields'].keys())}")
-        for key, value in update_dict["dynamic_fields"].items():
-            if isinstance(value, dict):
-                print(f"   - {key}: {list(value.keys())}")
-            else:
-                print(f"   - {key}: {value}")
+        logger.info(f"🔵 ========== DYNAMIC_FIELDS UPDATE ==========")
+        logger.info(f"🔵 Lead ID: {lead_id}")
+        logger.info(f"📥 INCOMING update_dict.dynamic_fields keys: {list(update_dict['dynamic_fields'].keys())}")
         
-        # Get current lead data to merge properly
-        current_lead = await leads_db.get_lead(lead_id)
-        current_dynamic_fields = current_lead.get("dynamic_fields", {}) or {}
+        # If process is in dynamic_fields AND we have process_data, remove it from dynamic_fields
+        if "process" in update_dict["dynamic_fields"] and "process_data" in update_dict:
+            logger.info(f"⚠️ Removing 'process' from dynamic_fields - using process_data instead")
+            del update_dict["dynamic_fields"]["process"]
         
-        print(f"📋 CURRENT LEAD dynamic_fields keys from DB: {list(current_dynamic_fields.keys())}")
+        # Remove ALL None values from dynamic_fields to avoid setting fields to null
+        update_dict["dynamic_fields"] = {k: v for k, v in update_dict["dynamic_fields"].items() if v is not None}
         
-        # Create a new merged dynamic_fields object starting with CURRENT data
-        merged_dynamic_fields = dict(current_dynamic_fields)
+        if update_dict["dynamic_fields"]:  # Only log if there's still something left
+            for key, value in update_dict["dynamic_fields"].items():
+                if isinstance(value, dict):
+                    logger.info(f"   - {key}: {list(value.keys())} ({len(value)} fields)")
+                else:
+                    logger.info(f"   - {key}: {value}")
+            logger.info(f"✅ Cleaned dynamic_fields (removed None values)")
+        else:
+            logger.info(f"✅ dynamic_fields is empty after removing None values - removing from update")
+            del update_dict["dynamic_fields"]
         
-        # CRITICAL FIX: Preserve important fields that must never be lost
-        important_fields = ["obligation_data", "eligibility_details", "financial_details", "identity_details", "process"]
-        
-        # Go through each key in the update and properly merge
-        for key, value in update_dict["dynamic_fields"].items():
-            if key in current_dynamic_fields and isinstance(value, dict) and isinstance(current_dynamic_fields[key], dict):
-                # For dictionary fields (like forms), merge instead of replace
-                # IMPORTANT: Merge both ways - keep existing fields not in update
-                merged_dynamic_fields[key] = {**current_dynamic_fields[key], **value}
-                print(f"✅ Merged dynamic_fields.{key} (preserved {len(current_dynamic_fields[key])} existing fields, added/updated {len(value)} fields)")
-            else:
-                # For other types, just replace
-                merged_dynamic_fields[key] = value
-                print(f"✅ Set dynamic_fields.{key}")
-        
-        # EXTRA SAFETY: Ensure all important fields from current lead are preserved if not in update
-        for field in important_fields:
-            if field not in update_dict["dynamic_fields"] and field in current_dynamic_fields:
-                # Field exists in DB but NOT in update - preserve it!
-                merged_dynamic_fields[field] = current_dynamic_fields[field]
-                print(f"🔒 Preserved dynamic_fields.{field} from database (not in update)")
-        
-        # Replace with merged data
-        update_dict["dynamic_fields"] = merged_dynamic_fields
-        print(f"✅ Final merged dynamic_fields keys: {list(merged_dynamic_fields.keys())}")
+        logger.info(f"🔵 ========== DYNAMIC_FIELDS UPDATE END ==========")
     
     # Final safety check: ensure we have something to update after all processing
     final_update_data = {k: v for k, v in update_dict.items() if v is not None}
@@ -4348,6 +4345,16 @@ async def update_lead_obligations(
     Update obligation and eligibility data for a specific lead
     This endpoint specifically handles saving obligation-related fields to the lead's dynamic_fields
     """
+    print("="*80)
+    print("🔴 [OBLIGATIONS ENDPOINT] CALLED!!!")
+    print(f"🔴 Lead ID: {lead_id}")
+    print(f"🔴 User ID: {user_id}")
+    print(f"🔴 Obligation data keys: {list(obligation_data.keys())}")
+    if 'obligations' in obligation_data:
+        print(f"🔴 Obligations array length: {len(obligation_data['obligations'])}")
+        print(f"🔴 Obligations array: {obligation_data['obligations']}")
+    print("="*80)
+    
     # Check if lead exists
     lead = await leads_db.get_lead(lead_id)
     if not lead:
@@ -4385,7 +4392,11 @@ async def update_lead_obligations(
     if "dynamic_fields" in obligation_data and isinstance(obligation_data["dynamic_fields"], dict):
         # Deep merge the nested fields
         for key, value in obligation_data["dynamic_fields"].items():
-            if isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
+            if key == "obligations":
+                # SPECIAL CASE: Always REPLACE obligations array, never merge
+                print(f"🔵 [OBLIGATIONS] Replacing obligations array in dynamic_fields - NEW COUNT: {len(value) if isinstance(value, list) else 'NOT A LIST'}")
+                dynamic_fields[key] = value
+            elif isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
                 # Deep merge objects to preserve all nested fields
                 dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
             else:
@@ -4393,10 +4404,20 @@ async def update_lead_obligations(
                 dynamic_fields[key] = value
     else:
         # If no nested dynamic_fields, update the top-level fields for backward compatibility
+        print(f"🔵 [OBLIGATIONS] Processing root-level obligation_data")
         for key, value in obligation_data.items():
             if key not in ["dynamic_fields", "processingBank"]:  # Skip these special cases
-                # Deep merge for nested objects, direct assign for others
-                if isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
+                if key == "obligations":
+                    # SPECIAL CASE: Always REPLACE obligations array, never merge
+                    print(f"🔵 [OBLIGATIONS] Found root-level 'obligations' key")
+                    print(f"🔵 [OBLIGATIONS] Obligations type: {type(value)}")
+                    print(f"🔵 [OBLIGATIONS] Obligations count: {len(value) if isinstance(value, list) else 'NOT A LIST'}")
+                    if isinstance(value, list) and len(value) > 0:
+                        print(f"🔵 [OBLIGATIONS] First obligation: {value[0].get('product', 'NO PRODUCT')}")
+                    dynamic_fields[key] = value
+                    print(f"🔵 [OBLIGATIONS] Set dynamic_fields['obligations'] to new array")
+                elif isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
+                    # Deep merge for nested objects, direct assign for others
                     dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
                 else:
                     dynamic_fields[key] = value
@@ -4407,11 +4428,18 @@ async def update_lead_obligations(
         "updated_at": datetime.now()
     }
     
+    print(f"🔵 [OBLIGATIONS] About to save to database:")
+    print(f"🔵 [OBLIGATIONS] Lead ID: {lead_id}")
+    print(f"🔵 [OBLIGATIONS] Obligations count in update_data: {len(update_data['dynamic_fields'].get('obligations', [])) if isinstance(update_data.get('dynamic_fields'), dict) else 'NO OBLIGATIONS'}")
+    
     # Add processing_bank at root level if provided
     if "processingBank" in obligation_data and obligation_data["processingBank"]:
         update_data["processing_bank"] = obligation_data["processingBank"]
     
     success = await leads_db.update_lead(lead_id, update_data, user_id=user_id)
+    
+    print(f"🔵 [OBLIGATIONS] Database update result: {success}")
+    
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

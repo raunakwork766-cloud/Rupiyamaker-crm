@@ -3511,6 +3511,42 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         setObligationModalTrigger(() => modalTrigger);
     };
 
+    // Refetch the currently selected lead to get fresh data
+    const refetchSelectedLead = async () => {
+        if (!selectedLead?._id) {
+            console.warn('No selected lead to refetch');
+            return;
+        }
+
+        try {
+            const userId = localStorage.getItem('userId');
+            const response = await fetch(`${API_BASE_URL}/lead-login/login-leads/${selectedLead._id}?user_id=${userId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const updatedLead = await response.json();
+            
+            // Update selectedLead state
+            setSelectedLead(updatedLead);
+            
+            // Also update in the leads array
+            setLeads(prevLeads => 
+                prevLeads.map(l => l._id === updatedLead._id ? updatedLead : l)
+            );
+            
+            console.log('✅ Selected lead refetched and updated:', updatedLead._id);
+        } catch (error) {
+            console.error('❌ Error refetching selected lead:', error);
+        }
+    };
+
     // Continue with tab change after user decides to discard changes
     const handleContinueWithoutSaving = () => {
         setShowObligationUnsavedModal(false);
@@ -4341,13 +4377,54 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
               {
                 label: "About",
                 content: <LazySection height="300px">
-                  <AboutSection lead={lead} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 1500)} canEdit={canEditLogin()} />
+                  <AboutSection 
+                    lead={lead} 
+                    onSave={(updatePayload) => {
+                      // AboutSection sends the full update payload object
+                      // We need to save it properly to the login lead endpoint
+                      if (!selectedLead) return;
+                      
+                      const userId = localStorage.getItem('userId');
+                      const apiUrl = `/api/lead-login/login-leads/${selectedLead._id}?user_id=${userId}`;
+                      
+                      return fetch(apiUrl, {
+                        method: 'PUT',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`
+                        },
+                        body: JSON.stringify(updatePayload)
+                      })
+                      .then(response => {
+                        if (!response.ok) {
+                          throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                      })
+                      .then(result => {
+                        // Update the selected lead with the response
+                        setSelectedLead(result);
+                        // Update in the leads list
+                        setLeads(prevLeads => 
+                          prevLeads.map(l => l._id === result._id ? result : l)
+                        );
+                        console.log('✅ AboutSection data saved successfully');
+                        return result;
+                      })
+                      .catch(error => {
+                        console.error('❌ Error saving AboutSection data:', error);
+                        throw error;
+                      });
+                    }} 
+                    canEdit={canEditLogin()} 
+                  />
                 </LazySection>
               },
               {
                 label: "How to Process",
                 content: <LazySection height="250px">
                   <HowToProcessSection process={lead.process} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 1500)} lead={lead} canEdit={canEditLogin()} />
+```
                 </LazySection>
               },
               {
@@ -4486,7 +4563,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         handleSelectedLeadFieldChange(field, value, true);
                       }}
                       onDataUpdate={async () => {
-                        // Refresh leads data after obligation data is saved
+                        // Immediately refetch the selected lead to show updated values
+                        await refetchSelectedLead();
+                        // Also refresh the leads list in the background
                         fetchLoginDepartmentLeads();
                       }}
                       onUnsavedChangesUpdate={handleObligationUnsavedChanges}
