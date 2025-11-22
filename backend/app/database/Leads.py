@@ -855,13 +855,29 @@ class LeadsDB:
                 await self.activity_collection.insert_one(activity_data)
             
         # Track dynamic fields changes
+        # IMPORTANT: Check both direct dynamic_fields updates AND dot notation updates
+        dynamic_fields_to_check = {}
+        
+        # Case 1: Direct dynamic_fields update (rare, but possible)
         if "dynamic_fields" in update_data:
+            dynamic_fields_to_check = update_data["dynamic_fields"]
+            logger.info(f"📊 Case 1: Direct dynamic_fields update detected")
+        
+        # Case 2: Dot notation updates (common, e.g., dynamic_fields.personal_details)
+        # Reconstruct the nested structure from dot notation for change tracking
+        for key in mongodb_update.keys():
+            if key.startswith("dynamic_fields."):
+                # Extract the nested field name (e.g., "personal_details" from "dynamic_fields.personal_details")
+                nested_field = key.replace("dynamic_fields.", "")
+                dynamic_fields_to_check[nested_field] = mongodb_update[key]
+                logger.info(f"📊 Case 2: Dot notation update detected: {nested_field}")
+        
+        if dynamic_fields_to_check:
             old_fields = current_lead.get("dynamic_fields", {})
-            new_fields = update_data["dynamic_fields"]
             
             # Find changed fields with DEEP comparison for complex objects
             changed_fields = {}
-            for key, value in new_fields.items():
+            for key, value in dynamic_fields_to_check.items():
                 old_value = old_fields.get(key)
                 
                 # Deep comparison for complex structures
@@ -873,24 +889,43 @@ class LeadsDB:
                             "from": old_value,
                             "to": value
                         }
+                        logger.info(f"✅ Dynamic field changed (deep): {key}")
                 elif old_value != value:
                     # Simple value comparison
                     changed_fields[key] = {
                         "from": old_value,
                         "to": value
                     }
+                    logger.info(f"✅ Dynamic field changed (simple): {key}")
                     
             if changed_fields:
                 changes["dynamic_fields"] = changed_fields
+                logger.info(f"✅ Total dynamic_fields changes: {len(changed_fields)} fields")
         
         # Track process_data changes (NEW - for "How to Process" section)
+        # IMPORTANT: Check both direct process_data updates AND dot notation updates
+        process_data_to_check = {}
+        
+        # Case 1: Direct process_data update
         if "process_data" in update_data:
+            process_data_to_check = update_data["process_data"]
+            logger.info(f"📊 Case 1: Direct process_data update detected")
+        
+        # Case 2: Dot notation updates (common, e.g., process_data.processing_bank)
+        # Reconstruct the nested structure from dot notation for change tracking
+        for key in mongodb_update.keys():
+            if key.startswith("process_data."):
+                # Extract the nested field name
+                nested_field = key.replace("process_data.", "")
+                process_data_to_check[nested_field] = mongodb_update[key]
+                logger.info(f"📊 Case 2: Dot notation update detected: {nested_field}")
+        
+        if process_data_to_check:
             old_process = current_lead.get("process_data", {})
-            new_process = update_data["process_data"]
             
             # Find changed fields with DEEP comparison for complex objects
             changed_process_fields = {}
-            for key, value in new_process.items():
+            for key, value in process_data_to_check.items():
                 old_value = old_process.get(key)
                 
                 # Deep comparison for complex structures
@@ -902,12 +937,14 @@ class LeadsDB:
                             "from": old_value,
                             "to": value
                         }
+                        logger.info(f"✅ Process field changed (deep): {key}")
                 elif old_value != value:
                     # Simple value comparison
                     changed_process_fields[key] = {
                         "from": old_value,
                         "to": value
                     }
+                    logger.info(f"✅ Process field changed (simple): {key}")
                     
             if changed_process_fields:
                 changes["process_data"] = changed_process_fields
@@ -1127,6 +1164,80 @@ class LeadsDB:
                             else:
                                 old_val = "Not Set"
                         
+                        # Special handling for applicant/co-applicant section objects
+                        elif nested_field in ["personal_details", "employment_details", "residence_details", 
+                                             "business_details", "coapplicant_personal_details", 
+                                             "coapplicant_employment_details", "coapplicant_residence_details",
+                                             "coapplicant_business_details"] and isinstance(new_val, dict):
+                            # Format section updates nicely - show what fields changed
+                            section_changes = []
+                            
+                            # Common field labels for readability
+                            field_labels = {
+                                # Personal Details
+                                'first_name': 'First Name', 'middle_name': 'Middle Name', 'last_name': 'Last Name',
+                                'gender': 'Gender', 'date_of_birth': 'Date of Birth', 'marital_status': 'Marital Status',
+                                'education': 'Education', 'father_name': 'Father Name', 'mother_name': 'Mother Name',
+                                'email': 'Email', 'mobile': 'Mobile', 'alternate_mobile': 'Alternate Mobile',
+                                
+                                # Employment Details
+                                'employment_type': 'Employment Type', 'company_name': 'Company Name',
+                                'designation': 'Designation', 'years_in_job': 'Years in Job',
+                                'monthly_income': 'Monthly Income', 'annual_income': 'Annual Income',
+                                'salary_mode': 'Salary Mode', 'office_address': 'Office Address',
+                                
+                                # Business Details
+                                'business_name': 'Business Name', 'business_type': 'Business Type',
+                                'nature_of_business': 'Nature of Business', 'years_in_business': 'Years in Business',
+                                'turnover': 'Annual Turnover', 'monthly_profit': 'Monthly Profit',
+                                'gst_number': 'GST Number', 'business_address': 'Business Address',
+                                
+                                # Residence Details
+                                'residence_type': 'Residence Type', 'address': 'Address',
+                                'pincode': 'Pincode', 'city': 'City', 'state': 'State',
+                                'years_at_residence': 'Years at Residence'
+                            }
+                            
+                            old_section = old_val if isinstance(old_val, dict) else {}
+                            new_section = new_val
+                            
+                            # Find what changed in this section
+                            all_keys = set(list(old_section.keys()) + list(new_section.keys()))
+                            for field_key in all_keys:
+                                old_field = old_section.get(field_key)
+                                new_field = new_section.get(field_key)
+                                
+                                # Normalize for comparison
+                                old_normalized = str(old_field).strip() if old_field not in [None, '', 'N/A'] else None
+                                new_normalized = str(new_field).strip() if new_field not in [None, '', 'N/A'] else None
+                                
+                                if old_normalized != new_normalized:
+                                    field_label = field_labels.get(field_key, field_key.replace('_', ' ').title())
+                                    old_display = old_field if old_normalized else "Not Set"
+                                    new_display = new_field if new_normalized else "Removed"
+                                    
+                                    # Add currency formatting for income/amount fields
+                                    if 'income' in field_key or 'turnover' in field_key or 'profit' in field_key:
+                                        if new_normalized:
+                                            try:
+                                                new_display = f"₹{int(new_field):,}"
+                                            except (ValueError, TypeError):
+                                                pass
+                                        if old_normalized:
+                                            try:
+                                                old_display = f"₹{int(old_field):,}"
+                                            except (ValueError, TypeError):
+                                                pass
+                                    
+                                    section_changes.append(f"{field_label}: {old_display} → {new_display}")
+                            
+                            if section_changes:
+                                new_val = "\n".join(section_changes)
+                                old_val = "Updated"
+                            else:
+                                # No actual changes, skip this activity
+                                continue
+                        
                         # Handle other dict/list/object values
                         elif isinstance(old_val, dict):
                             old_val = f"[Object with {len(old_val)} fields]"
@@ -1243,10 +1354,71 @@ class LeadsDB:
                         await self.activity_collection.insert_one(activity_data)
                         print(f"✅ Recorded process field update: {process_display_name} changed from '{old_val}' to '{new_val}'")
                 
+                # Handle nested importantquestion changes (important questions responses)
+                elif field_name in ["importantquestion", "question_responses"] and isinstance(change_data, dict):
+                    # Get all questions from database to get question text
+                    from .ImportantQuestions import ImportantQuestionsDB
+                    questions_db = ImportantQuestionsDB()
+                    all_questions = await questions_db.get_questions()
+                    question_map = {str(q.get("_id")): q.get("question_text", "Unknown Question") for q in all_questions}
+                    
+                    # Create separate activity for each question response change
+                    for question_id, response_change in change_data.items():
+                        question_text = question_map.get(question_id, f"Question {question_id}")
+                        
+                        # Get old and new responses
+                        old_response = response_change.get("from", "Not Answered")
+                        new_response = response_change.get("to", "Not Answered")
+                        
+                        # Format boolean responses nicely
+                        if isinstance(old_response, bool):
+                            old_response = "Yes" if old_response else "No"
+                        elif isinstance(old_response, dict):
+                            old_response = "Selected" if old_response else "Not Selected"
+                        elif old_response in [None, "", []]:
+                            old_response = "Not Answered"
+                        
+                        if isinstance(new_response, bool):
+                            new_response = "Yes" if new_response else "No"
+                        elif isinstance(new_response, dict):
+                            new_response = "Selected" if new_response else "Not Selected"
+                        elif new_response in [None, "", []]:
+                            new_response = "Not Answered"
+                        
+                        activity_data = {
+                            "lead_id": lead_id,
+                            "user_id": user_id,
+                            "user_name": updated_by_name,
+                            "activity_type": "field_update",
+                            "description": f"Important Question: {question_text}",
+                            "details": {
+                                "field_display_name": f"Important Question: {question_text}",
+                                "old_value": str(old_response),
+                                "new_value": str(new_response)
+                            },
+                            "created_at": update_data["updated_at"]
+                        }
+                        await self.activity_collection.insert_one(activity_data)
+                        print(f"✅ Recorded important question update: {question_text} - {old_response} → {new_response}")
+                
                 else:
                     # Regular field change (not nested)
                     old_val = change_data.get("from", "Not Set")
                     new_val = change_data.get("to", "")
+                    
+                    # Special handling for important questions field if it's at top level
+                    if field_name in ["importantquestion", "question_responses"]:
+                        # Skip if empty or no real change
+                        if old_val == new_val or (not old_val and not new_val):
+                            continue
+                        
+                        # Format as summary
+                        if isinstance(new_val, dict):
+                            answered_count = sum(1 for v in new_val.values() if v not in [None, "", False, []])
+                            new_val = f"{answered_count} question(s) answered"
+                        if isinstance(old_val, dict):
+                            answered_count = sum(1 for v in old_val.values() if v not in [None, "", False, []])
+                            old_val = f"{answered_count} question(s) answered"
                     
                     # Truncate long values for readability
                     if isinstance(old_val, str) and len(old_val) > 100:
@@ -1254,11 +1426,17 @@ class LeadsDB:
                     if isinstance(new_val, str) and len(new_val) > 100:
                         new_val = new_val[:100] + "..."
                     
-                    # Handle dict/object values
-                    if isinstance(old_val, dict):
+                    # Handle dict/object values for other fields
+                    if isinstance(old_val, dict) and field_name not in ["importantquestion", "question_responses"]:
                         old_val = f"[Object with {len(old_val)} fields]"
-                    if isinstance(new_val, dict):
+                    if isinstance(new_val, dict) and field_name not in ["importantquestion", "question_responses"]:
                         new_val = f"[Object with {len(new_val)} fields]"
+                    
+                    # Handle list/array values
+                    if isinstance(old_val, list):
+                        old_val = f"[Array with {len(old_val)} items]"
+                    if isinstance(new_val, list):
+                        new_val = f"[Array with {len(new_val)} items]"
                     
                     activity_data = {
                         "lead_id": lead_id,
@@ -1268,8 +1446,8 @@ class LeadsDB:
                         "description": field_display_name,  # Just the field name, no " updated"
                         "details": {
                             "field_display_name": field_display_name,
-                            "old_value": old_val,
-                            "new_value": new_val
+                            "old_value": str(old_val) if old_val is not None else "Not Set",
+                            "new_value": str(new_val) if new_val is not None else ""
                         },
                         "created_at": update_data["updated_at"]
                     }

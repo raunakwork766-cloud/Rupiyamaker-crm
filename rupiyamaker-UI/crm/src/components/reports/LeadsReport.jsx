@@ -14,7 +14,9 @@ import {
     Tag,
     Tooltip,
     Input,
-    Checkbox
+    Checkbox,
+    Typography,
+    Divider
 } from 'antd';
 import { 
     DownloadOutlined, 
@@ -24,165 +26,81 @@ import {
     DollarOutlined,
     UserOutlined,
     BankOutlined,
-    TrophyOutlined
+    TrophyOutlined,
+    TeamOutlined,
+    CheckCircleOutlined,
+    ClockCircleOutlined,
+    CalendarOutlined,
+    FileTextOutlined
 } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { leadsService } from '../../services/leadsService';
 import { hrmsService } from '../../services/hrmsService';
+import { tasksService } from '../../services/tasksService';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 const { Search } = Input;
+const { Title } = Typography;
 
 const LeadsReport = () => {
-    // Helper function to get user name by ID
-    const getUserNameById = (userId, usersList) => {
-        if (!userId || !usersList || usersList.length === 0) return 'Unknown';
-        
-        const user = usersList.find(u => 
-            (u._id && u._id === userId) || 
-            (u.id && u.id === userId) ||
-            (u._id && u._id.$oid === userId)
-        );
-        
-        if (user) {
-            return `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.name || user.username || 'Unknown';
-        }
-        return 'Unknown';
-    };
+    // Report sections configuration
+    const REPORT_SECTIONS = [
+        { key: 'leads', label: 'Lead CRM', icon: <UserOutlined /> },
+        { key: 'login-leads', label: 'Login Leads', icon: <UserOutlined /> },
+        { key: 'employees', label: 'Employees', icon: <TeamOutlined /> },
+        { key: 'attendance', label: 'Attendance', icon: <CalendarOutlined /> },
+        { key: 'tasks', label: 'Tasks', icon: <CheckCircleOutlined /> },
+        { key: 'leaves', label: 'Leaves', icon: <ClockCircleOutlined /> },
+        { key: 'departments', label: 'Departments', icon: <BankOutlined /> },
+        { key: 'roles', label: 'Roles & Permissions', icon: <TeamOutlined /> },
+        { key: 'products', label: 'Products', icon: <FileTextOutlined /> },
+        { key: 'holidays', label: 'Holidays', icon: <CalendarOutlined /> },
+    ];
 
-    // Helper function to get assigned users names
-    const getAssignedUsersNames = (assignedTo, usersList) => {
-        if (!assignedTo) return 'Unassigned';
-        
-        // Handle string (single user ID)
-        if (typeof assignedTo === 'string') {
-            return getUserNameById(assignedTo, usersList);
-        }
-        
-        // Handle array (multiple user IDs)
-        if (Array.isArray(assignedTo)) {
-            if (assignedTo.length === 0) return 'Unassigned';
-            return assignedTo.map(userId => getUserNameById(userId, usersList)).join(', ');
-        }
-        
-        return 'Unknown';
-    };
-
-    // Enhanced obligation processing with more details
-    const processObligationData = (lead, usersList) => {
-        const obligations = lead.dynamic_fields?.obligations || [];
-        
-        return obligations.map((obligation, index) => ({
-            // Lead basic info
-            lead_id: lead._id?.$oid || lead._id,
-            custom_lead_id: lead.custom_lead_id,
-            customer_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
-            phone: lead.phone || lead.mobile_number,
-            email: lead.email || '',
-            
-            // Obligation details
-            obligation_index: index + 1,
-            product: obligation.product || '',
-            bank_name: obligation.bank_name || obligation.bankName || '',
-            total_loan: obligation.total_loan || obligation.totalLoan || 0,
-            outstanding: obligation.outstanding || 0,
-            emi: obligation.emi || 0,
-            tenure: obligation.tenure || 0,
-            roi: obligation.roi || 0,
-            action: obligation.action || '',
-            
-            // Lead context
-            lead_status: lead.status,
-            lead_sub_status: lead.sub_status || '',
-            lead_priority: lead.priority || '',
-            lead_loan_amount: lead.loan_amount || 0,
-            lead_loan_type: lead.loan_type_name || lead.loan_type,
-            processing_bank: lead.processing_bank || '',
-            
-            // Assignment info
-            assigned_to: getAssignedUsersNames(lead.assigned_to, usersList),
-            created_by: lead.created_by_name || getUserNameById(lead.created_by, usersList),
-            department: lead.department_name || '',
-            
-            // Financial details
-            monthly_income: lead.dynamic_fields?.financial_details?.monthly_income || 0,
-            annual_income: lead.dynamic_fields?.financial_details?.annual_income || 0,
-            partner_salary: lead.dynamic_fields?.financial_details?.partner_salary || 0,
-            cibil_score: lead.dynamic_fields?.financial_details?.cibil_score || '',
-            foir_percent: lead.dynamic_fields?.financial_details?.foir_percent || 0,
-            
-            // Eligibility details
-            total_income: lead.dynamic_fields?.eligibility_details?.totalIncome || 0,
-            foir_amount: lead.dynamic_fields?.eligibility_details?.foirAmount || 0,
-            total_obligations: lead.dynamic_fields?.eligibility_details?.totalObligations || 0,
-            final_eligibility: lead.dynamic_fields?.eligibility_details?.finalEligibility || 0,
-            
-            // Dates
-            created_date: lead.created_date ? dayjs(lead.created_date).format('YYYY-MM-DD') : '',
-            updated_date: lead.updated_at ? dayjs(lead.updated_at).format('YYYY-MM-DD') : '',
-            
-            // Operations data
-            operations_amount_approved: lead.operations_amount_approved || '',
-            operations_amount_disbursed: lead.operations_amount_disbursed || '',
-            operations_disbursement_date: lead.operations_disbursement_date || '',
-            
-            // Login details
-            file_sent_to_login: lead.file_sent_to_login ? 'Yes' : 'No',
-            login_status: lead.login_status || '',
-            login_remarks: lead.login_remarks || ''
-        }));
-    };
-
+    const [selectedSection, setSelectedSection] = useState('leads');
     const [loading, setLoading] = useState(false);
-    const [leads, setLeads] = useState([]);
-    const [filteredLeads, setFilteredLeads] = useState([]);
-    const [departments, setDepartments] = useState([]);
-    const [loanTypes, setLoanTypes] = useState([]);
-    const [users, setUsers] = useState([]); // Add users state
+    const [data, setData] = useState([]);
+    const [filteredData, setFilteredData] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [selectedRows, setSelectedRows] = useState([]);
+    const [selectedRowKeys, setSelectedRowKeys] = useState([]);
     
     // Filters state
     const [filters, setFilters] = useState({
         dateRange: null,
+        searchText: '',
         status: null,
-        subStatus: null,
         department: null,
-        loanType: null,
         assignedTo: null,
-        priority: null,
-        searchText: ''
     });
 
     // Statistics state
     const [statistics, setStatistics] = useState({
-        totalLeads: 0,
-        totalLoanAmount: 0,
-        avgLoanAmount: 0,
-        totalObligations: 0,
-        avgObligations: 0,
-        conversionRate: 0,
-        statusDistribution: {},
-        departmentDistribution: {}
+        total: 0,
+        active: 0,
+        completed: 0,
+        pending: 0
     });
 
-    // Column selection for export
-    const [selectedColumns, setSelectedColumns] = useState([
-        'basic_info', 'loan_details', 'obligations', 'financial_details', 
-        'status_info', 'assignment_info', 'operations_info'
-    ]);
-
     useEffect(() => {
-        fetchInitialData();
+        fetchUsers();
     }, []);
 
     useEffect(() => {
+        if (users.length > 0) {
+            fetchData();
+        }
+    }, [selectedSection, users]);
+
+    useEffect(() => {
         applyFilters();
-    }, [filters, leads]);
+    }, [filters, data]);
 
     useEffect(() => {
         calculateStatistics();
-    }, [filteredLeads]);
+    }, [filteredData]);
 
     const fetchInitialData = async () => {
         setLoading(true);

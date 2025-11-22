@@ -9,6 +9,7 @@ import TopNavbar from './components/Navbar'
 import Sidebar from './components/Sidebar'
 import PublicLeadForm from "./components/PublicLeadForm"
 import PublicLoginForm from "./components/PublicLoginForm"
+import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
 import PopNotificationModal from './components/PopNotificationModal'
 import { ToastContainer } from 'react-toastify'
@@ -983,6 +984,9 @@ function App() {
           {/* Public route for login form - no authentication required */}
           <Route path="/login-form/:mobileNumber" element={<PublicLoginForm />} />
           <Route path="/public/login-form/:mobileNumber" element={<PublicLoginForm />} />
+          
+          {/* Public route for app viewer - no authentication required */}
+          <Route path="/public/app/:shareToken" element={<PublicAppViewer />} />
 
           {/* Protected routes (requires authentication) */}
           <Route path="/*" element={

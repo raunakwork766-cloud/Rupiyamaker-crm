@@ -23,6 +23,14 @@ EXCLUDED_PATHS = [
     "/",
     "/favicon.ico",
     "/static",
+    # Public app viewer - no auth required. Include the trailing slash
+    # variant so startswith checks match the full path like
+    # /app-share-links/public/app/<token>
+    "/app-share-links/public",
+    "/app-share-links/public/",
+    # Also allow the frontend route path just in case the proxy maps
+    # requests differently (defensive): /public/app/<token>
+    "/public/app",
 ]
 
 class SessionValidationMiddleware(BaseHTTPMiddleware):

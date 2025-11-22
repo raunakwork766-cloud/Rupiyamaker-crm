@@ -52,7 +52,7 @@ const LazyLeavesPage = createLazyComponent(() => import('../components/LeavesPag
 const LazyChartPage = createLazyComponent(() => import('../components/ChartPage.jsx'), 'ChartPage');
 const LazyWarningPage = createLazyComponent(() => import('../components/WarningPage.jsx'), 'WarningPage');
 const LazyPermissionTest = createLazyComponent(() => import('../components/PermissionTest.jsx'), 'PermissionTest');
-const LazyLeadsReport = createLazyComponent(() => import('../components/reports/LeadsReport.jsx'), 'LeadsReport');
+const LazyLeadsReport = createLazyComponent(() => import('../components/reports/ComprehensiveReport.jsx'), 'ComprehensiveReport');
 const LazyHomeLoanUpdates = createLazyComponent(() => import('../components/HomeLoanUpdates.jsx'), 'HomeLoanUpdates');
 const LazyPlAndOddLeads = createLazyComponent(() => import('../components/PlAndOddLeads.jsx'), 'PlAndOddLeads');
 const LazyNotificationsPage = createLazyComponent(() => import('../components/NotificationsPage.jsx'), 'NotificationsPage');

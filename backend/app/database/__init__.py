@@ -55,11 +55,12 @@ task_history_db = None
 email_settings_db = None
 admin_emails_db = None
 apps_db = None
+app_share_links_db = None
 
 async def init_database():
     """Initialize async Motor database connections and all database classes"""
     global async_client, async_db
-    global users_db, leads_db, login_leads_db, tasks_db, roles_db, departments_db, designations_db, attendance_db, settings_db, tickets_db, notifications_db, pop_notifications_db, leaves_db, warnings_db, loan_types_db, employee_attachments_db, employee_remarks_db, employee_activity_db, products_db, holidays_db, important_questions_db, otp_db, feeds_db, interviews_db, interview_comments_db, interview_history_db, share_links_db, attendance_comments_db, attendance_history_db, task_comments_db, task_history_db, email_settings_db, admin_emails_db, apps_db
+    global users_db, leads_db, login_leads_db, tasks_db, roles_db, departments_db, designations_db, attendance_db, settings_db, tickets_db, notifications_db, pop_notifications_db, leaves_db, warnings_db, loan_types_db, employee_attachments_db, employee_remarks_db, employee_activity_db, products_db, holidays_db, important_questions_db, otp_db, feeds_db, interviews_db, interview_comments_db, interview_history_db, share_links_db, attendance_comments_db, attendance_history_db, task_comments_db, task_history_db, email_settings_db, admin_emails_db, apps_db, app_share_links_db
     
     try:
         # Create async client and database
@@ -105,6 +106,7 @@ async def init_database():
         from .EmailSettings import EmailSettingsDB
         from .AdminEmails import AdminEmailsDB
         from .Apps import AppsDB
+        from .AppShareLinks import AppShareLinksDB
         
         # Create instances with shared database connection
         users_db = UsersDB(async_db)
@@ -141,6 +143,7 @@ async def init_database():
         email_settings_db = EmailSettingsDB(async_db)
         admin_emails_db = AdminEmailsDB(async_db)
         apps_db = AppsDB(async_db)
+        app_share_links_db = AppShareLinksDB(async_db)
         
         # Initialize indexes for all databases
         await users_db.init_indexes()
@@ -177,6 +180,7 @@ async def init_database():
         await email_settings_db.init_indexes()
         await admin_emails_db.init_indexes()
         await apps_db.init_indexes()
+        await app_share_links_db.init_indexes()
         
         logger.info("✓ All async database classes initialized with indexes")
         
@@ -212,7 +216,9 @@ async def init_database():
             "attendance_history": attendance_history_db,
             "task_comments": task_comments_db,
             "task_history": task_history_db,
-            "apps": apps_db
+            "apps": apps_db,
+            "app_share_links": app_share_links_db,
+            "db": async_db
         }
         
     except Exception as e:
@@ -264,7 +270,8 @@ def get_database_instances():
         "attendance_history": attendance_history_db,
         "task_comments": task_comments_db,
         "task_history": task_history_db,
-        "apps": apps_db
+        "apps": apps_db,
+        "app_share_links": app_share_links_db
     }
 
 # Individual database getter functions for FastAPI dependency injection

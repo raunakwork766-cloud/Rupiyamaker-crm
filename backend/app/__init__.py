@@ -249,7 +249,7 @@ async def database_health_check():
         }
 
 # Import routers after app creation to avoid circular imports
-from app.routes import users, roles, department, feeds, leads, loan_types, employees, leadLoginRelated, lead_fields, share_links, tasks, charts, tickets, leaves, settings, reassignment, apps, postal, notifications, designations, otp, important_questions
+from app.routes import users, roles, department, feeds, leads, loan_types, employees, leadLoginRelated, lead_fields, share_links, tasks, charts, tickets, leaves, settings, reassignment, apps, postal, notifications, designations, otp, important_questions, app_share_links
 
 try:
     from app.routes import pop_notifications
@@ -317,6 +317,7 @@ app.include_router(leaves.router)
 app.include_router(settings.router)
 app.include_router(reassignment.router)
 app.include_router(apps.router)
+app.include_router(app_share_links.router)
 app.include_router(postal.router)
 app.include_router(notifications.router)
 app.include_router(designations.router)

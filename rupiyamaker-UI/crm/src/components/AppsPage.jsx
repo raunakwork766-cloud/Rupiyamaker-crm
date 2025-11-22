@@ -13,7 +13,12 @@ import {
   Search,
   Image,
   Upload,
-  MoreVertical
+  MoreVertical,
+  Link as LinkIcon,
+  Copy,
+  ExternalLink,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { fetchWithAuth, getCurrentUserId } from '../utils/auth';
 import { hasPermission, getUserPermissions, isSuperAdmin } from '../utils/permissions';
@@ -68,8 +73,19 @@ const AppsPage = () => {
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [showFullPageView, setShowFullPageView] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [selectedApp, setSelectedApp] = useState(null);
   const [roles, setRoles] = useState([]);
+  
+  // Share link states
+  const [shareLinks, setShareLinks] = useState([]);
+  const [loadingShareLinks, setLoadingShareLinks] = useState(false);
+  const [newShareLink, setNewShareLink] = useState({
+    expires_in_days: 7,
+    max_access_count: 999,
+    notes: ''
+  });
+  const [copiedToken, setCopiedToken] = useState(null);
   
   // Image upload states
   const [imageFile, setImageFile] = useState(null);
@@ -515,6 +531,123 @@ const AppsPage = () => {
         ? prev.allowed_roles.filter(id => id !== roleId)
         : [...prev.allowed_roles, roleId]
     }));
+  };
+
+  // Share link functions
+  const openShareModal = async (app) => {
+    setSelectedApp(app);
+    setShowShareModal(true);
+    await fetchShareLinks(app.id);
+  };
+
+  const fetchShareLinks = async (appId) => {
+    try {
+      setLoadingShareLinks(true);
+      const currentUserId = getCurrentUserId();
+      const response = await fetchWithAuth(`${API_BASE_URL}/app-share-links/app/${appId}?user_id=${currentUserId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setShareLinks(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching share links:', error);
+      setShareLinks([]);
+    } finally {
+      setLoadingShareLinks(false);
+    }
+  };
+
+  const createShareLink = async () => {
+    try {
+      const currentUserId = getCurrentUserId();
+      const baseUrl = window.location.origin;
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/app-share-links/create?user_id=${currentUserId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          app_id: selectedApp.id,
+          expires_in_days: parseInt(newShareLink.expires_in_days),
+          max_access_count: parseInt(newShareLink.max_access_count),
+          base_url: baseUrl,
+          notes: newShareLink.notes || null
+        })
+      });
+
+      if (response.ok) {
+        await fetchShareLinks(selectedApp.id);
+        setNewShareLink({
+          expires_in_days: 7,
+          max_access_count: 999,
+          notes: ''
+        });
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Failed to create share link');
+      }
+    } catch (error) {
+      console.error('Error creating share link:', error);
+      setError('Failed to create share link');
+    }
+  };
+
+  const toggleShareLink = async (shareToken, currentStatus) => {
+    try {
+      const currentUserId = getCurrentUserId();
+      const response = await fetchWithAuth(`${API_BASE_URL}/app-share-links/${shareToken}/toggle?user_id=${currentUserId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_active: !currentStatus
+        })
+      });
+
+      if (response.ok) {
+        await fetchShareLinks(selectedApp.id);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Failed to toggle share link');
+      }
+    } catch (error) {
+      console.error('Error toggling share link:', error);
+      setError('Failed to toggle share link');
+    }
+  };
+
+  const deleteShareLink = async (shareToken) => {
+    if (!confirm('Are you sure you want to delete this share link?')) return;
+
+    try {
+      const currentUserId = getCurrentUserId();
+      const response = await fetchWithAuth(`${API_BASE_URL}/app-share-links/${shareToken}?user_id=${currentUserId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await fetchShareLinks(selectedApp.id);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Failed to delete share link');
+      }
+    } catch (error) {
+      console.error('Error deleting share link:', error);
+      setError('Failed to delete share link');
+    }
+  };
+
+  const copyToClipboard = (text, token) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    });
+  };
+
+  const getShareUrl = (shareToken) => {
+    return `${window.location.origin}/public/app/${shareToken}`;
   };
 
   // Test basic tab opening functionality
@@ -1235,6 +1368,17 @@ const AppsPage = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            openShareModal(app);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-gray-700 text-white flex items-center gap-3 transition-colors duration-150 border-t border-gray-700"
+                        >
+                          <LinkIcon size={16} />
+                          <span>Share Links</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleDeleteApp(app.id);
                             setOpenMenuId(null);
                           }}
@@ -1760,6 +1904,218 @@ const AppsPage = () => {
                 >
                   <Save size={16} />
                   Save Permissions
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Share Links Modal */}
+        {showShareModal && selectedApp && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <LinkIcon size={24} className="text-[#08B8EA]" />
+                  Share Links for "{selectedApp.title}"
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowShareModal(false);
+                    setSelectedApp(null);
+                    setShareLinks([]);
+                    setNewShareLink({
+                      expires_in_days: 7,
+                      max_access_count: 999,
+                      notes: ''
+                    });
+                  }}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Create New Share Link Section */}
+              <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+                <h3 className="text-lg font-semibold mb-4">Create New Share Link</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-2">
+                      Expires in (days)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={newShareLink.expires_in_days}
+                      onChange={(e) => setNewShareLink({...newShareLink, expires_in_days: e.target.value})}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-2">
+                      Max Access Count
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newShareLink.max_access_count}
+                      onChange={(e) => setNewShareLink({...newShareLink, max_access_count: e.target.value})}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
+                    />
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-300 mb-2">
+                    Notes (optional)
+                  </label>
+                  <textarea
+                    value={newShareLink.notes}
+                    onChange={(e) => setNewShareLink({...newShareLink, notes: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
+                    rows="2"
+                    placeholder="Add notes about this share link..."
+                  />
+                </div>
+                <button
+                  onClick={createShareLink}
+                  className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                >
+                  <Plus size={16} />
+                  Generate Share Link
+                </button>
+              </div>
+
+              {/* Existing Share Links */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Existing Share Links</h3>
+                {loadingShareLinks ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#08B8EA] mx-auto"></div>
+                    <p className="text-gray-400 mt-2">Loading share links...</p>
+                  </div>
+                ) : shareLinks.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
+                    <p>No share links created yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {shareLinks.map((link) => {
+                      const shareUrl = getShareUrl(link.share_token);
+                      const isExpired = new Date(link.expires_at) < new Date();
+                      const isMaxedOut = link.access_count >= link.max_access_count;
+                      
+                      return (
+                        <div
+                          key={link.id}
+                          className={`p-4 rounded-lg border ${
+                            link.is_active && !isExpired && !isMaxedOut
+                              ? 'bg-gray-800 border-gray-700'
+                              : 'bg-gray-800 bg-opacity-50 border-gray-700 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={`px-2 py-1 text-xs rounded ${
+                                  link.is_active && !isExpired && !isMaxedOut
+                                    ? 'bg-green-500 bg-opacity-20 text-green-400'
+                                    : 'bg-red-500 bg-opacity-20 text-red-400'
+                                }`}>
+                                  {!link.is_active ? 'Deactivated' : isExpired ? 'Expired' : isMaxedOut ? 'Max Reached' : 'Active'}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  Created: {new Date(link.created_at).toLocaleDateString()}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  Expires: {new Date(link.expires_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 bg-gray-900 p-2 rounded border border-gray-600">
+                                <input
+                                  type="text"
+                                  value={shareUrl}
+                                  readOnly
+                                  className="flex-1 bg-transparent text-sm text-gray-300 outline-none"
+                                />
+                                <button
+                                  onClick={() => copyToClipboard(shareUrl, link.share_token)}
+                                  className="text-[#08B8EA] hover:text-[#12d8fa] p-1"
+                                  title="Copy link"
+                                >
+                                  {copiedToken === link.share_token ? (
+                                    <span className="text-green-400 text-xs">Copied!</span>
+                                  ) : (
+                                    <Copy size={16} />
+                                  )}
+                                </button>
+                                <a
+                                  href={shareUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#08B8EA] hover:text-[#12d8fa] p-1"
+                                  title="Open in new tab"
+                                >
+                                  <ExternalLink size={16} />
+                                </a>
+                              </div>
+                              {link.notes && (
+                                <p className="text-xs text-gray-400 mt-2">
+                                  Note: {link.notes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between pt-3 border-t border-gray-700">
+                            <div className="flex items-center gap-4 text-xs text-gray-400">
+                              <span>Accesses: {link.access_count} / {link.max_access_count}</span>
+                              {link.last_accessed_at && (
+                                <span>Last accessed: {new Date(link.last_accessed_at).toLocaleString()}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => toggleShareLink(link.share_token, link.is_active)}
+                                className={`flex items-center gap-1 px-3 py-1 rounded text-xs ${
+                                  link.is_active
+                                    ? 'bg-yellow-500 bg-opacity-20 text-yellow-400 hover:bg-opacity-30'
+                                    : 'bg-green-500 bg-opacity-20 text-green-400 hover:bg-opacity-30'
+                                }`}
+                                title={link.is_active ? 'Deactivate link' : 'Reactivate link'}
+                              >
+                                {link.is_active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                                {link.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => deleteShareLink(link.share_token)}
+                                className="bg-red-500 bg-opacity-20 text-red-400 hover:bg-opacity-30 px-3 py-1 rounded text-xs flex items-center gap-1"
+                                title="Delete link"
+                              >
+                                <Trash2 size={14} />
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowShareModal(false);
+                    setSelectedApp(null);
+                    setShareLinks([]);
+                  }}
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+                >
+                  Close
                 </button>
               </div>
             </div>

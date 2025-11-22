@@ -26,7 +26,7 @@ const WarningPage = lazy(() => import('../components/WarningPage').catch(() => (
 const AddTask = lazy(() => import('../components/AddTask').catch(() => ({ default: () => <div>Error loading AddTask component</div> })));
 const SettingsPage = lazy(() => import('../components/SettingsPage').catch(() => ({ default: () => <div>Error loading SettingsPage component</div> })));
 const AppsPage = lazy(() => import('../components/AppsPage').catch(() => ({ default: () => <div>Error loading AppsPage component</div> })));
-const LeadsReport = lazy(() => import('../components/reports/LeadsReport').catch(() => ({ default: () => <div>Error loading LeadsReport component</div> })));
+const LeadsReport = lazy(() => import('../components/reports/ComprehensiveReport').catch(() => ({ default: () => <div>Error loading Reports component</div> })));
 const NotificationsPage = lazy(() => import('../components/NotificationsPage').catch(() => ({ default: () => <div>Error loading NotificationsPage component</div> })));
 const UnauthorizedPage = lazy(() => import('../pages/Unauthorized').catch(() => ({ default: () => <div>Error loading Unauthorized component</div> })));
 
