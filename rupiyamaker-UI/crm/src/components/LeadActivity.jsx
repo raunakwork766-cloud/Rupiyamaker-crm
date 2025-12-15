@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Calendar, User, Filter } from 'lucide-react';
+import { Activity, Calendar, User, Filter, Search } from 'lucide-react';
 
 // Helper function to group activities by date and time
 const groupActivitiesByDateAndTime = (activities) => {
@@ -58,6 +58,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Get userId with multiple fallback options
   const getUserId = () => {
@@ -311,23 +312,8 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
       case 'updated':
         return `Lead details updated by ${activity.user_name || 'System'}`;
       case 'field_update':
-        // 🎯 NEW: Individual field update - simple text, details shown separately
-        const fieldName = activity.details?.field_display_name || activity.details?.field_name || 'Field';
-        
-        // Special labels for obligation-related fields
-        if (activity.details?.field_name === 'obligations') {
-          return `Obligations updated by ${activity.user_name || 'System'}`;
-        } else if (activity.details?.field_name === 'check_eligibility') {
-          return `Check Eligibility updated by ${activity.user_name || 'System'}`;
-        } else if (activity.details?.field_name === 'totalObligation') {
-          return `Total Obligation updated by ${activity.user_name || 'System'}`;
-        } else if (activity.details?.field_name === 'cibilScore') {
-          return `CIBIL Score updated by ${activity.user_name || 'System'}`;
-        } else if (activity.details?.field_name === 'totalBtPos') {
-          return `Total BT POS updated by ${activity.user_name || 'System'}`;
-        }
-        
-        return `${fieldName} updated by ${activity.user_name || 'System'}`;
+        // Return just the field name
+        return activity.details?.field_display_name || activity.details?.field_name || 'Field updated';
       case 'status_changed':
       case 'status_change':
         const fromStatus = activity.details?.from_status || activity.details?.old_status || 'N/A';
@@ -380,68 +366,95 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
   };
 
   const filteredActivities = activities.filter(activity => {
-    if (filter === 'all') return true;
-    
-    const activityType = activity.action || activity.activity_type;
-    
-    // Handle exact matches first
-    if (filter === activityType) return true;
-    
-    // Handle legacy and alternative mappings
-    switch (filter) {
-      case 'created':
-        return activityType === 'created' || activityType === 'create';
+    // Filter by activity type
+    if (filter !== 'all') {
+      const activityType = activity.action || activity.activity_type;
       
-      case 'updated':
-        return activityType === 'updated' || activityType === 'update';
-      
-      case 'field_update':
-        return activityType === 'field_update';
-      
-      case 'assigned':
-        return activityType === 'assigned' || activityType === 'assignment';
-      
-      case 'transferred':
-        return activityType === 'transferred' || activityType === 'transfer';
-      
-      case 'status_changed':
-        return activityType === 'status_changed' || activityType === 'status_change' || activityType === 'sub_status_change';
-      
-      case 'document':
-        return activityType === 'document' || 
-               activityType === 'attachment_uploaded' || 
-               (activity.description && activity.description.toLowerCase().includes('document uploaded'));
-      
-      case 'note':
-        return activityType === 'note' || 
-               activityType === 'remark_added' ||
-               (activity.details && activity.details.note_text);
-      
-      case 'task_added':
-        return activityType === 'task_added' || 
-               (activityType === 'task' && activity.description && activity.description.includes('added'));
-      
-      case 'task_completed':
-        return activityType === 'task_completed' || 
-               (activityType === 'task' && activity.description && activity.description.includes('completed'));
-      
-      case 'task_updated':
-        return activityType === 'task_updated' || 
-               (activityType === 'task' && activity.description && activity.description.includes('updated'));
-      
-      case 'file_sent_to_login':
-        return activityType === 'file_sent_to_login' || 
-               activityType === 'login_form_updated';
-      
-      case 'question_validation':
-        return activityType === 'question_validation';
-      
-      case 'sub_status_change':
-        return activityType === 'sub_status_change';
-      
-      default:
-        return false;
+      // Handle exact matches first
+      if (filter !== activityType) {
+        // Handle legacy and alternative mappings
+        let matchesFilter = false;
+        switch (filter) {
+          case 'created':
+            matchesFilter = activityType === 'created' || activityType === 'create';
+            break;
+          
+          case 'updated':
+            matchesFilter = activityType === 'updated' || activityType === 'update';
+            break;
+          
+          case 'field_update':
+            matchesFilter = activityType === 'field_update';
+            break;
+          
+          case 'assigned':
+            matchesFilter = activityType === 'assigned' || activityType === 'assignment';
+            break;
+          
+          case 'transferred':
+            matchesFilter = activityType === 'transferred' || activityType === 'transfer';
+            break;
+          
+          case 'status_changed':
+            matchesFilter = activityType === 'status_changed' || activityType === 'status_change' || activityType === 'sub_status_change';
+            break;
+          
+          case 'document':
+            matchesFilter = activityType === 'document' || 
+                   activityType === 'attachment_uploaded' || 
+                   (activity.description && activity.description.toLowerCase().includes('document uploaded'));
+            break;
+          
+          case 'note':
+            matchesFilter = activityType === 'note' || 
+                   activityType === 'remark_added' ||
+                   (activity.details && activity.details.note_text);
+            break;
+          
+          case 'task_added':
+            matchesFilter = activityType === 'task_added' || 
+                   (activityType === 'task' && activity.description && activity.description.includes('added'));
+            break;
+          
+          case 'task_completed':
+            matchesFilter = activityType === 'task_completed' || 
+                   (activityType === 'task' && activity.description && activity.description.includes('completed'));
+            break;
+          
+          case 'task_updated':
+            matchesFilter = activityType === 'task_updated' || 
+                   (activityType === 'task' && activity.description && activity.description.includes('updated'));
+            break;
+          
+          case 'file_sent_to_login':
+            matchesFilter = activityType === 'file_sent_to_login' || 
+                   activityType === 'login_form_updated';
+            break;
+          
+          case 'question_validation':
+            matchesFilter = activityType === 'question_validation';
+            break;
+          
+          case 'sub_status_change':
+            matchesFilter = activityType === 'sub_status_change';
+            break;
+          
+          default:
+            matchesFilter = false;
+        }
+        
+        if (!matchesFilter) return false;
+      }
     }
+    
+    // Filter by search query (field name)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const fieldName = (activity.details?.field_display_name || activity.details?.field_name || activity.description || '').toLowerCase();
+      return fieldName.includes(query);
+    }
+    
+    return true;
   });
 
   const activityTypes = [
@@ -470,12 +483,12 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
   return (
     <div className="space-y-4 bg-white p-4 rounded-lg overflow-x-hidden break-words">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h3 className="text-xl font-semibold text-black flex items-center">
           <Activity className="w-6 h-6 mr-2" />
           Activities Timeline
         </h3>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-2">
           <Filter className="w-4 h-4 text-gray-600" />
           <select
             value={filter}
@@ -489,6 +502,26 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
             ))}
           </select>
         </div>
+      </div>
+      
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search by field name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-black placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Error Messages */}
@@ -590,145 +623,68 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                     {activity.user_name || 'System'}
                                   </div>
                                 </div>
-                                {activity.details && Object.keys(activity.details).length > 0 && (
-                                  <div className="text-sm text-gray-600">
-                                    {/* 🎯 NEW: Show field changes in clean format */}
-                                    {(activity.action === 'field_update' || activity.activity_type === 'field_update') && (
-                                      <div className="mt-2">
-                                        {/* Special handling for Obligations data */}
-                                        {activity.details.is_obligation_data || activity.details.field_name === 'obligations' ? (
-                                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-md break-words overflow-wrap-anywhere">
-                                            <div className="space-y-3">
-                                              {/* Old Obligations */}
-                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
-                                                <div>
-                                                  <span className="font-semibold text-gray-700 block mb-2">📋 Previous Obligations:</span>
-                                                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm space-y-3">
-                                                    {activity.details.old_value.split('\n\n').map((row, idx) => (
-                                                      <div key={idx} className="bg-white border border-red-300 rounded p-2">
-                                                        {row.split('\n').map((line, lineIdx) => (
-                                                          <div key={lineIdx} className={`text-red-800 py-0.5 ${lineIdx === 0 ? 'font-bold text-red-900' : 'pl-2'}`}>
-                                                            {line}
-                                                          </div>
-                                                        ))}
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </div>
-                                              )}
-                                              
-                                              {/* Arrow separator */}
-                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
-                                                <div className="text-center text-gray-400">
-                                                  <span className="text-2xl">⬇</span>
-                                                </div>
-                                              )}
-                                              
-                                              {/* New Obligations */}
-                                              <div>
-                                                <span className="font-semibold text-gray-700 block mb-2">✅ Updated Obligations:</span>
-                                                <div className="bg-green-50 border border-green-200 rounded p-3 text-sm space-y-3">
-                                                  {(typeof activity.details.new_value === 'string' ? activity.details.new_value : JSON.stringify(activity.details.new_value || '')).split('\n\n').map((row, idx) => (
-                                                    <div key={idx} className="bg-white border border-green-300 rounded p-2">
-                                                      {row.split('\n').map((line, lineIdx) => (
-                                                        <div key={lineIdx} className={`text-green-800 py-0.5 ${lineIdx === 0 ? 'font-bold text-green-900' : 'pl-2'}`}>
-                                                          {line}
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  ))}
+                                {/* Simple FROM/TO format for field updates */}
+                                {(activity.action === 'field_update' || activity.activity_type === 'field_update') && activity.details && (
+                                  <div className="text-sm mt-2">
+                                    {/* Check if it's check_eligibility with multiple fields */}
+                                    {(activity.details.field_name === 'check_eligibility' || activity.description === 'Check Eligibility') && 
+                                     (activity.details.old_value?.includes('\n') || activity.details.new_value?.includes('\n')) ? (
+                                      <div className="space-y-2">
+                                        {/* Split fields and display each on separate row */}
+                                        {(() => {
+                                          const oldFields = activity.details.old_value?.split('\n') || [];
+                                          const newFields = activity.details.new_value?.split('\n') || [];
+                                          const maxLength = Math.max(oldFields.length, newFields.length);
+                                          
+                                          return Array.from({ length: maxLength }).map((_, idx) => {
+                                            const oldField = oldFields[idx] || '';
+                                            const newField = newFields[idx] || '';
+                                            
+                                            // Extract field name from "Field Name: Value" format
+                                            const getFieldLabel = (field) => field.split(':')[0]?.trim() || '';
+                                            const fieldLabel = getFieldLabel(newField) || getFieldLabel(oldField);
+                                            
+                                            if (!oldField && !newField) return null;
+                                            
+                                            return (
+                                              <div key={idx} className="border-l-2 border-blue-300 pl-3 py-1">
+                                                <div className="font-medium text-gray-700 text-xs mb-1">{fieldLabel}</div>
+                                                <div className="flex items-center flex-wrap gap-2">
+                                                  <span className="font-medium text-blue-600">FROM:</span>
+                                                  <span className={`${oldField ? 'text-red-600' : 'text-gray-400'}`}>
+                                                    {oldField.split(':')[1]?.trim() || 'Empty'}
+                                                  </span>
+                                                  <span>→</span>
+                                                  <span className="font-medium text-blue-600">TO:</span>
+                                                  <span className="text-green-600">
+                                                    {newField.split(':')[1]?.trim() || 'Empty'}
+                                                  </span>
                                                 </div>
                                               </div>
-                                            </div>
-                                          </div>
-                                        ) : (activity.details.is_check_eligibility || activity.details.field_name === 'check_eligibility') ? (
-                                          /* Special handling for Check Eligibility data */
-                                          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500 p-4 rounded-r-md">
-                                            <div className="space-y-3">
-                                              {/* Old Check Eligibility */}
-                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
-                                                <div>
-                                                  <span className="font-semibold text-gray-700 block mb-2">📊 Previous Eligibility:</span>
-                                                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm">
-                                                    {activity.details.old_value.split('\n').map((line, idx) => (
-                                                      <div key={idx} className="text-red-800 py-1 flex items-start">
-                                                        <span className="mr-2">•</span>
-                                                        <span className="font-medium">{line}</span>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </div>
-                                              )}
-                                              
-                                              {/* Arrow separator */}
-                                              {activity.details.old_value && activity.details.old_value !== 'Not set' && activity.details.old_value !== 'Not Set' && (
-                                                <div className="text-center text-gray-400">
-                                                  <span className="text-2xl">⬇</span>
-                                                </div>
-                                              )}
-                                              
-                                              {/* New Check Eligibility */}
-                                              <div>
-                                                <span className="font-semibold text-gray-700 block mb-2">✅ Updated Eligibility:</span>
-                                                <div className="bg-green-50 border border-green-200 rounded p-3 text-sm">
-                                                  {(typeof activity.details.new_value === 'string' ? activity.details.new_value : JSON.stringify(activity.details.new_value || '')).split('\n').map((line, idx) => (
-                                                    <div key={idx} className="text-green-800 py-1 flex items-start">
-                                                      <span className="mr-2">•</span>
-                                                      <span className="font-medium">{line}</span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ) : (activity.details.field_name === 'totalObligation' || activity.details.field_name === 'totalBtPos' || activity.details.field_name === 'cibilScore') ? (
-                                          /* Special handling for financial/score fields */
-                                          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 p-4 rounded-r-md">
-                                            <div className="flex items-center justify-center space-x-4">
-                                              <div className="text-center">
-                                                <div className="text-xs text-gray-600 mb-1">Previous Value</div>
-                                                <div className="px-4 py-2 bg-red-100 text-red-800 rounded-lg font-semibold text-lg">
-                                                  {activity.details.field_name === 'cibilScore' 
-                                                    ? (activity.details.old_value || 'Not set')
-                                                    : `₹${activity.details.old_value || '0'}`
-                                                  }
-                                                </div>
-                                              </div>
-                                              <div className="text-gray-400 text-3xl">→</div>
-                                              <div className="text-center">
-                                                <div className="text-xs text-gray-600 mb-1">New Value</div>
-                                                <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold text-lg">
-                                                  {activity.details.field_name === 'cibilScore' 
-                                                    ? (typeof activity.details.new_value === 'object' ? JSON.stringify(activity.details.new_value) : activity.details.new_value)
-                                                    : `₹${typeof activity.details.new_value === 'object' ? JSON.stringify(activity.details.new_value) : activity.details.new_value}`
-                                                  }
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          /* Regular field update display */
-                                          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-md break-words overflow-wrap-anywhere">
-                                            <div className="flex items-center space-x-2 flex-wrap">
-                                              <span className="font-medium text-gray-700">FROM:</span>
-                                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded break-all max-w-[200px]">
-                                                {typeof activity.details.old_value === 'object' && activity.details.old_value !== null
-                                                  ? (activity.details.old_value.company_name || activity.details.old_value.employer || JSON.stringify(activity.details.old_value))
-                                                  : (activity.details.old_value || 'Not set')}
-                                              </span>
-                                              <span className="text-gray-500">→</span>
-                                              <span className="font-medium text-gray-700">TO:</span>
-                                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded break-all max-w-[200px]">
-                                                {typeof activity.details.new_value === 'object' && activity.details.new_value !== null
-                                                  ? (activity.details.new_value.company_name || activity.details.new_value.employer || JSON.stringify(activity.details.new_value))
-                                                  : activity.details.new_value}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
+                                            );
+                                          });
+                                        })()}
+                                      </div>
+                                    ) : (
+                                      /* Single line format for other field updates */
+                                      <div>
+                                        <span className="font-medium text-blue-600">FROM:</span>
+                                        <span className={`ml-2 ${activity.details.old_value ? 'text-red-600' : 'text-gray-400'}`}>
+                                          {activity.details.old_value || 'Empty'}
+                                        </span>
+                                        <span className="mx-2">→</span>
+                                        <span className="font-medium text-blue-600">TO:</span>
+                                        <span className="ml-2 text-green-600">
+                                          {activity.details.new_value}
+                                        </span>
                                       </div>
                                     )}
-                                    
+                                  </div>
+                                )}
+                                
+                                {/* Original details for non-field-update activities */}
+                                {!(activity.action === 'field_update' || activity.activity_type === 'field_update') && activity.details && Object.keys(activity.details).length > 0 && (
+                                  <div className="text-sm text-gray-600 mt-2">
                                     {/* Show comments/notes */}
                                     {activity.details.comment && (
                                       <p className="italic">"{activity.details.comment}"</p>

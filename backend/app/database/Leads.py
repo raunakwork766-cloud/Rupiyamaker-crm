@@ -1124,12 +1124,10 @@ class LeadsDB:
                                 check_fields.append(f"Tenure (Years): {new_val['tenure_years']}")
                             if new_val.get('roi') and new_val.get('roi') not in [0, '', None]:
                                 check_fields.append(f"Rate of Interest (ROI): {new_val['roi']}%")
+                            if new_val.get('foir_eligibility') and new_val.get('foir_eligibility') not in [0, '', None]:
+                                check_fields.append(f"FOIR Eligibility: ₹{new_val['foir_eligibility']}")
                             if new_val.get('multiplier') and new_val.get('multiplier') not in [0, '', None, '0']:
                                 check_fields.append(f"Multiplier: {new_val['multiplier']}")
-                            if new_val.get('total_bt_pos') and new_val.get('total_bt_pos') not in [0, '', None]:
-                                check_fields.append(f"Total BT POS: ₹{new_val['total_bt_pos']}")
-                            if new_val.get('total_obligation') and new_val.get('total_obligation') not in [0, '', None]:
-                                check_fields.append(f"Total Obligation: ₹{new_val['total_obligation']}")
                             
                             new_val = "\n".join(check_fields) if check_fields else "No eligibility data"
                             
@@ -1153,12 +1151,10 @@ class LeadsDB:
                                     old_check_fields.append(f"Tenure (Years): {old_val['tenure_years']}")
                                 if old_val.get('roi') and old_val.get('roi') not in [0, '', None]:
                                     old_check_fields.append(f"Rate of Interest (ROI): {old_val['roi']}%")
+                                if old_val.get('foir_eligibility') and old_val.get('foir_eligibility') not in [0, '', None]:
+                                    old_check_fields.append(f"FOIR Eligibility: ₹{old_val['foir_eligibility']}")
                                 if old_val.get('multiplier') and old_val.get('multiplier') not in [0, '', None, '0']:
                                     old_check_fields.append(f"Multiplier: {old_val['multiplier']}")
-                                if old_val.get('total_bt_pos') and old_val.get('total_bt_pos') not in [0, '', None]:
-                                    old_check_fields.append(f"Total BT POS: ₹{old_val['total_bt_pos']}")
-                                if old_val.get('total_obligation') and old_val.get('total_obligation') not in [0, '', None]:
-                                    old_check_fields.append(f"Total Obligation: ₹{old_val['total_obligation']}")
                                 
                                 old_val = "\n".join(old_check_fields) if old_check_fields else "No eligibility data"
                             else:

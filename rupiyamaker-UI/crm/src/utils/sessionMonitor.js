@@ -16,7 +16,7 @@ class SessionMonitor {
   constructor() {
     this.intervalId = null;
     this.animationFrameId = null; // For requestAnimationFrame loop
-    this.checkInterval = 1000; // 🔥 Check every 1 SECOND for ultra-fast logout
+    this.checkInterval = 30000; // Check every 30 seconds (reasonable for session monitoring)
     this.isRunning = false;
     this.logoutCallback = null; // Callback to notify app of logout
     this.lastCheckTime = 0; // Track last check to prevent duplicate checks
@@ -66,7 +66,7 @@ class SessionMonitor {
     // 🔥 Check on keypress (user typing)
     document.addEventListener('keydown', this.handleUserInteraction);
 
-    console.log('🔒 Session monitoring started with ULTRA-AGGRESSIVE mode (1-second checks)');
+    console.log('🔒 Session monitoring started (30-second interval checks)');
   }
 
   /**

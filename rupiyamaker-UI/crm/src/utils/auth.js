@@ -149,17 +149,14 @@ export const verifySession = async () => {
       return { valid: false, shouldLogout: true, reason: 'No user data found' };
     }
 
-    // Use GET /users endpoint which returns complete user data including login_enabled
-    // Then find the specific user in the response
-    const response = await fetchWithAuth(`${API_BASE_URL}/users`, {
+    // Use GET /users/{id} endpoint to fetch only the specific user data
+    // This is much more efficient than fetching all users
+    const response = await fetchWithAuth(`${API_BASE_URL}/users/${userData._id}?user_id=${userData._id}`, {
       method: 'GET'
     });
 
     if (response.ok) {
-      const users = await response.json();
-      
-      // Find the current user in the users list
-      const user = users.find(u => u._id === userData._id);
+      const user = await response.json();
       
       if (!user) {
         clearAuthData();

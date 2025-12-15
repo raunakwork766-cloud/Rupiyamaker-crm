@@ -94,6 +94,4 @@ if __name__ == "__main__":
     print(f"📁 Working directory: {os.getcwd()}")
     print(f"🔍 App import: {app_import}")
     
-    uvicorn.run(**config)    
-    # Start the Uvicorn server
     uvicorn.run(**config)

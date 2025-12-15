@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Plus, Trash2, Calendar, Edit3, Send } from 'lucide-react';
 import { formatDateTimeIST } from '../../utils/timezoneUtils';
 
+// Updated: 2025-12-10 - Fixed multi-line support
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
 
@@ -54,6 +55,8 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
     };
 
     const handleNoteBlur = () => {
+        // Keep original formatting including line breaks
+        // Only uppercase if needed, but preserve newlines
         setNewNote((prev) => prev.toUpperCase());
     };
 
@@ -177,10 +180,10 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                         onChange={canEdit ? handleNoteChange : undefined}
                         onBlur={canEdit ? handleNoteBlur : undefined}
                         disabled={!canEdit}
-                        placeholder="Enter note content..."
-                        className="flex-1 bg-white border border-gray-600 rounded-lg px-2 py-0.5 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none overflow-hidden text-lg uppercase"
-                        rows={1}
-                        style={{ minHeight: 24, maxHeight: 80 }}
+                        placeholder="Enter note content... (Press Enter for new line, click Send to submit)"
+                        className="flex-1 bg-white border border-gray-600 rounded-lg px-3 py-2 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none overflow-auto text-lg uppercase"
+                        rows={3}
+                        style={{ minHeight: 60, maxHeight: 300 }}
                     />
                     <button
                         onClick={addNote}
@@ -236,7 +239,9 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                             </div>
 
                             {/* Note Content */}
-                            <p className="text-black whitespace-pre-wrap leading-relaxed mt-2 uppercase">{note.content}</p>
+                            <p className="text-black whitespace-pre-wrap break-words leading-relaxed mt-3 uppercase text-base bg-gray-50 p-3 rounded border-l-4 border-blue-400">
+                                {note.content}
+                            </p>
                         </div>
                     ))
                 )}

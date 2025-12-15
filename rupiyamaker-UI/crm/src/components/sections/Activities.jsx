@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Activity, Calendar, User, Filter } from 'lucide-react';
 import { buildApiUrl } from '../../config/api';
 
+// Updated: 2025-12-10 - Improved field update display format
 // Helper function to group activities by date and time
 const groupActivitiesByDateAndTime = (activities) => {
   const groupedByDate = activities.reduce((acc, activity) => {
@@ -75,6 +76,14 @@ export default function Activities({ leadId, userId, formatDate }) {
       if (response.ok) {
         const data = await response.json();
         console.log('✅ Activities loaded successfully:', data?.length || 0, 'activities');
+        console.log('📊 Sample activity data:', data?.[0]);
+        if (data?.[0]) {
+          console.log('🔍 Activity fields:', {
+            action: data[0].action,
+            activity_type: data[0].activity_type,
+            details: data[0].details
+          });
+        }
         setActivities(Array.isArray(data) ? data : []);
       } else {
         const errorText = await response.text();
@@ -94,6 +103,7 @@ export default function Activities({ leadId, userId, formatDate }) {
       case 'created':
         return '🎯';
       case 'updated':
+      case 'field_update':
         return '✏️';
       case 'status_changed':
         return '🔄';
@@ -123,6 +133,7 @@ export default function Activities({ leadId, userId, formatDate }) {
       case 'created':
         return 'border-green-500 bg-green-900/20';
       case 'updated':
+      case 'field_update':
         return 'border-blue-500 bg-blue-900/20';
       case 'status_changed':
         return 'border-purple-500 bg-purple-900/20';
@@ -150,8 +161,13 @@ export default function Activities({ leadId, userId, formatDate }) {
       case 'updated':
         return 'Lead details updated';
       case 'field_update':
-        // Simple format: Just field name
-        return activity.details?.field_display_name || 'Field updated';
+        // Return object with field name for custom rendering
+        return {
+          isFieldUpdate: true,
+          fieldName: activity.details?.field_display_name || 'Field updated',
+          oldValue: activity.details?.old_value || '',
+          newValue: activity.details?.new_value || ''
+        };
       case 'status_changed':
         return `Status: "${activity.details?.old_status || 'N/A'}" → "${activity.details?.new_status || 'N/A'}"`;
       case 'assigned':
@@ -177,7 +193,8 @@ export default function Activities({ leadId, userId, formatDate }) {
 
   const filteredActivities = activities.filter(activity => {
     if (filter === 'all') return true;
-    return (activity.action === filter || activity.activity_type === filter);
+    const activityType = activity.action || activity.activity_type;
+    return activityType === filter;
   });
 
   const activityTypes = [
@@ -271,7 +288,7 @@ export default function Activities({ leadId, userId, formatDate }) {
                   {Object.entries(timeGroups)
                     .sort((a, b) => new Date(b[1][0].created_at) - new Date(a[1][0].created_at)) // Sort times in descending order
                     .map(([time, activities], timeIndex, timeArray) => {
-                      const action = activities[0].action || activities[0].activity_type;
+                      const activityType = activities[0].action || activities[0].activity_type;
                       return (
                         <div key={time} className="relative flex items-start space-x-4 pb-4">
                           {/* Time and Timeline dot */}
@@ -279,9 +296,9 @@ export default function Activities({ leadId, userId, formatDate }) {
                             <div className="text-sm text-gray-600">{time}</div>
                             <div className="relative flex justify-end">
                               <div
-                                className={`z-10 w-6 h-6 rounded-full border-2 ${getActivityColor(action)} flex items-center justify-center mt-2`}
+                                className={`z-10 w-6 h-6 rounded-full border-2 ${getActivityColor(activityType)} flex items-center justify-center mt-2`}
                               >
-                                <span className="text-sm">{getActivityIcon(action)}</span>
+                                <span className="text-sm">{getActivityIcon(activityType)}</span>
                               </div>
                               {timeIndex !== timeArray.length - 1 && (
                                 <div className="absolute top-8 right-2.5 w-0.5 h-full bg-gray-300"></div>
@@ -291,40 +308,58 @@ export default function Activities({ leadId, userId, formatDate }) {
 
                           {/* Activity content */}
                           <div className="flex-1 space-y-2">
-                            {activities.map((activity, activityIndex) => (
-                              <div key={activity._id || activityIndex} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-medium text-black">
-                                    {formatActivityDescription(activity)}
-                                  </span>
-                                  <div className="text-sm text-gray-600 flex items-center">
-                                    <User className="w-3 h-3 mr-1" />
-                                    {activity.user_name || 'System'}
+                            {activities.map((activity, activityIndex) => {
+                              const description = formatActivityDescription(activity);
+                              const isFieldUpdate = description && typeof description === 'object' && description.isFieldUpdate;
+                              
+                              // Debug logging for first activity
+                              if (activityIndex === 0) {
+                                console.log('🎯 Processing activity:', {
+                                  action: activity.action,
+                                  activity_type: activity.activity_type,
+                                  description: description,
+                                  isFieldUpdate: isFieldUpdate,
+                                  details: activity.details
+                                });
+                              }
+                              
+                              return (
+                                <div key={activity._id || activityIndex} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                  {/* Header with field name and user */}
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-black">
+                                      {isFieldUpdate ? description.fieldName : description}
+                                    </span>
+                                    <div className="text-sm text-gray-600 flex items-center">
+                                      <User className="w-3 h-3 mr-1" />
+                                      {activity.user_name || 'System'}
+                                    </div>
                                   </div>
-                                </div>
-                                {activity.details && Object.keys(activity.details).length > 0 && (
-                                  <div className="text-sm text-gray-600">
-                                    {activity.details.comment && (
+                                  
+                                  {/* FROM and TO section for field updates */}
+                                  {isFieldUpdate && (
+                                    <div className="text-sm">
+                                      <span className="font-medium text-blue-600">FROM:</span>
+                                      <span className={`ml-2 ${description.oldValue ? 'text-red-600' : 'text-gray-400'}`}>
+                                        {description.oldValue || 'Empty'}
+                                      </span>
+                                      <span className="mx-2">→</span>
+                                      <span className="font-medium text-blue-600">TO:</span>
+                                      <span className="ml-2 text-green-600">
+                                        {description.newValue}
+                                      </span>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Comments for non-field-update activities */}
+                                  {!isFieldUpdate && activity.details?.comment && (
+                                    <div className="text-sm text-gray-600">
                                       <p className="italic">"{activity.details.comment}"</p>
-                                    )}
-                                    {activity.details.changes && (
-                                      <div className="mt-1">
-                                        <strong>Changes:</strong>
-                                        <ul className="list-disc list-inside ml-2">
-                                          {Object.entries(activity.details.changes).map(([field, change]) => (
-                                            <li key={field}>
-                                              <span className="capitalize">{field.replace('_', ' ')}</span>:
-                                              <span className="text-red-600"> {change.from || 'None'}</span> →
-                                              <span className="text-green-600"> {change.to || 'None'}</span>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
