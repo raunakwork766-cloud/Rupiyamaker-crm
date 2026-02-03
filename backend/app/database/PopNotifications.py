@@ -178,7 +178,8 @@ class PopNotificationsDB:
                 "accepted_by": [],  # List of users who accepted
                 "total_active_users": 0,  # Will be set when notification is created
                 "version": version,  # Version for instant change detection
-                "metadata": notification_data.get("metadata", {})  # Additional data
+                "metadata": notification_data.get("metadata", {}),  # Additional data
+                "notification_type": notification_data.get("notification_type", "general")  # 'general' or 'logout'
             }
             
             # Insert notification

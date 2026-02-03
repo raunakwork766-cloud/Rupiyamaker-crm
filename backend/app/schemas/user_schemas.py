@@ -1,5 +1,5 @@
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, Field, EmailStr, validator
 from datetime import datetime, date
 
 class UserBase(BaseModel):
@@ -39,6 +39,13 @@ class UserInDB(UserBase):
     created_at: datetime
     updated_at: datetime
     profile_photo: Optional[str] = None  # Profile photo path
+    
+    @validator('email', pre=True)
+    def empty_string_to_none(cls, v):
+        """Convert empty strings to None for email fields"""
+        if v == '':
+            return None
+        return v
     
     class Config:
         allow_population_by_field_name = True
@@ -249,9 +256,16 @@ class OtpRequirementUpdate(BaseModel):
 class EmployeeInDB(BaseModel):
     id: str = Field(alias="_id")
     username: str
-    email: str
+    email: Optional[str] = None
     first_name: str
     last_name: str
+    
+    @validator('email', pre=True)
+    def empty_string_to_none(cls, v):
+        """Convert empty strings to None for email fields"""
+        if v == '':
+            return None
+        return v
     role_id: Optional[str] = None
     department_id: Optional[str] = None
     team_id: Optional[str] = None
@@ -338,7 +352,21 @@ class ComprehensiveEmployeeInDB(EmployeeInDB):
     
     # Explicitly include all comprehensive fields to ensure they're not filtered
     mac_address: Optional[str] = None
-    personal_email: Optional[EmailStr] = None
+    personal_email: Optional[str] = None
+    
+    @validator('personal_email', pre=True)
+    def empty_personal_email_to_none(cls, v):
+        """Convert empty strings to None for personal_email fields"""
+        if v == '':
+            return None
+        return v
+    
+    @validator('work_email', pre=True)
+    def empty_work_email_to_none(cls, v):
+        """Convert empty strings to None for work_email fields"""
+        if v == '':
+            return None
+        return v
     alternate_phone: Optional[str] = None
     addresses: Optional[List[EmployeeAddress]] = None
     emergency_contacts: Optional[List[EmergencyContact]] = None

@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 # Setup logging with optimized configuration
 logging.basicConfig(
-    level=logging.INFO,  # Changed to INFO to debug session validation
+    level=logging.WARNING,  # Changed to WARNING to prevent log flooding
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("backend.log"),  # Standard file handler
@@ -139,40 +139,41 @@ app.add_middleware(
     max_age=86400,  # Cache preflight requests for 24 hours
 )
 
-# 2.5 Request logging middleware for debugging
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-import logging
+# Request logging middleware DISABLED to prevent log flooding
+# If debugging is needed, temporarily enable this middleware
+# from starlette.middleware.base import BaseHTTPMiddleware
+# from starlette.requests import Request
+# import logging
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        logger = logging.getLogger(__name__)
-        
-        # Log ALL PUT requests to leads
-        if request.method == "PUT" and "/leads/" in request.url.path:
-            logger.info(f"🔵 INCOMING PUT REQUEST: {request.method} {request.url.path}")
-            logger.info(f"🔵 Query params: {dict(request.query_params)}")
-            logger.info(f"🔵 Headers: {dict(request.headers)}")
-            
-            # Try to read body
-            try:
-                body = await request.body()
-                logger.info(f"🔵 Body: {body.decode('utf-8')}")
-                # Reconstruct request with body for downstream handlers
-                async def receive():
-                    return {"type": "http.request", "body": body}
-                request._receive = receive
-            except Exception as e:
-                logger.error(f"Error reading body: {e}")
-        
-        response = await call_next(request)
-        
-        if request.method == "PUT" and "/leads/" in request.url.path:
-            logger.info(f"🔵 RESPONSE STATUS: {response.status_code}")
-        
-        return response
+# class RequestLoggingMiddleware(BaseHTTPMiddleware):
+#     async def dispatch(self, request: Request, call_next):
+#         logger = logging.getLogger(__name__)
+#         
+#         # Log ALL PUT requests to leads
+#         if request.method == "PUT" and "/leads/" in request.url.path:
+#             logger.info(f"🔵 INCOMING PUT REQUEST: {request.method} {request.url.path}")
+#             logger.info(f"🔵 Query params: {dict(request.query_params)}")
+#             logger.info(f"🔵 Headers: {dict(request.headers)}")
+#             
+#             # Try to read body
+#             try:
+#                 body = await request.body()
+#                 logger.info(f"🔵 Body: {body.decode('utf-8')}")
+#                 # Reconstruct request with body for downstream handlers
+#                 async def receive():
+#                     return {"type": "http.request", "body": body}
+#                 request._receive = receive
+#             except Exception as e:
+#                 logger.error(f"Error reading body: {e}")
+#         
+#         response = await call_next(request)
+#         
+#         if request.method == "PUT" and "/leads/" in request.url.path:
+#             logger.info(f"🔵 RESPONSE STATUS: {response.status_code}")
+#         
+#         return response
 
-app.add_middleware(RequestLoggingMiddleware)
+# app.add_middleware(RequestLoggingMiddleware)
 
 # 3. GZip compression (ultra-optimized for large JSON responses)
 app.add_middleware(

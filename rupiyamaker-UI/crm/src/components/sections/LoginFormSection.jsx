@@ -234,7 +234,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     getCurrentFormData
   }));
 
-  const handleBlur = async (field, value) => {
+  const handleBlur = (field, value) => {
     // If field is _formSwitch, this is a special case for saving during tab switching
     const isFormSwitch = field === '_formSwitch';
     
@@ -247,116 +247,11 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     }
     
     // For public forms, just update local state (no auto-save)
-    // For internal forms, continue with auto-save behavior
-    if (!isPublic || isFormSwitch) {
-      // For tab switching (isFormSwitch), we want to save even for public forms
-      
-      // If we have a leadId, make API call to save the data
-      if (leadId) {
-        try {
-          // Show saving status
-          setSaveStatus('Saving...');
-          setIsSaving(true);
-
-          const apiBaseUrl = '/api';
-          const userId = localStorage.getItem('userId');
-
-          // Prepare data for API - use different structure for applicant vs co-applicant
-          const apiData = isCoApplicant ? {
-            co_applicant_form: updatedData
-          } : {
-            applicant_form: updatedData
-          };
-
-          // Save immediately on blur without debouncing
-          const token = localStorage.getItem('token');
-          
-          // Determine if this is a login lead by checking leadData for original_lead_id
-          const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
-          const apiUrl = isLoginLead
-            ? `${apiBaseUrl}/lead-login/login-leads/${leadId}/login-form?user_id=${userId}`
-            : `${apiBaseUrl}/leads/${leadId}/login-form?user_id=${userId}`;
-          
-          console.log(`📡 LoginFormSection: Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
-
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(apiData)
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          
-          // Validate that the response indicates success
-          const responseData = await response.json();
-          
-          // Check if response has success or acknowledged flag, or if response is valid
-          // Accept response if: success is true, acknowledged is true, or response has data property
-          if (responseData.success === false || (responseData.acknowledged === false && !responseData.success)) {
-            console.warn('API returned 200 but success flag is false:', responseData);
-            throw new Error('API reported success but did not confirm data was saved');
-          }
-
-          // Refresh lead data to get the latest from backend
-          try {
-            const refreshUrl = isLoginLead
-              ? `${apiBaseUrl}/lead-login/login-leads/${leadId}?user_id=${userId}`
-              : `${apiBaseUrl}/leads/${leadId}?user_id=${userId}`;
-            const refreshResponse = await fetch(refreshUrl, {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-
-            if (refreshResponse.ok) {
-              const updatedLead = await refreshResponse.json();
-              // Get updated form data based on co-applicant flag
-              const updatedFormData = isCoApplicant
-                ? updatedLead.dynamic_fields?.co_applicant_form
-                : updatedLead.dynamic_fields?.applicant_form;
-
-              if (updatedFormData) {
-                // Call onSave with the latest data from backend
-                onSave(updatedFormData);
-              }
-
-              // Update status to saved
-              setSaveStatus('Saved');
-
-              // Clear status after 2 seconds
-              setTimeout(() => {
-                setSaveStatus('');
-              }, 2000);
-            }
-          } catch (error) {
-            console.error('Error in refresh callback:', error);
-            setSaveStatus('Saved (refresh failed)');
-
-            // Clear error status after 2 seconds
-            setTimeout(() => {
-              setSaveStatus('');
-            }, 2000);
-          }
-
-        } catch (error) {
-          console.error('Error saving form data:', error);
-          setSaveStatus('Error saving');
-
-          // Clear error status after 3 seconds
-          setTimeout(() => {
-            setSaveStatus('');
-          }, 3000);
-        } finally {
-          setIsSaving(false);
-        }
-      }
+    // For internal forms with tab switching, save immediately
+    if (!isPublic && isFormSwitch && leadId) {
+      // Only save on form switch - let parent component handle regular field saves
+      // This prevents duplicate saves with parent's debounced auto-save
+      handleSaveForm();
     }
   };
 
@@ -379,11 +274,9 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       const newValue = e.target.value;
       // First update the fields state
       handleChange(fieldName, newValue);
-      // For dropdowns, we need to manually save the value for both public and non-public forms
-      // Set a timeout to ensure the state is updated before calling handleBlur
-      setTimeout(() => {
-        handleBlur(fieldName, newValue);
-      }, 0);
+      // Only update local state - let parent component handle debounced auto-save
+      // This prevents duplicate activity history entries
+      handleBlur(fieldName, newValue);
     }) : undefined,
     disabled: !canEdit
   });

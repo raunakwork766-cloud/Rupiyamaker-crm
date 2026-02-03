@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
     Card, 
     Table, 
@@ -16,28 +16,25 @@ import {
     Input,
     Checkbox,
     Typography,
-    Divider
+    Modal
 } from 'antd';
 import { 
     DownloadOutlined, 
     FileExcelOutlined, 
     ReloadOutlined,
-    FilterOutlined,
     DollarOutlined,
     UserOutlined,
     BankOutlined,
     TrophyOutlined,
-    TeamOutlined,
-    CheckCircleOutlined,
-    ClockCircleOutlined,
-    CalendarOutlined,
-    FileTextOutlined
+    EyeOutlined,
+    PhoneOutlined,
+    MailOutlined
 } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { leadsService } from '../../services/leadsService';
 import { hrmsService } from '../../services/hrmsService';
-import { tasksService } from '../../services/tasksService';
+import LeadDetails from '../LeadDetails';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -45,27 +42,16 @@ const { Search } = Input;
 const { Title } = Typography;
 
 const LeadsReport = () => {
-    // Report sections configuration
-    const REPORT_SECTIONS = [
-        { key: 'leads', label: 'Lead CRM', icon: <UserOutlined /> },
-        { key: 'login-leads', label: 'Login Leads', icon: <UserOutlined /> },
-        { key: 'employees', label: 'Employees', icon: <TeamOutlined /> },
-        { key: 'attendance', label: 'Attendance', icon: <CalendarOutlined /> },
-        { key: 'tasks', label: 'Tasks', icon: <CheckCircleOutlined /> },
-        { key: 'leaves', label: 'Leaves', icon: <ClockCircleOutlined /> },
-        { key: 'departments', label: 'Departments', icon: <BankOutlined /> },
-        { key: 'roles', label: 'Roles & Permissions', icon: <TeamOutlined /> },
-        { key: 'products', label: 'Products', icon: <FileTextOutlined /> },
-        { key: 'holidays', label: 'Holidays', icon: <CalendarOutlined /> },
-    ];
-
-    const [selectedSection, setSelectedSection] = useState('leads');
     const [loading, setLoading] = useState(false);
-    const [data, setData] = useState([]);
-    const [filteredData, setFilteredData] = useState([]);
+    const [leads, setLeads] = useState([]);
+    const [filteredLeads, setFilteredLeads] = useState([]);
     const [users, setUsers] = useState([]);
-    const [selectedRows, setSelectedRows] = useState([]);
-    const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [selectedColumns, setSelectedColumns] = useState(['leads_summary', 'obligations', 'financial_details']);
+    
+    // View modal state
+    const [viewModalVisible, setViewModalVisible] = useState(false);
+    const [selectedLead, setSelectedLead] = useState(null);
     
     // Filters state
     const [filters, setFilters] = useState({
@@ -78,39 +64,56 @@ const LeadsReport = () => {
 
     // Statistics state
     const [statistics, setStatistics] = useState({
-        total: 0,
-        active: 0,
-        completed: 0,
-        pending: 0
+        totalLeads: 0,
+        totalLoanAmount: 0,
+        avgLoanAmount: 0,
+        totalObligations: 0,
+        avgObligations: 0,
+        conversionRate: 0
     });
+    
+    // Store additional data for each lead
+    const [leadsRemarks, setLeadsRemarks] = useState({});
+    const [leadsAttachments, setLeadsAttachments] = useState({});
+    const [fetchingAdditionalData, setFetchingAdditionalData] = useState(false);
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
-
-    useEffect(() => {
-        if (users.length > 0) {
-            fetchData();
+    // Fetch users first
+    const fetchUsers = async () => {
+        try {
+            const usersResponse = await hrmsService.getEmployees();
+            if (usersResponse.success && Array.isArray(usersResponse.data)) {
+                setUsers(usersResponse.data);
+            } else if (usersResponse.data && Array.isArray(usersResponse.data.items)) {
+                setUsers(usersResponse.data.items);
+            }
+        } catch (error) {
+            console.error('Error fetching users:', error);
+            setUsers([]);
         }
-    }, [selectedSection, users]);
+    };
 
-    useEffect(() => {
-        applyFilters();
-    }, [filters, data]);
+    // Fetch departments
+    const fetchDepartments = async () => {
+        try {
+            const deptResponse = await hrmsService.getDepartments();
+            if (deptResponse.success && Array.isArray(deptResponse.data)) {
+                setDepartments(deptResponse.data);
+            } else if (deptResponse.data && Array.isArray(deptResponse.data.items)) {
+                setDepartments(deptResponse.data.items);
+            }
+        } catch (error) {
+            console.error('Error fetching departments:', error);
+            setDepartments([]);
+        }
+    };
 
-    useEffect(() => {
-        calculateStatistics();
-    }, [filteredData]);
-
-    const fetchInitialData = async () => {
+    // Fetch all data
+    const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch leads data
             const leadsResponse = await leadsService.getAllLeads();
-            console.log('Leads response:', leadsResponse);
             
             if (leadsResponse.success) {
-                // Handle different response structures
                 let leadsData = [];
                 if (Array.isArray(leadsResponse.data)) {
                     leadsData = leadsResponse.data;
@@ -121,75 +124,102 @@ const LeadsReport = () => {
                 }
                 
                 setLeads(leadsData);
-                console.log('Leads data set:', leadsData.length, 'items');
+                setFilteredLeads(leadsData);
+                
+                // Fetch remarks and attachments for each lead
+                await fetchAdditionalLeadsData(leadsData);
             } else {
-                console.warn('Failed to fetch leads:', leadsResponse);
-                setLeads([]);
                 message.warning('Failed to fetch leads data');
+                setLeads([]);
+                setFilteredLeads([]);
             }
 
-            // Fetch departments
-            const deptResponse = await hrmsService.getDepartments();
-            if (deptResponse.success) {
-                let deptData = [];
-                if (Array.isArray(deptResponse.data)) {
-                    deptData = deptResponse.data;
-                } else if (deptResponse.data && Array.isArray(deptResponse.data.items)) {
-                    deptData = deptResponse.data.items;
-                }
-                setDepartments(deptData);
-            } else {
-                setDepartments([]);
-            }
-
-            // Fetch loan types
-            const loanTypesResponse = await leadsService.getLoanTypes();
-            if (loanTypesResponse.success) {
-                let loanTypesData = [];
-                if (Array.isArray(loanTypesResponse.data)) {
-                    loanTypesData = loanTypesResponse.data;
-                } else if (loanTypesResponse.data && Array.isArray(loanTypesResponse.data.items)) {
-                    loanTypesData = loanTypesResponse.data.items;
-                }
-                setLoanTypes(loanTypesData);
-            } else {
-                setLoanTypes([]);
-            }
-
-            // Fetch all users for assigned_to mapping
-            const usersResponse = await hrmsService.getEmployees();
-            if (usersResponse.success) {
-                let usersData = [];
-                if (Array.isArray(usersResponse.data)) {
-                    usersData = usersResponse.data;
-                } else if (usersResponse.data && Array.isArray(usersResponse.data.items)) {
-                    usersData = usersResponse.data.items;
-                }
-                setUsers(usersData);
-                console.log('Users data loaded:', usersData.length, 'users');
-            } else {
-                setUsers([]);
-            }
-
+            await fetchDepartments();
         } catch (error) {
             console.error('Error fetching initial data:', error);
             message.error('Failed to fetch data');
+            setLeads([]);
+            setFilteredLeads([]);
         } finally {
             setLoading(false);
         }
     };
+    
+    // Fetch remarks and attachments for leads
+    const fetchAdditionalLeadsData = async (leadsList) => {
+        if (!leadsList || leadsList.length === 0) return;
+        
+        setFetchingAdditionalData(true);
+        const remarksData = {};
+        const attachmentsData = {};
+        const userId = localStorage.getItem('userId') || '';
+        
+        try {
+            // Fetch remarks and attachments for each lead (with concurrency limit)
+            const batchSize = 10;
+            for (let i = 0; i < leadsList.length; i += batchSize) {
+                const batch = leadsList.slice(i, i + batchSize);
+                
+                await Promise.all(batch.map(async (lead) => {
+                    try {
+                        // Fetch remarks
+                        const notesResponse = await fetch(`/api/leads/${lead._id}/notes?user_id=${userId}`);
+                        if (notesResponse.ok) {
+                            const notes = await notesResponse.json();
+                            remarksData[lead._id] = notes || [];
+                        }
+                        
+                        // Fetch attachments
+                        const docsResponse = await fetch(`/api/leads/${lead._id}/documents?user_id=${userId}`);
+                        if (docsResponse.ok) {
+                            const docs = await docsResponse.json();
+                            attachmentsData[lead._id] = docs || [];
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching additional data for lead ${lead._id}:`, error);
+                    }
+                }));
+            }
+            
+            setLeadsRemarks(remarksData);
+            setLeadsAttachments(attachmentsData);
+            console.log('Additional data fetched:', {
+                remarks: Object.keys(remarksData).length,
+                attachments: Object.keys(attachmentsData).length
+            });
+        } catch (error) {
+            console.error('Error fetching additional leads data:', error);
+        } finally {
+            setFetchingAdditionalData(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
+
+    useEffect(() => {
+        if (users.length > 0) {
+            fetchData();
+        }
+    }, [users.length]);
+
+    useEffect(() => {
+        applyFilters();
+    }, [filters, leads]);
+
+    useEffect(() => {
+        calculateStatistics();
+    }, [filteredLeads]);
 
     const applyFilters = () => {
-        // Ensure leads is an array before trying to spread it
         if (!Array.isArray(leads)) {
-            console.warn('Leads is not an array:', leads);
             setFilteredLeads([]);
             return;
         }
 
         let filtered = [...leads];
 
-        // Date range filter
         if (filters.dateRange && filters.dateRange.length === 2) {
             const [startDate, endDate] = filters.dateRange;
             filtered = filtered.filter(lead => {
@@ -198,32 +228,18 @@ const LeadsReport = () => {
             });
         }
 
-        // Status filter
         if (filters.status) {
             filtered = filtered.filter(lead => lead.status === filters.status);
         }
 
-        // Sub-status filter
-        if (filters.subStatus) {
-            filtered = filtered.filter(lead => lead.sub_status === filters.subStatus);
-        }
-
-        // Department filter
         if (filters.department) {
             filtered = filtered.filter(lead => lead.department_id === filters.department);
         }
 
-        // Loan type filter
-        if (filters.loanType) {
-            filtered = filtered.filter(lead => lead.loan_type_id === filters.loanType);
+        if (filters.assignedTo) {
+            filtered = filtered.filter(lead => lead.assigned_to === filters.assignedTo);
         }
 
-        // Priority filter
-        if (filters.priority) {
-            filtered = filtered.filter(lead => lead.priority === filters.priority);
-        }
-
-        // Search text filter
         if (filters.searchText) {
             const searchLower = filters.searchText.toLowerCase();
             filtered = filtered.filter(lead => 
@@ -239,18 +255,14 @@ const LeadsReport = () => {
     };
 
     const calculateStatistics = () => {
-        // Ensure filteredLeads is an array
         if (!Array.isArray(filteredLeads)) {
-            console.warn('FilteredLeads is not an array:', filteredLeads);
             setStatistics({
                 totalLeads: 0,
                 totalLoanAmount: 0,
                 avgLoanAmount: 0,
                 totalObligations: 0,
                 avgObligations: 0,
-                conversionRate: 0,
-                statusDistribution: {},
-                departmentDistribution: {}
+                conversionRate: 0
             });
             return;
         }
@@ -259,7 +271,6 @@ const LeadsReport = () => {
         const totalLoanAmount = filteredLeads.reduce((sum, lead) => sum + (lead.loan_amount || 0), 0);
         const avgLoanAmount = totalLeads > 0 ? totalLoanAmount / totalLeads : 0;
 
-        // Calculate obligations
         let totalObligations = 0;
         let obligationCount = 0;
         
@@ -273,21 +284,6 @@ const LeadsReport = () => {
 
         const avgObligations = obligationCount > 0 ? totalObligations / obligationCount : 0;
 
-        // Status distribution
-        const statusDistribution = {};
-        filteredLeads.forEach(lead => {
-            const status = lead.status || 'Unknown';
-            statusDistribution[status] = (statusDistribution[status] || 0) + 1;
-        });
-
-        // Department distribution
-        const departmentDistribution = {};
-        filteredLeads.forEach(lead => {
-            const deptName = lead.department_name || 'Unknown';
-            departmentDistribution[deptName] = (departmentDistribution[deptName] || 0) + 1;
-        });
-
-        // Conversion rate (assuming 'WON' or 'DISBURSED' as converted)
         const convertedLeads = filteredLeads.filter(lead => 
             ['WON', 'DISBURSED', 'COMPLETED'].includes(lead.status?.toUpperCase())
         ).length;
@@ -299,97 +295,141 @@ const LeadsReport = () => {
             avgLoanAmount,
             totalObligations,
             avgObligations,
-            conversionRate,
-            statusDistribution,
-            departmentDistribution
+            conversionRate
         });
+    };
+
+    const getUserNameById = (userId, usersList) => {
+        if (!userId) return '';
+        const user = usersList.find(u => u._id === userId || u.id === userId);
+        return user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+    };
+
+    const getAssignedUsersNames = (assignedTo, usersList) => {
+        if (!assignedTo) return 'Unassigned';
+        if (typeof assignedTo === 'string') {
+            const user = usersList.find(u => u._id === assignedTo || u.id === assignedTo);
+            return user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+        }
+        if (Array.isArray(assignedTo) && assignedTo.length > 0) {
+            const names = assignedTo.map(id => {
+                const user = usersList.find(u => u._id === id || u.id === id);
+                return user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+            });
+            return names.join(', ');
+        }
+        return 'Unassigned';
     };
 
     const exportToExcel = () => {
         try {
-            // Create workbook
             const workbook = XLSX.utils.book_new();
 
-            // Leads Summary Sheet
+            // Leads Summary Sheet - Complete with all dropdown fields
             if (selectedColumns.includes('leads_summary')) {
-                const summaryData = filteredLeads.map(lead => ({
-                    'Lead ID': lead.custom_lead_id || lead._id?.$oid || lead._id,
-                    'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
-                    'Phone': lead.phone || lead.mobile_number,
-                    'Email': lead.email || '',
-                    'Loan Type': lead.loan_type_name || lead.loan_type,
-                    'Loan Amount': lead.loan_amount || 0,
-                    'Status': lead.status,
-                    'Sub Status': lead.sub_status || '',
-                    'Priority': lead.priority || '',
-                    'Department': lead.department_name || '',
-                    'Assigned To': getAssignedUsersNames(lead.assigned_to, users),
-                    'Created By': lead.created_by_name || getUserNameById(lead.created_by, users),
-                    'Created Date': lead.created_date ? dayjs(lead.created_date).format('YYYY-MM-DD') : '',
-                    'Updated Date': lead.updated_at ? dayjs(lead.updated_at).format('YYYY-MM-DD') : '',
-                    'Campaign': lead.campaign_name || '',
-                    'Processing Bank': lead.processing_bank || '',
-                    'Data Code': lead.data_code || '',
-                    'Source': lead.source || ''
-                }));
+                const summaryData = filteredLeads.map(lead => {
+                    const personal = lead.dynamic_fields?.personal_details || {};
+                    const financial = lead.dynamic_fields?.financial_details || {};
+                    const applicant = lead.dynamic_fields?.applicant_form || {};
+                    
+                    return {
+                        'Lead ID': lead.custom_lead_id || lead._id,
+                        'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                        'Phone': lead.phone || lead.mobile_number,
+                        'Email': lead.email || '',
+                        'Alternative Phone': lead.alternative_phone || '',
+                        'Loan Type': lead.loan_type_name || lead.loan_type,
+                        'Loan Amount': lead.loan_amount || 0,
+                        'Status': lead.status,
+                        'Sub Status': lead.sub_status || '',
+                        'Priority': lead.priority || '',
+                        'Department': lead.department_name || '',
+                        'Assigned To': getAssignedUsersNames(lead.assigned_to, users),
+                        'Created By': lead.created_by_name || getUserNameById(lead.created_by, users),
+                        'Created Date': lead.created_date ? dayjs(lead.created_date).format('YYYY-MM-DD') : '',
+                        'Updated Date': lead.updated_date ? dayjs(lead.updated_date).format('YYYY-MM-DD') : '',
+                        'Processing Bank': lead.processing_bank || '',
+                        'Loan Tenure': lead.loan_tenure || '',
+                        'Loan ROI': lead.loan_roi || '',
+                        // Personal Details Dropdowns
+                        'Company Name': personal.company_name || '',
+                        'Company Type': Array.isArray(personal.company_type) ? personal.company_type.join(', ') : personal.company_type || '',
+                        'Company Category': personal.company_category || '',
+                        'Designation': personal.designation || '',
+                        'Work Experience': personal.work_experience || '',
+                        'Residence Type': personal.residence_type || '',
+                        'Education': personal.education || '',
+                        'Marital Status': personal.marital_status || '',
+                        'City': lead.city || '',
+                        'Postal Code': lead.postal_code || '',
+                        // Financial Details
+                        'Monthly Income': financial.monthly_income || 0,
+                        'Annual Income': financial.annual_income || 0,
+                        'Partner Salary': financial.partner_salary || 0,
+                        'Yearly Bonus': financial.yearly_bonus || 0,
+                        'CIBIL Score': financial.cibil_score || '',
+                        'Bank Name': financial.bank_name || '',
+                        'Bank Account Number': financial.bank_account_number || '',
+                        'Total Obligations': lead.dynamic_fields?.eligibility_details?.totalObligations || 0,
+                        // Applicant Form Details
+                        'Reference Name': applicant.referenceName || '',
+                        'Aadhar Number': applicant.aadharNumber || '',
+                        'PAN Card': applicant.panCard || '',
+                        'Father\'s Name': applicant.fathersName || '',
+                        'Mother\'s Name': applicant.mothersName || ''
+                    };
+                });
                 
                 const summarySheet = XLSX.utils.json_to_sheet(summaryData);
                 XLSX.utils.book_append_sheet(workbook, summarySheet, 'Leads Summary');
             }
 
-            // Obligations Analysis Sheet
+            // Complete Obligations Sheet with all fields
             if (selectedColumns.includes('obligations')) {
                 const obligationData = [];
                 filteredLeads.forEach(lead => {
-                    const processedObligations = processObligationData(lead, users);
-                    obligationData.push(...processedObligations);
+                    const obligations = lead.dynamic_fields?.obligations || [];
+                    const financial = lead.dynamic_fields?.financial_details || {};
+                    const eligibility = lead.dynamic_fields?.eligibility_details || {};
+                    
+                    obligations.forEach((obligation, index) => {
+                        obligationData.push({
+                            'Lead ID': lead.custom_lead_id,
+                            'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                            'Obligation #': index + 1,
+                            'Product': obligation.product || '',
+                            'Bank Name': obligation.bank_name || obligation.bankName || '',
+                            'Total Loan': obligation.total_loan || 0,
+                            'Outstanding': obligation.outstanding || 0,
+                            'EMI': obligation.emi || 0,
+                            'Tenure': obligation.tenure || 0,
+                            'ROI': obligation.roi || 0,
+                            'Action': obligation.action || '',
+                            // Lead Context for Obligations
+                            'Lead Status': lead.status,
+                            'Priority': lead.priority || '',
+                            'Loan Amount': lead.loan_amount || 0,
+                            'Processing Bank': lead.processing_bank || '',
+                            // Customer Income
+                            'Monthly Income': financial.monthly_income || 0,
+                            'Annual Income': financial.annual_income || 0,
+                            'Partner Salary': financial.partner_salary || 0,
+                            'CIBIL Score': financial.cibil_score || '',
+                            'FOIR %': eligibility.foirPercent || '',
+                            // Total Calculations
+                            'Total Income': eligibility.totalIncome || 0,
+                            'FOIR Amount': eligibility.foirAmount || 0,
+                            'Total Obligations': eligibility.totalObligations || 0,
+                            'Final Eligibility': eligibility.finalEligibility || 0
+                        });
+                    });
                 });
 
-                const obligationsSheet = XLSX.utils.json_to_sheet(obligationData.map(ob => ({
-                    'Lead ID': ob.custom_lead_id,
-                    'Customer Name': ob.customer_name,
-                    'Phone': ob.phone,
-                    'Email': ob.email,
-                    'Assigned To': ob.assigned_to,
-                    'Department': ob.department,
-                    'Obligation #': ob.obligation_index,
-                    'Product': ob.product,
-                    'Bank Name': ob.bank_name,
-                    'Total Loan': ob.total_loan,
-                    'Outstanding': ob.outstanding,
-                    'EMI': ob.emi,
-                    'Tenure (Months)': ob.tenure,
-                    'ROI (%)': ob.roi,
-                    'Action': ob.action,
-                    'Lead Status': ob.lead_status,
-                    'Lead Sub Status': ob.lead_sub_status,
-                    'Lead Priority': ob.lead_priority,
-                    'Lead Loan Amount': ob.lead_loan_amount,
-                    'Lead Loan Type': ob.lead_loan_type,
-                    'Processing Bank': ob.processing_bank,
-                    'Monthly Income': ob.monthly_income,
-                    'Annual Income': ob.annual_income,
-                    'Partner Salary': ob.partner_salary,
-                    'CIBIL Score': ob.cibil_score,
-                    'FOIR %': ob.foir_percent,
-                    'Total Income': ob.total_income,
-                    'FOIR Amount': ob.foir_amount,
-                    'Total Obligations': ob.total_obligations,
-                    'Final Eligibility': ob.final_eligibility,
-                    'Created By': ob.created_by,
-                    'Created Date': ob.created_date,
-                    'Updated Date': ob.updated_date,
-                    'Operations Amount Approved': ob.operations_amount_approved,
-                    'Operations Amount Disbursed': ob.operations_amount_disbursed,
-                    'Operations Disbursement Date': ob.operations_disbursement_date,
-                    'File Sent to Login': ob.file_sent_to_login,
-                    'Login Status': ob.login_status,
-                    'Login Remarks': ob.login_remarks
-                })));
-                XLSX.utils.book_append_sheet(workbook, obligationsSheet, 'Obligations Analysis');
+                const obligationsSheet = XLSX.utils.json_to_sheet(obligationData);
+                XLSX.utils.book_append_sheet(workbook, obligationsSheet, 'Obligations');
             }
 
-            // Financial Details Sheet
+            // Complete Financial Details Sheet
             if (selectedColumns.includes('financial_details')) {
                 const financialData = filteredLeads.map(lead => {
                     const financial = lead.dynamic_fields?.financial_details || {};
@@ -402,14 +442,22 @@ const LeadsReport = () => {
                         'Annual Income': financial.annual_income || 0,
                         'Partner Salary': financial.partner_salary || 0,
                         'Yearly Bonus': financial.yearly_bonus || 0,
-                        'FOIR %': financial.foir_percent || 0,
                         'CIBIL Score': financial.cibil_score || '',
                         'Bank Name': financial.bank_name || '',
+                        'Bank Account Number': financial.bank_account_number || '',
+                        'IFSC Code': financial.ifsc_code || '',
+                        'Salary Credit Bank': financial.salary_account_bank || '',
+                        'Salary Account Number': financial.salary_account_bank_number || '',
                         'Total Income': eligibility.totalIncome || 0,
                         'FOIR Amount': eligibility.foirAmount || 0,
                         'Total Obligations': eligibility.totalObligations || 0,
                         'Final Eligibility': eligibility.finalEligibility || 0,
-                        'Multiplier Eligibility': eligibility.multiplierEligibility || 0
+                        'Multiplier Eligibility': eligibility.multiplierEligibility || 0,
+                        'Tenure (Months)': eligibility.tenureMonths || 0,
+                        'Tenure (Years)': eligibility.tenureYears || 0,
+                        'ROI': eligibility.roi || 0,
+                        'Custom FOIR %': eligibility.customFoirPercent || 0,
+                        'Monthly EMI Can Pay': eligibility.monthlyEmiCanPay || 0
                     };
                 });
                 
@@ -417,68 +465,99 @@ const LeadsReport = () => {
                 XLSX.utils.book_append_sheet(workbook, financialSheet, 'Financial Details');
             }
 
-            // Operations Data Sheet
-            if (selectedColumns.includes('operations_info')) {
-                const operationsData = filteredLeads.map(lead => ({
-                    'Lead ID': lead.custom_lead_id,
-                    'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
-                    'Amount Approved': lead.operations_amount_approved || '',
-                    'Amount Disbursed': lead.operations_amount_disbursed || '',
-                    'Cashback to Customer': lead.operations_cashback_to_customer || '',
-                    'Net Disbursement': lead.operations_net_disbursement_amount || '',
-                    'Rate': lead.operations_rate || '',
-                    'Tenure Given': lead.operations_tenure_given || '',
-                    'Disbursement Date': lead.operations_disbursement_date || '',
-                    'Channel Name': lead.operations_channel_name || '',
-                    'LOS Number': lead.operations_los_number || '',
-                    'Updated By': lead.operations_updated_by || ''
-                }));
-                
-                const operationsSheet = XLSX.utils.json_to_sheet(operationsData);
-                XLSX.utils.book_append_sheet(workbook, operationsSheet, 'Operations Data');
-            }
-
-            // Assignment History Sheet
-            if (selectedColumns.includes('assignment_info')) {
-                const assignmentData = [];
-                filteredLeads.forEach(lead => {
-                    const history = lead.assignment_history || [];
-                    history.forEach((assignment, index) => {
-                        assignmentData.push({
-                            'Lead ID': lead.custom_lead_id,
-                            'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
-                            'Assignment #': index + 1,
-                            'Department': assignment.department_id || '',
-                            'Assigned Date': assignment.assigned_date ? dayjs(assignment.assigned_date).format('YYYY-MM-DD HH:mm') : '',
-                            'Transferred Date': assignment.transferred_date ? dayjs(assignment.transferred_date).format('YYYY-MM-DD HH:mm') : '',
-                            'Transferred By': assignment.transferred_by || '',
-                            'Transferred To': assignment.transferred_to || ''
-                        });
-                    });
+            // Complete Personal Details Sheet
+            if (selectedColumns.includes('personal_details')) {
+                const personalData = filteredLeads.map(lead => {
+                    const personal = lead.dynamic_fields?.personal_details || {};
+                    const applicant = lead.dynamic_fields?.applicant_form || {};
+                    const address = lead.dynamic_fields?.address || {};
+                    
+                    return {
+                        'Lead ID': lead.custom_lead_id,
+                        'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                        'Phone': lead.phone || '',
+                        'Email': lead.email || '',
+                        'Company Name': personal.company_name || '',
+                        'Company Type': Array.isArray(personal.company_type) ? personal.company_type.join(', ') : personal.company_type || '',
+                        'Company Category': personal.company_category || '',
+                        'Designation': personal.designation || '',
+                        'Department': personal.department || '',
+                        'DOJ in Current Company': personal.dojCurrentCompany || '',
+                        'Current Work Experience': personal.currentWorkExperience || '',
+                        'Total Work Experience': personal.totalWorkExperience || '',
+                        'Office Address': personal.officeAddress || '',
+                        'Office Address Landmark': personal.officeAddressLandmark || '',
+                        'Residence Type': personal.residenceType || personal.residence_type || '',
+                        'Current Address': address.currentAddress || '',
+                        'Current Address Landmark': address.currentAddressLandmark || '',
+                        'Current Address Type': address.currentAddressType || '',
+                        'Years at Current Address': address.yearsAtCurrentAddress || '',
+                        'Years in Current City': address.yearsInCurrentCity || '',
+                        'Permanent Address': address.permanentAddress || '',
+                        'Permanent Address Landmark': address.permanentAddressLandmark || '',
+                        'Education': personal.education || '',
+                        'Marital Status': personal.maritalStatus || personal.marital_status || '',
+                        'Spouse Name': personal.spousesName || applicant.spousesName || '',
+                        'Father\'s Name': personal.fathersName || applicant.fathersName || '',
+                        'Mother\'s Name': personal.mothersName || applicant.mothersName || '',
+                        'City': lead.city || '',
+                        'Postal Code': lead.postal_code || ''
+                    };
                 });
                 
-                const assignmentSheet = XLSX.utils.json_to_sheet(assignmentData);
-                XLSX.utils.book_append_sheet(workbook, assignmentSheet, 'Assignment History');
+                const personalSheet = XLSX.utils.json_to_sheet(personalData);
+                XLSX.utils.book_append_sheet(workbook, personalSheet, 'Personal Details');
             }
 
-            // Statistics Sheet
-            const statsData = [
-                { 'Metric': 'Total Leads', 'Value': statistics.totalLeads },
-                { 'Metric': 'Total Loan Amount', 'Value': statistics.totalLoanAmount },
-                { 'Metric': 'Average Loan Amount', 'Value': Math.round(statistics.avgLoanAmount) },
-                { 'Metric': 'Total Obligations', 'Value': Math.round(statistics.totalObligations) },
-                { 'Metric': 'Average Obligations', 'Value': Math.round(statistics.avgObligations) },
-                { 'Metric': 'Conversion Rate (%)', 'Value': statistics.conversionRate.toFixed(2) }
-            ];
+            // Remarks Sheet - NEW
+            const remarksSheetData = [];
+            filteredLeads.forEach(lead => {
+                const remarks = leadsRemarks[lead._id] || [];
+                remarks.forEach(remark => {
+                    remarksSheetData.push({
+                        'Lead ID': lead.custom_lead_id,
+                        'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                        'Phone': lead.phone || '',
+                        'Note Type': remark.note_type || 'General',
+                        'Content': remark.content || '',
+                        'Created By': remark.creator_name || 'Unknown',
+                        'Created Date': remark.created_at ? dayjs(remark.created_at).format('YYYY-MM-DD HH:mm:ss') : ''
+                    });
+                });
+            });
+            
+            if (remarksSheetData.length > 0) {
+                const remarksSheet = XLSX.utils.json_to_sheet(remarksSheetData);
+                XLSX.utils.book_append_sheet(workbook, remarksSheet, 'Remarks');
+            }
 
-            const statsSheet = XLSX.utils.json_to_sheet(statsData);
-            XLSX.utils.book_append_sheet(workbook, statsSheet, 'Statistics');
+            // Attachments Sheet - NEW
+            const attachmentsSheetData = [];
+            filteredLeads.forEach(lead => {
+                const attachments = leadsAttachments[lead._id] || [];
+                attachments.forEach(attachment => {
+                    attachmentsSheetData.push({
+                        'Lead ID': lead.custom_lead_id,
+                        'Customer Name': `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                        'Phone': lead.phone || '',
+                        'Document Type': attachment.document_type || '',
+                        'File Name': attachment.filename || attachment.file_name || '',
+                        'File Size (MB)': attachment.fileSize ? (attachment.fileSize / 1024 / 1024).toFixed(2) : '',
+                        'Upload Date': attachment.created_at ? dayjs(attachment.created_at).format('YYYY-MM-DD HH:mm:ss') : '',
+                        'Uploaded By': attachment.uploaded_by_name || 'Unknown',
+                        'Has Password': attachment.has_password ? 'Yes' : 'No',
+                        'Password': attachment.has_password ? attachment.password || '' : ''
+                    });
+                });
+            });
+            
+            if (attachmentsSheetData.length > 0) {
+                const attachmentsSheet = XLSX.utils.json_to_sheet(attachmentsSheetData);
+                XLSX.utils.book_append_sheet(workbook, attachmentsSheet, 'Attachments');
+            }
 
-            // Generate filename with timestamp
             const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
             const filename = `Leads_Report_${timestamp}.xlsx`;
-
-            // Export file
             XLSX.writeFile(workbook, filename);
             message.success(`Report exported successfully as ${filename}`);
 
@@ -491,13 +570,10 @@ const LeadsReport = () => {
     const resetFilters = () => {
         setFilters({
             dateRange: null,
+            searchText: '',
             status: null,
-            subStatus: null,
             department: null,
-            loanType: null,
-            assignedTo: null,
-            priority: null,
-            searchText: ''
+            assignedTo: null
         });
     };
 
@@ -513,7 +589,46 @@ const LeadsReport = () => {
         return colors[status?.toUpperCase()] || 'default';
     };
 
+    const handleViewLead = (lead) => {
+        setSelectedLead(lead);
+        setViewModalVisible(true);
+    };
+
+    const handleCloseViewModal = () => {
+        setViewModalVisible(false);
+        setSelectedLead(null);
+    };
+
+    const handleLeadUpdate = useCallback((updatedLead) => {
+        setLeads(prevLeads => 
+            prevLeads.map(lead => 
+                lead._id === updatedLead._id ? updatedLead : lead
+            )
+        );
+        setFilteredLeads(prevFiltered => 
+            prevFiltered.map(lead => 
+                lead._id === updatedLead._id ? updatedLead : lead
+            )
+        );
+        message.success('Lead updated successfully');
+    }, []);
+
     const columns = [
+        {
+            title: 'Action',
+            key: 'action',
+            fixed: 'left',
+            width: 80,
+            render: (_, record) => (
+                <Button
+                    type="link"
+                    icon={<EyeOutlined />}
+                    onClick={() => handleViewLead(record)}
+                >
+                    View
+                </Button>
+            ),
+        },
         {
             title: 'Lead ID',
             dataIndex: 'custom_lead_id',
@@ -531,20 +646,26 @@ const LeadsReport = () => {
             title: 'Phone',
             dataIndex: 'phone',
             key: 'phone',
-            width: 120,
+            width: 130,
+        },
+        {
+            title: 'Email',
+            dataIndex: 'email',
+            key: 'email',
+            width: 200,
         },
         {
             title: 'Loan Type',
             dataIndex: 'loan_type_name',
             key: 'loan_type',
-            width: 120,
+            width: 140,
         },
         {
             title: 'Loan Amount',
             dataIndex: 'loan_amount',
             key: 'loan_amount',
             render: (amount) => amount ? `₹${amount.toLocaleString()}` : '₹0',
-            width: 120,
+            width: 130,
         },
         {
             title: 'Status',
@@ -565,27 +686,9 @@ const LeadsReport = () => {
                 const totalObligations = obligations.reduce((sum, ob) => 
                     sum + (ob.outstanding || ob.total_loan || 0), 0
                 );
-                const totalEMI = obligations.reduce((sum, ob) => 
-                    sum + (ob.emi || 0), 0
-                );
                 
                 return (
-                    <Tooltip title={
-                        <div>
-                            <div><strong>Total Obligations:</strong> {obligations.length}</div>
-                            <div><strong>Total Outstanding:</strong> ₹{totalObligations.toLocaleString()}</div>
-                            <div><strong>Total EMI:</strong> ₹{totalEMI.toLocaleString()}</div>
-                            {obligations.map((ob, idx) => (
-                                <div key={idx} style={{ marginTop: 4, borderTop: '1px solid #f0f0f0', paddingTop: 4 }}>
-                                    <div><strong>{ob.product || 'Unknown Product'}</strong></div>
-                                    <div>Bank: {ob.bank_name || ob.bankName || 'Unknown'}</div>
-                                    <div>Outstanding: ₹{(ob.outstanding || ob.total_loan || 0).toLocaleString()}</div>
-                                    <div>EMI: ₹{(ob.emi || 0).toLocaleString()}</div>
-                                    <div>Action: {ob.action || 'None'}</div>
-                                </div>
-                            ))}
-                        </div>
-                    }>
+                    <Tooltip title={`${obligations.length} obligations, Total: ₹${totalObligations.toLocaleString()}`}>
                         <div>
                             <div>{obligations.length} obligations</div>
                             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -598,22 +701,16 @@ const LeadsReport = () => {
             width: 140,
         },
         {
-            title: 'CIBIL Score',
-            key: 'cibil_score',
-            render: (_, record) => record.dynamic_fields?.financial_details?.cibil_score || 'N/A',
-            width: 100,
-        },
-        {
             title: 'Assigned To',
             key: 'assigned_to',
             render: (_, record) => getAssignedUsersNames(record.assigned_to, users),
-            width: 150,
+            width: 160,
         },
         {
             title: 'Department',
             dataIndex: 'department_name',
             key: 'department',
-            width: 120,
+            width: 140,
         },
         {
             title: 'Created Date',
@@ -637,7 +734,7 @@ const LeadsReport = () => {
                     </Button>
                     <Button 
                         icon={<ReloadOutlined />}
-                        onClick={fetchInitialData}
+                        onClick={fetchData}
                         loading={loading}
                     >
                         Refresh
@@ -645,7 +742,6 @@ const LeadsReport = () => {
                 </Space>
             }>
                 
-                {/* Statistics Cards */}
                 <Row gutter={16} style={{ marginBottom: 24 }}>
                     <Col span={6}>
                         <Card>
@@ -689,7 +785,6 @@ const LeadsReport = () => {
                     </Col>
                 </Row>
 
-                {/* Filters */}
                 <Card title="Filters" style={{ marginBottom: 24 }}>
                     <Row gutter={[16, 16]}>
                         <Col span={6}>
@@ -705,7 +800,6 @@ const LeadsReport = () => {
                                 style={{ width: '100%' }}
                                 value={filters.dateRange}
                                 onChange={(dates) => setFilters(prev => ({ ...prev, dateRange: dates }))}
-                                placeholder={['Start Date', 'End Date']}
                             />
                         </Col>
                         <Col span={4}>
@@ -725,15 +819,17 @@ const LeadsReport = () => {
                         </Col>
                         <Col span={4}>
                             <Select
-                                placeholder="Priority"
+                                placeholder="Department"
                                 style={{ width: '100%' }}
-                                value={filters.priority}
-                                onChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}
+                                value={filters.department}
+                                onChange={(value) => setFilters(prev => ({ ...prev, department: value }))}
                                 allowClear
                             >
-                                <Option value="high">High</Option>
-                                <Option value="medium">Medium</Option>
-                                <Option value="low">Low</Option>
+                                {departments.map(dept => (
+                                    <Option key={dept._id || dept.id} value={dept._id || dept.id}>
+                                        {dept.name}
+                                    </Option>
+                                ))}
                             </Select>
                         </Col>
                         <Col span={4}>
@@ -744,39 +840,50 @@ const LeadsReport = () => {
                     </Row>
                 </Card>
 
-                {/* Export Options */}
                 <Card title="Export Options" style={{ marginBottom: 24 }}>
                     <Checkbox.Group
                         value={selectedColumns}
                         onChange={setSelectedColumns}
                     >
                         <Row gutter={[16, 16]}>
-                            <Col span={6}>
+                            <Col span={5}>
                                 <Checkbox value="leads_summary">Leads Summary</Checkbox>
                             </Col>
-                            <Col span={6}>
+                            <Col span={5}>
                                 <Checkbox value="obligations">Obligations Analysis</Checkbox>
                             </Col>
-                            <Col span={6}>
+                            <Col span={5}>
                                 <Checkbox value="financial_details">Financial Details</Checkbox>
                             </Col>
-                            <Col span={6}>
-                                <Checkbox value="operations_info">Operations Data</Checkbox>
+                            <Col span={5}>
+                                <Checkbox value="personal_details">Personal Details</Checkbox>
                             </Col>
-                            <Col span={6}>
-                                <Checkbox value="assignment_info">Assignment History</Checkbox>
+                        </Row>
+                        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                            <Col span={5}>
+                                <Checkbox value="remarks">Remarks</Checkbox>
+                            </Col>
+                            <Col span={5}>
+                                <Checkbox value="attachments">Attachments</Checkbox>
+                            </Col>
+                            <Col span={5}>
+                                <Checkbox value="activities">Activities</Checkbox>
                             </Col>
                         </Row>
                     </Checkbox.Group>
+                    <div style={{ marginTop: 16, padding: '12px', background: '#e6f7ff', borderRadius: '4px' }}>
+                        <small style={{ color: '#096dd9' }}>
+                            ℹ️ Remarks and Attachments sheets are automatically included when data is available
+                        </small>
+                    </div>
                 </Card>
 
-                {/* Data Table */}
                 <Spin spinning={loading}>
                     <Table
                         columns={columns}
                         dataSource={filteredLeads}
-                        rowKey={(record) => record._id?.$oid || record._id}
-                        scroll={{ x: 1800, y: 600 }}
+                        rowKey={(record) => record._id}
+                        scroll={{ x: 2000, y: 600 }}
                         pagination={{
                             total: filteredLeads.length,
                             pageSize: 50,
@@ -787,6 +894,39 @@ const LeadsReport = () => {
                     />
                 </Spin>
             </Card>
+
+            <Modal
+                title={
+                    <div>
+                        <Title level={4} style={{ margin: 0 }}>
+                            {selectedLead ? 
+                                `${selectedLead.first_name} ${selectedLead.last_name}`.trim() :
+                                'Lead Details'
+                            }
+                        </Title>
+                        {selectedLead && (
+                            <div style={{ fontSize: '12px', color: '#666' }}>
+                                Lead ID: {selectedLead.custom_lead_id} | Phone: {selectedLead.phone}
+                            </div>
+                        )}
+                    </div>
+                }
+                open={viewModalVisible}
+                onCancel={handleCloseViewModal}
+                footer={null}
+                width="95%"
+                style={{ top: 20 }}
+                bodyStyle={{ padding: 0, height: 'calc(100vh - 150px)', overflow: 'auto' }}
+            >
+                {selectedLead && (
+                    <LeadDetails
+                        lead={selectedLead}
+                        user={{ department: localStorage.getItem('userDepartment') || 'sales' }}
+                        onBack={handleCloseViewModal}
+                        onLeadUpdate={handleLeadUpdate}
+                    />
+                )}
+            </Modal>
         </div>
     );
 };

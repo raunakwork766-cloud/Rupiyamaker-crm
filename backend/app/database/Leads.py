@@ -464,6 +464,10 @@ class LeadsDB:
         import logging
         logger = logging.getLogger(__name__)
         
+        # ⚡ ACTIVITY DEDUPLICATION: Track fields to prevent duplicates
+        # This set will track which fields have already created activities in this request
+        fields_with_activity_created = set()
+        
         logger.info(f"🔵 ========== DATABASE update_lead START ==========")
         logger.info(f"🔵 Lead ID: {lead_id}")
         logger.info(f"🔵 User ID: {user_id}")
@@ -1004,6 +1008,11 @@ class LeadsDB:
                         
                         nested_display_name = nested_field.replace('_', ' ').title()
                         
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if field already has activity
+                        if nested_field in fields_with_activity_created:
+                            logger.info(f"⏭ Skipping duplicate activity for: {nested_display_name}")
+                            continue
+                        
                         # Format old and new values
                         old_val = nested_change.get("from", "Not Set")
                         new_val = nested_change.get("to", "")
@@ -1013,6 +1022,12 @@ class LeadsDB:
                             old_val = old_val[:100] + "..."
                         if isinstance(new_val, str) and len(new_val) > 100:
                             new_val = new_val[:100] + "..."
+                        
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if new value is empty
+                        # This prevents duplicate activities when field is cleared then immediately set
+                        if not new_val or new_val in ['Not Set', '']:
+                            logger.info(f"⏭ Skipping empty field update: {nested_display_name}")
+                            continue
                         
                         # Handle dict/object values - IMPROVED for better readability
                         # Special handling for obligations (array of objects)
@@ -1260,6 +1275,8 @@ class LeadsDB:
                         }
                         await self.activity_collection.insert_one(activity_data)
                         print(f"✅ Recorded field update: {nested_display_name} changed from '{old_val}' to '{new_val}'")
+                        # Track that we created activity for this field
+                        fields_with_activity_created.add(nested_field)
                         
                         # Mark obligation-related fields as processed to avoid duplicates
                         if nested_field == "obligations":
@@ -1286,6 +1303,11 @@ class LeadsDB:
                         }
                         
                         process_display_name = field_labels.get(process_field, process_field.replace('_', ' ').title())
+                        
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if field already has activity
+                        if process_field in fields_with_activity_created:
+                            logger.info(f"⏭ Skipping duplicate activity for: {process_display_name}")
+                            continue
                         
                         # Format old and new values
                         old_val = process_change.get("from", "Not Set")
@@ -1334,6 +1356,12 @@ class LeadsDB:
                         if isinstance(new_val, str) and len(new_val) > 100:
                             new_val = new_val[:100] + "..."
                         
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if new value is empty
+                        # This prevents duplicate activities when field is cleared then immediately set
+                        if not new_val or new_val in ['Not Set', '']:
+                            logger.info(f"⏭ Skipping empty process field update: {process_display_name}")
+                            continue
+                        
                         activity_data = {
                             "lead_id": lead_id,
                             "user_id": user_id,
@@ -1349,6 +1377,8 @@ class LeadsDB:
                         }
                         await self.activity_collection.insert_one(activity_data)
                         print(f"✅ Recorded process field update: {process_display_name} changed from '{old_val}' to '{new_val}'")
+                        # Track that we created activity for this field
+                        fields_with_activity_created.add(process_field)
                 
                 # Handle nested importantquestion changes (important questions responses)
                 elif field_name in ["importantquestion", "question_responses"] and isinstance(change_data, dict):
@@ -1361,6 +1391,11 @@ class LeadsDB:
                     # Create separate activity for each question response change
                     for question_id, response_change in change_data.items():
                         question_text = question_map.get(question_id, f"Question {question_id}")
+                        
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if question already has activity
+                        if question_id in fields_with_activity_created:
+                            logger.info(f"⏭ Skipping duplicate activity for question: {question_text}")
+                            continue
                         
                         # Get old and new responses
                         old_response = response_change.get("from", "Not Answered")
@@ -1381,6 +1416,12 @@ class LeadsDB:
                         elif new_response in [None, "", []]:
                             new_response = "Not Answered"
                         
+                        # ⚡ ACTIVITY DEDUPLICATION: Skip if new response is empty/not answered
+                        # This prevents duplicate activities when question is cleared then immediately set
+                        if new_response == "Not Answered":
+                            logger.info(f"⏭ Skipping empty important question response: {question_text}")
+                            continue
+                        
                         activity_data = {
                             "lead_id": lead_id,
                             "user_id": user_id,
@@ -1396,6 +1437,8 @@ class LeadsDB:
                         }
                         await self.activity_collection.insert_one(activity_data)
                         print(f"✅ Recorded important question update: {question_text} - {old_response} → {new_response}")
+                        # Track that we created activity for this field
+                        fields_with_activity_created.add(question_id)
                 
                 else:
                     # Regular field change (not nested)
@@ -1421,6 +1464,12 @@ class LeadsDB:
                         old_val = old_val[:100] + "..."
                     if isinstance(new_val, str) and len(new_val) > 100:
                         new_val = new_val[:100] + "..."
+                    
+                    # ⚡ ACTIVITY DEDUPLICATION: Skip if new value is empty
+                    # This prevents duplicate activities when field is cleared then immediately set
+                    if not new_val or new_val in ['Not Set', '', None]:
+                        logger.info(f"⏭ Skipping empty field update: {field_display_name}")
+                        continue
                     
                     # Handle dict/object values for other fields
                     if isinstance(old_val, dict) and field_name not in ["importantquestion", "question_responses"]:

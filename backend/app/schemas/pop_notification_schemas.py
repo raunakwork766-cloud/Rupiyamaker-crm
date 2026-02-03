@@ -9,6 +9,10 @@ class NotificationPriority(str, Enum):
     HIGH = "high"
     URGENT = "urgent"
 
+class NotificationType(str, Enum):
+    GENERAL = "general"
+    LOGOUT = "logout"
+
 class TargetType(str, Enum):
     ALL = "all"
     DEPARTMENT = "department"
@@ -18,11 +22,12 @@ class PopNotificationCreate(BaseModel):
     """Schema for creating a new global notification"""
     title: str = Field(..., min_length=1, max_length=200, description="Notification title")
     message: str = Field(..., min_length=1, max_length=1000, description="Notification message")
-    content: Optional[str] = Field(None, description="Rich content for the notification")
+    content: Optional[str] = Field(None, description="Rich content for notification")
     priority: NotificationPriority = Field(default=NotificationPriority.NORMAL, description="Notification priority")
     target_type: TargetType = Field(default=TargetType.ALL, description="Type of targeting: all, department, or individual")
     target_departments: Optional[List[str]] = Field(default=[], description="List of department IDs (when target_type is 'department')")
     target_employees: Optional[List[str]] = Field(default=[], description="List of user IDs (when target_type is 'individual')")
+    notification_type: NotificationType = Field(default=NotificationType.GENERAL, description="Type of notification: general or logout")
     metadata: Optional[Dict[str, Any]] = Field(default={}, description="Additional metadata")
     
     class Config:
@@ -71,6 +76,7 @@ class PopNotificationResponse(BaseModel):
     target_type: TargetType = TargetType.ALL
     target_departments: Optional[List[str]] = []
     target_employees: Optional[List[str]] = []
+    notification_type: NotificationType = NotificationType.GENERAL
     sender_id: str
     sender_name: str
     created_at: datetime
@@ -106,6 +112,7 @@ class PopNotificationHistory(BaseModel):
     target_type: TargetType = TargetType.ALL
     target_departments: Optional[List[str]] = []
     target_employees: Optional[List[str]] = []
+    notification_type: NotificationType = NotificationType.GENERAL
     sender_id: str
     sender_name: str
     created_at: datetime
@@ -129,6 +136,7 @@ class PopNotificationUpdate(BaseModel):
     target_type: Optional[TargetType] = None
     target_departments: Optional[List[str]] = None
     target_employees: Optional[List[str]] = None
+    notification_type: Optional[NotificationType] = None
     is_active: Optional[bool] = None
     metadata: Optional[Dict[str, Any]] = None
 

@@ -288,6 +288,16 @@ class UsersDB:
             
         if not user:
             return None
+        
+        # 🔒 CRITICAL: Check if user is active BEFORE verifying password
+        # This prevents inactive users from being able to login even with correct credentials
+        if not user.get("is_active", True):
+            return None
+        
+        # 🔒 CRITICAL: Check if login is enabled for this user BEFORE verifying password
+        # This prevents users with disabled login from being able to login even with correct credentials
+        if not user.get("login_enabled", True):
+            return None
             
         # Verify password
         if not self._verify_password(password, user['password']):

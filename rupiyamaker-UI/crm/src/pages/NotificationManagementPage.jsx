@@ -77,6 +77,7 @@ const NotificationManagementPage = () => {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [stats, setStats] = useState(null);
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'general', 'logout'
 
   // Form state
   const [formData, setFormData] = useState({
@@ -84,7 +85,8 @@ const NotificationManagementPage = () => {
     message: "",
     targetType: "all", // all, department, individual
     targetDepartments: [],
-    targetEmployees: []
+    targetEmployees: [],
+    notificationType: "general" // 'general' or 'logout'
   });
 
   // Multi-select state
@@ -124,6 +126,12 @@ const NotificationManagementPage = () => {
   
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Filter notifications by type
+  const getFilteredNotifications = () => {
+    if (activeTab === 'all') return notifications;
+    return notifications.filter(n => n.notification_type === activeTab);
+  };
   
   const [announcementData, setAnnouncementData] = useState(null);
 
@@ -456,7 +464,8 @@ const NotificationManagementPage = () => {
         priority: "normal", // Default priority
         target_type: formData.targetType,
         target_departments: formData.targetType === 'department' ? selectedDepartments.map(dept => dept.id || dept) : [],
-        target_employees: formData.targetType === 'individual' ? selectedEmployees.map(emp => emp.id || emp) : []
+        target_employees: formData.targetType === 'individual' ? selectedEmployees.map(emp => emp.id || emp) : [],
+        notification_type: formData.notificationType // 'general' or 'logout'
       };
 
       console.log('📤 Sending notification payload:', payload);
@@ -495,7 +504,8 @@ const NotificationManagementPage = () => {
           message: "", 
           targetType: "all", 
           targetDepartments: [], 
-          targetEmployees: [] 
+          targetEmployees: [],
+          notificationType: "general"
         });
         setSelectedDepartments([]);
         setSelectedEmployees([]);
@@ -1052,10 +1062,9 @@ const NotificationManagementPage = () => {
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="mb-8 bg-black">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
-             
-            
+              <h1 className="text-3xl font-bold text-white">Announcements</h1>
             </div>
             {(permissions.send || isSuperAdmin(getUserPermissions())) && (
               <button
@@ -1066,6 +1075,41 @@ const NotificationManagementPage = () => {
                 Create Announcement
               </button>
             )}
+          </div>
+
+          {/* Notification Type Tabs */}
+          <div className="flex gap-2 border-b border-gray-700">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 ${
+                activeTab === 'all'
+                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-900/20'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              All Notifications ({notifications.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 ${
+                activeTab === 'general'
+                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-900/20'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              General ({notifications.filter(n => n.notification_type === 'general').length})
+            </button>
+            <button
+              onClick={() => setActiveTab('logout')}
+              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
+                activeTab === 'logout'
+                  ? 'text-red-400 border-b-2 border-red-400 bg-red-900/20'
+                  : 'text-gray-400 hover:text-red-400 hover:bg-gray-800'
+              }`}
+            >
+              <Power className="h-4 w-4" />
+              Logout ({notifications.filter(n => n.notification_type === 'logout').length})
+            </button>
           </div>
         </div>
 
@@ -1298,8 +1342,10 @@ const NotificationManagementPage = () => {
                   </td>
                 </tr>
               ) : (() => {
-                // Filter notifications based on search term
-                const filteredNotifications = notifications.filter(notification => {
+                // Filter notifications based on tab and search term
+                let filteredNotifications = getFilteredNotifications();
+                
+                filteredNotifications = filteredNotifications.filter(notification => {
                   if (!searchTerm) return true;
                   const searchLower = searchTerm.toLowerCase();
                   return (
@@ -1590,6 +1636,26 @@ const NotificationManagementPage = () => {
                   <option value="department">Specific Departments</option>
                   <option value="individual">Individual Employees</option>
                 </select>
+              </div>
+
+              <div className="mt-4">
+                <label className="block font-bold text-gray-700 mb-1">
+                  Notification Type
+                </label>
+                <select
+                  value={formData.notificationType}
+                  onChange={(e) => setFormData({ ...formData, notificationType: e.target.value })}
+                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                >
+                  <option value="general">General Announcement</option>
+                  <option value="logout">Logout Announcement</option>
+                </select>
+                <p className="text-sm text-gray-600 mt-1">
+                  {formData.notificationType === 'logout' 
+                    ? '⚠️ Logout notifications will show a logout button to users. Users will be logged out when they acknowledge.'
+                    : '📢 General announcements for standard communications.'
+                  }
+                </p>
               </div>
 
               {/* Department Selection */}

@@ -13,10 +13,10 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: ['rupiyamaker.com', 'localhost'],
     hmr: {
-      protocol: 'ws',
+      protocol: 'wss',
       host: 'rupiyamaker.com',
-      port: 4521,
-      clientPort: 4521
+      port: 443,
+      clientPort: 443
     },
     proxy: {
       // Proxy API requests to backend via Apache

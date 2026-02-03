@@ -30,6 +30,13 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
         loadNotes();
     }, [leadId]);
 
+    // Initialize textarea height
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '60px';
+        }
+    }, []);
+
     const loadNotes = async () => {
         try {
             setIsLoading(true);
@@ -46,18 +53,29 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
         }
     };
 
-    const handleNoteChange = (e) => {
-        setNewNote(e.target.value);
+    const adjustTextareaHeight = () => {
         if (textareaRef.current) {
-            textareaRef.current.style.height = "auto";
-            textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 300)}px`;
         }
     };
 
-    const handleNoteBlur = () => {
-        // Keep original formatting including line breaks
-        // Only uppercase if needed, but preserve newlines
-        setNewNote((prev) => prev.toUpperCase());
+    const handleNoteChange = (e) => {
+        setNewNote(e.target.value);
+        adjustTextareaHeight();
+    };
+
+    const handleKeyDown = (e) => {
+        // Allow Shift+Enter for new line, prevent plain Enter
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            return;
+        }
+        
+        // After Shift+Enter, adjust height
+        if (e.key === 'Enter' && e.shiftKey) {
+            setTimeout(adjustTextareaHeight, 0);
+        }
     };
 
     const addNote = async () => {
@@ -74,7 +92,7 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                 },
                 body: JSON.stringify({
                     lead_id: leadId,
-                    content: newNote.trim(),
+                    content: newNote.toUpperCase(),
                     note_type: noteType,
                     created_by: userId
                 })
@@ -87,7 +105,7 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                 setSuccess('Note added successfully');
                 setTimeout(() => setSuccess(''), 3000);
                 if (textareaRef.current) {
-                    textareaRef.current.style.height = "auto";
+                    textareaRef.current.style.height = "60px";
                 }
             } else {
                 throw new Error('Failed to add note');
@@ -178,12 +196,12 @@ export default function Remarks({ leadId, userId, formatDate, canEdit = true }) 
                         ref={textareaRef}
                         value={newNote}
                         onChange={canEdit ? handleNoteChange : undefined}
-                        onBlur={canEdit ? handleNoteBlur : undefined}
+                        onKeyDown={canEdit ? handleKeyDown : undefined}
                         disabled={!canEdit}
-                        placeholder="Enter note content... (Press Enter for new line, click Send to submit)"
-                        className="flex-1 bg-white border border-gray-600 rounded-lg px-3 py-2 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none overflow-auto text-lg uppercase"
-                        rows={3}
-                        style={{ minHeight: 60, maxHeight: 300 }}
+                        placeholder="Enter note content... (Press Shift+Enter for new line, click Send to submit)"
+                        className="flex-1 bg-white border border-gray-600 rounded-lg px-3 py-2 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none text-base"
+                        rows={1}
+                        style={{ minHeight: '60px', maxHeight: '300px', lineHeight: '1.5', overflow: 'auto' }}
                     />
                     <button
                         onClick={addNote}

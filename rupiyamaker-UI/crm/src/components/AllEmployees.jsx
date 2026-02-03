@@ -137,6 +137,43 @@ const toggleStyles = `
     overflow-x: auto;
   }
   
+  /* Fixed widths for first 3 columns - NOT sticky, scroll away normally */
+  .table-container table thead th:first-child,
+  .table-container table tbody td:first-child {
+    width: 50px;
+    min-width: 50px;
+  }
+  
+  .table-container table thead th:nth-child(2),
+  .table-container table tbody td:nth-child(2) {
+    width: 80px;
+    min-width: 80px;
+  }
+  
+  .table-container table thead th:nth-child(3),
+  .table-container table tbody td:nth-child(3) {
+    width: 110px;
+    min-width: 110px;
+  }
+  
+  /* Sticky fourth column (Employee Name) - Sticks at left edge (left: 0) */
+  .table-container table thead th:nth-child(4) {
+    position: sticky !important;
+    left: 0 !important;
+    top: 0 !important;
+    background: white !important;
+    width: 200px;
+    min-width: 200px;
+  }
+  
+  .table-container table tbody td:nth-child(4) {
+    position: sticky !important;
+    left: 0 !important;
+    background: rgb(0, 0, 0) !important;
+    width: 200px;
+    min-width: 200px;
+  }
+  
   /* Uppercase styling for table data - comprehensive coverage */
   .table-container table tbody td {
     text-transform: uppercase !important;
@@ -872,18 +909,31 @@ const AllEmployees = () => {
     };
 
     const handleOTPRequiredChange = async (employee, otpRequired) => {
+        const employeeId = employee._id;
+        
         try {
-            await hrmsService.updateOTPRequired(employee._id, otpRequired);
+            // Update OTP requirement via API
+            await hrmsService.updateOTPRequired(employeeId, otpRequired);
             
             // Log activity for OTP requirement change
-            await hrmsService.logEmployeeActivity(employee._id, {
+            await hrmsService.logEmployeeActivity(employeeId, {
                 action: otpRequired ? 'otp_enabled' : 'otp_disabled',
                 description: `OTP requirement ${otpRequired ? 'enabled' : 'disabled'}`,
                 timestamp: new Date().toISOString()
             });
             
+            // Show toast notification
             message.success(`OTP requirement ${otpRequired ? 'enabled' : 'disabled'} successfully`);
-            fetchEmployees();
+            
+            // Update local state without fetching all employees again
+            // This preserves scroll position and prevents page reload
+            setEmployees(prevEmployees => 
+                prevEmployees.map(emp => 
+                    emp._id === employeeId 
+                        ? { ...emp, otp_required: otpRequired }
+                        : emp
+                )
+            );
         } catch (error) {
             console.error('Error updating OTP requirement:', error);
             message.error('Failed to update OTP requirement');
@@ -949,16 +999,18 @@ const AllEmployees = () => {
     };
 
     const handleLoginEnabledChange = async (employee, isEnabled) => {
+        const employeeId = employee._id;
+        
         try {
             // Update login enabled status
-            await hrmsService.updateLoginEnabled(employee._id, isEnabled);
+            await hrmsService.updateLoginEnabled(employeeId, isEnabled);
             
             // If login is disabled, cascade disable OTP requirement only (not employee status)
             if (!isEnabled) {
                 // Disable OTP requirement if it was enabled
                 if (employee.otp_required) {
-                    await hrmsService.updateOTPRequired(employee._id, false);
-                    await hrmsService.logEmployeeActivity(employee._id, {
+                    await hrmsService.updateOTPRequired(employeeId, false);
+                    await hrmsService.logEmployeeActivity(employeeId, {
                         action: 'otp_disabled',
                         description: 'OTP requirement disabled due to login access removal',
                         timestamp: new Date().toISOString()
@@ -967,14 +1019,24 @@ const AllEmployees = () => {
             }
             
             // Log activity for login status change
-            await hrmsService.logEmployeeActivity(employee._id, {
+            await hrmsService.logEmployeeActivity(employeeId, {
                 action: isEnabled ? 'login_enabled' : 'login_disabled',
                 description: `Login access ${isEnabled ? 'enabled' : 'disabled'}`,
                 timestamp: new Date().toISOString()
             });
             
+            // Show toast notification
             message.success(`Login access ${isEnabled ? 'enabled' : 'disabled'} successfully`);
-            fetchEmployees();
+            
+            // Update local state without fetching all employees again
+            // This preserves scroll position and prevents page reload
+            setEmployees(prevEmployees => 
+                prevEmployees.map(emp => 
+                    emp._id === employeeId 
+                        ? { ...emp, login_enabled: isEnabled }
+                        : emp
+                )
+            );
         } catch (error) {
             console.error('Error updating login access:', error);
             message.error('Failed to update login access');
@@ -983,16 +1045,18 @@ const AllEmployees = () => {
 
     const handleEmployeeStatusChange = async (employee, isActive) => {
         const newStatus = isActive ? 'active' : 'inactive';
+        const employeeId = employee._id;
+        
         try {
-            await hrmsService.updateEmployeeStatus(employee._id, newStatus, `Status changed to ${newStatus}`);
+            // Update status via API
+            await hrmsService.updateEmployeeStatus(employeeId, newStatus, `Status changed to ${newStatus}`);
             
             // If status is set to inactive, cascade disable login and OTP
             if (!isActive) {
-                
                 // Disable login if it was enabled
                 if (employee.login_enabled) {
-                    await hrmsService.updateLoginEnabled(employee._id, false);
-                    await hrmsService.logEmployeeActivity(employee._id, {
+                    await hrmsService.updateLoginEnabled(employeeId, false);
+                    await hrmsService.logEmployeeActivity(employeeId, {
                         action: 'login_disabled',
                         description: 'Login access disabled due to inactive status',
                         timestamp: new Date().toISOString()
@@ -1001,8 +1065,8 @@ const AllEmployees = () => {
                 
                 // Disable OTP requirement if it was enabled
                 if (employee.otp_required) {
-                    await hrmsService.updateOTPRequired(employee._id, false);
-                    await hrmsService.logEmployeeActivity(employee._id, {
+                    await hrmsService.updateOTPRequired(employeeId, false);
+                    await hrmsService.logEmployeeActivity(employeeId, {
                         action: 'otp_disabled',
                         description: 'OTP requirement disabled due to inactive status',
                         timestamp: new Date().toISOString()
@@ -1011,14 +1075,33 @@ const AllEmployees = () => {
             }
             
             // Log activity for employee status change
-            await hrmsService.logEmployeeActivity(employee._id, {
+            await hrmsService.logEmployeeActivity(employeeId, {
                 action: isActive ? 'status_activated' : 'status_deactivated',
                 description: `Employee status changed to ${newStatus}`,
                 timestamp: new Date().toISOString()
             });
             
+            // Show toast notification
             message.success(`Employee status updated to ${newStatus}`);
-            fetchEmployees();
+            
+            // Update local state without fetching all employees again
+            // This preserves scroll position and prevents page reload
+            if (newStatus === activeTab) {
+                // Employee stays in current tab - update their status
+                setEmployees(prevEmployees => 
+                    prevEmployees.map(emp => 
+                        emp._id === employeeId 
+                            ? { ...emp, employee_status: newStatus }
+                            : emp
+                    )
+                );
+            } else {
+                // Employee moves to different tab - remove from current view
+                // This removes the row without affecting scroll position
+                setEmployees(prevEmployees => 
+                    prevEmployees.filter(emp => emp._id !== employeeId)
+                );
+            }
         } catch (error) {
             console.error('Error updating status:', error);
             message.error('Failed to update employee status');

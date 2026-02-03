@@ -183,14 +183,21 @@ export default function CommentSection({ leadData }) {
         </div>
 
         {/* Input Field */}
-        <input
-          type="text"
-          placeholder={`Write a remark as ${currentUser.name}...`}
-          className="flex-1 outline-none border-none text-sm text-gray-700 placeholder:text-gray-400 bg-transparent"
+        <textarea
+          placeholder={`Write a remark as ${currentUser.name}... (Shift+Enter for new line)`}
+          className="flex-1 outline-none border-none text-sm text-gray-700 placeholder:text-gray-400 bg-transparent resize-none overflow-auto"
+          rows={1}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handlePost()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handlePost();
+            }
+            // Shift+Enter creates new line naturally
+          }}
           disabled={isLoading}
+          style={{ minHeight: '24px', maxHeight: '120px' }}
         />
 
         {/* Send Button */}

@@ -443,6 +443,16 @@ async def login(
             detail="User account is inactive"
         )
     
+    # 🔒 CRITICAL: Check employee status for HRMS employees
+    # This ensures inactive employees cannot login regardless of login_enabled status
+    if user.get("is_employee", False):
+        employee_status = user.get("employee_status", "active")
+        if employee_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is inactive. Please contact the administrator."
+            )
+    
     # Check if login is enabled for this user (default is True if not set)
     if not user.get("login_enabled", True):
         raise HTTPException(
@@ -562,6 +572,16 @@ async def verify_session_post(
             detail="User account is inactive - session terminated"
         )
     
+    # 🔒 CRITICAL: Check employee status for HRMS employees
+    # This ensures inactive employee sessions are terminated
+    if user.get("is_employee", False):
+        employee_status = user.get("employee_status", "active")
+        if employee_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been deactivated. Please contact the administrator."
+            )
+    
     # Check if login is still enabled (default is True if not set)
     if not user.get("login_enabled", True):
         raise HTTPException(
@@ -617,6 +637,16 @@ async def verify_session_get(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive - session terminated"
         )
+    
+    # 🔒 CRITICAL: Check employee status for HRMS employees
+    # This ensures inactive employee sessions are terminated
+    if user.get("is_employee", False):
+        employee_status = user.get("employee_status", "active")
+        if employee_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been deactivated. Please contact to administrator."
+            )
     
     # Check if login is still enabled (default is True if not set)
     if not user.get("login_enabled", True):
@@ -1124,6 +1154,19 @@ async def check_user_session(
                 "login_enabled": login_enabled
             }
         
+        # 🔒 CRITICAL: Check employee status for HRMS employees
+        if user.get("is_employee", False):
+            employee_status = user.get("employee_status", "active")
+            if employee_status != "active":
+                return {
+                    "valid": False,
+                    "error": "Your account is inactive. Please contact the administrator.",
+                    "user_id": str(user_id),
+                    "is_active": is_active,
+                    "login_enabled": login_enabled,
+                    "employee_status": employee_status
+                }
+        
         if not login_enabled:
             return {
                 "valid": False,
@@ -1178,6 +1221,16 @@ async def verify_session_post(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive - session terminated"
         )
+    
+    # 🔒 CRITICAL: Check employee status for HRMS employees
+    # This ensures inactive employee sessions are terminated
+    if user.get("is_employee", False):
+        employee_status = user.get("employee_status", "active")
+        if employee_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been deactivated. Please contact to administrator."
+            )
     
     # Check if login is still enabled (default is True if not set)
     if not user.get("login_enabled", True):

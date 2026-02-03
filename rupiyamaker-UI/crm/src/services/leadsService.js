@@ -64,6 +64,21 @@ export const leadsService = {
         }
     },
 
+    // Get lead by ID (alias for getLead - used by Reports component)
+    getLeadById: async (leadId) => {
+        const userId = getUserId();
+        try {
+            const response = await apiCall(`/leads/${leadId}?user_id=${userId}`, { method: 'GET' });
+            return {
+                data: response,
+                success: true
+            };
+        } catch (error) {
+            console.error('Error fetching lead by ID:', error);
+            return { data: null, success: false, error: error.message };
+        }
+    },
+
     // Create a new lead
     createLead: async (leadData) => {
         const userId = getUserId();

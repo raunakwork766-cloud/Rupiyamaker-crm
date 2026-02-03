@@ -644,6 +644,7 @@ function App() {
                 senderRole: 'ADMIN',
                 targetCount: firstNotification.acceptance_stats?.total_users || 1,
                 notificationId: currentNotificationId,
+                notificationType: firstNotification.notification_type || 'general',
                 priority: firstNotification.priority || 'normal',
                 timestamp: timestamp,
                 acceptedCount: 0,
@@ -1030,6 +1031,7 @@ function App() {
           <GlobalAnnouncementModal 
             announcementData={globalAnnouncementData}
             onAcknowledge={handleGlobalAnnouncementAcknowledge}
+            onLogout={handleLogout}
           />
         )}
 
@@ -1040,7 +1042,7 @@ function App() {
 }
 
 // Global Announcement Modal Component
-const GlobalAnnouncementModal = ({ announcementData, onAcknowledge }) => {
+const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       const detailsContent = document.getElementById('global-announcement-details-content');
@@ -1477,50 +1479,105 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge }) => {
             </div>
           </div>
 
-          <button
-            id="global-announcement-accept-btn"
-            className="global-announcement-accept-btn"
-            onClick={async (e) => {
-              console.log('👆 Button clicked!');
-              console.log('🛑 Preventing all default behaviors...');
-              
-              // CRITICAL: Prevent ALL possible refresh triggers
-              if (e) {
-                if (typeof e.preventDefault === 'function') {
+          {/* Show either Logout or Acknowledge button based on notification type */}
+          {announcementData.notificationType === 'logout' ? (
+            <button
+              id="global-announcement-accept-btn"
+              className="global-announcement-accept-btn"
+              style={{
+                background: 'linear-gradient(135deg, #f44336, #b71c1c)',
+                display: 'none'
+              }}
+              onClick={async (e) => {
+                console.log('👆 Logout Button clicked!');
+                console.log('🛑 Preventing all default behaviors...');
+                
+                // CRITICAL: Prevent ALL possible refresh triggers
+                if (e) {
+                  if (typeof e.preventDefault === 'function') {
+                    e.preventDefault();
+                  }
+                  if (typeof e.stopPropagation === 'function') {
+                    e.stopPropagation();
+                  }
+                  if (typeof e.stopImmediatePropagation === 'function') {
+                    e.stopImmediatePropagation();
+                  }
+                  if (e.nativeEvent && typeof e.nativeEvent.preventDefault === 'function') {
+                    e.nativeEvent.preventDefault();
+                    e.nativeEvent.stopPropagation();
+                  }
+                }
+                
+                // Call the acknowledge handler first
+                await onAcknowledge(e);
+                
+                // Then call the logout handler
+                console.log('🔓 Logging out user...');
+                onLogout();
+                
+                console.log('✅ Handler completed, ensuring modal closes...');
+                
+                return false; // Extra safety
+              }}
+              onMouseDown={(e) => {
+                // Backup prevention on mouse down
+                if (e && typeof e.preventDefault === 'function') {
                   e.preventDefault();
                 }
-                if (typeof e.stopPropagation === 'function') {
-                  e.stopPropagation();
+                console.log('👆 Mouse down - preventing defaults');
+              }}
+              type="button"
+            >
+              <span style={{ fontWeight: 'bold', fontSize: '20px' }}>🔓</span>
+              Logout & Acknowledge
+            </button>
+          ) : (
+            <button
+              id="global-announcement-accept-btn"
+              className="global-announcement-accept-btn"
+              onClick={async (e) => {
+                console.log('👆 Button clicked!');
+                console.log('🛑 Preventing all default behaviors...');
+                
+                // CRITICAL: Prevent ALL possible refresh triggers
+                if (e) {
+                  if (typeof e.preventDefault === 'function') {
+                    e.preventDefault();
+                  }
+                  if (typeof e.stopPropagation === 'function') {
+                    e.stopPropagation();
+                  }
+                  if (typeof e.stopImmediatePropagation === 'function') {
+                    e.stopImmediatePropagation();
+                  }
+                  if (e.nativeEvent && typeof e.nativeEvent.preventDefault === 'function') {
+                    e.nativeEvent.preventDefault();
+                    e.nativeEvent.stopPropagation();
+                  }
                 }
-                if (typeof e.stopImmediatePropagation === 'function') {
-                  e.stopImmediatePropagation();
+                
+                // Call the handler and wait for it to complete
+                await onAcknowledge(e);
+                
+                console.log('✅ Handler completed, ensuring modal closes...');
+                
+                return false; // Extra safety
+              }}
+              onMouseDown={(e) => {
+                // Backup prevention on mouse down
+                if (e && typeof e.preventDefault === 'function') {
+                  e.preventDefault();
                 }
-                if (e.nativeEvent && typeof e.nativeEvent.preventDefault === 'function') {
-                  e.nativeEvent.preventDefault();
-                  e.nativeEvent.stopPropagation();
-                }
-              }
-              
-              // Call the handler and wait for it to complete
-              await onAcknowledge(e);
-              
-              console.log('✅ Handler completed, ensuring modal closes...');
-              
-              return false; // Extra safety
-            }}
-            onMouseDown={(e) => {
-              // Backup prevention on mouse down
-              if (e && typeof e.preventDefault === 'function') {
-                e.preventDefault();
-              }
-              console.log('👆 Mouse down - preventing defaults');
-            }}
-            type="button"
-            style={{ display: 'none' }}
-          >
-            <span style={{ fontWeight: 'bold', fontSize: '20px' }}>✓</span>
-            I Acknowledge & Continue
-          </button>
+                console.log('👆 Mouse down - preventing defaults');
+              }}
+              type="button"
+              style={{ display: 'none' }}
+            >
+              <span style={{ fontWeight: 'bold', fontSize: '20px' }}>✓</span>
+              I Acknowledge & Continue
+            </button>
+          )}
 
           <div className="global-announcement-footer">
             This notification will remain until you acknowledge it

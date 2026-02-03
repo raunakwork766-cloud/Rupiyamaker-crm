@@ -131,6 +131,8 @@ const EmployeeTable = ({
         {
             title: 'Employee',
             key: 'employee',
+            fixed: 'left',
+            width: 200,
             render: (_, record) => (
                 <Space>
                     <Avatar
@@ -224,7 +226,7 @@ const EmployeeTable = ({
                 showSizeChanger: true,
                 pageSizeOptions: ['10', '20', '50']
             }}
-            scroll={{ x: 1200 }}
+            scroll={{ x: 'max-content' }}
             className="employee-table-dark"
             style={{ 
                 backgroundColor: '#000',
