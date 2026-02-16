@@ -761,18 +761,18 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       const route = getRouteByLabel(label);
       
       if (route) {
+        // Build the full URL with query parameters for loan types
+        let fullRoute = route;
         if (parentDropdown && (parentDropdown === 'LEAD CRM' || parentDropdown === 'Login CRM')) {
           let baseLoanTypeName = label;
           if (parentDropdown === 'Login CRM') {
             baseLoanTypeName = label.replace(' Login', '');
           }
-          
-          const urlWithParam = `${route}?loan_type_name=${encodeURIComponent(baseLoanTypeName)}`;
-          window.history.replaceState({label}, '', urlWithParam);
-          navigateToRoute(route, label);
-        } else {
-          navigateToRoute(route, label);
+          fullRoute = `${route}?loan_type_name=${encodeURIComponent(baseLoanTypeName)}`;
         }
+        
+        // Navigate with the full URL (including query parameters)
+        navigateToRoute(fullRoute, label);
         
         // Final highlight confirmation after navigation
         setTimeout(() => {
@@ -1586,6 +1586,25 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     return perms;
   }, [checkPermission, userPermissions]);
 
+  // Memoize loan type menu items to prevent flickering on selection changes
+  const leadCrmLoanTypeItems = useMemo(() => {
+    return loanTypes.map(loanType => ({
+      label: loanType.name,
+      icon: icons["PL & ODD LEADS"],
+      id: loanType._id,
+      isLoanType: true
+    }));
+  }, [loanTypes]);
+
+  const loginCrmLoanTypeItems = useMemo(() => {
+    return loanTypes.map(loanType => ({
+      label: `${loanType.name} Login`,
+      icon: icons["PL & ODD LEADS"],
+      id: loanType._id,
+      isLoanType: true
+    }));
+  }, [loanTypes]);
+
   if (!permissionsLoaded || !menuDataLoaded) {
     return (
       <div className="h-screen w-20 bg-black flex items-center justify-center">
@@ -1681,12 +1700,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                     // Show PL & ODD LEADS if: nested permission exists OR (no nested exists AND has unified)
                     const showPlOdd = hasNestedPlOdd || (!hasAnyNested && hasUnified);
                     
-                    return showPlOdd ? loanTypes.map(loanType => ({
-                      label: loanType.name,
-                      icon: icons["PL & ODD LEADS"],
-                      id: loanType._id,
-                      isLoanType: true
-                    })) : [];
+                    return showPlOdd ? leadCrmLoanTypeItems : [];
                   })()
                 ]}
                 onItemSelect={handleSelection}
@@ -1702,12 +1716,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                 isExpanded={openDropdowns["Login CRM"]}
                 selectedLabel={selectedLabel}
                 onToggle={toggleDropdown}
-                items={loanTypes.map(loanType => ({
-                  label: `${loanType.name} Login`,
-                  icon: icons["PL & ODD LEADS"],
-                  id: loanType._id,
-                  isLoanType: true
-                }))}
+                items={loginCrmLoanTypeItems}
                 onItemSelect={handleSelection}
               />
             )}

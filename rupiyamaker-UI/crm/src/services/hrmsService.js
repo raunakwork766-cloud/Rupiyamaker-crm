@@ -198,7 +198,7 @@ export const hrmsService = {
 
         try {
             // Use the working /users/employees endpoint that supports all fields
-            const response = await api.post(`/users/employees?user_id=${userId}`, employeeData);
+            const response = await api.post(`/users/employees/?user_id=${userId}`, employeeData);
             return {
                 data: response,
                 success: true
@@ -439,7 +439,7 @@ export const hrmsService = {
     getDepartments: async () => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/departments?user_id=${userId}`, { method: 'GET' });
+            const response = await apiCall(`/departments/?user_id=${userId}`, { method: 'GET' });
             return {
                 data: response,
                 success: true
@@ -472,7 +472,7 @@ export const hrmsService = {
     getDesignations: async () => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations?user_id=${userId}`, { method: 'GET' });
+            const response = await apiCall(`/designations/?user_id=${userId}`, { method: 'GET' });
             return {
                 data: response,
                 success: true
@@ -487,7 +487,7 @@ export const hrmsService = {
     createDesignation: async (designationData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/?user_id=${userId}`, { 
                 method: 'POST',
                 body: JSON.stringify(designationData)
             });
@@ -505,7 +505,7 @@ export const hrmsService = {
     updateDesignation: async (designationId, designationData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations/${designationId}?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/${designationId}/?user_id=${userId}`, { 
                 method: 'PUT',
                 body: JSON.stringify(designationData)
             });
@@ -523,7 +523,7 @@ export const hrmsService = {
     deleteDesignation: async (designationId) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations/${designationId}?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/${designationId}/?user_id=${userId}`, { 
                 method: 'DELETE'
             });
             return {
@@ -575,7 +575,7 @@ export const hrmsService = {
     getEmployeeRemarks: async (employeeId) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/employees/${employeeId}/remarks?user_id=${userId}`, { method: 'GET' });
+            const response = await apiCall(`/employees/${employeeId}/remarks/?user_id=${userId}`, { method: 'GET' });
             return {
                 data: response,
                 success: true
@@ -590,7 +590,7 @@ export const hrmsService = {
     addEmployeeRemark: async (remarkData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/employees/remarks?user_id=${userId}`, {
+            const response = await apiCall(`/employees/remarks/?user_id=${userId}`, {
                 method: 'POST',
                 body: JSON.stringify(remarkData),
                 headers: {
@@ -610,7 +610,7 @@ export const hrmsService = {
     deleteEmployeeRemark: async (remarkId) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/employees/remarks/${remarkId}?user_id=${userId}`, { method: 'DELETE' });
+            const response = await apiCall(`/employees/remarks/${remarkId}/?user_id=${userId}`, { method: 'DELETE' });
             return {
                 data: response,
                 success: true
@@ -625,7 +625,7 @@ export const hrmsService = {
         const userId = getUserId();
         try {
             formData.append('user_id', userId);
-            const response = await api.post('/employees/attachments', formData, {
+            const response = await api.post('/employees/attachments/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }

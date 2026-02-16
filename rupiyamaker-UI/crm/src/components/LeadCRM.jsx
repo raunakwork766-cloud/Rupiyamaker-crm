@@ -4431,7 +4431,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
         try {
             // 🚀 LOAD DATA WITH LIMIT - Faster initial load
-            let apiUrl = `${apiBaseUrl}/leads?user_id=${userId}`;
+            let apiUrl = `${apiBaseUrl}/leads/?user_id=${userId}`;
             
             // 🚀 PERFORMANCE: Limit initial load to 30 most recent leads for INSTANT display
             if (!initialLoadCompleteRef.current) {
@@ -4690,7 +4690,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 }
             }
             
-            const response = await fetch(`${apiBaseUrl}/loan-types?user_id=${userId}`, {
+            const response = await fetch(`${apiBaseUrl}/loan-types/?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json',
@@ -4761,7 +4761,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         setLoadingStatuses(true);
         try {
             // Use the same admin API endpoint as StatusManagementTab
-            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses?user_id=${userId}`, {
+            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses/?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
@@ -4827,7 +4827,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         setLoadingStatuses(true);
         try {
             // Use the same admin API endpoint as StatusManagementTab
-            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses?user_id=${userId}`, {
+            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses/?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'

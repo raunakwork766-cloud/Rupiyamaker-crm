@@ -221,7 +221,7 @@ function App() {
       window.removeEventListener('resize', checkMobileView);
       window.removeEventListener('orientationchange', checkMobileView);
     };
-  }, [isMobileView, location.pathname, location.search, selectedLabel, navigate])
+  }, [isMobileView, location.pathname, location.search, navigate])
 
   useEffect(() => {
     // Check if user is already logged in

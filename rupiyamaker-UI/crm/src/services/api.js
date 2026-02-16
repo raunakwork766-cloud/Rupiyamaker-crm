@@ -318,14 +318,14 @@ export const ticketsAPI = {
             ...filters  // Additional filters like status, etc.
         });
 
-        return apiCall(`/tickets?${queryParams}`);
+        return apiCall(`/tickets/?${queryParams}`);
     },
 
     getTicketById: async (ticketId) => {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}?user_id=${userId}`);
+        return apiCall(`/tickets/${ticketId}/?user_id=${userId}`);
     },
 
     getAssignableUsers: async () => {
@@ -333,14 +333,14 @@ export const ticketsAPI = {
         if (!userId) throw new Error('User not authenticated');
 
         // Fetch all users who can be assigned to tickets using the tasks assignment endpoint
-        return apiCall(`/tasks/users-for-assignment?user_id=${userId}`);
+        return apiCall(`/tasks/users-for-assignment/?user_id=${userId}`);
     },
 
     createTicket: async (ticketData) => {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets?user_id=${userId}`, {
+        return apiCall(`/tickets/?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify(ticketData),
         });
@@ -350,7 +350,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/?user_id=${userId}`, {
             method: 'PUT',
             body: JSON.stringify(ticketData),
         });
@@ -360,7 +360,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/?user_id=${userId}`, {
             method: 'DELETE',
         });
     },
@@ -385,7 +385,7 @@ export const ticketsAPI = {
                 const formData = new FormData();
                 formData.append('file', file);  // Backend expects 'file' not 'files'
                 
-                const url = `${API_BASE_URL}/tickets/${ticketId}/attachments?user_id=${userId}`;
+                const url = `${API_BASE_URL}/tickets/${ticketId}/attachments/?user_id=${userId}`;
                 console.log(`Making upload request to: ${url}`);
                 
                 const response = await fetch(url, {
@@ -428,7 +428,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/comments?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/comments/?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ content }),
         });
@@ -441,7 +441,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/assign?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/assign/?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ assigned_users: assignedUsers }),
         });
@@ -451,7 +451,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/close?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/close/?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ reason }),
         });
@@ -461,7 +461,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/fail?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/fail/?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ reason }),
         });
@@ -471,7 +471,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/reopen?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/reopen/?user_id=${userId}`, {
             method: 'POST',
         });
     },
@@ -480,7 +480,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/history?user_id=${userId}`);
+        return apiCall(`/tickets/${ticketId}/history/?user_id=${userId}`);
     }
 };
 

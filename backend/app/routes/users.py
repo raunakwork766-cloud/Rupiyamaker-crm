@@ -225,6 +225,13 @@ async def list_users(
         # Convert ObjectId to string for JSON serialization, but keep all other data intact
         converted_users = [convert_object_id(user) for user in users]
         
+        # ⚡ FIX: Clean up empty email fields to prevent validation errors
+        for user in converted_users:
+            if user.get('work_email') == '':
+                user['work_email'] = None
+            if user.get('email') == '':
+                user['email'] = None
+        
         # ⚡ STEP 3: Cache the result (10-second TTL)
         await cache_response(cache_key, converted_users, ttl=10)
         

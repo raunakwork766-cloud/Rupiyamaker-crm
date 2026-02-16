@@ -463,7 +463,7 @@ export default function FeedPage({ user }) {
         user_id: currentUserId,
         include_comments: 'true' // Request comments with feeds to reduce API calls
       });
-      const response = await fetch(buildApiUrl(`feeds?${params}`), {
+      const response = await fetch(buildApiUrl(`feeds/?${params}`), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -567,7 +567,7 @@ export default function FeedPage({ user }) {
         return;
       }
 
-      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments?user_id=${encodeURIComponent(currentUserId)}`), {
+      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments/?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -734,7 +734,7 @@ export default function FeedPage({ user }) {
       selectedFiles.forEach((fileObj) => {
         formData.append('files', fileObj.file);
       });
-      const response = await fetch(buildApiUrl('feeds'), {
+      const response = await fetch(buildApiUrl('feeds/'), {
         method: 'POST',
         body: formData
       });
@@ -770,8 +770,8 @@ export default function FeedPage({ user }) {
       const currentFeed = feeds.find(feed => feed.id === feedId);
       const isCurrentlyLiked = currentFeed?.liked || false;
       const endpoint = isCurrentlyLiked
-        ? buildApiUrl(`feeds/${feedId}/unlike?user_id=${currentUserId}`)
-        : buildApiUrl(`feeds/${feedId}/like?user_id=${currentUserId}`);
+        ? buildApiUrl(`feeds/${feedId}/unlike/?user_id=${currentUserId}`)
+        : buildApiUrl(`feeds/${feedId}/like/?user_id=${currentUserId}`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -853,7 +853,7 @@ export default function FeedPage({ user }) {
         throw new Error("User ID not available. Please log in again.");
       }
       
-      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments`), {
+      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments/`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1140,7 +1140,7 @@ export default function FeedPage({ user }) {
         throw new Error("User ID not available. Please log in again.");
       }
       
-      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments`), {
+      const response = await fetch(buildApiUrl(`feeds/${feedId}/comments/`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1286,7 +1286,7 @@ export default function FeedPage({ user }) {
         return;
       }
       setFeeds(prevFeeds => prevFeeds.filter(feed => feed.id !== feedId));
-      const response = await fetch(buildApiUrl(`feeds/${feedId}?user_id=${encodeURIComponent(currentUserId)}`), {
+      const response = await fetch(buildApiUrl(`feeds/${feedId}/?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -1328,7 +1328,7 @@ export default function FeedPage({ user }) {
           return { ...feed, comments: removeComment(feed.comments) };
         })
       );
-      const response = await fetch(buildApiUrl(`feeds/comments/${commentId}?user_id=${encodeURIComponent(currentUserId)}`), {
+      const response = await fetch(buildApiUrl(`feeds/comments/${commentId}/?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
