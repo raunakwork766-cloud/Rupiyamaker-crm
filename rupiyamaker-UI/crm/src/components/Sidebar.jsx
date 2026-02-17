@@ -887,8 +887,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           // Return already loaded permissions
           Promise.resolve(loadedPermissions),
           
-          // Load loan types
-          fetch(`${API_BASE_URL}/loan-types?user_id=${userId}`, {
+          // Load loan types (trailing slash required to avoid redirect)
+          fetch(`${API_BASE_URL}/loan-types/?user_id=${userId}`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',

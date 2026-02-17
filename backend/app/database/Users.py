@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
 import logging
+import bcrypt
 from app.utils.password_encryption import password_encryptor
 from app.config import Config
 
@@ -46,24 +47,41 @@ class UsersDB:
         return password_encryptor.encrypt_password(password)
         
     def _verify_password(self, plain_password: str, stored_password: str) -> bool:
-        """Verify a password against stored password using Fernet encryption"""
+        """Verify a password against stored password (supports both bcrypt and Fernet)"""
         if not plain_password or not stored_password:
             return False
         
-        # Use encryption/decryption for password verification
+        # Check if password is bcrypt hash (starts with $2a$, $2b$, $2x$, or $2y$)
+        if stored_password.startswith('$2'):
+            try:
+                # Verify using bcrypt
+                return bcrypt.checkpw(
+                    plain_password.encode('utf-8'), 
+                    stored_password.encode('utf-8')
+                )
+            except Exception as e:
+                logger.error(f"Bcrypt password verification failed: {e}")
+                return False
+        
+        # Use Fernet encryption/decryption for password verification
         try:
             decrypted_password = password_encryptor.decrypt_password(stored_password)
             return plain_password == decrypted_password
-        except:
+        except Exception as e:
+            logger.error(f"Fernet password decryption failed: {e}")
             # If decryption fails, compare directly (for any edge cases)
             return plain_password == stored_password
     
     def _get_readable_password(self, stored_password: str) -> str:
-        """Get readable password for admin display using Fernet decryption"""
+        """Get readable password for admin display (supports both bcrypt and Fernet)"""
         if not stored_password:
             return ""
         
-        # Decrypt password for admin access
+        # Check if password is bcrypt hash (cannot be decrypted)
+        if stored_password.startswith('$2'):
+            return "[Bcrypt Hash - Cannot Decrypt]"
+        
+        # Decrypt Fernet encrypted password for admin access
         try:
             return password_encryptor.decrypt_password(stored_password)
         except:
@@ -122,6 +140,13 @@ class UsersDB:
         if not ObjectId.is_valid(user_id):
             return None
         return await self.collection.find_one({"_id": ObjectId(user_id)})
+    
+    async def get_user_with_readable_password(self, user_id: str) -> Optional[dict]:
+        """Get a user by ID with decrypted password for admin display"""
+        user = await self.get_user(user_id)
+        if user and 'password' in user:
+            user['password'] = self._get_readable_password(user['password'])
+        return user
         
     async def get_user_by_username(self, username: str) -> Optional[dict]:
         """Get a user by username"""
@@ -327,6 +352,14 @@ class UsersDB:
             filter_dict["department_id"] = department_id
             
         return await self._async_to_list(self.collection.find(filter_dict))
+    
+    async def get_employees_with_readable_passwords(self, status: str = None, department_id: str = None) -> List[dict]:
+        """Get all employees with decrypted passwords for admin display"""
+        employees = await self.get_employees(status, department_id)
+        for employee in employees:
+            if 'password' in employee:
+                employee['password'] = self._get_readable_password(employee['password'])
+        return employees
         
     async def create_employee(self, employee_data: dict) -> str:
         """Create a new employee with all necessary fields"""
