@@ -62,8 +62,8 @@ async def list_employees(
     # Check permission
     await check_permission(user_id, "employees", "show", users_db, roles_db)
     
-    # Get employees from the database
-    employees = await users_db.get_employees(status, department_id)
+    # Get employees from the database with readable passwords
+    employees = await users_db.get_employees_with_readable_passwords(status, department_id)
     return [convert_object_id(employee) for employee in employees]
 
 @router.post("/employees/with-photo", response_model=Dict[str, str], status_code=status.HTTP_201_CREATED)
@@ -278,8 +278,8 @@ async def get_employee(
     # Check permission
     await check_permission(user_id, "employees", "show", users_db, roles_db)
     
-    # Get the employee from the database
-    employee = await users_db.get_user(employee_id)
+    # Get the employee from the database with readable password
+    employee = await users_db.get_user_with_readable_password(employee_id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
