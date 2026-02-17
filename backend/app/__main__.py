@@ -24,10 +24,13 @@ if __name__ == "__main__":
         sys.path.insert(0, str(current_dir.parent))
     
     # Configure Uvicorn for MAXIMUM PERFORMANCE (10K+ concurrent)
+    # Support different port for dev environment
+    port = int(os.getenv("DEV_PORT", "8049"))
+    
     config = {
         "app": app_import,
         "host": "0.0.0.0",
-        "port": 8049,
+        "port": port,
         "loop": "uvloop",               # Ultra-fast event loop
         "http": "httptools",            # Ultra-fast HTTP parser
         "ws": "websockets",             # WebSocket support
@@ -89,11 +92,9 @@ if __name__ == "__main__":
     # Import and run uvicorn
     import uvicorn
     
-    print(f"📡 Server starting on {'https' if ssl_available else 'http'}://0.0.0.0:8049")
+    print(f"📡 Server starting on {'https' if ssl_available else 'http'}://0.0.0.0:{port}")
     print(f"🔥 Optimized for 10K+ concurrent connections")
     print(f"📁 Working directory: {os.getcwd()}")
     print(f"🔍 App import: {app_import}")
     
-    uvicorn.run(**config)    
-    # Start the Uvicorn server
     uvicorn.run(**config)
