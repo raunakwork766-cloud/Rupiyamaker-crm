@@ -95,6 +95,31 @@ const Login = ({ onLogin }) => {
                 })
             });
 
+            // Handle 431 error - Request Header Fields Too Large
+            if (response.status === 431) {
+                console.log('⚠️ 431 Error detected - Too many cookies. Clearing all cookies...');
+                
+                // Clear all cookies
+                document.cookie.split(";").forEach(c => {
+                    const name = c.split("=")[0].trim();
+                    if (name) {
+                        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/';
+                        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname;
+                    }
+                });
+                
+                // Clear storage
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                setError('Too many cookies detected. Cookies cleared. Please try again.');
+                setLoading(false);
+                
+                // Show alert and reload
+                alert('Cookies cleared! Please click Login button again.');
+                return;
+            }
+
             const data = await response.json();
 
             if (response.ok) {
