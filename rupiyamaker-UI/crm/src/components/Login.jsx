@@ -99,12 +99,19 @@ const Login = ({ onLogin }) => {
             if (response.status === 431) {
                 console.log('⚠️ 431 Error detected - Too many cookies. Clearing all cookies...');
                 
-                // Clear all cookies
+                // Clear all cookies aggressively
                 document.cookie.split(";").forEach(c => {
                     const name = c.split("=")[0].trim();
                     if (name) {
-                        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/';
-                        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname;
+                        // Clear for all possible combinations
+                        const domains = ['', window.location.hostname, '.' + window.location.hostname];
+                        const paths = ['/', '/api', '/api/'];
+                        
+                        domains.forEach(domain => {
+                            paths.forEach(path => {
+                                document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=' + path + (domain ? '; domain=' + domain : '');
+                            });
+                        });
                     }
                 });
                 
@@ -112,11 +119,13 @@ const Login = ({ onLogin }) => {
                 localStorage.clear();
                 sessionStorage.clear();
                 
-                setError('Too many cookies detected. Cookies cleared. Please try again.');
-                setLoading(false);
+                console.log('✅ All cookies cleared. Reloading page...');
                 
-                // Show alert and reload
-                alert('Cookies cleared! Please click Login button again.');
+                // Reload page to clear headers from memory
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+                
                 return;
             }
 
