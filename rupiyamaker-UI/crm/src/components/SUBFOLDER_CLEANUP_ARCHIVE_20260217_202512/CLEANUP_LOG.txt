@@ -1,0 +1,37 @@
+Component Subfolders Cleanup
+Date: Tue Feb 17 20:25:13 CET 2026
+Files Archived: 9
+Archive Size: 180K
+
+Location: /www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/src/components
+Archive: /www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/src/components/SUBFOLDER_CLEANUP_ARCHIVE_20260217_202512
+
+Analysis Method:
+- Searched entire codebase for import statements
+- Removed backup files (.backup, .new extensions)
+- Removed debug/test components
+- Removed unused sections with 0 imports
+- Checked for duplicate files
+
+Categories Cleaned:
+1. Backup files (2 files)
+   - settings/DesignationSettings.backup.jsx
+   - hrms/EmployeeFormNew.jsx.new
+
+2. Debug/Test files (2 files)
+   - lead-details/AutoSaveDebugger.jsx
+   - lead-details/AutoSaveTest.jsx
+
+3. Unused sections (4 files)
+   - sections/Attachments.fixed.jsx (0 imports)
+   - sections/EnhancedRequestReassignmentButton.jsx (0 imports)
+   - sections/CopyLeadSection.jsx (0 imports)
+   - sections/FileSentToLoginSection.jsx (0 imports)
+
+All files have been preserved and can be restored if needed.
+
+To restore a file:
+cp /www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/src/components/SUBFOLDER_CLEANUP_ARCHIVE_20260217_202512/[category]/[path] /www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/src/components/
+
+To permanently delete this archive after verification:
+rm -rf /www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/src/components/SUBFOLDER_CLEANUP_ARCHIVE_20260217_202512

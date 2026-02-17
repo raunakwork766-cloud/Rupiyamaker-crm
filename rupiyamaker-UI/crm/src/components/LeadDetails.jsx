@@ -18,8 +18,6 @@ import AttachmentsSection from './lead-details/AttachmentsSection';
 import TasksSection from './lead-details/TasksSection';
 import ImportantQuestionsSection from './lead-details/ImportantQuestionsSection';
 import OperationsSection from './lead-details/OperationsSection';
-import AutoSaveTest from './lead-details/AutoSaveTest';
-import AutoSaveDebugger from './lead-details/AutoSaveDebugger';
 
 // Import new modular section components
 import Remarks from './sections/Remarks';
@@ -576,18 +574,6 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                     <div className="p-6 bg-black">
                         {activeTab === 'details' && (
                             <div className="space-y-6">
-                                {/* Auto-save Test Component - For Debugging */}
-                                <AutoSaveTest 
-                                    onUpdate={updateLead} 
-                                    leadData={leadData}
-                                />
-
-                                {/* Auto-Save Debugger for Testing */}
-                                <AutoSaveDebugger
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                />
-
                                 {/* About Section */}
                                 <AboutSection
                                     key={`about-${leadData._id}`}
@@ -662,15 +648,6 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                             setSuccess('Lead reassignment requested successfully');
                                             setTimeout(() => setSuccess(''), 3000);
                                         }}
-                                    />
-                                </div>
-
-                                {/* AutoSaveTest Component - For debugging */}
-                                <div className="mt-6 p-4 bg-gray-800 rounded-lg">
-                                    <h4 className="text-lg font-bold mb-2 text-white">AutoSave Debug Info</h4>
-                                    <AutoSaveTest 
-                                        leadData={leadData}
-                                        onUpdate={updateLead}
                                     />
                                 </div>
                             </div>
