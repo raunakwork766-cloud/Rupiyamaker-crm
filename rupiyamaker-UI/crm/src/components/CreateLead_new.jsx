@@ -2329,7 +2329,7 @@ const handleMobileNumberChange = (e) => {
 
 
 
-      const response = await fetch(`${API_BASE_URL}/leads?user_id=${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/leads/?user_id=${userId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
