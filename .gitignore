@@ -58,3 +58,4 @@ Thumbs.db
 *.temp
 test_*.py
 try.py
+OLD_UNUSED_FILES_*/

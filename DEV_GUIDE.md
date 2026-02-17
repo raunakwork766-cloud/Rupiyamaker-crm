@@ -36,17 +36,19 @@ pm2 logs rupiyame-backend rupiyame-frontend
 
 ## 🔧 2. DEVELOPMENT (Dev Branch)
 
-**Status:** Not Started Yet
+**Status:** ✅ Running & Fully Isolated
 **Branch:** `dev`
-**Access:** http://YOUR_SERVER_IP:4522
+**Access:** http://156.67.111.95:4522
 
 **Ports:**
-- Backend: 8051
+- Backend: 8051 (HTTPS)
 - Frontend: 4522
 
+**Database:** crm_database_dev (separate from production)
+
 **Services:**
-- `rupiyame-backend-dev` (separate from production)
-- `rupiyame-frontend-dev` (separate from production)
+- `rupiyame-backend-dev` (PM2 ID: 2)
+- `rupiyame-frontend-dev` (PM2 ID: 3)
 
 **Commands:**
 ```bash
@@ -127,27 +129,31 @@ pm2 list | grep dev
 
 ### 🗄️ Database Configuration
 
-**⚠️ IMPORTANT:** Dev frontend currently uses **production backend** (port 8049) and **production database**.
+**✅ FULLY ISOLATED:** Dev environment uses **separate backend** and **separate database**.
 
-**Why?**
-- Separate dev backend (port 8051) crashes on startup
-- Dev database (crm_database_dev) exists but backend can't connect properly
+**Configuration:**
+- Production Backend: Port 8049 (HTTPS) → crm_database
+- Dev Backend: Port 8051 (HTTPS) → crm_database_dev
+- Dev Frontend: Port 4522 → Points to Dev Backend (8051)
 
 **What this means:**
-- ✅ Frontend changes are safe to test on dev
-- ⚠️ Backend changes will affect production database
-- ⚠️ Be careful when testing backend changes
+- ✅ All frontend changes are completely safe
+- ✅ All backend changes only affect dev database
+- ✅ All database operations isolated to crm_database_dev
+- ✅ Production is completely untouched by dev testing
 
-**Recommendation:**
-- Test frontend changes freely on dev environment
-- For backend changes, backup database first:
-  ```bash
-  mongodump --uri="mongodb://raunak:Raunak%40123@156.67.111.95:27017/crm_database?authSource=admin" --out=/backup/before_testing
-  ```
+**Database Management:**
+```bash
+# Copy production data to dev database
+./copy_db_to_dev.sh
 
-**Alternative (Advanced):**
-If you need separate dev backend with separate database:
-1. Copy database: `./copy_db_to_dev.sh` (answer 'yes')
+# Or use mongodump/mongorestore for full copy:
+mongodump --host=156.67.111.95 --port=27017 --username=raunak --password='Raunak@123' --authenticationDatabase=admin --db=crm_database --out=/tmp/mongo_backup
+mongorestore --host=156.67.111.95 --port=27017 --username=raunak --password='Raunak@123' --authenticationDatabase=admin --db=crm_database_dev --drop /tmp/mongo_backup/crm_database/
+rm -rf /tmp/mongo_backup
+```
+
+**Note:** Dev backend uses HTTPS with self-signed certificate. Frontend proxy has `secure: false` to accept it.
 2. Fix dev backend startup issues
 3. Point vite.config.js to use localhost:8051
 

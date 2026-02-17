@@ -45,66 +45,72 @@ INITIAL_SPACE=$(du -sb "$BASE_DIR" | cut -f1)
 
 echo -e "${GREEN}Step 1: Moving unused test scripts...${NC}"
 # Move test scripts
+shopt -s nullglob
 for file in test_*.py test*.js test-*.js test_*.sh test-*.sh; do
     if [ -f "$file" ] && [ "$file" != "test_attachment.txt" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/test_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/test_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Test scripts moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 2: Moving debug scripts...${NC}"
 # Move debug scripts
+shopt -s nullglob
 for file in debug_*.py debug*.js; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/debug_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/debug_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Debug scripts moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 3: Moving fix scripts...${NC}"
 # Move fix scripts
+shopt -s nullglob
 for file in fix_*.py fix_*.sh fix*.js; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/fix_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/fix_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Fix scripts moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 4: Moving check scripts...${NC}"
 # Move check scripts
+shopt -s nullglob
 for file in check_*.py check-*.sh; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/check_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/check_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Check scripts moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 5: Moving permission test scripts...${NC}"
 # Move permission scripts
+shopt -s nullglob
 for file in permission*.js verify-*.js interactive-*.js enhanced-*.js frontend_permission_debugger.js; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/permission_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/permission_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Permission scripts moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 6: Moving old backup/utility scripts...${NC}"
 # Move other utility scripts that are not needed
+shopt -s nullglob
 for file in brace_*.js cleanup_debug.js clear_cookies.js autofix-service.js \
             obligationDataHelper.js rolesettings-critical-fixes.js \
             activate_all_employees.py disable_otp_all_users.py \
@@ -113,10 +119,10 @@ for file in brace_*.js cleanup_debug.js clear_cookies.js autofix-service.js \
             update_*.py create_complete_status.py quick_test_api.py; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/backup_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/backup_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Utility scripts moved${NC}"
 echo ""
 
@@ -166,27 +172,29 @@ echo ""
 
 echo -e "${GREEN}Step 9: Moving old text documentation files...${NC}"
 # Move old documentation files
+shopt -s nullglob
 for file in COMPLETE_FIX_SUMMARY.txt FINAL_FIX_DEPLOYED.txt \
             AUTO_LOGOUT_QUICK_REFERENCE.txt OBLIGATION_DATA_FIX_VISUAL_GUIDE.txt \
             PROCESS_DATA_SEPARATION_FIX.txt SERVICES_RESTARTED.txt; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Old docs moved${NC}"
 echo ""
 
 echo -e "${GREEN}Step 10: Moving backup config files...${NC}"
 # Move backup SSL and old service files
+shopt -s nullglob
 for file in ssl.*.backup* *.service.old rupiyame*.service; do
     if [ -f "$file" ]; then
         echo "  Moving: $file"
-        mv "$file" "$ARCHIVE_DIR/backup_scripts/" 2>/dev/null || true
-        ((MOVED_FILES++))
+        mv "$file" "$ARCHIVE_DIR/backup_scripts/" 2>/dev/null && ((MOVED_FILES++)) || true
     fi
 done
+shopt -u nullglob
 echo -e "${GREEN}✓ Backup configs moved${NC}"
 echo ""
 
