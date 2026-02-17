@@ -16,7 +16,8 @@ module.exports = {
       env: {
         ENVIRONMENT: 'development',
         PYTHONUNBUFFERED: '1',
-        DEV_PORT: '8051'  // Different port for dev
+        DEV_PORT: '8051',  // Different port for dev
+        COMPANY_NAME: 'crm_database_dev'  // Separate database for dev
       },
       error_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-error.log',
       out_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-out.log',

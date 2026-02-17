@@ -125,6 +125,32 @@ pm2 list | grep dev
 3. Dono **completely separate** hain - ek dusre ko affect nahi karenge
 4. Production par directly changes **KABHI MAT KARO** - hamesha dev se test karke merge karo
 
+### 🗄️ Database Configuration
+
+**⚠️ IMPORTANT:** Dev frontend currently uses **production backend** (port 8049) and **production database**.
+
+**Why?**
+- Separate dev backend (port 8051) crashes on startup
+- Dev database (crm_database_dev) exists but backend can't connect properly
+
+**What this means:**
+- ✅ Frontend changes are safe to test on dev
+- ⚠️ Backend changes will affect production database
+- ⚠️ Be careful when testing backend changes
+
+**Recommendation:**
+- Test frontend changes freely on dev environment
+- For backend changes, backup database first:
+  ```bash
+  mongodump --uri="mongodb://raunak:Raunak%40123@156.67.111.95:27017/crm_database?authSource=admin" --out=/backup/before_testing
+  ```
+
+**Alternative (Advanced):**
+If you need separate dev backend with separate database:
+1. Copy database: `./copy_db_to_dev.sh` (answer 'yes')
+2. Fix dev backend startup issues
+3. Point vite.config.js to use localhost:8051
+
 ---
 
 ## 🔥 Quick Commands

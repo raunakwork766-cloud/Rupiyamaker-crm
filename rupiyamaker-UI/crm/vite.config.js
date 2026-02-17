@@ -41,6 +41,7 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/api/, ''),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.error('❌ Proxy Error:', err.message);
