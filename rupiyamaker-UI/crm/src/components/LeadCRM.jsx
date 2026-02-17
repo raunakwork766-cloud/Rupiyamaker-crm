@@ -4827,7 +4827,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         setLoadingStatuses(true);
         try {
             // Use the same admin API endpoint as StatusManagementTab
-            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses/?user_id=${userId}`, {
+            const response = await fetch(`${apiBaseUrl}/leads/admin/statuses?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'

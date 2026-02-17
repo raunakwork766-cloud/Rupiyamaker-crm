@@ -39,7 +39,8 @@ module.exports = {
       max_restarts: 10,
       env: {
         NODE_ENV: 'development',
-        VITE_API_URL: 'http://localhost:8050'  // Point to dev backend
+        VITE_API_URL: 'http://localhost:8050',  // Point to dev backend
+        DEV_PORT: '8050'  // Signal to vite config that this is dev environment
       },
       error_file: '/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/logs/frontend-dev-error.log',
       out_file: '/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/logs/frontend-dev-out.log',

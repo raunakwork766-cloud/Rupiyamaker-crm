@@ -6,32 +6,49 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Check if running in dev environment (via DEV_PORT env var)
+const isDevEnvironment = process.env.DEV_PORT === '8050';
+const devPort = isDevEnvironment ? 4522 : 4521;
+const backendTarget = isDevEnvironment ? 'https://localhost:8050' : 'https://rupiyamaker.com';
+
+console.log('🔧 Vite Config:', {
+  isDevEnvironment,
+  devPort,
+  backendTarget,
+  DEV_PORT: process.env.DEV_PORT
+});
+
 // https://vite.dev/config/
 export default defineConfig({
   server: {
-    port: 4521,
+    port: devPort,
     host: '0.0.0.0',
-    allowedHosts: ['rupiyamaker.com', 'localhost'],
-    hmr: {
+    allowedHosts: ['rupiyamaker.com', 'localhost', '156.67.111.95'],
+    hmr: isDevEnvironment ? {
+      protocol: 'ws',
+      host: 'localhost',
+      port: devPort,
+      clientPort: devPort
+    } : {
       protocol: 'wss',
       host: 'rupiyamaker.com',
       port: 443,
       clientPort: 443
     },
     proxy: {
-      // Proxy API requests to backend via Apache
+      // Proxy API requests to backend
       '/api': {
-      target: 'https://rupiyamaker.com',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.error('❌ Proxy Error:', err.message);
             console.error('Request URL:', req.url);
-            console.error('Target:', 'https://rupiyamaker.com');
+            console.error('Target:', backendTarget);
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('🚀 Proxying Request:', req.method, req.url, '→', `https://rupiyamaker.com${req.url}`);
+            console.log('🚀 Proxying Request:', req.method, req.url, '→', `${backendTarget}${req.url}`);
             console.log('Headers:', proxyReq.getHeaders());
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
