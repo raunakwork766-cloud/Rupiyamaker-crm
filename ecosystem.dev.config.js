@@ -16,7 +16,7 @@ module.exports = {
       env: {
         ENVIRONMENT: 'development',
         PYTHONUNBUFFERED: '1',
-        DEV_PORT: '8050'  // Different port for dev
+        DEV_PORT: '8051'  // Different port for dev
       },
       error_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-error.log',
       out_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-out.log',
@@ -39,8 +39,8 @@ module.exports = {
       max_restarts: 10,
       env: {
         NODE_ENV: 'development',
-        VITE_API_URL: 'http://localhost:8050',  // Point to dev backend
-        DEV_PORT: '8050'  // Signal to vite config that this is dev environment
+        VITE_API_URL: 'http://localhost:8051',  // Point to dev backend
+        DEV_PORT: '8051'  // Signal to vite config that this is dev environment
       },
       error_file: '/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/logs/frontend-dev-error.log',
       out_file: '/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm/logs/frontend-dev-out.log',

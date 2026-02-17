@@ -7,9 +7,9 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Check if running in dev environment (via DEV_PORT env var)
-const isDevEnvironment = process.env.DEV_PORT === '8050';
+const isDevEnvironment = process.env.DEV_PORT === '8051';
 const devPort = isDevEnvironment ? 4522 : 4521;
-const backendTarget = isDevEnvironment ? 'http://localhost:8050' : 'https://rupiyamaker.com';
+const backendTarget = isDevEnvironment ? 'http://localhost:8051' : 'https://rupiyamaker.com';
 
 console.log('🔧 Vite Config:', {
   isDevEnvironment,
