@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
 import logging
+import bcrypt
 from app.utils.password_encryption import password_encryptor
 from app.config import Config
 
@@ -46,15 +47,28 @@ class UsersDB:
         return password_encryptor.encrypt_password(password)
         
     def _verify_password(self, plain_password: str, stored_password: str) -> bool:
-        """Verify a password against stored password using Fernet encryption"""
+        """Verify a password against stored password (supports both bcrypt and Fernet)"""
         if not plain_password or not stored_password:
             return False
         
-        # Use encryption/decryption for password verification
+        # Check if password is bcrypt hash (starts with $2a$, $2b$, $2x$, or $2y$)
+        if stored_password.startswith('$2'):
+            try:
+                # Verify using bcrypt
+                return bcrypt.checkpw(
+                    plain_password.encode('utf-8'), 
+                    stored_password.encode('utf-8')
+                )
+            except Exception as e:
+                logger.error(f"Bcrypt password verification failed: {e}")
+                return False
+        
+        # Use Fernet encryption/decryption for password verification
         try:
             decrypted_password = password_encryptor.decrypt_password(stored_password)
             return plain_password == decrypted_password
-        except:
+        except Exception as e:
+            logger.error(f"Fernet password decryption failed: {e}")
             # If decryption fails, compare directly (for any edge cases)
             return plain_password == stored_password
     
