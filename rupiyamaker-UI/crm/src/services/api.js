@@ -155,7 +155,7 @@ export const authAPI = {
     login: async (identifier, password) => {
         return apiCall('/users/login', {
             method: 'POST',
-            body: JSON.stringify({ identifier, password }),
+            body: JSON.stringify({ username_or_email: identifier, password }),
         });
     },
 
