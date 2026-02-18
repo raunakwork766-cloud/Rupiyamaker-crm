@@ -663,40 +663,55 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 )}
 
                 {/* Tab Navigation */}
-                <div className="bg-black rounded-lg  overflow-hidden mb-6">
-                    <div className="flex overflow-x-auto ml-2 gap-3">
-                        {tabs.map((tab) => {
-                            const Icon = tab.icon;
+                <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
+                    {tabs.map((tab) => {
+                        const Icon = tab.icon;
 
-                            // Check if user can view this tab
-                            const canViewTab = leadData.can_view_all_tabs ||
-                                tab.id === 'details' || // Details tab always visible
-                                (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
-                                (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
-                                (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
-                                (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
-                                (tab.id === 'obligations' && leadData.can_view_all_tabs);
+                        // Check if user can view this tab
+                        const canViewTab = leadData.can_view_all_tabs ||
+                            tab.id === 'details' || // Details tab always visible
+                            (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
+                            (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
+                            (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
+                            (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
+                            (tab.id === 'obligations' && leadData.can_view_all_tabs);
 
-                            if (!canViewTab) return null;
+                        if (!canViewTab) return null;
 
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center px-6 py-4 font-bold text-md h-[30px] border-b-2 rounded-4xl transition-colors whitespace-nowrap ${activeTab === tab.id
-                                        ? ' text-white bg-[#03b0f5]'
-                                        : ' text-[#000] bg-white hover:text-[#03b0f5] hover:bg-gray-300'
-                                        }`}
-                                >
-                                    <Icon className="w-5 h-5 mr-2" />
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="p-6 bg-black">
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => {
+                                    setActiveTab(tab.id);
+                                    // Auto-open About section when switching to details tab
+                                    if (tab.id === 'details') {
+                                        setOpenSections([0]);
+                                    }
+                                }}
+                                className={`
+                                    flex items-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-base lg:text-[1.05rem] transition whitespace-nowrap
+                                    ${activeTab === tab.id
+                                        ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
+                                        : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
+                                    }
+                                    focus:outline-none
+                                `}
+                                style={{
+                                    boxShadow: activeTab === tab.id ? "0 4px 16px 0 #1cb5e080" : undefined,
+                                    cursor: "pointer",
+                                    letterSpacing: "0.01em"
+                                }}
+                            >
+                                <Icon className="w-5 h-5 mr-2" />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                
+                {/* Tab Content Container */}
+                <div className="px-2 sm:px-4 lg:px-6 py-6 w-full">
+                    <div className="w-full">
                         {activeTab === 'details' && (
                             <div className="space-y-6">
                                 {leadDetailsSections.map((section, idx) => (
