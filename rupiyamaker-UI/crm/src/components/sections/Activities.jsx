@@ -298,7 +298,6 @@ export default function Activities({ leadId, userId, formatDate }) {
                               <div
                                 className={`z-10 w-6 h-6 rounded-full border-2 ${getActivityColor(activityType)} flex items-center justify-center mt-2`}
                               >
-                                <span className="text-sm">{getActivityIcon(activityType)}</span>
                               </div>
                               {timeIndex !== timeArray.length - 1 && (
                                 <div className="absolute top-8 right-2.5 w-0.5 h-full bg-gray-300"></div>
