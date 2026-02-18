@@ -1,0 +1,28 @@
+Phase 6 Backend Cleanup Log - Wed Feb 18 09:46:48 CET 2026
+======================================
+
+=== DEBUG SCRIPTS ===
+MOVED: backend/debug_applicant_form.py
+MOVED: backend/remove_prints.py
+
+=== MIGRATION SCRIPTS ===
+MOVED: backend/migrate_lead_schema.py
+MOVED: backend/remove_address_fields_from_db.py
+MOVED: backend/fix_leaves_dependencies.py
+MOVED: backend/fix_team_winners_role.py
+
+=== TEST SCRIPTS ===
+MOVED: backend/test_api_performance.py
+MOVED: backend/test_loan_types_performance.py
+MOVED: backend/test_optimized_performance.py
+MOVED: backend/test_settings_performance.py
+
+=== FIX SCRIPTS ===
+MOVED: backend/fix_async_comprehensions.py
+MOVED: backend/fix_async_syntax.py
+
+=== SUMMARY ===
+Total files moved: 12
+Archive location: backend/OLD_SCRIPTS_ARCHIVE_20260218_094648
+Archive size: 72K
+Completed: Wed Feb 18 09:46:48 CET 2026
