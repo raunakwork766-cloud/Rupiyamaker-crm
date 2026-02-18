@@ -13,7 +13,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Thread pool for database operations
-db_executor = ThreadPoolExecutor(max_workers=500, thread_name_prefix="db_worker")
+# Optimized: Reduced from 500 to 50 workers to reduce memory usage
+# 50 workers is more than enough for concurrent database operations
+db_executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="db_worker")
 
 class AsyncDBWrapper:
     """Async wrapper for synchronous database operations"""
