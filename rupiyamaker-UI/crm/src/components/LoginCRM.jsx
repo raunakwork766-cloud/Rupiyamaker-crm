@@ -4590,7 +4590,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             label: "TASK",
             getContent: (lead) => [
               {
-                label: "TASK",
                 content: (
                   <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
@@ -4629,7 +4628,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             label: "LEADS ACTIVITY",
             getContent: (lead) => [
               {
-                label: "LEADS ACTIVITY",
                 content: (
                   <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
