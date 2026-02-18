@@ -4579,7 +4579,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             getContent: (leadData) => [
               {
                 content: (
-                  <div>
+                  <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
                     <RemarkSection leadData={leadData} canEdit={canEditLogin()} />
                   </div>
                 ),
@@ -4592,7 +4592,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
               {
                 label: "TASK",
                 content: (
-                  <div>
+                  <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
                       <LazySection height="300px">
                         <TaskComponent leadData={lead} canEdit={canEditLogin()} />
@@ -4631,7 +4631,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
               {
                 label: "LEADS ACTIVITY",
                 content: (
-                  <div>
+                  <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
                       <LazySection height="400px">
                         <LeadActivity
