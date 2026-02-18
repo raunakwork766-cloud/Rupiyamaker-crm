@@ -4372,7 +4372,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         const detailSections = [
           {
             label: "LEAD DETAILS",
-            icon: <span className="mr-1">🏠</span>,
             getContent: (lead, handleFieldChange) => [
               {
                 label: "About",
@@ -4551,7 +4550,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "OBLIGATION",
-            icon: <DollarSign className="w-6 h-6 mr-2" />,
             getContent: (lead, handleFieldChange) => [
               {
                 content: (
@@ -4578,7 +4576,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "REMARK",
-            icon: <MessageSquare className="w-6 h-6 mr-2" />,
             getContent: (leadData) => [
               {
                 content: (
@@ -4591,7 +4588,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "TASK",
-            icon: <CheckSquare className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
                 label: "TASK",
@@ -4609,7 +4605,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "ATTACHEMENT",
-            icon: <Paperclip className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
                 content: (
@@ -4632,7 +4627,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "LEADS ACTIVITY",
-            icon: <FileText className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
                 label: "LEADS ACTIVITY",
