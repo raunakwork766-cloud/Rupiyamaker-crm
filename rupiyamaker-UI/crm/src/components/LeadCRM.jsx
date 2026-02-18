@@ -2252,7 +2252,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const detailSections = [
         {
             label: "LEAD DETAILS",
-            icon: <span className="mr-1">🏠</span>,
             getContent: (lead, handleFieldChange) => [
                 {
                     label: "About",
