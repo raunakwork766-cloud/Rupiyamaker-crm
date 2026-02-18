@@ -754,70 +754,84 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                         )}
 
                         {activeTab === 'obligations' && (
-                            <ObligationsSection
-                                leadData={{
-                                    ...leadData,
-                                    // Initialize obligations if they don't exist
-                                    obligations: leadData.obligations || [],
-                                    dynamic_fields: {
-                                        ...leadData.dynamic_fields,
-                                        obligations: leadData.dynamic_fields?.obligations || []
-                                    }
-                                }}
-                                handleChangeFunc={(field, value) => {
-                                    updateLead({ [field]: value });
-                                }}
-                                onDataUpdate={async () => {
-                                    // Refresh lead data after obligation update
-                                    if (onLeadUpdate) {
-                                        const userId = localStorage.getItem('userId') || '';
-                                        const token = localStorage.getItem('token') || '';
-                                        try {
-                                            const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
-                                                headers: { 'Authorization': `Bearer ${token}` }
-                                            });
-                                            if (response.ok) {
-                                                const freshData = await response.json();
-                                                setLeadData(freshData);
-                                                onLeadUpdate(freshData);
-                                            }
-                                        } catch (error) {
-                                            console.error('Error refreshing lead:', error);
+                            <div>
+                                <ObligationsSection
+                                    leadData={{
+                                        ...leadData,
+                                        // Initialize obligations if they don't exist
+                                        obligations: leadData.obligations || [],
+                                        dynamic_fields: {
+                                            ...leadData.dynamic_fields,
+                                            obligations: leadData.dynamic_fields?.obligations || []
                                         }
-                                    }
-                                }}
-                            />
+                                    }}
+                                    handleChangeFunc={(field, value) => {
+                                        updateLead({ [field]: value });
+                                    }}
+                                    onDataUpdate={async () => {
+                                        // Refresh lead data after obligation update
+                                        if (onLeadUpdate) {
+                                            const userId = localStorage.getItem('userId') || '';
+                                            const token = localStorage.getItem('token') || '';
+                                            try {
+                                                const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
+                                                    headers: { 'Authorization': `Bearer ${token}` }
+                                                });
+                                                if (response.ok) {
+                                                    const freshData = await response.json();
+                                                    setLeadData(freshData);
+                                                    onLeadUpdate(freshData);
+                                                }
+                                            } catch (error) {
+                                                console.error('Error refreshing lead:', error);
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
                         )}
 
                         {activeTab === 'remarks' && (
-                            <Remarks
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
+                            <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
+                                <Remarks
+                                    leadId={lead._id}
+                                    userId={userId}
+                                    formatDate={formatDate}
+                                />
+                            </div>
                         )}
 
                         {activeTab === 'attachments' && (
-                            <AttachmentsSection
-                                leadId={lead._id}
-                                userId={userId}
-                            />
+                            <div>
+                                <AttachmentsSection
+                                    leadId={lead._id}
+                                    userId={userId}
+                                />
+                            </div>
                         )}
 
                         {activeTab === 'tasks' && (
-                            <TasksSection
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
+                            <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
+                                <div className="font-bold text-cyan-400 mb-2">
+                                    <TasksSection
+                                        leadId={lead._id}
+                                        userId={userId}
+                                        formatDate={formatDate}
+                                    />
+                                </div>
+                            </div>
                         )}
 
                         {activeTab === 'activities' && (
-                            <Activities
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
+                            <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
+                                <div className="font-bold text-cyan-400 mb-2">
+                                    <Activities
+                                        leadId={lead._id}
+                                        userId={userId}
+                                        formatDate={formatDate}
+                                    />
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>
