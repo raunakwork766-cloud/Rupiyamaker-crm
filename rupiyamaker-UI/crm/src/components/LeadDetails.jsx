@@ -331,7 +331,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     }, [lead._id]);
 
     const tabs = [
-        { id: 'details', label: 'LEAD DETAILS', icon: '🏠' },
+        { id: 'details', label: 'LEAD DETAILS', icon: null },
         { id: 'obligations', label: 'OBLIGATION', icon: null },
         { id: 'remarks', label: 'REMARK', icon: null },
         { id: 'attachments', label: 'ATTACHEMENT', icon: null },
