@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
     ArrowLeft, User, Building, CreditCard, FileText, MessageSquare,
     Paperclip, CheckSquare, Activity, UserCheck, Share2, Lock,
@@ -10,7 +10,7 @@ import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
 // Import section components from sections/ folder (updated from lead-details/)
 import AboutSection from './sections/AboutSection';
 import HowToProcessSection from './sections/HowToProcessSection';
-import ObligationsSection from './sections/ObligationSection'; // Using singular name from sections
+const ObligationsSection = lazy(() => import('./sections/ObligationSection')); // Using singular name from sections
 import LoginFormSection from './sections/LoginFormSection';
 import AttachmentsSection from './sections/Attachments'; // Using shorter name from sections
 import TasksSection from './sections/TaskSectionInLead'; // Using different name from sections
@@ -710,24 +710,25 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
                         {activeTab === 'obligations' && (
                             <div>
-                                <ObligationsSection
-                                    leadData={{
-                                        ...leadData,
-                                        // Initialize obligations if they don't exist
-                                        obligations: leadData.obligations || [],
-                                        dynamic_fields: {
-                                            ...leadData.dynamic_fields,
-                                            obligations: leadData.dynamic_fields?.obligations || []
-                                        }
-                                    }}
-                                    handleChangeFunc={(field, value) => {
-                                        updateLead({ [field]: value });
-                                    }}
-                                    onDataUpdate={async () => {
-                                        // Refresh lead data after obligation update
-                                        if (onLeadUpdate) {
-                                            const userId = localStorage.getItem('userId') || '';
-                                            const token = localStorage.getItem('token') || '';
+                                <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                                    <ObligationsSection
+                                        leadData={{
+                                            ...leadData,
+                                            // Initialize obligations if they don't exist
+                                            obligations: leadData.obligations || [],
+                                            dynamic_fields: {
+                                                ...leadData.dynamic_fields,
+                                                obligations: leadData.dynamic_fields?.obligations || []
+                                            }
+                                        }}
+                                        handleChangeFunc={(field, value) => {
+                                            updateLead({ [field]: value });
+                                        }}
+                                        onDataUpdate={async () => {
+                                            // Refresh lead data after obligation update
+                                            if (onLeadUpdate) {
+                                                const userId = localStorage.getItem('userId') || '';
+                                                const token = localStorage.getItem('token') || '';
                                             try {
                                                 const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
                                                     headers: { 'Authorization': `Bearer ${token}` }
@@ -743,6 +744,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                         }
                                     }}
                                 />
+                                </Suspense>
                             </div>
                         )}
 

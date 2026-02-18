@@ -1,5 +1,4 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import CustomerObligationForm from "./sections/ObligationSection";
 import SearchableSelect from "./SearchableSelect";
 import {
   saveCurrentLeadInfoSection,

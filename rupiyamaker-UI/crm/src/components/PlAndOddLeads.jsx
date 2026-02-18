@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import {
   CheckCircle,
   AlertTriangle,
@@ -13,7 +13,7 @@ import AboutSection from "./sections/AboutSection"
 import HowToProcessSection from "./sections/HowToProcessSection"
 import LoginFormSection from "./sections/LoginFormSection"
 import ImportantQuestionsSection from "./sections/ImportantQuestionsSection"
-import ObligationSection from "./sections/ObligationSection"
+const ObligationSection = lazy(() => import("./sections/ObligationSection"))
 import Attachments from "./sections/Attachments"
 
 // Importing the Task component from TaskSectionInLead.jsx
@@ -173,10 +173,12 @@ const detailSections = [
       {
         content: (
           <div className="bg-black">
-            <ObligationSection
-              leadData={leadData}
-              handleChangeFunc={handleChangeFunc}
-            />
+            <Suspense fallback={<div className="text-center p-4 text-white">Loading...</div>}>
+              <ObligationSection
+                leadData={leadData}
+                handleChangeFunc={handleChangeFunc}
+              />
+            </Suspense>
           </div>
         )
       }

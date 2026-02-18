@@ -14,7 +14,6 @@ import LoginFormSection from "./sections/LoginFormSection"
 import Task from "./Task"
 import LeadActivity from "./LeadActivity"
 import RemarkSection from "./Remark"
-import ObligationSection from "./sections/ObligationSection"
 import Attachments from "./sections/Attachments"
 import TaskComponent from "./sections/TaskSectionInLead"
 

@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { CheckSquare, Plus, Loader2 } from 'lucide-react';
 import { message } from "antd";
-import CreateTask from "../CreateTask";
-import EditTask from "../EditTask";
+
+// Lazy load heavy components for better code splitting
+const CreateTask = lazy(() => import("../CreateTask"));
+const EditTask = lazy(() => import("../EditTask"));
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -841,12 +843,14 @@ const initialTaskForm = {
         {editTask && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
-              <EditTask
-                taskData={editTask}
-                onClose={handleCancelEdit}
-                onSave={handleSaveTask}
-                preselectedLead={leadData} // Pass the current lead data to show as preselected
-              />
+              <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                <EditTask
+                  taskData={editTask}
+                  onClose={handleCancelEdit}
+                  onSave={handleSaveTask}
+                  preselectedLead={leadData} // Pass the current lead data to show as preselected
+                />
+              </Suspense>
             </div>
           </div>
         )}
@@ -855,11 +859,13 @@ const initialTaskForm = {
         {showCreateModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
-              <CreateTask
-                onClose={closeCreateModal}
-                onSave={handleCreateTaskSave}
-                preselectedLead={leadData} // Pass the current lead data to pre-select it
-              />
+              <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                <CreateTask
+                  onClose={closeCreateModal}
+                  onSave={handleCreateTaskSave}
+                  preselectedLead={leadData} // Pass the current lead data to pre-select it
+                />
+              </Suspense>
             </div>
           </div>
         )}
