@@ -7,19 +7,21 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
 
-// Import new section components
-import AboutSection from './lead-details/AboutSection';
-import HowToProcessSection from './lead-details/HowToProcessSection';
-import StatusSection from './lead-details/StatusSection';
-import ObligationsSection from './lead-details/ObligationsSection';
-import LoginFormSection from './lead-details/LoginFormSection';
-import AssignmentInfoSection from './lead-details/AssignmentInfoSection';
-import AttachmentsSection from './lead-details/AttachmentsSection';
-import TasksSection from './lead-details/TasksSection';
-import ImportantQuestionsSection from './lead-details/ImportantQuestionsSection';
-import OperationsSection from './lead-details/OperationsSection';
+// Import section components from sections/ folder (updated from lead-details/)
+import AboutSection from './sections/AboutSection';
+import HowToProcessSection from './sections/HowToProcessSection';
+import ObligationsSection from './sections/ObligationSection'; // Using singular name from sections
+import LoginFormSection from './sections/LoginFormSection';
+import AttachmentsSection from './sections/Attachments'; // Using shorter name from sections
+import TasksSection from './sections/TaskSectionInLead'; // Using different name from sections
+import ImportantQuestionsSection from './sections/ImportantQuestionsSection';
+import OperationsSection from './sections/OperationsSection';
 
-// Import new modular section components
+// These remain from lead-details/ (not available in sections/)
+import StatusSection from './lead-details/StatusSection';
+import AssignmentInfoSection from './lead-details/AssignmentInfoSection';
+
+// Import modular section components
 import Remarks from './sections/Remarks';
 import Activities from './sections/Activities';
 import RequestReassignmentButton from './sections/RequestReassignmentButton';
