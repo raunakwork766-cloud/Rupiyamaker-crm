@@ -36,6 +36,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     const [assignableUsers, setAssignableUsers] = useState([]);
     const [showCoApplicant, setShowCoApplicant] = useState(false);
     const [shareableLink, setShareableLink] = useState('');
+    const [openSections, setOpenSections] = useState([0]); // Track which sections are open in Lead Details tab
 
     // Fetch assignable users for reassignment
     const fetchAssignableUsers = async () => {
@@ -339,6 +340,128 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
         { id: 'activities', label: 'Activities', icon: Activity }
     ];
 
+    // Toggle section collapse/expand
+    const toggleSection = (sectionIdx) => {
+        setOpenSections(prev => 
+            prev.includes(sectionIdx) 
+                ? prev.filter(idx => idx !== sectionIdx)
+                : [...prev, sectionIdx]
+        );
+    };
+
+    // Define sub-sections for Lead Details tab (similar to LeadCRM structure)
+    const leadDetailsSections = [
+        {
+            label: "About",
+            content: (
+                <AboutSection
+                    key={`about-${leadData._id}`}
+                    lead={leadData}
+                    onSave={updateLead}
+                />
+            )
+        },
+        {
+            label: "How to Process",
+            content: (
+                <HowToProcessSection
+                    lead={leadData}
+                    process={leadData.process}
+                    onSave={updateLead}
+                />
+            )
+        },
+        {
+            label: "APPLICANT FORM",
+            content: (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-[#03B0F5]">Primary Applicant</h3>
+                        {!showCoApplicant && (
+                            <button
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-lg"
+                                onClick={() => setShowCoApplicant(true)}
+                            >
+                                + Add Co-Applicant
+                            </button>
+                        )}
+                    </div>
+                    <LoginFormSection
+                        data={leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}}
+                        onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, applicant_form: updated } })}
+                        bankOptions={[]}
+                        mobileNumber={leadData.mobile_number}
+                        bankName={leadData.salaryAccountBank || leadData.bank_name}
+                        isReadOnlyMobile={true}
+                        leadId={leadData._id}
+                        leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
+                        leadData={leadData}
+                    />
+                    
+                    {/* Co-Applicant Form */}
+                    {showCoApplicant && (
+                        <div className="mt-8 pt-6 border-t-2 border-cyan-400">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-[#03B0F5]">Co-Applicant</h3>
+                                <button
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-lg"
+                                    onClick={() => {
+                                        updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
+                                        setShowCoApplicant(false);
+                                    }}
+                                >
+                                    Remove Co-Applicant
+                                </button>
+                            </div>
+                            <LoginFormSection
+                                data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
+                                onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
+                                bankOptions={[]}
+                                mobileNumber=""
+                                bankName=""
+                                isCoApplicant={true}
+                                leadId={leadData._id}
+                                leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
+                                leadData={leadData}
+                            />
+                        </div>
+                    )}
+                </div>
+            )
+        },
+        {
+            label: "Important Questions",
+            content: (
+                <ImportantQuestionsSection
+                    leadData={leadData}
+                    onUpdate={(updated) => {
+                        updateLead(updated);
+                        if (updated.question_responses) {
+                            updateLead({ question_responses: updated.question_responses });
+                        }
+                        if (updated.important_questions_validated !== undefined) {
+                            updateLead({ important_questions_validated: updated.important_questions_validated });
+                        }
+                    }}
+                    currentUserRole={{
+                        permissions: [],
+                        _id: localStorage.getItem('userId'),
+                        department: localStorage.getItem('userDepartment') || 'sales'
+                    }}
+                />
+            )
+        },
+        ...(userDepartment === 'login' || leadData.file_sent_to_login ? [{
+            label: "Operations",
+            content: (
+                <OperationsSection
+                    lead={leadData}
+                    onUpdate={updateLead}
+                />
+            )
+        }] : [])
+    ];
+
     const updateLeadStatus = async (status, subStatus) => {
         try {
             setIsLoading(true);
@@ -576,93 +699,34 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                     <div className="p-6 bg-black">
                         {activeTab === 'details' && (
                             <div className="space-y-6">
-                                {/* About Section */}
-                                <AboutSection
-                                    key={`about-${leadData._id}`}
-                                    lead={leadData}
-                                    onSave={updateLead}
-                                />
-
-                                {/* How To Process Section */}
-                                <HowToProcessSection
-                                    lead={leadData}
-                                    process={leadData.process}
-                                    onSave={updateLead}
-                                />
-
-                                {/* Login Form Section */}
-                                <LoginFormSection
-                                    data={leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}}
-                                    onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, applicant_form: updated } })}
-                                    bankOptions={[]}
-                                    mobileNumber={leadData.mobile_number}
-                                    bankName={leadData.salaryAccountBank || leadData.bank_name}
-                                    isReadOnlyMobile={true}
-                                    leadId={leadData._id}
-                                    leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
-                                    leadData={leadData}
-                                />
-                                    
-                                {/* Co-Applicant Form */}
-                                {showCoApplicant && (
-                                    <div className="mt-8 pt-6 border-t-2 border-cyan-400">
-                                        {console.log("Rendering co-applicant form", {
-                                            coApplicantData: leadData.dynamic_fields?.co_applicant_form 
-                                        })}
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-lg font-bold text-[#03B0F5]">Co-Applicant</h3>
-                                            <button
-                                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold"
-                                                onClick={() => {
-                                                    updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
-                                                    setShowCoApplicant(false);
-                                                }}
+                                {leadDetailsSections.map((section, idx) => (
+                                    <div key={idx} className="mb-6 w-full">
+                                        {/* Collapsible Section Header */}
+                                        <button
+                                            className="w-full px-5 py-3 font-extrabold text-lg text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border-2 border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-md"
+                                            onClick={() => toggleSection(idx)}
+                                        >
+                                            <span>{section.label}</span>
+                                            <svg
+                                                className={`w-5 h-5 transform transition-transform duration-200 ${openSections.includes(idx) ? 'rotate-180' : ''}`}
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
                                             >
-                                                Remove Co-Applicant
-                                            </button>
-                                        </div>
-                                        <LoginFormSection
-                                            data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
-                                            onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
-                                            bankOptions={[]}
-                                            mobileNumber=""
-                                            bankName=""
-                                            isCoApplicant={true}
-                                            leadId={leadData._id}
-                                            leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
-                                            leadData={leadData}
-                                        />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                        
+                                        {/* Collapsible Section Content */}
+                                        {openSections.includes(idx) && (
+                                            <div className="w-full mt-2">
+                                                {section.content}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-
-                                {/* Important Questions Section */}
-                                <ImportantQuestionsSection
-                                    leadData={leadData}
-                                    onUpdate={(updated) => {
-                                        updateLead(updated);
-                                        if (updated.question_responses) {
-                                            updateLead({ question_responses: updated.question_responses });
-                                        }
-                                        if (updated.important_questions_validated !== undefined) {
-                                            updateLead({ important_questions_validated: updated.important_questions_validated });
-                                        }
-                                    }}
-                                    currentUserRole={{
-                                        permissions: [],
-                                        _id: localStorage.getItem('userId'),
-                                        department: localStorage.getItem('userDepartment') || 'sales'
-                                    }}
-                                />
-
-                                {/* Operations Section - Show for login department or leads sent to login */}
-                                {(userDepartment === 'login' || leadData.file_sent_to_login) && (
-                                    <OperationsSection
-                                        lead={leadData}
-                                        onUpdate={updateLead}
-                                    />
-                                )}
-
-                                {/* Request Reassignment Button - Always visible */}
+                                ))}
+                                
+                                {/* Request Reassignment Button - Always visible at bottom */}
                                 <div className="mt-6">
                                     <RequestReassignmentButton
                                         leadId={lead._id}
