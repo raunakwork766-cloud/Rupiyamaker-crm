@@ -332,12 +332,12 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     }, [lead._id]);
 
     const tabs = [
-        { id: 'details', label: 'Lead Details', icon: User },
-        { id: 'obligations', label: 'Obligations', icon: CreditCard },
-        { id: 'remarks', label: 'Remark', icon: MessageSquare },
-        { id: 'attachments', label: 'Attachments', icon: Paperclip },
-        { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-        { id: 'activities', label: 'Activities', icon: Activity }
+        { id: 'details', label: 'LEAD DETAILS', icon: '🏠' },
+        { id: 'obligations', label: 'OBLIGATION', icon: null },
+        { id: 'remarks', label: 'REMARK', icon: null },
+        { id: 'attachments', label: 'ATTACHEMENT', icon: null },
+        { id: 'tasks', label: 'TASK', icon: null },
+        { id: 'activities', label: 'LEADS ACTIVITY', icon: null }
     ];
 
     // Toggle section collapse/expand
@@ -665,8 +665,6 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 {/* Tab Navigation */}
                 <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
                     {tabs.map((tab) => {
-                        const Icon = tab.icon;
-
                         // Check if user can view this tab
                         const canViewTab = leadData.can_view_all_tabs ||
                             tab.id === 'details' || // Details tab always visible
@@ -702,7 +700,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                     letterSpacing: "0.01em"
                                 }}
                             >
-                                <Icon className="w-5 h-5 mr-2" />
+                                {tab.icon && <span className="mr-1">{tab.icon}</span>}
                                 {tab.label}
                             </button>
                         );
