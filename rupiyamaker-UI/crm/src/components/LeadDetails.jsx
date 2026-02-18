@@ -579,23 +579,28 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                 {/* About Section */}
                                 <AboutSection
                                     key={`about-${leadData._id}`}
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                    currentUserRole={user}
+                                    lead={leadData}
+                                    onSave={updateLead}
                                 />
 
                                 {/* How To Process Section */}
                                 <HowToProcessSection
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
+                                    lead={leadData}
+                                    process={leadData.process}
+                                    onSave={updateLead}
                                 />
 
                                 {/* Login Form Section */}
                                 <LoginFormSection
+                                    data={leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}}
+                                    onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, applicant_form: updated } })}
+                                    bankOptions={[]}
+                                    mobileNumber={leadData.mobile_number}
+                                    bankName={leadData.salaryAccountBank || leadData.bank_name}
+                                    isReadOnlyMobile={true}
+                                    leadId={leadData._id}
+                                    leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
                                     leadData={leadData}
-                                    onUpdate={updateLead}
-                                    onGenerateShareableLink={generateShareableLink}
-                                    shareableLink={shareableLink}
                                 />
                                     
                                 {/* Co-Applicant Form */}
@@ -617,11 +622,15 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                             </button>
                                         </div>
                                         <LoginFormSection
-                                            leadData={leadData}
-                                            onUpdate={updateLead}
+                                            data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
+                                            onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
+                                            bankOptions={[]}
+                                            mobileNumber=""
+                                            bankName=""
                                             isCoApplicant={true}
-                                            shareableLink={shareableLink}
-                                            onGenerateShareableLink={generateShareableLink}
+                                            leadId={leadData._id}
+                                            leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
+                                            leadData={leadData}
                                         />
                                     </div>
                                 )}
@@ -629,14 +638,26 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                 {/* Important Questions Section */}
                                 <ImportantQuestionsSection
                                     leadData={leadData}
-                                    onUpdate={updateLead}
-                                    currentUserRole={user}
+                                    onUpdate={(updated) => {
+                                        updateLead(updated);
+                                        if (updated.question_responses) {
+                                            updateLead({ question_responses: updated.question_responses });
+                                        }
+                                        if (updated.important_questions_validated !== undefined) {
+                                            updateLead({ important_questions_validated: updated.important_questions_validated });
+                                        }
+                                    }}
+                                    currentUserRole={{
+                                        permissions: [],
+                                        _id: localStorage.getItem('userId'),
+                                        department: localStorage.getItem('userDepartment') || 'sales'
+                                    }}
                                 />
 
                                 {/* Operations Section - Show for login department or leads sent to login */}
                                 {(userDepartment === 'login' || leadData.file_sent_to_login) && (
                                     <OperationsSection
-                                        leadData={leadData}
+                                        lead={leadData}
                                         onUpdate={updateLead}
                                     />
                                 )}
@@ -666,18 +687,27 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                         obligations: leadData.dynamic_fields?.obligations || []
                                     }
                                 }}
-                                onUpdate={(updatedData) => {
-                                    // Handle updating obligations - merge approach to support both formats
-                                    const updatedObligations = updatedData.obligations || updatedData.dynamic_fields?.obligations || [];
-                                    const currentDynamicFields = leadData.dynamic_fields || {};
-                                    
-                                    updateLead({
-                                        obligations: updatedObligations,
-                                        dynamic_fields: {
-                                            ...currentDynamicFields,
-                                            obligations: updatedObligations
+                                handleChangeFunc={(field, value) => {
+                                    updateLead({ [field]: value });
+                                }}
+                                onDataUpdate={async () => {
+                                    // Refresh lead data after obligation update
+                                    if (onLeadUpdate) {
+                                        const userId = localStorage.getItem('userId') || '';
+                                        const token = localStorage.getItem('token') || '';
+                                        try {
+                                            const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
+                                                headers: { 'Authorization': `Bearer ${token}` }
+                                            });
+                                            if (response.ok) {
+                                                const freshData = await response.json();
+                                                setLeadData(freshData);
+                                                onLeadUpdate(freshData);
+                                            }
+                                        } catch (error) {
+                                            console.error('Error refreshing lead:', error);
                                         }
-                                    });
+                                    }
                                 }}
                             />
                         )}
@@ -694,7 +724,6 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                             <AttachmentsSection
                                 leadId={lead._id}
                                 userId={userId}
-                                formatDate={formatDate}
                             />
                         )}
 
