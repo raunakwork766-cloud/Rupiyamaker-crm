@@ -1678,6 +1678,163 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
             </div>
           )}
 
+          {/* Grace Period Tracking Section */}
+          {attendanceDetail?.type !== 'leave' && (
+            <div className="mt-6 bg-gradient-to-r from-teal-700/20 to-green-700/20 border-2 border-teal-500 rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-teal-400 text-2xl">⏰</div>
+                <div>
+                  <h3 className="font-bold text-teal-400 text-lg">GRACE PERIOD TRACKING</h3>
+                  <p className="text-gray-300 text-sm">Monitor late punch-in grace period usage</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Grace Period Settings */}
+                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+                  <h4 className="text-gray-200 font-semibold mb-3 flex items-center gap-2">
+                    <span>⚙️</span>
+                    <span>Grace Period Settings</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Grace Window:</span>
+                      <span className="text-teal-400 font-semibold">30 minutes</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Monthly Limit:</span>
+                      <span className="text-teal-400 font-semibold">2 times</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Deadline:</span>
+                      <span className="text-orange-400 font-semibold">10:15 AM</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-gray-700">
+                    <p className="text-xs text-gray-400">
+                      💡 If you punch in within 30 minutes after the deadline (10:00 AM), it's considered grace period.
+                      After using 2 grace periods in a month, late punch = Half Day.
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Grace Usage This Month */}
+                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+                  <h4 className="text-gray-200 font-semibold mb-3 flex items-center gap-2">
+                    <span>📊</span>
+                    <span>This Month's Usage</span>
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Grace Used:</span>
+                      <span className="text-yellow-400 font-bold text-xl">
+                        {attendanceDetail?.grace_used_this_month || 0} / 2
+                      </span>
+                    </div>
+                    
+                    {/* Visual Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-gray-400">
+                        <span>Usage Progress</span>
+                        <span>{Math.round(((attendanceDetail?.grace_used_this_month || 0) / 2) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            (attendanceDetail?.grace_used_this_month || 0) >= 2 
+                              ? 'bg-red-500' 
+                              : (attendanceDetail?.grace_used_this_month || 0) >= 1 
+                                ? 'bg-yellow-500' 
+                                : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(((attendanceDetail?.grace_used_this_month || 0) / 2) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Remaining:</span>
+                      <span className={`font-bold text-xl ${
+                        (2 - (attendanceDetail?.grace_used_this_month || 0)) > 0 
+                          ? 'text-green-400' 
+                          : 'text-red-400'
+                      }`}>
+                        {Math.max(0, 2 - (attendanceDetail?.grace_used_this_month || 0))}
+                      </span>
+                    </div>
+                    
+                    {(attendanceDetail?.grace_used_this_month || 0) >= 2 && (
+                      <div className="bg-red-900/30 border border-red-500 rounded p-2 mt-2">
+                        <p className="text-red-400 text-xs font-semibold">
+                          ⚠️ Grace limit exhausted! Next late punch will be Half Day.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Today's Grace Status */}
+              {attendanceDetail?.grace_applied_today && (
+                <div className="mt-4 bg-yellow-900/20 border-2 border-yellow-500 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="text-yellow-400 text-xl">✅</div>
+                    <div className="flex-1">
+                      <h4 className="text-yellow-400 font-bold mb-1">Grace Period Used Today</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-400">Punch In Time:</span>
+                          <span className="text-white font-semibold ml-2">{attendanceDetail.check_in_time}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Minutes Late:</span>
+                          <span className="text-orange-400 font-semibold ml-2">{attendanceDetail.minutes_late || 0} mins</span>
+                        </div>
+                      </div>
+                      <p className="text-gray-300 text-xs mt-2">
+                        💡 This counts as one grace period usage for this month.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Grace History (Optional) */}
+              {attendanceDetail?.grace_history && attendanceDetail.grace_history.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-gray-200 font-semibold mb-2 flex items-center gap-2">
+                    <span>📜</span>
+                    <span>Grace Usage History (This Month)</span>
+                  </h4>
+                  <div className="bg-gray-800 border border-gray-600 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-700">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-gray-300">Date</th>
+                          <th className="px-3 py-2 text-left text-gray-300">Punch In</th>
+                          <th className="px-3 py-2 text-left text-gray-300">Minutes Late</th>
+                          <th className="px-3 py-2 text-left text-gray-300">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attendanceDetail.grace_history.map((grace, index) => (
+                          <tr key={index} className="border-t border-gray-700 hover:bg-gray-750">
+                            <td className="px-3 py-2 text-gray-200">{grace.date}</td>
+                            <td className="px-3 py-2 text-cyan-400">{grace.punch_in_time}</td>
+                            <td className="px-3 py-2 text-orange-400">{grace.minutes_late} mins</td>
+                            <td className="px-3 py-2">
+                              <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">Grace Applied</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Manual Override Section - Enhanced with all new features */}
           {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
             <div className="mt-6 bg-gradient-to-r from-purple-700/20 to-pink-700/20 border-2 border-purple-500 rounded-lg p-6">
