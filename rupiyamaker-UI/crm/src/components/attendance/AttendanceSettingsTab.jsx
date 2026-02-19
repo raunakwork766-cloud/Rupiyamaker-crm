@@ -33,6 +33,28 @@ const API_BASE_URL = '/api'; // Always use API proxy
 
 const AttendanceSettingsTab = ({ userId }) => {
   const [settings, setSettings] = useState({
+    // Shift Timing Settings (New)
+    shift_start_time: '10:00',
+    shift_end_time: '19:00', // 7:00 PM
+    reporting_deadline: '10:15',
+    
+    // Working Hours Settings (Enhanced)
+    full_day_working_hours: 9.0,
+    half_day_minimum_working_hours: 5.0,
+    
+    // Grace Period Settings (New)
+    grace_period_minutes: 30,
+    grace_usage_limit: 2, // per month
+    
+    // Leave & Absconding Rules (New)
+    pending_leave_auto_convert_days: 3, // Convert to absconding after 3 days
+    absconding_penalty: -1, // Count as -1 day
+    
+    // Sunday & Sandwich Rules (New)
+    enable_sunday_sandwich_rule: true,
+    minimum_working_days_for_sunday: 5, // If less than 5 days worked, Sunday = 0
+    
+    // Original Settings (Keeping for compatibility)
     check_in_time: '09:30',
     check_out_time: '18:30',
     total_working_hours: 9.0,
@@ -227,6 +249,246 @@ const AttendanceSettingsTab = ({ userId }) => {
         </Card>
 
         <Grid container spacing={3}>
+          {/* === NEW: Shift Timing Settings === */}
+          <Grid item xs={12}>
+            <Card elevation={2} sx={{ bgcolor: '#f8f9fa', border: '2px solid #2196f3' }}>
+              <CardHeader
+                avatar={<TimeIcon sx={{ color: '#2196f3' }} />}
+                title="Shift Timing Settings (Primary)"
+                subheader="⚠️ Main shift timing configuration - This overrides check-in/check-out times"
+                titleTypographyProps={{ fontWeight: 'bold' }}
+              />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="Shift Start Time"
+                      type="time"
+                      value={formatTime(settings.shift_start_time)}
+                      onChange={(e) => handleTimeChange('shift_start_time', e.target.value)}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Official shift start (e.g., 10:00 AM)"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="Shift End Time"
+                      type="time"
+                      value={formatTime(settings.shift_end_time)}
+                      onChange={(e) => handleTimeChange('shift_end_time', e.target.value)}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Official shift end (e.g., 7:00 PM)"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="Reporting Deadline"
+                      type="time"
+                      value={formatTime(settings.reporting_deadline)}
+                      onChange={(e) => handleTimeChange('reporting_deadline', e.target.value)}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      helperText="After this = Half Day (e.g., 10:15 AM)"
+                      sx={{ '& .MuiInputBase-root': { bgcolor: '#fff3cd' } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      <strong>Rule:</strong> Punch In before {formatTime(settings.reporting_deadline)} = Present | 
+                      Punch In after {formatTime(settings.reporting_deadline)} = Half Day
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* === NEW: Enhanced Working Hours Settings === */}
+          <Grid item xs={12} md={6}>
+            <Card elevation={2} sx={{ bgcolor: '#f1f8ff', border: '2px solid #0366d6' }}>
+              <CardHeader
+                title="Working Hours Settings (Main Calculation)"
+                subheader="These hours determine final attendance status"
+                titleTypographyProps={{ fontWeight: 'bold' }}
+              />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Full Day Working Hours"
+                      type="number"
+                      value={settings.full_day_working_hours}
+                      onChange={(e) => handleSettingChange('full_day_working_hours', parseFloat(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 1, max: 24, step: 0.5 }}
+                      helperText="Working ≥ 9 hrs = Full Day (Count = 1)"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Half Day Minimum Working Hours"
+                      type="number"
+                      value={settings.half_day_minimum_working_hours}
+                      onChange={(e) => handleSettingChange('half_day_minimum_working_hours', parseFloat(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 1, max: 12, step: 0.5 }}
+                      helperText="Working ≥ 5 hrs but < 9 = Half Day (Count = 0.5)"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="warning">
+                      <strong>Logic:</strong> <br/>
+                      • ≥ {settings.full_day_working_hours} hrs = <strong>Full Day</strong> (1) <br/>
+                      • ≥ {settings.half_day_minimum_working_hours} hrs but &lt; {settings.full_day_working_hours} = <strong>Half Day</strong> (0.5) <br/>
+                      • &lt; {settings.half_day_minimum_working_hours} hrs = <strong>Zero</strong> (0)
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* === NEW: Grace Period Settings === */}
+          <Grid item xs={12} md={6}>
+            <Card elevation={2} sx={{ bgcolor: '#fff8e1', border: '2px solid #ffc107' }}>
+              <CardHeader
+                title="Grace Period Configuration"
+                subheader="Limited late coming without penalty"
+                titleTypographyProps={{ fontWeight: 'bold' }}
+              />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Grace Period (Minutes)"
+                      type="number"
+                      value={settings.grace_period_minutes}
+                      onChange={(e) => handleSettingChange('grace_period_minutes', parseInt(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 0, max: 60, step: 5 }}
+                      helperText="E.g., 30 mins grace after deadline"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Grace Usage Limit (per month)"
+                      type="number"
+                      value={settings.grace_usage_limit}
+                      onChange={(e) => handleSettingChange('grace_usage_limit', parseInt(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 0, max: 10, step: 1 }}
+                      helperText="How many times grace can be used per month"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      <strong>Example:</strong> Reporting deadline 10:15, Grace 30 mins<br/>
+                      • Punch In 10:40 with grace available = <strong>Present</strong><br/>
+                      • Punch In 10:40 with grace exhausted = <strong>Half Day</strong>
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* === NEW: Leave & Absconding Rules === */}
+          <Grid item xs={12} md={6}>
+            <Card elevation={2} sx={{ bgcolor: '#fff3f3', border: '2px solid #dc3545' }}>
+              <CardHeader
+                title="Leave & Absconding Rules"
+                subheader="Auto-conversion and penalty settings"
+                titleTypographyProps={{ fontWeight: 'bold' }}
+              />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Pending Leave Auto-Convert (Days)"
+                      type="number"
+                      value={settings.pending_leave_auto_convert_days}
+                      onChange={(e) => handleSettingChange('pending_leave_auto_convert_days', parseInt(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 1, max: 7, step: 1 }}
+                      helperText="Convert unapproved leave to Absconding after X days"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Absconding Penalty"
+                      type="number"
+                      value={settings.absconding_penalty}
+                      onChange={(e) => handleSettingChange('absconding_penalty', parseInt(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: -2, max: 0, step: 1 }}
+                      helperText="Attendance count for absconding (negative value)"
+                      disabled
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="error">
+                      <strong>Rule:</strong> <br/>
+                      • Leave not approved for {settings.pending_leave_auto_convert_days} days = Auto Absconding (-1)<br/>
+                      • Manager can still approve later to convert back to Leave
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* === NEW: Sunday & Sandwich Rules === */}
+          <Grid item xs={12} md={6}>
+            <Card elevation={2} sx={{ bgcolor: '#f3e5f5', border: '2px solid #9c27b0' }}>
+              <CardHeader
+                title="Sunday & Sandwich Rules"
+                subheader="Weekend penalty rules for absconding"
+                titleTypographyProps={{ fontWeight: 'bold' }}
+              />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.enable_sunday_sandwich_rule}
+                          onChange={(e) => handleSettingChange('enable_sunday_sandwich_rule', e.target.checked)}
+                          color="primary"
+                        />
+                      }
+                      label="Enable Sunday Sandwich Rule"
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 1 }}>
+                      Saturday/Monday absconding → Sunday automatically becomes Zero
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Minimum Working Days for Sunday"
+                      type="number"
+                      value={settings.minimum_working_days_for_sunday}
+                      onChange={(e) => handleSettingChange('minimum_working_days_for_sunday', parseInt(e.target.value))}
+                      fullWidth
+                      inputProps={{ min: 3, max: 6, step: 1 }}
+                      helperText="If worked days < this, Sunday = 0"
+                      disabled={!settings.enable_sunday_sandwich_rule}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="warning">
+                      <strong>Rules:</strong> <br/>
+                      • Saturday OR Monday absconding/unapproved = Sunday becomes <strong>Zero (0)</strong><br/>
+                      • Working days &lt; {settings.minimum_working_days_for_sunday} in week = Sunday <strong>Zero (0)</strong><br/>
+                      • Penalty applied only once per Sunday
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
           {/* Time Settings */}
           <Grid item xs={12} md={6}>
             <Card elevation={2}>
