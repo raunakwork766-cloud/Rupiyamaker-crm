@@ -360,7 +360,9 @@ const FeedItem = React.memo(function FeedItem({
               <img
                 src={image}
                 alt={`Post image ${index + 1}`}
-                className="w-full h-48 sm:h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                className={`w-full cursor-pointer hover:opacity-90 transition-opacity ${
+                  feed.images.length === 1 ? 'h-auto max-h-[600px] object-contain' : 'h-64 sm:h-80 object-cover'
+                }`}
                 onClick={() => onOpenImageViewer(feed.images, index)}
               />
               {index === 3 && feed.images.length > 4 && (
@@ -1608,7 +1610,9 @@ export default function FeedPage({ user }) {
                           <img
                             src={image}
                             alt={`Post image ${index + 1}`}
-                            className={`w-full object-cover ${feed.images.length === 1 ? 'h-64' : 'h-48'}`}
+                            className={`w-full ${
+                              feed.images.length === 1 ? 'h-auto max-h-[600px] object-contain' : 'h-64 sm:h-80 object-cover'
+                            }`}
                           />
                           {index === 3 && feed.images.length > 4 && (
                             <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
