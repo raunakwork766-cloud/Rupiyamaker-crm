@@ -886,6 +886,19 @@ class SettingsDB:
         if not existing:
             default_settings = {
                 "type": "default",
+                # New settings
+                "shift_start_time": "10:00",
+                "shift_end_time": "19:00",
+                "reporting_deadline": "10:15",
+                "full_day_working_hours": 9.0,
+                "half_day_minimum_working_hours": 5.0,
+                "grace_period_minutes": 30,
+                "grace_usage_limit": 2,
+                "pending_leave_auto_convert_days": 3,
+                "absconding_penalty": -1,
+                "enable_sunday_sandwich_rule": True,
+                "minimum_working_days_for_sunday": 5,
+                # Legacy settings
                 "check_in_time": "09:00",
                 "check_out_time": "18:00",
                 "total_working_hours": 9.0,
@@ -934,7 +947,100 @@ class SettingsDB:
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
-
-# Legacy support - settings_db is now initialized in __init__.py
-# Use get_database_instances() from app.database to get settings_db instance
-settings_db = None  # Will be set by init_database() in __init__.py
+    
+    # ==================== LEAVE BALANCE MANAGEMENT ====================
+    
+    async def get_leave_balance(self, employee_id: str) -> dict:
+        """Get leave balance for an employee"""
+        balance = await self.db.leave_balances.find_one({"employee_id": employee_id})
+        if balance:
+            balance["_id"] = str(balance["_id"])
+        return balance
+    
+    async def create_leave_balance(self, balance_data: dict) -> str:
+        """Create leave balance for an employee"""
+        from datetime import datetime
+        balance_data["created_at"] = datetime.now()
+        balance_data["last_updated"] = datetime.now()
+        
+        result = await self.db.leave_balances.insert_one(balance_data)
+        return str(result.inserted_id)
+    
+    async def update_leave_balance(self, employee_id: str, update_data: dict) -> bool:
+        """Update leave balance for an employee"""
+        update_data["last_updated"] = datetime.now()
+        
+        result = await self.db.leave_balances.update_one(
+            {"employee_id": employee_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
+    async def get_all_leave_balances(self, filters: dict = None) -> list:
+        """Get leave balances for all employees with optional filters"""
+        query = filters or {}
+        balances = []
+        
+        cursor = self.db.leave_balances.find(query)
+        async for balance in cursor:
+            balance["_id"] = str(balance["_id"])
+            balances.append(balance)
+        
+        return balances
+    
+    async def add_leave_history(self, history_entry: dict) -> str:
+        """Add leave transaction history entry"""
+        result = await self.db.leave_history.insert_one(history_entry)
+        return str(result.inserted_id)
+    
+    async def get_leave_history(self, employee_id: str, limit: int = 50) -> list:
+        """Get leave transaction history for an employee"""
+        history = []
+        
+        cursor = self.db.leave_history.find(
+            {"employee_id": employee_id}
+        ).sort("timestamp", -1).limit(limit)
+        
+        async for entry in cursor:
+            entry["_id"] = str(entry["_id"])
+            entry["timestamp"] = entry["timestamp"].isoformat() if isinstance(entry.get("timestamp"), datetime) else str(entry.get("timestamp"))
+            history.append(entry)
+        
+        return history
+    
+    async def get_leave_config_defaults(self) -> dict:
+        """Get default leave configuration"""
+        config = await self.db.leave_config.find_one({"type": "defaults"})
+        
+        if not config:
+            # Create default config
+            default_config = {
+                "type": "defaults",
+                "paid_leaves_per_year": 12,
+                "earned_leaves_per_year": 15,
+                "sick_leaves_per_year": 7,
+                "casual_leaves_per_year": 5,
+                "leave_cycle_start_month": 1,
+                "leave_cycle_start_day": 1,
+                "carry_forward_enabled": False,
+                "max_carry_forward": 5,
+                "created_at": datetime.now()
+            }
+            await self.db.leave_config.insert_one(default_config)
+            config = default_config
+        
+        if config:
+            config["_id"] = str(config["_id"])
+        
+        return config
+    
+    async def update_leave_config_defaults(self, config_data: dict) -> bool:
+        """Update default leave configuration"""
+        config_data["updated_at"] = datetime.now()
+        
+        result = await self.db.leave_config.update_one(
+            {"type": "defaults"},
+            {"$set": config_data},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None

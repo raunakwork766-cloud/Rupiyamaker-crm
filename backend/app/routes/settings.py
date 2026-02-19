@@ -1365,7 +1365,10 @@ async def update_attendance_settings(
     
     try:
         # Validate time formats if provided
-        time_fields = ["check_in_time", "check_out_time", "late_arrival_threshold", "early_departure_threshold"]
+        time_fields = [
+            "check_in_time", "check_out_time", "late_arrival_threshold", "early_departure_threshold",
+            "shift_start_time", "shift_end_time", "reporting_deadline"
+        ]
         for field in time_fields:
             value = getattr(settings_update, field, None)
             if value:
@@ -1379,23 +1382,37 @@ async def update_attendance_settings(
                     )
         
         # Validate numeric fields
-        if settings_update.total_working_hours is not None and settings_update.total_working_hours <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Total working hours must be greater than 0"
-            )
+        numeric_fields = [
+            ("total_working_hours", "Total working hours"),
+            ("minimum_working_hours_full_day", "Minimum working hours for full day"),
+            ("minimum_working_hours_half_day", "Minimum working hours for half day"),
+            ("full_day_working_hours", "Full day working hours"),
+            ("half_day_minimum_working_hours", "Half day minimum working hours"),
+        ]
         
-        if settings_update.minimum_working_hours_full_day is not None and settings_update.minimum_working_hours_full_day <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Minimum working hours for full day must be greater than 0"
-            )
+        for field_name, field_label in numeric_fields:
+            value = getattr(settings_update, field_name, None)
+            if value is not None and value <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"{field_label} must be greater than 0"
+                )
         
-        if settings_update.minimum_working_hours_half_day is not None and settings_update.minimum_working_hours_half_day <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Minimum working hours for half day must be greater than 0"
-            )
+        # Validate integer fields
+        int_fields = [
+            ("grace_period_minutes", "Grace period minutes", 0, 120),
+            ("grace_usage_limit", "Grace usage limit", 0, 10),
+            ("pending_leave_auto_convert_days", "Pending leave auto-convert days", 1, 30),
+            ("minimum_working_days_for_sunday", "Minimum working days for Sunday", 1, 6),
+        ]
+        
+        for field_name, field_label, min_val, max_val in int_fields:
+            value = getattr(settings_update, field_name, None)
+            if value is not None and (value < min_val or value > max_val):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"{field_label} must be between {min_val} and {max_val}"
+                )
         
         # Validate geofence settings
         if settings_update.geofence_enabled and (
@@ -1856,7 +1873,7 @@ async def delete_channel_name(
 ):
     """Delete a channel name"""
     # Check permission
-    await check_permission(user_id, "settings", "delete", users_db, roles_db)
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
     
     try:
         success = await settings_db.delete_channel_name(channel_id)
@@ -1874,3 +1891,332 @@ async def delete_channel_name(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete channel name: {str(e)}"
         )
+
+
+# ==================== PAID LEAVE MANAGEMENT ENDPOINTS ====================
+
+@router.get("/leave-balance/{employee_id}", response_model=Dict[str, Any])
+async def get_employee_leave_balance(
+    employee_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get leave balance for a specific employee"""
+    try:
+        from app.schemas.attendance_schemas import EmployeeLeaveBalance
+        
+        # Get employee details
+        employee = await users_db.get_user_by_id(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found"
+            )
+        
+        # Get or create leave balance
+        balance = await settings_db.get_leave_balance(employee_id)
+        
+        if not balance:
+            # Create default balance for new employee
+            default_balance = {
+                "employee_id": employee_id,
+                "employee_name": employee.get("name", ""),
+                "employee_code": employee.get("employee_code"),
+                "department": employee.get("department"),
+                "paid_leaves_total": 12,
+                "paid_leaves_used": 0,
+                "paid_leaves_remaining": 12,
+                "earned_leaves_total": 15,
+                "earned_leaves_used": 0,
+                "earned_leaves_remaining": 15,
+                "sick_leaves_total": 7,
+                "sick_leaves_used": 0,
+                "sick_leaves_remaining": 7,
+                "casual_leaves_total": 5,
+                "casual_leaves_used": 0,
+                "casual_leaves_remaining": 5,
+            }
+            await settings_db.create_leave_balance(default_balance)
+            balance = default_balance
+        
+        return {
+            "success": True,
+            "data": balance
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching leave balance: {str(e)}"
+        )
+
+
+@router.post("/leave-balance/allocate", response_model=Dict[str, str])
+async def allocate_leave_to_employee(
+    allocation: dict,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Allocate leaves to an employee (Admin/Super Admin only)"""
+    # Check permission
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    
+    try:
+        from datetime import datetime
+        
+        employee_id = allocation.get("employee_id")
+        leave_type = allocation.get("leave_type", "paid").lower()
+        quantity = allocation.get("quantity", 0)
+        reason = allocation.get("reason", "")
+        
+        if not employee_id or quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid employee_id or quantity"
+            )
+        
+        # Validate leave type
+        valid_types = ["paid", "earned", "sick", "casual"]
+        if leave_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Leave type must be one of: {', '.join(valid_types)}"
+            )
+        
+        # Get current balance
+        balance = await settings_db.get_leave_balance(employee_id)
+        if not balance:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee leave balance not found"
+            )
+        
+        # Calculate new balance
+        field_total = f"{leave_type}_leaves_total"
+        field_remaining = f"{leave_type}_leaves_remaining"
+        
+        old_total = balance.get(field_total, 0)
+        old_remaining = balance.get(field_remaining, 0)
+        
+        new_total = old_total + quantity
+        new_remaining = old_remaining + quantity
+        
+        # Update balance
+        update_data = {
+            field_total: new_total,
+            field_remaining: new_remaining,
+            "last_updated": datetime.utcnow()
+        }
+        
+        success = await settings_db.update_leave_balance(employee_id, update_data)
+        
+        if success:
+            # Log the transaction
+            admin_user = await users_db.get_user_by_id(user_id)
+            admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
+            
+            history_entry = {
+                "employee_id": employee_id,
+                "employee_name": balance.get("employee_name"),
+                "leave_type": leave_type,
+                "transaction_type": "allocation",
+                "quantity": quantity,
+                "reason": reason,
+                "performed_by": user_id,
+                "performed_by_name": admin_name,
+                "timestamp": datetime.utcnow(),
+                "balance_before": old_remaining,
+                "balance_after": new_remaining
+            }
+            await settings_db.add_leave_history(history_entry)
+            
+            return {
+                "message": f"Successfully allocated {quantity} {leave_type} leaves",
+                "new_total": new_total,
+                "new_remaining": new_remaining
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update leave balance"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error allocating leaves: {str(e)}"
+        )
+
+
+@router.post("/leave-balance/deduct", response_model=Dict[str, str])
+async def deduct_leave_from_employee(
+    deduction: dict,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Deduct leaves from an employee (Admin/Super Admin only)"""
+    # Check permission
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    
+    try:
+        from datetime import datetime
+        
+        employee_id = deduction.get("employee_id")
+        leave_type = deduction.get("leave_type", "paid").lower()
+        quantity = deduction.get("quantity", 0)
+        reason = deduction.get("reason", "")
+        
+        if not employee_id or quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid employee_id or quantity"
+            )
+        
+        # Get current balance
+        balance = await settings_db.get_leave_balance(employee_id)
+        if not balance:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee leave balance not found"
+            )
+        
+        # Calculate new balance
+        field_remaining = f"{leave_type}_leaves_remaining"
+        old_remaining = balance.get(field_remaining, 0)
+        
+        if old_remaining < quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient {leave_type} leaves. Available: {old_remaining}, Requested: {quantity}"
+            )
+        
+        new_remaining = old_remaining - quantity
+        
+        # Update balance
+        update_data = {
+            field_remaining: new_remaining,
+            f"{leave_type}_leaves_used": balance.get(f"{leave_type}_leaves_used", 0) + quantity,
+            "last_updated": datetime.utcnow()
+        }
+        
+        success = await settings_db.update_leave_balance(employee_id, update_data)
+        
+        if success:
+            # Log the transaction
+            admin_user = await users_db.get_user_by_id(user_id)
+            admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
+            
+            history_entry = {
+                "employee_id": employee_id,
+                "employee_name": balance.get("employee_name"),
+                "leave_type": leave_type,
+                "transaction_type": "deduction",
+                "quantity": quantity,
+                "reason": reason,
+                "performed_by": user_id,
+                "performed_by_name": admin_name,
+                "timestamp": datetime.utcnow(),
+                "balance_before": old_remaining,
+                "balance_after": new_remaining
+            }
+            await settings_db.add_leave_history(history_entry)
+            
+            return {
+                "message": f"Successfully deducted {quantity} {leave_type} leaves",
+                "new_remaining": new_remaining
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update leave balance"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deducting leaves: {str(e)}"
+        )
+
+
+@router.get("/leave-balance/history/{employee_id}", response_model=List[Dict[str, Any]])
+async def get_leave_history(
+    employee_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get leave transaction history for an employee"""
+    try:
+        history = await settings_db.get_leave_history(employee_id)
+        return history
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching leave history: {str(e)}"
+        )
+
+
+@router.post("/leave-balance/bulk-allocate", response_model=Dict[str, Any])
+async def bulk_allocate_leaves(
+    bulk_allocation: dict,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Bulk allocate leaves to multiple employees"""
+    # Check permission
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    
+    try:
+        employee_ids = bulk_allocation.get("employee_ids", [])
+        leave_type = bulk_allocation.get("leave_type", "paid").lower()
+        quantity = bulk_allocation.get("quantity", 0)
+        reason = bulk_allocation.get("reason", "")
+        
+        if not employee_ids or quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid employee_ids or quantity"
+            )
+        
+        success_count = 0
+        failed_count = 0
+        errors = []
+        
+        for emp_id in employee_ids:
+            try:
+                allocation = {
+                    "employee_id": emp_id,
+                    "leave_type": leave_type,
+                    "quantity": quantity,
+                    "reason": reason
+                }
+                await allocate_leave_to_employee(allocation, user_id, settings_db, users_db, roles_db)
+                success_count += 1
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"{emp_id}: {str(e)}")
+        
+        return {
+            "message": f"Bulk allocation completed. Success: {success_count}, Failed: {failed_count}",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "errors": errors if errors else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in bulk allocation: {str(e)}"
