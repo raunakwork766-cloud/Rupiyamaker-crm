@@ -349,19 +349,19 @@ const FeedItem = React.memo(function FeedItem({
       
       {/* Feed images - full width */}
       {feed.images && feed.images.length > 0 && (
-        <div className={feed.images.length === 1 ? '' : 'grid gap-1 sm:gap-2'} style={{
+        <div className={feed.images.length === 1 ? 'bg-black' : 'grid gap-1 sm:gap-2'} style={{
           gridTemplateColumns: feed.images.length === 1 ? '1fr' :
             feed.images.length === 2 ? 'repeat(2, 1fr)' :
             feed.images.length === 3 ? 'repeat(3, 1fr)' :
             'repeat(2, 1fr)'
         }}>
           {feed.images.slice(0, 4).map((image, index) => (
-            <div key={index} className={`relative ${feed.images.length === 1 ? 'bg-black' : ''}`}>
+            <div key={index} className={`relative ${feed.images.length === 1 ? '' : ''}`}>
               <img
                 src={image}
                 alt={`Post image ${index + 1}`}
                 className={`w-full cursor-pointer hover:opacity-90 transition-opacity ${
-                  feed.images.length === 1 ? 'h-auto min-h-[400px] max-h-[700px] object-contain' : 'h-72 sm:h-96 object-cover'
+                  feed.images.length === 1 ? 'h-[500px] sm:h-[600px] object-contain' : 'h-80 sm:h-96 object-cover'
                 }`}
                 onClick={() => onOpenImageViewer(feed.images, index)}
               />
@@ -1611,7 +1611,7 @@ export default function FeedPage({ user }) {
                             src={image}
                             alt={`Post image ${index + 1}`}
                             className={`w-full ${
-                              feed.images.length === 1 ? 'h-auto min-h-[400px] max-h-[700px] object-contain' : 'h-72 sm:h-96 object-cover'
+                              feed.images.length === 1 ? 'h-[500px] sm:h-[600px] object-contain' : 'h-80 sm:h-96 object-cover'
                             }`}
                           />
                           {index === 3 && feed.images.length > 4 && (
