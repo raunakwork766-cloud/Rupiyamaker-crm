@@ -39,6 +39,7 @@ import {
   Visibility as ViewIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import * as faceapi from 'face-api.js';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
@@ -48,6 +49,9 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [faceDescriptor, setFaceDescriptor] = useState(null);
+  const [faceVerificationResult, setFaceVerificationResult] = useState(null);
   const [currentStatus, setCurrentStatus] = useState(null);
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -65,6 +69,27 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const streamRef = useRef(null);
 
   const API_BASE_URL = '/api'; // Always use proxy
+
+  // Load face-api.js models
+  useEffect(() => {
+    const loadFaceModels = async () => {
+      try {
+        const MODEL_URL = '/models';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+        setModelsLoaded(true);
+        console.log('Face recognition models loaded');
+      } catch (error) {
+        console.warn('Face recognition models not available:', error);
+        // Non-blocking - attendance can work without face recognition
+      }
+    };
+
+    loadFaceModels();
+  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -165,7 +190,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     setPhotoData(null);
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -178,6 +203,35 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       
       const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
       setPhotoData(base64Data);
+
+      // Detect face and get descriptor if models are loaded
+      if (modelsLoaded) {
+        try {
+          setLoading(true);
+          const detection = await faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection) {
+            const descriptor = {
+              descriptor: Array.from(detection.descriptor),
+              detection_score: detection.detection.score
+            };
+            setFaceDescriptor(descriptor);
+            setSuccess(`Face detected! Confidence: ${(detection.detection.score * 100).toFixed(1)}%`);
+          } else {
+            setFaceDescriptor(null);
+            setError('No face detected. Photo captured without facial verification.');
+          }
+        } catch (error) {
+          console.warn('Face detection failed:', error);
+          setFaceDescriptor(null);
+        } finally {
+          setLoading(false);
+        }
+      }
+
       stopCamera();
     }
   };
@@ -190,6 +244,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
     setLoading(true);
     setError(null);
+    setFaceVerificationResult(null);
 
     try {
       // Get current location
@@ -199,7 +254,8 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const checkInData = {
         photo_data: photoData,
         geolocation: location,
-        comments: comments
+        comments: comments,
+        face_descriptor: faceDescriptor // Include face descriptor if available
       };
 
       const response = await axios.post(`${BASE_URL}/attendance/check-in`, checkInData, {
@@ -208,7 +264,19 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
       if (response.data.success) {
         setSuccess(response.data.message);
+        
+        // Show face verification result if available
+        if (response.data.face_verification) {
+          setFaceVerificationResult(response.data.face_verification);
+          if (response.data.face_verification.verified) {
+            setSuccess(`${response.data.message} ✓ Face verified (${(response.data.face_verification.confidence * 100).toFixed(1)}%)`);
+          } else {
+            setError(`Check-in successful but face verification failed (${(response.data.face_verification.confidence * 100).toFixed(1)}%)`);
+          }
+        }
+
         setPhotoData(null);
+        setFaceDescriptor(null);
         setComments('');
         await loadCurrentStatus();
         await loadTodayAttendance();
