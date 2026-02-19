@@ -1731,14 +1731,17 @@ export default function FeedPage({ user }) {
             {/* Post Content */}
             <div className="px-3 sm:px-4 py-2 sm:py-3">
               <p className="text-black whitespace-pre-wrap bg-white font-bold text-base sm:text-lg">{selectedPost.text}</p>
-              {selectedPost.images && selectedPost.images.length > 0 && (
-                <div className="mt-2 sm:mt-3 relative">
-                  <div className="relative w-full h-48 sm:h-80 overflow-hidden rounded-lg bg-gray-100">
-                    <img
-                      src={selectedPost.images[currentImageIndex]}
-                      alt={`Post image ${currentImageIndex + 1}`}
-                      className="w-full h-full object-cover rounded-lg"
-                    />
+            </div>
+            
+            {/* Post Images - Full Width */}
+            {selectedPost.images && selectedPost.images.length > 0 && (
+              <div className="relative bg-black">
+                <div className="relative w-full h-96 sm:h-[500px] overflow-hidden bg-black">
+                  <img
+                    src={selectedPost.images[currentImageIndex]}
+                    alt={`Post image ${currentImageIndex + 1}`}
+                    className="w-full h-full object-contain"
+                  />
                     {selectedPost.images.length > 1 && (
                       <>
                         <button
@@ -1768,7 +1771,7 @@ export default function FeedPage({ user }) {
                   
                   {/* Image thumbnails for navigation */}
                   {selectedPost.images.length > 1 && (
-                    <div className="flex justify-center mt-1 sm:mt-2 gap-1 sm:gap-2 overflow-x-auto py-1 sm:py-2">
+                    <div className="flex justify-center mt-1 sm:mt-2 gap-1 sm:gap-2 overflow-x-auto py-1 sm:py-2 px-2 bg-black">
                       {selectedPost.images.map((img, idx) => (
                         <button 
                           key={idx} 
@@ -1786,7 +1789,7 @@ export default function FeedPage({ user }) {
                   )}
                 </div>
               )}
-            </div>
+              
             {/* Comments Section */}
             <div id="comments-section" className="border-t border-gray-800 px-3 sm:px-4 py-2 sm:py-3 bg-white">
               <div className="font-bold text-black mb-2 text-sm sm:text-base">Comments</div>
@@ -1842,7 +1845,7 @@ export default function FeedPage({ user }) {
                 likingComments={likingComments}
               />
             </div>
-          </div>
+            </div>
           </div>
         </div>
       )}
