@@ -426,6 +426,294 @@ const getStatusColor = (status) => {
   }
 }
 
+// ============================================
+// ATTENDANCE CALCULATION LOGIC (Based on Requirements)
+// ============================================
+
+/**
+ * Parse time string (HH:MM) to minutes since midnight
+ * @param {string} timeStr - Time in "HH:MM" format
+ * @returns {number} - Minutes since midnight
+ */
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return (hours * 60) + minutes;
+};
+
+/**
+ * Calculate time difference in hours
+ * @param {string} startTime - Start time in "HH:MM" format
+ * @param {string} endTime - End time in "HH:MM" format
+ * @returns {number} - Hours difference
+ */
+const calculateHoursDifference = (startTime, endTime) => {
+  if (!startTime || !endTime) return 0;
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  return (endMinutes - startMinutes) / 60;
+};
+
+/**
+ * Check if punch in is within grace period
+ * @param {string} punchInTime - Actual punch in time
+ * @param {string} reportingDeadline - Deadline time
+ * @param {number} graceMinutes - Grace period in minutes
+ * @param {number} graceUsedThisMonth - How many times grace used this month
+ * @param {number} graceLimit - Maximum grace usage per month
+ * @returns {object} - { isWithinGrace, graceUsed }
+ */
+const checkGracePeriod = (punchInTime, reportingDeadline, graceMinutes, graceUsedThisMonth, graceLimit) => {
+  if (!punchInTime || !reportingDeadline) {
+    return { isWithinGrace: false, graceUsed: false };
+  }
+  
+  const punchInMinutes = parseTimeToMinutes(punchInTime);
+  const deadlineMinutes = parseTimeToMinutes(reportingDeadline);
+  const graceEndMinutes = deadlineMinutes + graceMinutes;
+  
+  // Check if punch in is after deadline but within grace period
+  const isLate = punchInMinutes > deadlineMinutes;
+  const isWithinGracePeriod = punchInMinutes <= graceEndMinutes;
+  const hasGraceAvailable = graceUsedThisMonth < graceLimit;
+  
+  const isWithinGrace = isLate && isWithinGracePeriod && hasGraceAvailable;
+  
+  return {
+    isWithinGrace,
+    graceUsed: isWithinGrace,
+    minutesLate: Math.max(0, punchInMinutes - deadlineMinutes)
+  };
+};
+
+/**
+ * Calculate final attendance status based on all rules
+ * @param {object} attendanceData - Attendance data
+ * @param {object} settings - Attendance settings
+ * @returns {object} - { status, count, reason }
+ */
+const calculateAttendanceStatus = (attendanceData, settings) => {
+  const {
+    punch_in,
+    punch_out,
+    working_hours = 0,
+    is_holiday = false,
+    leave_status = null,
+    is_weekend = false,
+    grace_used_this_month = 0
+  } = attendanceData;
+  
+  const {
+    reporting_deadline = '10:15',
+    full_day_working_hours = 9.0,
+    half_day_minimum_working_hours = 5.0,
+    grace_period_minutes = 30,
+    grace_usage_limit = 2
+  } = settings;
+  
+  // Rule 0: Holiday
+  if (is_holiday) {
+    return { status: 'H', count: 0, reason: 'Holiday' };
+  }
+  
+  // Rule 1: Weekend
+  if (is_weekend) {
+    return { status: 'H', count: 0, reason: 'Weekend' };
+  }
+  
+  // Rule 2: Leave Status
+  if (leave_status === 'approved') {
+    return { status: 'LV', count: 0, reason: 'Leave Approved' };
+  }
+  if (leave_status === 'pending') {
+    return { status: 'PL', count: 0, reason: 'Leave Pending Approval' };
+  }
+  if (leave_status === 'absconding') {
+    return { status: 'AB', count: -1, reason: 'Absconding (Unapproved Leave > 3 days)' };
+  }
+  
+  // Rule 3: Missing Punch In or Punch Out = Issue
+  if (!punch_in || !punch_out) {
+    return { 
+      status: 'ISS', 
+      count: 0, 
+      reason: !punch_in ? 'Missing Punch In' : 'Missing Punch Out' 
+    };
+  }
+  
+  // Rule 4: Working Hours Logic (Main Calculation)
+  // This is the PRIMARY rule that determines status
+  
+  if (working_hours >= full_day_working_hours) {
+    // Full Day: Working hours >= 9 hours
+    return { status: 'P', count: 1, reason: `Full Day (${working_hours.toFixed(1)} hrs)` };
+  }
+  
+  if (working_hours >= half_day_minimum_working_hours) {
+    // Half Day: Working hours >= 5 hrs but < 9 hrs
+    return { status: 'HD', count: 0.5, reason: `Half Day (${working_hours.toFixed(1)} hrs)` };
+  }
+  
+  // Zero: Working hours < 5 hrs
+  return { status: 'Z', count: 0, reason: `Insufficient Hours (${working_hours.toFixed(1)} hrs)` };
+};
+
+/**
+ * Determine punch in status (for display purposes)
+ * This checks if punch in was late and whether grace was applied
+ */
+const getPunchInStatus = (punchInTime, reportingDeadline, graceMinutes, graceUsedThisMonth, graceLimit) => {
+  if (!punchInTime) return { isLate: false, gracedApplied: false, message: 'Not Punched In' };
+  
+  const punchInMinutes = parseTimeToMinutes(punchInTime);
+  const deadlineMinutes = parseTimeToMinutes(reportingDeadline);
+  
+  if (punchInMinutes <= deadlineMinutes) {
+    return { 
+      isLate: false, 
+      graceApplied: false, 
+      message: 'On Time',
+      minutesEarly: deadlineMinutes - punchInMinutes
+    };
+  }
+  
+  // Check grace period
+  const graceResult = checkGracePeriod(
+    punchInTime, 
+    reportingDeadline, 
+    graceMinutes, 
+    graceUsedThisMonth, 
+    graceLimit
+  );
+  
+  if (graceResult.isWithinGrace) {
+    return {
+      isLate: true,
+      graceApplied: true,
+      message: `Late but grace applied (${graceResult.minutesLate} mins)`,
+      minutesLate: graceResult.minutesLate
+    };
+  }
+  
+  return {
+    isLate: true,
+    graceApplied: false,
+    message: `Late (${punchInMinutes - deadlineMinutes} mins)`,
+    minutesLate: punchInMinutes - deadlineMinutes
+  };
+};
+
+/**
+ * Check if remaining working hours are possible after late punch in
+ * @param {string} punchInTime - Actual punch in time
+ * @param {string} shiftEndTime - Official shift end time
+ * @param {number} requiredHours - Required working hours
+ * @returns {object} - { isPossible, remainingHours, message }
+ */
+const checkRemainingHoursPossible = (punchInTime, shiftEndTime, requiredHours) => {
+  if (!punchInTime || !shiftEndTime) {
+    return { isPossible: false, remainingHours: 0, message: 'Invalid time' };
+  }
+  
+  const remainingHours = calculateHoursDifference(punchInTime, shiftEndTime);
+  const isPossible = remainingHours >= requiredHours;
+  
+  return {
+    isPossible,
+    remainingHours: remainingHours.toFixed(1),
+    message: isPossible 
+      ? `${remainingHours.toFixed(1)} hrs possible` 
+      : `Only ${remainingHours.toFixed(1)} hrs possible (need ${requiredHours})`
+  };
+};
+
+/**
+ * Apply Sunday and Sandwich Rules
+ * Rule: If Saturday OR Monday is Absconding/Unapproved, Sunday = Zero
+ * Rule: If working days < 5 in week, Sunday = Zero
+ * @param {object} weekData - Attendance data for the week
+ * @param {object} settings - Attendance settings
+ * @returns {object} - { shouldApplySundayPenalty, reason }
+ */
+const checkSundaySandwichRule = (weekData, settings) => {
+  const {
+    saturday_status,
+    monday_status,
+    working_days_in_week = 0,
+    sunday_penalty_applied = false
+  } = weekData;
+  
+  const {
+    enable_sunday_sandwich_rule = true,
+    minimum_working_days_for_sunday = 5
+  } = settings;
+  
+  // If rule is disabled, no penalty
+  if (!enable_sunday_sandwich_rule) {
+    return { shouldApplySundayPenalty: false, reason: 'Sunday sandwich rule disabled' };
+  }
+  
+  // If penalty already applied, don't apply again
+  if (sunday_penalty_applied) {
+    return { shouldApplySundayPenalty: false, reason: 'Penalty already applied' };
+  }
+  
+  // Check Saturday/Monday absconding or unapproved leave
+  const isSaturdayAbsconding = ['AB', 'PL'].includes(saturday_status);
+  const isMondayAbsconding = ['AB', 'PL'].includes(monday_status);
+  
+  if (isSaturdayAbsconding || isMondayAbsconding) {
+    return {
+      shouldApplySundayPenalty: true,
+      reason: `${isSaturdayAbsconding ? 'Saturday' : 'Monday'} absconding/unapproved`
+    };
+  }
+  
+  // Check working days in week
+  if (working_days_in_week < minimum_working_days_for_sunday) {
+    return {
+      shouldApplySundayPenalty: true,
+      reason: `Only ${working_days_in_week} working days (need ${minimum_working_days_for_sunday})`
+    };
+  }
+  
+  return { shouldApplySundayPenalty: false, reason: 'No penalty conditions met' };
+};
+
+/**
+ * Auto-convert pending leave to absconding after X days
+ * @param {object} leaveData - Leave application data
+ * @param {object} settings - Attendance settings
+ * @returns {object} - { shouldConvert, reason }
+ */
+const checkLeaveAutoConversion = (leaveData, settings) => {
+  const {
+    leave_application_date,
+    leave_status,
+    days_pending
+  } = leaveData;
+  
+  const {
+    pending_leave_auto_convert_days = 3
+  } = settings;
+  
+  // Only convert if status is pending
+  if (leave_status !== 'pending') {
+    return { shouldConvert: false, reason: 'Status is not pending' };
+  }
+  
+  // Check if days exceeded
+  if (days_pending >= pending_leave_auto_convert_days) {
+    return {
+      shouldConvert: true,
+      reason: `Pending for ${days_pending} days (limit ${pending_leave_auto_convert_days})`,
+      newStatus: 'absconding'
+    };
+  }
+  
+  return { shouldConvert: false, reason: 'Within time limit' };
+};
+
 const getDayName = (year, month, day) => {
   const date = new Date(year, month - 1, day)
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
