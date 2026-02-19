@@ -1835,6 +1835,179 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
             </div>
           )}
 
+          {/* Sunday Sandwich Rule & Leave Alerts Section */}
+          {attendanceDetail?.type !== 'leave' && (
+            <div className="mt-6 space-y-4">
+              {/* Sunday Sandwich Rule Warning */}
+              {attendanceDetail?.sunday_sandwich_warning && (
+                <div className="bg-gradient-to-r from-red-700/20 to-orange-700/20 border-2 border-red-500 rounded-lg p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="text-red-400 text-3xl">⚠️</div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-red-400 text-lg mb-2">SUNDAY SANDWICH RULE ALERT</h3>
+                      <p className="text-gray-200 mb-3">
+                        {attendanceDetail.sunday_sandwich_warning}
+                      </p>
+                      
+                      <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
+                        <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                          <span>📊</span>
+                          <span>Week Summary (Current Week)</span>
+                        </h4>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                          <div className="text-center">
+                            <div className="text-gray-400 text-sm">Total Days</div>
+                            <div className="text-white text-2xl font-bold">{attendanceDetail.week_working_days?.total || 6}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-gray-400 text-sm">Present</div>
+                            <div className="text-green-400 text-2xl font-bold">{attendanceDetail.week_working_days?.present || 0}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-gray-400 text-sm">Absent</div>
+                            <div className="text-red-400 text-2xl font-bold">{attendanceDetail.week_working_days?.absent || 0}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-gray-400 text-sm">Required</div>
+                            <div className="text-yellow-400 text-2xl font-bold">5</div>
+                          </div>
+                        </div>
+                        
+                        {/* Week Calendar Visual */}
+                        <div className="flex justify-between items-center gap-2">
+                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                            const dayStatus = attendanceDetail.week_status?.[idx] || 'unknown'
+                            return (
+                              <div key={day} className="flex-1 text-center">
+                                <div className={`rounded-lg p-2 ${
+                                  dayStatus === 'present' ? 'bg-green-600' :
+                                  dayStatus === 'absent' ? 'bg-red-600' :
+                                  dayStatus === 'leave' ? 'bg-blue-600' :
+                                  'bg-gray-700'
+                                }`}>
+                                  <div className="text-xs text-white font-semibold">{day}</div>
+                                  <div className="text-xl mt-1">
+                                    {dayStatus === 'present' ? '✅' :
+                                     dayStatus === 'absent' ? '❌' :
+                                     dayStatus === 'leave' ? '🏖️' : '❓'}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 bg-red-900/40 border border-red-600 rounded p-3">
+                        <h4 className="text-red-300 font-bold mb-2">📋 Rule Explanation:</h4>
+                        <ul className="text-gray-200 text-sm space-y-1 list-disc list-inside">
+                          <li>If you work less than <strong>5 days</strong> in a week (Mon-Sat)</li>
+                          <li>Then the <strong>Sunday between that week</strong> will be marked as <strong>Absent (-1)</strong></li>
+                          <li>This is called the <strong>"Sunday Sandwich Rule"</strong></li>
+                          <li>Make sure to work at least 5 days to keep Sunday as a holiday!</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Pending Leave Auto-Conversion Alert */}
+              {attendanceDetail?.pending_leave_alert && (
+                <div className="bg-gradient-to-r from-orange-700/20 to-red-700/20 border-2 border-orange-500 rounded-lg p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="text-orange-400 text-3xl">⏳</div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-orange-400 text-lg mb-2">PENDING LEAVE AUTO-CONVERSION ALERT</h3>
+                      <p className="text-gray-200 mb-3">
+                        {attendanceDetail.pending_leave_alert}
+                      </p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Pending Leave Info */}
+                        <div className="bg-gray-800 border border-orange-500 rounded-lg p-4">
+                          <h4 className="text-orange-300 font-semibold mb-3 flex items-center gap-2">
+                            <span>📝</span>
+                            <span>Pending Leave Details</span>
+                          </h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Leave Type:</span>
+                              <span className="text-orange-400 font-semibold">{attendanceDetail.pending_leave_type || 'Sick Leave'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Applied On:</span>
+                              <span className="text-cyan-400">{attendanceDetail.pending_leave_date || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Pending Since:</span>
+                              <span className="text-yellow-400 font-bold">{attendanceDetail.pending_days || 0} days</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Auto-convert After:</span>
+                              <span className="text-red-400 font-bold">3 days</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Countdown Timer */}
+                        <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
+                          <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                            <span>⏰</span>
+                            <span>Time Remaining</span>
+                          </h4>
+                          <div className="text-center">
+                            <div className="text-5xl font-bold text-red-400 mb-2">
+                              {Math.max(0, 3 - (attendanceDetail.pending_days || 0))}
+                            </div>
+                            <div className="text-gray-400 text-sm mb-3">Days until auto-convert to Absconding</div>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-yellow-500 to-red-500 transition-all duration-300"
+                                style={{ width: `${Math.min(((attendanceDetail.pending_days || 0) / 3) * 100, 100)}%` }}
+                              ></div>
+                            </div>
+                            
+                            {(attendanceDetail.pending_days || 0) >= 3 && (
+                              <div className="mt-3 text-red-400 font-bold text-sm">
+                                ⚠️ Will be auto-converted soon!
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 bg-orange-900/40 border border-orange-600 rounded p-3">
+                        <h4 className="text-orange-300 font-bold mb-2">⚡ Action Required:</h4>
+                        <p className="text-gray-200 text-sm">
+                          If your pending leave is <strong>not approved within 3 days</strong>, it will be 
+                          <strong className="text-red-400"> automatically converted to Absconding (AB = -1)</strong>.
+                          Please contact your reporting manager to approve the leave immediately.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* No Alerts - All Good */}
+              {!attendanceDetail?.sunday_sandwich_warning && !attendanceDetail?.pending_leave_alert && (
+                <div className="bg-gradient-to-r from-green-700/20 to-teal-700/20 border-2 border-green-500 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="text-green-400 text-2xl">✅</div>
+                    <div>
+                      <h3 className="font-bold text-green-400">All Clear!</h3>
+                      <p className="text-gray-300 text-sm">No pending alerts or warnings for this date.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Manual Override Section - Enhanced with all new features */}
           {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
             <div className="mt-6 bg-gradient-to-r from-purple-700/20 to-pink-700/20 border-2 border-purple-500 rounded-lg p-6">
