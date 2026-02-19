@@ -39,7 +39,7 @@ import {
   Visibility as ViewIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
-import * as faceapi from 'face-api.js';
+import * as faceapi from '@vladmandic/face-api';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
