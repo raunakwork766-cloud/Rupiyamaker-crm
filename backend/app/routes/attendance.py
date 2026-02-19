@@ -1873,6 +1873,68 @@ async def check_in_attendance(
                     detail="You are outside the allowed check-in area"
                 )
         
+        # ==== FACIAL VERIFICATION (if face descriptor provided) ====
+        face_verification_result = None
+        if check_in_data.face_descriptor:
+            try:
+                # Get registered face data
+                registered_face = await attendance_db.get_employee_face_data(user_id)
+                
+                if registered_face:
+                    # Verify face
+                    import numpy as np
+                    
+                    current_descriptor = check_in_data.face_descriptor.get("descriptor", [])
+                    
+                    if len(current_descriptor) == 128:
+                        # Compare with all registered samples
+                        registered_descriptors = registered_face.get("face_descriptors", [])
+                        
+                        if registered_descriptors:
+                            min_distance = float('inf')
+                            for sample in registered_descriptors:
+                                sample_desc = sample.get("descriptor", [])
+                                if len(sample_desc) == 128:
+                                    # Calculate Euclidean distance
+                                    distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
+                                    min_distance = min(min_distance, distance)
+                            
+                            threshold = 0.6
+                            verified = min_distance < threshold
+                            confidence = max(0, 1 - (min_distance / threshold))
+                            
+                            face_verification_result = {
+                                "verified": verified,
+                                "confidence": round(confidence, 3),
+                                "distance": round(min_distance, 3)
+                            }
+                            
+                            # Log verification attempt
+                            log_data = {
+                                "employee_id": user_id,
+                                "verification_result": "success" if verified else "failure",
+                                "confidence_score": confidence,
+                                "threshold_used": threshold
+                            }
+                            await attendance_db.log_face_verification_attempt(log_data)
+                            
+                            # If facial verification is enforced in settings, reject on failure
+                            if settings.get("enforce_facial_verification", False) and not verified:
+                                raise HTTPException(
+                                    status_code=status.HTTP_403_FORBIDDEN,
+                                    detail=f"Facial verification failed. Confidence: {round(confidence*100, 1)}%"
+                                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Face verification error (non-blocking): {e}")
+                # Don't block check-in if face verification fails (unless enforced)
+                if settings.get("enforce_facial_verification", False):
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Face verification system error"
+                    )
+        
         # Check if already checked in today
         today = date.today().isoformat()
         existing = await attendance_db.get_attendance_detail(user_id, today)
@@ -1985,7 +2047,7 @@ async def check_in_attendance(
         else:
             message = "Checked in successfully"
         
-        return {
+        response = {
             "success": True,
             "message": message,
             "attendance_id": attendance_id,
@@ -2001,6 +2063,12 @@ async def check_in_attendance(
                 "address": check_in_data.geolocation.address
             }
         }
+        
+        # Add face verification result if available
+        if face_verification_result:
+            response["face_verification"] = face_verification_result
+        
+        return response
         
     except HTTPException:
         raise
@@ -3696,4 +3764,380 @@ async def check_out_attendance(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check out: {str(e)}"
+        )
+
+# ============================================================================
+# FACIAL RECOGNITION ENDPOINTS
+# ============================================================================
+
+@router.post("/face/register", response_model=Dict[str, Any])
+async def register_employee_face(
+    registration_data: Dict[str, Any],
+    admin_user_id: str = Query(..., description="Admin user ID registering the face"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """
+    Register employee's face for facial attendance
+    Requires at least 3 face samples for accuracy
+    """
+    try:
+        # Verify admin permissions
+        admin_user = await users_db.get_user(admin_user_id)
+        if not admin_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin user not found"
+            )
+        
+        # Check admin permissions (must be admin or super admin)
+        if not admin_user.get("is_super_admin") and admin_user.get("role_name", "").lower() not in ["admin", "super admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can register employee faces"
+            )
+        
+        # Validate employee
+        employee_id = registration_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+        
+        employee = await users_db.get_user(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found"
+            )
+        
+        # Validate face descriptors
+        face_descriptors = registration_data.get("face_descriptors", [])
+        if len(face_descriptors) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least 3 face samples required for registration"
+            )
+        
+        # Validate each descriptor has 128 dimensions
+        for i, desc in enumerate(face_descriptors):
+            if len(desc.get("descriptor", [])) != 128:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Face descriptor {i+1} must have exactly 128 dimensions"
+                )
+        
+        # Save reference photo if provided
+        photo_data = registration_data.get("photo_data")
+        reference_photo_path = ""
+        if photo_data:
+            # Create face photos directory
+            face_photos_dir = os.path.join(Config.UPLOAD_DIR, "face_photos")
+            os.makedirs(face_photos_dir, exist_ok=True)
+            
+            # Save photo
+            photo_filename = f"{employee_id}_reference_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            photo_path = os.path.join(face_photos_dir, photo_filename)
+            
+            try:
+                # Decode base64 and save
+                if "base64," in photo_data:
+                    photo_data = photo_data.split("base64,")[1]
+                
+                photo_bytes = base64.b64decode(photo_data)
+                with open(photo_path, "wb") as f:
+                    f.write(photo_bytes)
+                
+                reference_photo_path = photo_path
+            except Exception as e:
+                logger.warning(f"Failed to save reference photo: {e}")
+        
+        # Prepare face data for database
+        face_data = {
+            "employee_id": employee_id,
+            "employee_name": employee.get("name", ""),
+            "face_descriptors": face_descriptors,
+            "reference_photo_path": reference_photo_path,
+            "registered_by": admin_user_id
+        }
+        
+        # Register face in database
+        face_id = await attendance_db.register_employee_face(face_data)
+        
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "face_id": face_id,
+            "samples_count": len(face_descriptors),
+            "registered_at": datetime.now().isoformat(),
+            "registered_by": admin_user_id,
+            "message": f"Face registered successfully with {len(face_descriptors)} samples"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error registering face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to register face: {str(e)}"
+        )
+
+
+@router.get("/face/{employee_id}", response_model=Dict[str, Any])
+async def get_employee_face_data(
+    employee_id: str,
+    user_id: str = Query(..., description="Requesting user ID"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get employee's face registration data"""
+    try:
+        # Verify user permissions
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Check if user is requesting their own data or is admin
+        is_own_data = user_id == employee_id
+        is_admin = user.get("is_super_admin") or user.get("role_name", "").lower() in ["admin", "super admin"]
+        
+        if not is_own_data and not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own face data"
+            )
+        
+        # Get face data
+        face_data = await attendance_db.get_employee_face_data(employee_id)
+        
+        if not face_data:
+            employee = await users_db.get_user(employee_id)
+            return {
+                "employee_id": employee_id,
+                "employee_name": employee.get("name", "") if employee else "",
+                "face_registered": False,
+                "samples_count": 0,
+                "registered_at": None,
+                "last_updated": None,
+                "reference_photo_url": None
+            }
+        
+        # Return face data (without descriptors for security)
+        return {
+            "employee_id": face_data["employee_id"],
+            "employee_name": face_data.get("employee_name", ""),
+            "face_registered": True,
+            "samples_count": face_data.get("samples_count", 0),
+            "registered_at": face_data.get("registered_at"),
+            "last_updated": face_data.get("last_updated"),
+            "reference_photo_url": face_data.get("reference_photo_path", "")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting face data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get face data: {str(e)}"
+        )
+
+
+@router.post("/face/verify", response_model=Dict[str, Any])
+async def verify_employee_face(
+    verification_data: Dict[str, Any],
+    attendance_db: AttendanceDB = Depends(get_attendance_db)
+):
+    """
+    Verify employee face during check-in
+    Uses Euclidean distance between face descriptors
+    """
+    try:
+        employee_id = verification_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+        
+        # Get face descriptor to verify
+        face_descriptor = verification_data.get("face_descriptor", {})
+        current_descriptor = face_descriptor.get("descriptor", [])
+        
+        if len(current_descriptor) != 128:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid face descriptor format"
+            )
+        
+        # Get registered face data
+        registered_face = await attendance_db.get_employee_face_data(employee_id)
+        
+        if not registered_face:
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "threshold": 0.6,
+                "employee_id": employee_id,
+                "message": "No face registered for this employee"
+            }
+        
+        # Compare with all registered samples
+        registered_descriptors = registered_face.get("face_descriptors", [])
+        
+        if not registered_descriptors:
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "threshold": 0.6,
+                "employee_id": employee_id,
+                "message": "No face samples found"
+            }
+        
+        # Calculate minimum distance across all samples
+        import numpy as np
+        
+        min_distance = float('inf')
+        for sample in registered_descriptors:
+            sample_desc = sample.get("descriptor", [])
+            if len(sample_desc) == 128:
+                # Calculate Euclidean distance
+                distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
+                min_distance = min(min_distance, distance)
+        
+        # Face-API.js typically uses 0.6 as threshold for Euclidean distance
+        threshold = 0.6
+        verified = min_distance < threshold
+        confidence = max(0, 1 - (min_distance / threshold))  # Convert distance to confidence score
+        
+        # Log verification attempt
+        log_data = {
+            "employee_id": employee_id,
+            "verification_result": "success" if verified else "failure",
+            "confidence_score": confidence,
+            "threshold_used": threshold,
+            "photo_path": verification_data.get("photo_data", "")[:100]  # Store partial for audit
+        }
+        await attendance_db.log_face_verification_attempt(log_data)
+        
+        return {
+            "verified": verified,
+            "confidence": round(confidence, 3),
+            "threshold": threshold,
+            "employee_id": employee_id,
+            "message": "Face verified successfully" if verified else f"Face verification failed (distance: {round(min_distance, 3)})"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify face: {str(e)}"
+        )
+
+
+@router.delete("/face/{employee_id}")
+async def delete_employee_face(
+    employee_id: str,
+    admin_user_id: str = Query(..., description="Admin user ID deleting the face"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Delete employee's face registration"""
+    try:
+        # Verify admin permissions
+        admin_user = await users_db.get_user(admin_user_id)
+        if not admin_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin user not found"
+            )
+        
+        if not admin_user.get("is_super_admin") and admin_user.get("role_name", "").lower() not in ["admin", "super admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can delete employee faces"
+            )
+        
+        # Delete face data
+        success = await attendance_db.delete_employee_face(employee_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Face registration not found"
+            )
+        
+        return {
+            "success": True,
+            "message": "Face registration deleted successfully",
+            "employee_id": employee_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete face: {str(e)}"
+        )
+
+
+@router.get("/face/list/all", response_model=Dict[str, Any])
+async def list_all_registered_faces(
+    user_id: str = Query(..., description="Requesting user ID"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get list of all employees with registered faces (admin only)"""
+    try:
+        # Verify admin permissions
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        if not user.get("is_super_admin") and user.get("role_name", "").lower() not in ["admin", "super admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can view all registered faces"
+            )
+        
+        # Get all registered faces
+        faces = await attendance_db.get_all_registered_faces()
+        
+        # Format response
+        face_list = []
+        for face in faces:
+            face_list.append({
+                "employee_id": face.get("employee_id"),
+                "employee_name": face.get("employee_name", ""),
+                "samples_count": face.get("samples_count", 0),
+                "registered_at": face.get("registered_at"),
+                "last_updated": face.get("last_updated")
+            })
+        
+        return {
+            "success": True,
+            "total_count": len(face_list),
+            "faces": face_list
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing faces: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list faces: {str(e)}"
         )

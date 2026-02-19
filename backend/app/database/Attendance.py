@@ -998,3 +998,121 @@ class AttendanceDB:
         except Exception as e:
             print(f"Error editing attendance: {e}")
             raise
+    # Face Recognition Methods
+    async def register_employee_face(self, face_data: Dict[str, Any]) -> str:
+        """Register employee's face descriptors"""
+        try:
+            face_collection = self.db['employee_faces']
+            
+            # Check if face already registered
+            existing = await face_collection.find_one({"employee_id": face_data["employee_id"]})
+            
+            if existing:
+                # Update existing face data
+                update_data = {
+                    "face_descriptors": face_data["face_descriptors"],
+                    "samples_count": len(face_data["face_descriptors"]),
+                    "reference_photo_path": face_data.get("reference_photo_path"),
+                    "last_updated": datetime.now(),
+                    "updated_by": face_data.get("registered_by")
+                }
+                
+                await face_collection.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": update_data}
+                )
+                return str(existing["_id"])
+            else:
+                # Create new face registration
+                face_doc = {
+                    "employee_id": face_data["employee_id"],
+                    "employee_name": face_data.get("employee_name", ""),
+                    "face_descriptors": face_data["face_descriptors"],
+                    "samples_count": len(face_data["face_descriptors"]),
+                    "reference_photo_path": face_data.get("reference_photo_path"),
+                    "registered_at": datetime.now(),
+                    "registered_by": face_data.get("registered_by"),
+                    "last_updated": datetime.now(),
+                    "is_active": True
+                }
+                
+                result = await face_collection.insert_one(face_doc)
+                return str(result.inserted_id)
+                
+        except Exception as e:
+            print(f"Error registering employee face: {e}")
+            raise
+
+    async def get_employee_face_data(self, employee_id: str) -> Optional[Dict[str, Any]]:
+        """Get employee's registered face descriptors"""
+        try:
+            face_collection = self.db['employee_faces']
+            face_data = await face_collection.find_one({"employee_id": employee_id, "is_active": True})
+            
+            if face_data:
+                face_data["_id"] = str(face_data["_id"])
+                
+            return face_data
+            
+        except Exception as e:
+            print(f"Error getting employee face data: {e}")
+            return None
+
+    async def delete_employee_face(self, employee_id: str) -> bool:
+        """Delete/deactivate employee's face registration"""
+        try:
+            face_collection = self.db['employee_faces']
+            result = await face_collection.update_one(
+                {"employee_id": employee_id},
+                {"$set": {"is_active": False, "deleted_at": datetime.now()}}
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            print(f"Error deleting employee face: {e}")
+            return False
+
+    async def get_all_registered_faces(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Get all employees with registered faces"""
+        try:
+            face_collection = self.db['employee_faces']
+            query = {"is_active": True}
+            
+            if filters:
+                query.update(filters)
+            
+            cursor = face_collection.find(query).sort("registered_at", -1)
+            faces = await self._async_to_list(cursor)
+            
+            for face in faces:
+                face["_id"] = str(face["_id"])
+            
+            return faces
+            
+        except Exception as e:
+            print(f"Error getting registered faces: {e}")
+            return []
+
+    async def log_face_verification_attempt(self, log_data: Dict[str, Any]) -> str:
+        """Log face verification attempts for audit trail"""
+        try:
+            log_collection = self.db['face_verification_logs']
+            
+            log_doc = {
+                "employee_id": log_data["employee_id"],
+                "verification_result": log_data["verification_result"],  # success/failure
+                "confidence_score": log_data.get("confidence_score", 0.0),
+                "threshold_used": log_data.get("threshold_used", 0.6),
+                "photo_path": log_data.get("photo_path"),
+                "timestamp": datetime.now(),
+                "ip_address": log_data.get("ip_address"),
+                "device_info": log_data.get("device_info")
+            }
+            
+            result = await log_collection.insert_one(log_doc)
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            print(f"Error logging face verification: {e}")
+            return ""

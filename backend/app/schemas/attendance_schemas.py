@@ -29,6 +29,7 @@ class AttendanceCheckInRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
     geolocation: GeolocationData = Field(..., description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
+    face_descriptor: Optional[Dict[str, Any]] = Field(None, description="Optional face descriptor for facial verification")
 
 class AttendanceCheckOutRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
@@ -586,3 +587,66 @@ class LeaveConfigDefaults(BaseModel):
     leave_cycle_start_day: int = Field(1, ge=1, le=31, description="Leave cycle start day")
     carry_forward_enabled: bool = Field(False, description="Allow carry forward of unused leaves")
     max_carry_forward: int = Field(5, ge=0, description="Maximum leaves that can be carried forward")
+
+
+# Face Recognition Schemas
+class FaceDescriptor(BaseModel):
+    """Face descriptor data from face-api.js"""
+    descriptor: List[float] = Field(..., min_items=128, max_items=128, description="128-dimensional face descriptor array")
+    detection_score: float = Field(..., ge=0, le=1, description="Face detection confidence score")
+    
+    @validator('descriptor')
+    def validate_descriptor_length(cls, v):
+        if len(v) != 128:
+            raise ValueError('Face descriptor must have exactly 128 dimensions')
+        return v
+
+
+class FaceRegistrationRequest(BaseModel):
+    """Request to register employee's face"""
+    employee_id: str = Field(..., description="Employee user ID")
+    face_descriptors: List[FaceDescriptor] = Field(..., min_items=1, max_items=5, description="Multiple face samples for better accuracy")
+    photo_data: str = Field(..., description="Base64 encoded reference photo")
+    
+    @validator('face_descriptors')
+    def validate_min_descriptors(cls, v):
+        if len(v) < 3:
+            raise ValueError('At least 3 face samples required for registration')
+        return v
+
+
+class FaceRegistrationResponse(BaseModel):
+    """Response after successful face registration"""
+    employee_id: str = Field(..., description="Employee user ID")
+    face_id: str = Field(..., description="Unique face registration ID") 
+    samples_count: int = Field(..., description="Number of face samples stored")
+    registered_at: datetime = Field(..., description="Registration timestamp")
+    registered_by: str = Field(..., description="Admin who registered the face")
+    message: str = Field(..., description="Success message")
+
+
+class FaceVerificationRequest(BaseModel):
+    """Request to verify face during check-in"""
+    employee_id: str = Field(..., description="Employee user ID attempting check-in")
+    face_descriptor: FaceDescriptor = Field(..., description="Face descriptor to verify")
+    photo_data: str = Field(..., description="Base64 encoded photo for audit")
+
+
+class FaceVerificationResponse(BaseModel):
+    """Response after face verification"""
+    verified: bool = Field(..., description="Whether face verification succeeded")
+    confidence: float = Field(..., ge=0, le=1, description="Match confidence score")
+    threshold: float = Field(..., description="Threshold used for verification")
+    employee_id: str = Field(..., description="Verified employee ID")
+    message: str = Field(..., description="Verification result message")
+
+
+class FaceDataResponse(BaseModel):
+    """Employee face registration data"""
+    employee_id: str = Field(..., description="Employee user ID")
+    employee_name: str = Field(..., description="Employee name")
+    face_registered: bool = Field(..., description="Whether face is registered")
+    samples_count: int = Field(0, description="Number of face samples")
+    registered_at: Optional[datetime] = Field(None, description="Registration timestamp")
+    last_updated: Optional[datetime] = Field(None, description="Last update timestamp")
+    reference_photo_url: Optional[str] = Field(None, description="URL to reference photo")
