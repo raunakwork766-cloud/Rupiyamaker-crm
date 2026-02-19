@@ -53,8 +53,6 @@ const LazyChartPage = createLazyComponent(() => import('../components/ChartPage.
 const LazyWarningPage = createLazyComponent(() => import('../components/WarningPage.jsx'), 'WarningPage');
 const LazyPermissionTest = createLazyComponent(() => import('../components/PermissionTest.jsx'), 'PermissionTest');
 const LazyLeadsReport = createLazyComponent(() => import('../components/reports/ComprehensiveReportDark.jsx'), 'ComprehensiveReportDark');
-const LazyHomeLoanUpdates = createLazyComponent(() => import('../components/HomeLoanUpdates.jsx'), 'HomeLoanUpdates');
-const LazyPlAndOddLeads = createLazyComponent(() => import('../components/PlAndOddLeads.jsx'), 'PlAndOddLeads');
 const LazyNotificationsPage = createLazyComponent(() => import('../components/NotificationsPage.jsx'), 'NotificationsPage');
 const LazyNotificationManagementPage = createLazyComponent(() => import('../pages/NotificationManagementPage.jsx'), 'NotificationManagementPage');
 
@@ -555,42 +553,6 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             routeName="Permission Test"
             user={user}
           />
-        } 
-      />
-      <Route 
-        path="/home-loan-updates" 
-        element={
-          <ProtectedRoute 
-            requiredPage="leads" 
-            requiredAction="show"
-            alternativeChecks={[
-              { page: 'Leads', action: 'show' }
-            ]}
-          >
-            <RouteWithSuspense 
-              component={LazyHomeLoanUpdates} 
-              routeName="Home Loan Updates"
-              user={user}
-            />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/pl-and-odd-leads" 
-        element={
-          <ProtectedRoute 
-            requiredPage="leads" 
-            requiredAction="show"
-            alternativeChecks={[
-              { page: 'Leads', action: 'show' }
-            ]}
-          >
-            <RouteWithSuspense 
-              component={LazyPlAndOddLeads} 
-              routeName="PL and ODD Leads"
-              user={user}
-            />
-          </ProtectedRoute>
         } 
       />
       

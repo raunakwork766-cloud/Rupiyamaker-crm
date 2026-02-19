@@ -131,8 +131,6 @@ export const ROUTES = {
   LEAD_CRM: '/lead-crm',
   LEAD_DASHBOARD: '/lead-dashboard',
   CREATE_LEAD: '/create-lead',
-  PL_ODD_LEADS: '/pl-odd-leads',
-  HOME_LOAN_UPDATES: '/home-loan-updates',
   LOGIN_CRM: '/login-crm',
   CHARTS: '/charts',
   APPS: '/apps',
@@ -158,8 +156,6 @@ export const LABEL_TO_ROUTE = {
   'LEAD CRM': ROUTES.LEAD_CRM,  // Adding uppercase variant
   'LEAD Dashboard': ROUTES.LEAD_DASHBOARD,
   'Create LEAD': ROUTES.CREATE_LEAD,
-  'PL & ODD LEADS': ROUTES.PL_ODD_LEADS,
-  'Home Loan Updates': ROUTES.HOME_LOAN_UPDATES,
   'LOGIN Dashboard': ROUTES.LOGIN_CRM,
   'Login CRM': ROUTES.LOGIN_CRM,
   'Charts': ROUTES.CHARTS,
