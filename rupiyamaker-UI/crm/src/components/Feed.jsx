@@ -1606,7 +1606,7 @@ export default function FeedPage({ user }) {
                           <img
                             src={image}
                             alt={`Post image ${index + 1}`}
-                            className={`w-full object-contain rounded-lg ${feed.images.length === 1 ? 'h-60' : 'h-110'}`}
+                            className={`w-full object-cover rounded-lg ${feed.images.length === 1 ? 'h-60' : 'h-110'}`}
                           />
                           {index === 3 && feed.images.length > 4 && (
                             <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center rounded-lg">
@@ -1731,7 +1731,7 @@ export default function FeedPage({ user }) {
                     <img
                       src={selectedPost.images[currentImageIndex]}
                       alt={`Post image ${currentImageIndex + 1}`}
-                      className="w-full h-full object-contain rounded-lg"
+                      className="w-full h-full object-cover rounded-lg"
                     />
                     {selectedPost.images.length > 1 && (
                       <>
