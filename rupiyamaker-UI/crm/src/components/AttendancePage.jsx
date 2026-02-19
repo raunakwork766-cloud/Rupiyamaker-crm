@@ -1319,39 +1319,57 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   }
 
   const handleUpdate = async () => {
-    if (!selectedAttendance || !user?.user_id) return
+    // Validation: Status and comment are mandatory
+    if (!selectedAttendance) {
+      alert('Please select a new attendance status.')
+      return
+    }
+    
+    if (!newComment.trim()) {
+      alert('Comment is mandatory for manual override. Please provide a reason.')
+      return
+    }
+    
+    if (!user?.user_id) {
+      alert('User information not found. Please login again.')
+      return
+    }
     
     setLoading(true)
     try {
-      // Convert status to backend format
-      let statusValue
-      switch (selectedAttendance) {
-        case "P": statusValue = 1; break
-        case "L": statusValue = 0.5; break
-        case "H": statusValue = 0; break
-        case "AB": statusValue = -1; break
-        default: statusValue = -1
-      }
-
+      // Convert status code to numeric value for backend
+      // Present → 1, Half Day → 0.5, Leave/Holiday → 0, Absconding → -1, Issue/Zero → 0
+      let statusValue = getAttendanceCount(selectedAttendance)
+      
       const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
       
       // If we have an attendance record, edit it
       if (attendanceDetail?.id) {
         const editData = {
           status: statusValue,
-          comments: newComment || ''
+          status_code: selectedAttendance, // Store the code
+          comments: newComment.trim(),
+          is_manual_override: true, // Flag for manual override
+          override_by: user.user_id,
+          override_by_name: user.name || user.userName,
+          override_date: new Date().toISOString(),
+          old_status: currentStatus // Store old status for history
         }
         await attendanceAPI.editAttendance(attendanceDetail.id, editData, user.user_id)
       } else {
-        // Create new attendance record
+        // Create new attendance record with manual override
         const attendanceData = {
           employee_id: employee.id,
           date: dateStr,
           status: statusValue,
-          comments: newComment || '',
+          status_code: selectedAttendance,
+          comments: newComment.trim(),
+          is_manual_override: true,
+          override_by: user.user_id,
+          override_by_name: user.name || user.userName,
           check_in_time: null,
           check_out_time: null,
-          is_holiday: false
+          is_holiday: selectedAttendance === 'H'
         }
         await attendanceAPI.markAttendance(attendanceData, user.user_id)
       }
@@ -1361,13 +1379,17 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
         onUpdate(employee.id, selectedDate, selectedAttendance)
       }
       
+      // Clear form
+      setSelectedAttendance("")
+      setNewComment("")
+      
       // Reload detail to get updated data
       await loadAttendanceDetail()
       
-      alert('Attendance updated successfully!')
+      alert(`✅ Attendance updated successfully!\n\nOld Status: ${getStatusText(currentStatus)}\nNew Status: ${getStatusText(selectedAttendance)}\n\nComment: ${newComment.trim()}`)
     } catch (error) {
       console.error('Error updating attendance:', error)
-      alert('Failed to update attendance. Please try again.')
+      alert('❌ Failed to update attendance. Please try again.\n\nError: ' + (error.response?.data?.detail || error.message))
     } finally {
       setLoading(false)
     }
@@ -1656,21 +1678,111 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
             </div>
           )}
 
-          {/* Change Attendance - Only show for attendance records, not leave, and only if user has edit permission */}
+          {/* Manual Override Section - Enhanced with all new features */}
           {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
-            <div className="mt-6">
-              <label className="block text-gray-200 font-semibold mb-2">CHANGE ATTENDANCE:</label>
-              <select
-                value={selectedAttendance}
-                onChange={(e) => setSelectedAttendance(e.target.value)}
-                className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              >
-                <option value="">Select Attendance Status</option>
-                <option value="P">Present</option>
-                <option value="L">Late</option>
-                <option value="H">Holiday</option>
-                <option value="AB">Absconding</option>
-              </select>
+            <div className="mt-6 bg-gradient-to-r from-purple-700/20 to-pink-700/20 border-2 border-purple-500 rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-purple-400 text-2xl">✏️</div>
+                <div>
+                  <h3 className="font-bold text-purple-400 text-lg">MANUAL OVERRIDE BY HR/ADMIN</h3>
+                  <p className="text-gray-300 text-sm">Manually update attendance status. Comment is mandatory.</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {/* Current Status Display */}
+                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Current Status:</span>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(currentStatus)}
+                      <span className="text-gray-200 font-semibold">{getStatusText(currentStatus)}</span>
+                    </div>
+                  </div>
+                  {attendanceDetail?.working_hours && (
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-gray-400">Working Hours:</span>
+                      <span className="text-cyan-400 font-semibold">{attendanceDetail.working_hours} hrs</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* New Status Selection */}
+                <div>
+                  <label className="block text-gray-200 font-semibold mb-2">
+                    SELECT NEW STATUS: <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={selectedAttendance}
+                    onChange={(e) => setSelectedAttendance(e.target.value)}
+                    className="w-full p-3 border-2 border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  >
+                    <option value="">-- Select New Attendance Status --</option>
+                    <optgroup label="✅ Positive Status">
+                      <option value="P">P - Present (Full Day = 1)</option>
+                      <option value="HD">HD - Half Day (0.5)</option>
+                    </optgroup>
+                    <optgroup label="⚠️ Late / Leave">
+                      <option value="L">L - Late (Check working hours)</option>
+                      <option value="LV">LV - Leave Approved (0)</option>
+                      <option value="PL">PL - Pending Leave (0)</option>
+                    </optgroup>
+                    <optgroup label="🔴 Negative Status">
+                      <option value="AB">AB - Absconding (-1)</option>
+                      <option value="ISS">ISS - Issue (Missing Punch)</option>
+                      <option value="Z">Z - Zero (Insufficient Hours)</option>
+                    </optgroup>
+                    <optgroup label="🔵 Holiday">
+                      <option value="H">H - Holiday (0)</option>
+                    </optgroup>
+                  </select>
+                  {selectedAttendance && (
+                    <div className="mt-2 text-sm">
+                      <span className="text-gray-400">Attendance Count: </span>
+                      <span className={`font-bold ${getAttendanceCount(selectedAttendance) >= 1 ? 'text-green-400' : getAttendanceCount(selectedAttendance) === 0.5 ? 'text-yellow-400' : getAttendanceCount(selectedAttendance) < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                        {getAttendanceCount(selectedAttendance)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Mandatory Comment Field */}
+                <div>
+                  <label className="block text-gray-200 font-semibold mb-2">
+                    REASON / COMMENT: <span className="text-red-400">* (Mandatory)</span>
+                  </label>
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Enter reason for manual override (mandatory)..."
+                    rows={3}
+                    className="w-full p-3 border-2 border-gray-600 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    ⚠️ This comment will be saved in history with your name and timestamp.
+                  </p>
+                </div>
+                
+                {/* Validation Warning */}
+                {selectedAttendance && !newComment.trim() && (
+                  <div className="bg-red-900/30 border border-red-500 rounded-lg p-3">
+                    <p className="text-red-400 text-sm font-semibold">⚠️ Comment is mandatory for manual override!</p>
+                  </div>
+                )}
+                
+                {/* Update Button - Disabled if comment empty */}
+                <button 
+                  onClick={handleUpdate} 
+                  disabled={!selectedAttendance || !newComment.trim() || loading}
+                  className={`w-full py-3 rounded-lg font-bold text-white transition-all duration-200 ${
+                    !selectedAttendance || !newComment.trim() || loading
+                      ? 'bg-gray-600 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  {loading ? '⏳ UPDATING...' : '✅ UPDATE ATTENDANCE (MANUAL OVERRIDE)'}
+                </button>
+              </div>
             </div>
           )}
 
