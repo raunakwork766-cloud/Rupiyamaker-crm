@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import * as faceapi from '@vladmandic/face-api';
-import { useAuth } from '../../context/AuthContext';
 
 const FaceRegistration = () => {
-  const { user } = useAuth();
+  const [user, setUser] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -17,6 +16,15 @@ const FaceRegistration = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+
+  // Load user from localStorage
+  useEffect(() => {
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+    }
+  }, []);
 
   // Load face-api.js models
   useEffect(() => {
@@ -42,10 +50,14 @@ const FaceRegistration = () => {
 
   // Load employees list
   useEffect(() => {
-    loadEmployees();
-  }, []);
+    if (user?._id) {
+      loadEmployees();
+    }
+  }, [user]);
 
   const loadEmployees = async () => {
+    if (!user?._id) return;
+    
     try {
       setLoading(true);
       const response = await axios.get(`/api/users/all?user_id=${user._id}`);

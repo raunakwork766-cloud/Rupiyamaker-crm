@@ -3243,3 +3243,6 @@ export default function MonthlyAttendanceTable() {
       />
       </>
       )}
+    </div>
+  )
+}
