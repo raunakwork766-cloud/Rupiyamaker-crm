@@ -2219,4 +2219,4 @@ async def bulk_allocate_leaves(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error in bulk allocation: {str(e)}"
+            detail=f"Error in bulk allocation: {str(e)}"        )
