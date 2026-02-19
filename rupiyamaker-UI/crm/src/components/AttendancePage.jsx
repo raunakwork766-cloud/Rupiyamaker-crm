@@ -1484,8 +1484,211 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
               <p className="text-gray-400 mt-2">Loading attendance details...</p>
             </div>
-          ) : attendanceDetail?.type === 'leave' ? (
-            /* Leave Details Section */
+          ) : (
+            <>
+              {/* Late Punch & Issue Alerts Section */}
+              {attendanceDetail?.type !== 'leave' && (
+                <div className="mb-6 space-y-4">
+                  {/* Late Punch Alert */}
+                  {attendanceDetail?.is_late && (
+                    <div className="bg-gradient-to-r from-yellow-700/20 to-orange-700/20 border-2 border-yellow-500 rounded-lg p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="text-yellow-400 text-3xl">⏰</div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-yellow-400 text-lg mb-2">LATE PUNCH IN DETECTED</h3>
+                          <p className="text-gray-200 mb-3">
+                            {attendanceDetail.late_message || 'You punched in late today.'}
+                          </p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Shift Timing */}
+                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
+                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
+                                <span>🕐</span>
+                                <span>Shift Timing</span>
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Shift Start:</span>
+                                  <span className="text-white font-semibold">10:00 AM</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Deadline:</span>
+                                  <span className="text-orange-400 font-semibold">10:15 AM</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Grace Window:</span>
+                                  <span className="text-teal-400 font-semibold">30 mins</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Your Timing */}
+                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
+                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
+                                <span>📍</span>
+                                <span>Your Timing</span>
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Punch In:</span>
+                                  <span className="text-cyan-400 font-bold">{attendanceDetail.check_in_time || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Late By:</span>
+                                  <span className="text-red-400 font-bold">{attendanceDetail.minutes_late || 0} mins</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Grace Used?</span>
+                                  <span className={`font-bold ${attendanceDetail.grace_applied_today ? 'text-yellow-400' : 'text-gray-400'}`}>
+                                    {attendanceDetail.grace_applied_today ? 'Yes ✓' : 'No'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Impact */}
+                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
+                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
+                                <span>⚠️</span>
+                                <span>Impact</span>
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Status:</span>
+                                  <span className="text-yellow-400 font-bold">Late (L)</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Final Count:</span>
+                                  <span className={`font-bold ${attendanceDetail.grace_applied_today ? 'text-green-400' : 'text-orange-400'}`}>
+                                    {attendanceDetail.grace_applied_today ? 'Full (1)' : 'Based on Hours'}
+                                  </span>
+                                </div>
+                                {!attendanceDetail.grace_applied_today && (
+                                  <div className="text-xs text-orange-300 mt-2">
+                                    ⚠️ Grace limit exhausted! Final status depends on working hours.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 bg-yellow-900/40 border border-yellow-600 rounded p-3">
+                            <h4 className="text-yellow-300 font-bold mb-2">💡 What This Means:</h4>
+                            <ul className="text-gray-200 text-sm space-y-1 list-disc list-inside">
+                              <li>Shift starts at <strong>10:00 AM</strong>, reporting deadline is <strong>10:15 AM</strong></li>
+                              <li>You have a <strong>30-minute grace window</strong> (10:15 - 10:45 AM)</li>
+                              <li>Grace period can be used <strong>maximum 2 times per month</strong></li>
+                              <li>After grace limit, late punch = <strong>Half Day or based on working hours</strong></li>
+                              {attendanceDetail.remaining_hours_possible !== undefined && (
+                                <li>Remaining possible hours: <strong className="text-cyan-400">{attendanceDetail.remaining_hours_possible} hrs</strong></li>
+                              )}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Missing Punch Issue Alert */}
+                  {attendanceDetail?.has_missing_punch && (
+                    <div className="bg-gradient-to-r from-red-700/20 to-pink-700/20 border-2 border-red-500 rounded-lg p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="text-red-400 text-3xl">❌</div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-red-400 text-lg mb-2">ISSUE: MISSING PUNCH</h3>
+                          <p className="text-gray-200 mb-3">
+                            {attendanceDetail.missing_punch_message || 'You have missing punch in/out records.'}
+                          </p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Missing Punch Details */}
+                            <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
+                              <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                                <span>🔍</span>
+                                <span>Missing Records</span>
+                              </h4>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-3">
+                                  <span className={`text-2xl ${attendanceDetail.check_in_time ? '✅' : '❌'}`}></span>
+                                  <div>
+                                    <div className="text-gray-400 text-sm">Check In</div>
+                                    <div className={`font-semibold ${attendanceDetail.check_in_time ? 'text-green-400' : 'text-red-400'}`}>
+                                      {attendanceDetail.check_in_time || 'MISSING'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className={`text-2xl ${attendanceDetail.check_out_time ? '✅' : '❌'}`}></span>
+                                  <div>
+                                    <div className="text-gray-400 text-sm">Check Out</div>
+                                    <div className={`font-semibold ${attendanceDetail.check_out_time ? 'text-green-400' : 'text-red-400'}`}>
+                                      {attendanceDetail.check_out_time || 'MISSING'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Resolution Steps */}
+                            <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
+                              <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                                <span>✏️</span>
+                                <span>How to Fix</span>
+                              </h4>
+                              <div className="space-y-2 text-sm text-gray-200">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-cyan-400 font-bold">1.</span>
+                                  <span>Contact your <strong>Team Leader</strong> or <strong>HR</strong></span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <span className="text-cyan-400 font-bold">2.</span>
+                                  <span>Provide valid reason for missing punch</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <span className="text-cyan-400 font-bold">3.</span>
+                                  <span>HR will manually correct the record</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <span className="text-cyan-400 font-bold">4.</span>
+                                  <span>Until fixed, this day is marked as <strong className="text-red-400">Issue (ISS)</strong></span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 bg-red-900/40 border border-red-600 rounded p-3">
+                            <h4 className="text-red-300 font-bold mb-2">⚠️ Important:</h4>
+                            <p className="text-gray-200 text-sm">
+                              Days with missing punch are marked as <strong className="text-red-400">Issue (ISS = 0 count)</strong>.
+                              If you forgot to punch in/out, apply for <strong>retroactive attendance correction</strong> through your manager.
+                              HR can manually add/correct the punch records if valid reason is provided.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* No Issues - Clean Record */}
+                  {!attendanceDetail?.is_late && !attendanceDetail?.has_missing_punch && attendanceDetail?.check_in_time && (
+                    <div className="bg-gradient-to-r from-green-700/20 to-emerald-700/20 border-2 border-green-500 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="text-green-400 text-2xl">✅</div>
+                        <div>
+                          <h3 className="font-bold text-green-400">On-Time & Complete</h3>
+                          <p className="text-gray-300 text-sm">
+                            Punched in on time at <strong className="text-cyan-400">{attendanceDetail.check_in_time}</strong>. No issues detected.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {attendanceDetail?.type === 'leave' ? (
+                /* Leave Details Section */
             <div className="space-y-6">
               <div className="bg-gradient-to-r from-orange-600 to-yellow-600 text-white p-4 rounded-lg">
                 <h3 className="text-xl font-bold mb-2">🏖️ LEAVE DETAILS</h3>
@@ -1676,6 +1879,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                 </div>
               </div>
             </div>
+          )}
+          </>
           )}
 
           {/* Grace Period Tracking Section */}
