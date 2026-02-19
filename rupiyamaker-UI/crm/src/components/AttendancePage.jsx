@@ -286,42 +286,62 @@ const getStatusBadge = (status) => {
   switch (status) {
     case "P":
       return (
-        <div className="w-8 h-8 bg-green-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-green-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Present">
           P
         </div>
       )
     case "L":
       return (
-        <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Late">
           L
         </div>
       )
     case "LV":
       return (
-        <div className="w-8 h-8 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Leave Approved">
           LV
+        </div>
+      )
+    case "PL":
+      return (
+        <div className="w-8 h-8 bg-white text-black border-2 border-gray-400 rounded flex items-center justify-center text-xs font-bold" title="Pending Leave">
+          PL
         </div>
       )
     case "H":
       return (
-        <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Holiday">
           H
         </div>
       )
     case "HD":
       return (
-        <div className="w-8 h-8 bg-yellow-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-yellow-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Half Day">
           HD
         </div>
       )
     case "AB":
       return (
-        <div className="w-8 h-8 bg-red-500 text-white rounded flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-red-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Absconding">
           AB
         </div>
       )
+    case "ISS":
+    case "ISSUE":
+      return (
+        <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center text-xs font-bold" title="Issue - Missing Punch In/Out">
+          ISS
+        </div>
+      )
+    case "Z":
+    case "ZERO":
+      return (
+        <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center text-xs font-bold" title="Zero - Insufficient Hours">
+          0
+        </div>
+      )
     default:
-      return <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">-</div>
+      return <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400" title="Not Marked">-</div>
   }
 }
 
@@ -332,15 +352,77 @@ const getStatusText = (status) => {
     case "L":
       return "LATE"
     case "LV":
-      return "LEAVE"
+      return "LEAVE APPROVED"
+    case "PL":
+      return "PENDING LEAVE"
     case "H":
       return "HOLIDAY"
     case "HD":
       return "HALF DAY"
     case "AB":
       return "ABSCONDING"
+    case "ISS":
+    case "ISSUE":
+      return "ISSUE - MISSING PUNCH"
+    case "Z":
+    case "ZERO":
+      return "ZERO - INSUFFICIENT HOURS"
     default:
       return "NOT MARKED"
+  }
+}
+
+// Get numeric attendance count for calculation
+// Present → 1, Half Day → 0.5, Leave/Holiday → 0, Absconding → -1, Issue/Zero → 0
+const getAttendanceCount = (status) => {
+  switch (status) {
+    case "P":
+      return 1.0 // Present = Full Day
+    case "HD":
+      return 0.5 // Half Day = 0.5
+    case "AB":
+      return -1.0 // Absconding = -1 (penalty)
+    case "L":
+      return 1.0 // Late but present = 1 (or could be 0.5 based on settings)
+    case "LV":
+    case "H":
+      return 0.0 // Leave and Holiday = 0 (not counted)
+    case "PL":
+      return 0.0 // Pending Leave = 0 (until approved)
+    case "ISS":
+    case "ISSUE":
+    case "Z":
+    case "ZERO":
+      return 0.0 // Issue/Zero = 0
+    default:
+      return 0.0 // Not marked = 0
+  }
+}
+
+// Get color for status (for styling)
+const getStatusColor = (status) => {
+  switch (status) {
+    case "P":
+      return { bg: "#10b981", text: "#ffffff" } // Green
+    case "HD":
+      return { bg: "#eab308", text: "#ffffff" } // Yellow
+    case "LV":
+      return { bg: "#f97316", text: "#ffffff" } // Orange
+    case "PL":
+      return { bg: "#ffffff", text: "#000000", border: "#9ca3af" } // White with border
+    case "H":
+      return { bg: "#3b82f6", text: "#ffffff" } // Blue
+    case "AB":
+      return { bg: "#ef4444", text: "#ffffff" } // Red
+    case "ISS":
+    case "ISSUE":
+    case "Z":
+    case "ZERO":
+      return { bg: "#000000", text: "#ffffff" } // Black
+    case "L":
+      return { bg: "#f59e0b", text: "#ffffff" } // Amber
+    default:
+      return { bg: "#6b7280", text: "#ffffff" } // Gray
   }
 }
 
@@ -508,7 +590,10 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
           <span class="legend-color" style="background: linear-gradient(135deg, #eab308, #f97316);"></span>L = Late
         </div>
         <div class="legend-item">
-          <span class="legend-color" style="background-color: #f97316;"></span>LV = Leave
+          <span class="legend-color" style="background-color: #f97316;"></span>LV = Leave Approved
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background-color: #ffffff; border: 2px solid #9ca3af;"></span>PL = Pending Leave
         </div>
         <div class="legend-item">
           <span class="legend-color" style="background-color: #3b82f6;"></span>H = Holiday
@@ -518,6 +603,12 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
         </div>
         <div class="legend-item">
           <span class="legend-color" style="background-color: #ef4444;"></span>AB = Absconding
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background-color: #000000;"></span>ISS = Issue (Missing Punch)
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background-color: #000000;"></span>0 = Zero (Insufficient Hours)
         </div>
       </div>
       
