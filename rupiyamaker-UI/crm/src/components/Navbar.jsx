@@ -5,8 +5,9 @@ import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
 
-// API base URL - Use proxy in development
+// v2 - attendance without face recognition
 const API_BASE_URL = '/api'; // Always use proxy
+const _BUILD = 'v20260220-2'; // cache bust
 
 // Floating Dropdown Component (for time and user menus)
 const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
@@ -154,7 +155,7 @@ const CameraModal = ({
       <div className="bg-white border border-gray-300 rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-sm sm:max-w-lg relative">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-black text-base sm:text-lg font-semibold">
-            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'} - Take Photo
+            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'} — Capture Photo
           </h3>
           <button
             onClick={closeCameraModal}
