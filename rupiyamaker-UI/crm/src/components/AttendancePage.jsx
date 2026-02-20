@@ -2071,11 +2071,11 @@ export default function MonthlyAttendanceTable() {
                     </div>
                   </th>
                 ))}
-                <th rowSpan={2} className="px-4 py-1 text-center font-bold text-white border border-gray-300 min-w-[140px]" style={{backgroundColor: '#03b0f5'}}>
+                <th colSpan={7} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Summary
                 </th>
               </tr>
-              {/* Row 2: sub-columns for Employee Details */}
+              {/* Row 2: sub-columns for Employee Details + Summary */}
               <tr>
                 <th className="sticky left-0 px-4 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Emp ID
@@ -2086,6 +2086,13 @@ export default function MonthlyAttendanceTable() {
                 <th className="px-4 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Team
                 </th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[60px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Present</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[60px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Leave</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Late</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Half Day</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Holiday</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[75px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Abscond</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[70px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Attend %</th>
               </tr>
             </thead>
             <tbody className="bg-black">
@@ -2115,47 +2122,16 @@ export default function MonthlyAttendanceTable() {
                         {getStatusBadge(record[`day${day}`])}
                       </td>
                     ))}
-                    <td className="px-4 py-3 border border-gray-600">
-                      <div className="text-xs space-y-1">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">Present:</span>
-                          <span className="font-bold text-green-400">{stats.present}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">Late:</span>
-                          <span className="font-bold text-yellow-400">{stats.late}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">Leave:</span>
-                          <span className="font-bold text-orange-400">{stats.leave}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">Half Day:</span>
-                          <span className="font-bold text-cyan-400">{stats.halfDay}</span>
-                        </div>
-                        {stats.holidays > 0 && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300">Holidays:</span>
-                            <span className="font-bold text-blue-400">{stats.holidays}</span>
-                          </div>
-                        )}
-                        {stats.absconding > 0 && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300">Absconding:</span>
-                            <span className="font-bold text-red-400">{stats.absconding}</span>
-                          </div>
-                        )}
-                        <div className="border-t border-gray-600 pt-1 mt-2">
-                          <div className="flex justify-between items-center font-semibold">
-                            <span className="text-gray-300">Attendance:</span>
-                            <span
-                              className={`${Number.parseFloat(stats.attendancePercentage) >= 90 ? "text-green-400" : Number.parseFloat(stats.attendancePercentage) >= 75 ? "text-yellow-400" : "text-red-400"}`}
-                            >
-                              {stats.attendancePercentage}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-400 text-sm">{stats.present}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-400 text-sm">{stats.leave}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-yellow-400 text-sm">{stats.late}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-cyan-400 text-sm">{stats.halfDay}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-blue-400 text-sm">{stats.holidays}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-red-400 text-sm">{stats.absconding}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
+                      <span className={Number.parseFloat(stats.attendancePercentage) >= 90 ? 'text-green-400' : Number.parseFloat(stats.attendancePercentage) >= 75 ? 'text-yellow-400' : 'text-red-400'}>
+                        {stats.attendancePercentage}%
+                      </span>
                     </td>
                   </tr>
                 )
