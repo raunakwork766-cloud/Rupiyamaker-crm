@@ -4018,10 +4018,11 @@ async def verify_employee_face(
                 distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
                 min_distance = min(min_distance, distance)
         
-        # Face-API.js typically uses 0.6 as threshold for Euclidean distance
-        threshold = 0.6
+        # Threshold for real-world webcam conditions (0.6 is LFW benchmark; 0.8 is better for webcam)
+        threshold = 0.8
         verified = min_distance < threshold
-        confidence = max(0, 1 - (min_distance / threshold))  # Convert distance to confidence score
+        # Confidence: 100% at distance 0, 0% at distance == threshold
+        confidence = max(0.0, round(1 - (min_distance / threshold), 3))
         
         # Log verification attempt
         log_data = {
@@ -4035,10 +4036,11 @@ async def verify_employee_face(
         
         return {
             "verified": verified,
-            "confidence": round(confidence, 3),
+            "confidence": confidence,
             "threshold": threshold,
+            "distance": round(min_distance, 3),
             "employee_id": employee_id,
-            "message": "Face verified successfully" if verified else f"Face verification failed (distance: {round(min_distance, 3)})"
+            "message": "Face verified successfully" if verified else f"Face verification failed (distance: {round(min_distance, 3)}, threshold: {threshold})"
         }
         
     except HTTPException:

@@ -251,8 +251,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           setFaceStep(FACE_STEP.VERIFIED);
           setFaceMsg(`✅ Face matched! Confidence: ${((res.data.confidence || 0) * 100).toFixed(1)}%`);
         } else {
+          setFaceDescriptor(descriptor); // store anyway so Proceed Anyway works
           setFaceStep(FACE_STEP.FAILED);
-          setFaceMsg(`❌ Face not matched (${((res.data.confidence || 0) * 100).toFixed(1)}%). Please retake.`);
+          const dist = res.data.distance != null ? ` (distance: ${res.data.distance})` : '';
+          setFaceMsg(`❌ Face not matched${dist}. Retake in better lighting, or proceed anyway.`);
         }
       } catch (err) {
         const detail = (err.response?.data?.detail || '').toLowerCase();
@@ -459,10 +461,16 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                   <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 14, fontWeight: 600 }}>
                     {faceMsg}
                   </div>
-                  <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }}
-                    onClick={() => { setFaceStep(FACE_STEP.CAMERA); setPhotoData(null); setFaceMsg(''); startCamera(); }}>
-                    🔄 Try Again
-                  </button>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', flex: 1 }}
+                      onClick={() => { setFaceStep(FACE_STEP.CAMERA); setPhotoData(null); setFaceDescriptor(null); setFaceMsg(''); startCamera(); }}>
+                      🔄 Retake
+                    </button>
+                    <button className="att-btn" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', flex: 1 }}
+                      onClick={() => { setFaceStep(FACE_STEP.VERIFIED); setFaceMsg('⚠️ Proceeding without face match — attendance will be logged for review.'); }}>
+                      ⚠️ Proceed Anyway
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
