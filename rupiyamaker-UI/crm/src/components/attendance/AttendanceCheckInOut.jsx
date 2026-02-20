@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import * as faceapi from '@vladmandic/face-api';
 
 const API_BASE = '/api';
 
@@ -120,6 +121,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [comments, setComments] = useState('');
   const [successModal, setSuccessModal] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -128,6 +130,25 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Load face-api.js models once on mount
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const MODEL_URL = '/models';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        setModelsLoaded(true);
+        console.log('Face-API models loaded for check-in/out');
+      } catch (err) {
+        console.warn('Face-API models could not be loaded:', err);
+      }
+    };
+    loadModels();
   }, []);
 
   useEffect(() => {
@@ -196,29 +217,57 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     setFaceStep(FACE_STEP.VERIFYING);
     setFaceMsg('🔍 Verifying your face...');
 
-    try {
-      const res = await axios.post(
-        `${API_BASE}/attendance/face/verify`,
-        { photo_data: fullBase64, employee_id: userId },
-        { params: { user_id: userId } }
-      );
-      if (res.data.verified) {
-        setFaceDescriptor(res.data.descriptor || null);
-        setFaceStep(FACE_STEP.VERIFIED);
-        setFaceMsg(`✅ Face matched! Confidence: ${((res.data.confidence || 0) * 100).toFixed(1)}%`);
-      } else {
-        setFaceStep(FACE_STEP.FAILED);
-        setFaceMsg(`❌ Face not matched (${((res.data.confidence || 0) * 100).toFixed(1)}%). Please retake.`);
+    // Compute 128-dim face descriptor using face-api.js (same as FaceRegistration)
+    let descriptor = null;
+    if (modelsLoaded) {
+      try {
+        setFaceMsg('🧠 Analysing facial features...');
+        const detection = await faceapi
+          .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        if (detection) {
+          descriptor = Array.from(detection.descriptor);
+        } else {
+          setFaceStep(FACE_STEP.FAILED);
+          setFaceMsg('❌ No face detected in the photo. Please retake with your face clearly visible.');
+          return;
+        }
+      } catch (faceErr) {
+        console.warn('Face descriptor extraction failed:', faceErr);
       }
-    } catch (err) {
-      const detail = (err.response?.data?.detail || '').toLowerCase();
-      if (err.response?.status === 404 || detail.includes('not registered') || detail.includes('not found') || !err.response) {
-        setFaceStep(FACE_STEP.VERIFIED);
-        setFaceMsg('📷 Photo captured. Proceeding with attendance.');
-      } else {
-        setFaceStep(FACE_STEP.VERIFIED);
-        setFaceMsg('📷 Photo captured. Face verification unavailable — proceeding.');
+    }
+
+    // If we have a descriptor, call the verify endpoint with it
+    if (descriptor) {
+      try {
+        const res = await axios.post(
+          `${API_BASE}/attendance/face/verify`,
+          { face_descriptor: { descriptor }, employee_id: userId },
+          { params: { user_id: userId } }
+        );
+        if (res.data.verified) {
+          setFaceDescriptor(res.data.descriptor || descriptor);
+          setFaceStep(FACE_STEP.VERIFIED);
+          setFaceMsg(`✅ Face matched! Confidence: ${((res.data.confidence || 0) * 100).toFixed(1)}%`);
+        } else {
+          setFaceStep(FACE_STEP.FAILED);
+          setFaceMsg(`❌ Face not matched (${((res.data.confidence || 0) * 100).toFixed(1)}%). Please retake.`);
+        }
+      } catch (err) {
+        const detail = (err.response?.data?.detail || '').toLowerCase();
+        if (err.response?.status === 404 || detail.includes('not registered') || detail.includes('not found')) {
+          setFaceStep(FACE_STEP.VERIFIED);
+          setFaceMsg('📷 Photo captured. Face not registered — proceeding with attendance.');
+        } else {
+          setFaceStep(FACE_STEP.VERIFIED);
+          setFaceMsg('📷 Photo captured. Face verification unavailable — proceeding.');
+        }
       }
+    } else {
+      // Models not loaded — fall back to photo-only mode (no descriptor check)
+      setFaceStep(FACE_STEP.VERIFIED);
+      setFaceMsg('📷 Photo captured. Face analysis unavailable — proceeding.');
     }
   };
 
