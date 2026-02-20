@@ -2058,6 +2058,24 @@ export default function MonthlyAttendanceTable() {
           >
             <table className="w-full bg-black border-collapse border border-gray-700" style={{ minWidth: '1200px' }}>
             <thead style={{backgroundColor: '#03b0f5'}}>
+              {/* Row 1: main headers */}
+              <tr>
+                <th colSpan={3} className="sticky left-0 px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                  Employee Details
+                </th>
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
+                  <th key={day} rowSpan={2} className="px-3 py-1 text-center font-bold text-white min-w-[50px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                    <div className="flex flex-col items-center">
+                      <span className="text-sm font-bold">{day}</span>
+                      <span className="text-xs text-blue-100 opacity-80">{getDayName(selectedYear, selectedMonth, day)}</span>
+                    </div>
+                  </th>
+                ))}
+                <th rowSpan={2} className="px-4 py-1 text-center font-bold text-white border border-gray-300 min-w-[140px]" style={{backgroundColor: '#03b0f5'}}>
+                  Summary
+                </th>
+              </tr>
+              {/* Row 2: sub-columns for Employee Details */}
               <tr>
                 <th className="sticky left-0 px-4 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Emp ID
@@ -2067,17 +2085,6 @@ export default function MonthlyAttendanceTable() {
                 </th>
                 <th className="px-4 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Team
-                </th>
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
-                  <th key={day} className="px-3 py-1 text-center font-bold text-white min-w-[50px] border border-gray-300">
-                    <div className="flex flex-col items-center">
-                      <span className="text-sm font-bold">{day}</span>
-                      <span className="text-xs text-blue-100 opacity-80">{getDayName(selectedYear, selectedMonth, day)}</span>
-                    </div>
-                  </th>
-                ))}
-                <th className="px-4 py-1 text-center font-bold text-white border border-gray-300 min-w-[140px]">
-                  Summary
                 </th>
               </tr>
             </thead>
