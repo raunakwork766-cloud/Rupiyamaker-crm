@@ -2177,22 +2177,32 @@ export default function MonthlyAttendanceTable() {
                         {stats.attendancePercentage}%
                       </span>
                     </td>
-                    {/* Earned Leave */}
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-300 text-sm">{record.earnedLeavesTotal ?? 15}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{record.earnedLeavesUsed ?? 0}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
-                      <span className={(record.earnedLeavesRemaining ?? 15) > 5 ? 'text-green-400' : (record.earnedLeavesRemaining ?? 15) > 0 ? 'text-yellow-400' : 'text-red-400'}>
-                        {record.earnedLeavesRemaining ?? 15}
-                      </span>
-                    </td>
-                    {/* Grace */}
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-purple-300 text-sm">{record.graceTotal ?? 24}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{record.graceUsed ?? 0}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
-                      <span className={(record.graceRemaining ?? 24) > 5 ? 'text-purple-400' : (record.graceRemaining ?? 24) > 0 ? 'text-yellow-400' : 'text-red-400'}>
-                        {record.graceRemaining ?? 24}
-                      </span>
-                    </td>
+                    {/* Earned Leave - monthly: annual/12, used = LV days this month */}
+                    {(() => {
+                      const elMonthly = Math.round((record.earnedLeavesTotal ?? 15) / 12) || 1
+                      const elUsed = stats.leave
+                      const elRemaining = Math.max(0, elMonthly - elUsed)
+                      return (<>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-300 text-sm">{elMonthly}</td>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{elUsed}</td>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
+                          <span className={elRemaining > 0 ? 'text-green-400' : 'text-red-400'}>{elRemaining}</span>
+                        </td>
+                      </>)
+                    })()}
+                    {/* Grace - monthly: annual/12, used = Late (L) days this month */}
+                    {(() => {
+                      const graceMonthly = Math.round((record.graceTotal ?? 24) / 12) || 2
+                      const graceUsed = stats.late
+                      const graceRemaining = Math.max(0, graceMonthly - graceUsed)
+                      return (<>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-purple-300 text-sm">{graceMonthly}</td>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{graceUsed}</td>
+                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
+                          <span className={graceRemaining > 0 ? 'text-purple-400' : 'text-red-400'}>{graceRemaining}</span>
+                        </td>
+                      </>)
+                    })()}
                   </tr>
                 )
               })}
