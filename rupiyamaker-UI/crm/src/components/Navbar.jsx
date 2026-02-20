@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff } from "lucide-react";
+import * as faceapi from '@vladmandic/face-api';
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
@@ -192,7 +193,7 @@ const CameraModal = ({
           )}
           {capturedPhoto && faceVerifyState === 'failed' && (
             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#dc2626', fontSize: '14px', fontWeight: 600 }}>
-              ❌ Face not recognized. Please retake photo.
+              ❌ Face not recognized. Retake in better lighting or proceed anyway.
             </div>
           )}
 
@@ -229,13 +230,22 @@ const CameraModal = ({
                 >
                   🔄 Retake
                 </button>
-                {faceVerifyState === 'verified' && (
+                {(faceVerifyState === 'verified' || faceVerifyState === 'failed') && (
                   <button
                     onClick={confirmPhoto}
-                    disabled={attendanceLoading}
-                    className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    disabled={attendanceLoading || faceVerifyState === 'verifying'}
+                    className={`flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base text-white rounded-lg transition-colors disabled:opacity-50 ${
+                      faceVerifyState === 'verified'
+                        ? 'bg-green-600 hover:bg-green-700'
+                        : 'bg-orange-500 hover:bg-orange-600'
+                    }`}
                   >
-                    {attendanceLoading ? '⏳ Marking...' : `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`}
+                    {attendanceLoading
+                      ? '⏳ Marking...'
+                      : faceVerifyState === 'verified'
+                        ? `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`
+                        : `⚠️ Proceed Anyway`
+                    }
                   </button>
                 )}
               </>
@@ -265,6 +275,8 @@ export default function TopNavbar({
   const [cameraStream, setCameraStream] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [faceVerifyState, setFaceVerifyState] = useState('idle'); // idle | verifying | verified | failed
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+  const [pendingDescriptor, setPendingDescriptor] = useState(null); // descriptor for failed-but-proceed
   const [successModal, setSuccessModal] = useState(null); // null | { type, title, message }
   const [userProfilePhoto, setUserProfilePhoto] = useState(null);
   const [profilePhotoError, setProfilePhotoError] = useState(false);
@@ -1032,32 +1044,77 @@ export default function TopNavbar({
     }
   };
 
+  // Load face-api models once
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const MODEL_URL = '/models';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        setFaceModelsLoaded(true);
+      } catch (err) {
+        console.warn('Face-API models failed to load:', err);
+      }
+    };
+    loadModels();
+  }, []);
+
   const verifyFace = async (photoDataUrl) => {
     setFaceVerifyState('verifying');
+    setPendingDescriptor(null);
     try {
       const userId = getUserId();
       if (!userId) {
-        setFaceVerifyState('verified'); // No user ID, skip face verify
+        setFaceVerifyState('verified');
         return;
       }
-      const base64Data = photoDataUrl.split(',')[1];
-      const response = await fetch(`${API_BASE_URL}/attendance/face/verify`, {
+
+      // Compute 128-dim descriptor from the canvas
+      let descriptor = null;
+      if (faceModelsLoaded && canvasRef.current) {
+        try {
+          const detection = await faceapi
+            .detectSingleFace(canvasRef.current, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+          if (detection) {
+            descriptor = Array.from(detection.descriptor);
+          } else {
+            // No face detected in photo
+            setFaceVerifyState('failed');
+            return;
+          }
+        } catch (faceErr) {
+          console.warn('Face descriptor extraction failed:', faceErr);
+        }
+      }
+
+      if (!descriptor) {
+        // Models not loaded yet — skip verification and proceed
+        setFaceVerifyState('verified');
+        return;
+      }
+
+      setPendingDescriptor(descriptor);
+
+      const response = await fetch(`${API_BASE_URL}/attendance/face/verify?user_id=${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, photo_data: base64Data }),
+        body: JSON.stringify({ face_descriptor: { descriptor }, employee_id: userId }),
       });
       const data = await response.json();
-      if (response.ok && (data.verified === true || data.match === true || data.success === true)) {
+      if (response.ok && data.verified === true) {
         setFaceVerifyState('verified');
-      } else if (response.status === 404 || (data.detail && data.detail.includes('No face'))) {
-        // No face registered for this user - allow check-in anyway
+      } else if (response.status === 404 || (data.detail && (data.detail.includes('No face') || data.detail.includes('not registered')))) {
         setFaceVerifyState('verified');
       } else {
         setFaceVerifyState('failed');
       }
     } catch (error) {
       console.warn('Face verify error (allowing check-in):', error);
-      // Network error - allow check-in anyway
       setFaceVerifyState('verified');
     }
   };
@@ -1065,6 +1122,7 @@ export default function TopNavbar({
   const retakePhoto = () => {
     setCapturedPhoto(null);
     setFaceVerifyState('idle');
+    setPendingDescriptor(null);
   };
 
   const closeCameraModal = () => {
