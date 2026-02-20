@@ -198,7 +198,7 @@ export const hrmsService = {
 
         try {
             // Use the working /users/employees endpoint that supports all fields
-            const response = await api.post(`/users/employees/?user_id=${userId}`, employeeData);
+            const response = await api.post(`/users/employees?user_id=${userId}`, employeeData);
             return {
                 data: response,
                 success: true
