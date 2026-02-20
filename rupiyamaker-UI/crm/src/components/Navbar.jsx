@@ -147,7 +147,6 @@ const CameraModal = ({
   retakePhoto,
   confirmPhoto,
   attendanceLoading,
-  faceVerifyState,
 }) => {
   if (!showCamera) return null;
 
@@ -180,23 +179,6 @@ const CameraModal = ({
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
 
-          {/* Face Verify Status */}
-          {capturedPhoto && faceVerifyState === 'verifying' && (
-            <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#1d4ed8', fontSize: '14px', fontWeight: 500 }}>
-              🔍 Verifying your face... please wait
-            </div>
-          )}
-          {capturedPhoto && faceVerifyState === 'verified' && (
-            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#15803d', fontSize: '14px', fontWeight: 600 }}>
-              ✅ Face verified! You can mark your attendance.
-            </div>
-          )}
-          {capturedPhoto && faceVerifyState === 'failed' && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#dc2626', fontSize: '14px', fontWeight: 600 }}>
-              ❌ Face not recognized. Retake in better lighting or proceed anyway.
-            </div>
-          )}
-
           <div className="flex gap-2 sm:gap-3">
             {!capturedPhoto ? (
               <>
@@ -218,36 +200,21 @@ const CameraModal = ({
             ) : (
               <>
                 <button
-                  onClick={closeCameraModal}
-                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
                   onClick={retakePhoto}
-                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
-                  disabled={faceVerifyState === 'verifying'}
+                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-colors"
                 >
                   🔄 Retake
                 </button>
-                {(faceVerifyState === 'verified' || faceVerifyState === 'failed') && (
-                  <button
-                    onClick={confirmPhoto}
-                    disabled={attendanceLoading || faceVerifyState === 'verifying'}
-                    className={`flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base text-white rounded-lg transition-colors disabled:opacity-50 ${
-                      faceVerifyState === 'verified'
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-orange-500 hover:bg-orange-600'
-                    }`}
-                  >
-                    {attendanceLoading
-                      ? '⏳ Marking...'
-                      : faceVerifyState === 'verified'
-                        ? `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`
-                        : `⚠️ Proceed Anyway`
-                    }
-                  </button>
-                )}
+                <button
+                  onClick={confirmPhoto}
+                  disabled={attendanceLoading}
+                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {attendanceLoading
+                    ? '⏳ Marking...'
+                    : `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`
+                  }
+                </button>
               </>
             )}
           </div>
@@ -1036,8 +1003,8 @@ export default function TopNavbar({
       context.drawImage(video, 0, 0);
       const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedPhoto(photoDataUrl);
-      // Auto-verify face after capture
-      verifyFace(photoDataUrl);
+      // Stop camera stream after capture
+      stopCamera();
     } else {
       console.error('Video or canvas not available');
       alert('Error capturing photo. Please try again.');
@@ -1130,6 +1097,8 @@ export default function TopNavbar({
     setCapturedPhoto(null);
     setFaceVerifyState('idle');
     setPendingDescriptor(null);
+    // Restart camera
+    startCamera();
   };
 
   const closeCameraModal = () => {
@@ -1614,7 +1583,6 @@ export default function TopNavbar({
         retakePhoto={retakePhoto}
         confirmPhoto={confirmPhoto}
         attendanceLoading={attendanceLoading}
-        faceVerifyState={faceVerifyState}
       />
 
       <SuccessModal
