@@ -1892,9 +1892,14 @@ export default function MonthlyAttendanceTable() {
   }
 
   const handleUpdateAttendance = (employeeId, day, newStatus) => {
-    setAttendanceData((prevData) =>
-      prevData.map((employee) => (employee.id === employeeId ? { ...employee, [`day${day}`]: newStatus } : employee)),
-    )
+    setAttendanceData((prevData) => {
+      // Update the specific day
+      const updated = prevData.map((employee) =>
+        employee.id === employeeId ? { ...employee, [`day${day}`]: newStatus } : employee
+      )
+      // Re-apply adjacency/sandwich rules so e.g. Saturday AB → Sunday AB immediately
+      return applyAttendanceRules(updated, attendanceSettings, selectedYear, selectedMonth)
+    })
   }
 
   const handleUpdateHolidays = async (newHolidays) => {
