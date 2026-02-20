@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, Users2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2 } from "lucide-react"
 import axios from "axios"
 import { formatDateTime } from '../utils/dateUtils';
 // import jsPDF from "jspdf"
@@ -286,62 +286,42 @@ const getStatusBadge = (status) => {
   switch (status) {
     case "P":
       return (
-        <div className="w-8 h-8 bg-green-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Present">
+        <div className="w-8 h-8 bg-green-500 text-white rounded flex items-center justify-center text-xs font-bold">
           P
         </div>
       )
     case "L":
       return (
-        <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Late">
+        <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
           L
         </div>
       )
     case "LV":
       return (
-        <div className="w-8 h-8 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Leave Approved">
+        <div className="w-8 h-8 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
           LV
-        </div>
-      )
-    case "PL":
-      return (
-        <div className="w-8 h-8 bg-white text-black border-2 border-gray-400 rounded flex items-center justify-center text-xs font-bold" title="Pending Leave">
-          PL
         </div>
       )
     case "H":
       return (
-        <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Holiday">
+        <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center text-xs font-bold">
           H
         </div>
       )
     case "HD":
       return (
-        <div className="w-8 h-8 bg-yellow-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Half Day">
+        <div className="w-8 h-8 bg-yellow-500 text-white rounded flex items-center justify-center text-xs font-bold">
           HD
         </div>
       )
     case "AB":
       return (
-        <div className="w-8 h-8 bg-red-500 text-white rounded flex items-center justify-center text-xs font-bold" title="Absconding">
+        <div className="w-8 h-8 bg-red-500 text-white rounded flex items-center justify-center text-xs font-bold">
           AB
         </div>
       )
-    case "ISS":
-    case "ISSUE":
-      return (
-        <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center text-xs font-bold" title="Issue - Missing Punch In/Out">
-          ISS
-        </div>
-      )
-    case "Z":
-    case "ZERO":
-      return (
-        <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center text-xs font-bold" title="Zero - Insufficient Hours">
-          0
-        </div>
-      )
     default:
-      return <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400" title="Not Marked">-</div>
+      return <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">-</div>
   }
 }
 
@@ -352,367 +332,17 @@ const getStatusText = (status) => {
     case "L":
       return "LATE"
     case "LV":
-      return "LEAVE APPROVED"
-    case "PL":
-      return "PENDING LEAVE"
+      return "LEAVE"
     case "H":
       return "HOLIDAY"
     case "HD":
       return "HALF DAY"
     case "AB":
       return "ABSCONDING"
-    case "ISS":
-    case "ISSUE":
-      return "ISSUE - MISSING PUNCH"
-    case "Z":
-    case "ZERO":
-      return "ZERO - INSUFFICIENT HOURS"
     default:
       return "NOT MARKED"
   }
 }
-
-// Get numeric attendance count for calculation
-// Present → 1, Half Day → 0.5, Leave/Holiday → 0, Absconding → -1, Issue/Zero → 0
-const getAttendanceCount = (status) => {
-  switch (status) {
-    case "P":
-      return 1.0 // Present = Full Day
-    case "HD":
-      return 0.5 // Half Day = 0.5
-    case "AB":
-      return -1.0 // Absconding = -1 (penalty)
-    case "L":
-      return 1.0 // Late but present = 1 (or could be 0.5 based on settings)
-    case "LV":
-    case "H":
-      return 0.0 // Leave and Holiday = 0 (not counted)
-    case "PL":
-      return 0.0 // Pending Leave = 0 (until approved)
-    case "ISS":
-    case "ISSUE":
-    case "Z":
-    case "ZERO":
-      return 0.0 // Issue/Zero = 0
-    default:
-      return 0.0 // Not marked = 0
-  }
-}
-
-// Get color for status (for styling)
-const getStatusColor = (status) => {
-  switch (status) {
-    case "P":
-      return { bg: "#10b981", text: "#ffffff" } // Green
-    case "HD":
-      return { bg: "#eab308", text: "#ffffff" } // Yellow
-    case "LV":
-      return { bg: "#f97316", text: "#ffffff" } // Orange
-    case "PL":
-      return { bg: "#ffffff", text: "#000000", border: "#9ca3af" } // White with border
-    case "H":
-      return { bg: "#3b82f6", text: "#ffffff" } // Blue
-    case "AB":
-      return { bg: "#ef4444", text: "#ffffff" } // Red
-    case "ISS":
-    case "ISSUE":
-    case "Z":
-    case "ZERO":
-      return { bg: "#000000", text: "#ffffff" } // Black
-    case "L":
-      return { bg: "#f59e0b", text: "#ffffff" } // Amber
-    default:
-      return { bg: "#6b7280", text: "#ffffff" } // Gray
-  }
-}
-
-// ============================================
-// ATTENDANCE CALCULATION LOGIC (Based on Requirements)
-// ============================================
-
-/**
- * Parse time string (HH:MM) to minutes since midnight
- * @param {string} timeStr - Time in "HH:MM" format
- * @returns {number} - Minutes since midnight
- */
-const parseTimeToMinutes = (timeStr) => {
-  if (!timeStr) return 0;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  return (hours * 60) + minutes;
-};
-
-/**
- * Calculate time difference in hours
- * @param {string} startTime - Start time in "HH:MM" format
- * @param {string} endTime - End time in "HH:MM" format
- * @returns {number} - Hours difference
- */
-const calculateHoursDifference = (startTime, endTime) => {
-  if (!startTime || !endTime) return 0;
-  const startMinutes = parseTimeToMinutes(startTime);
-  const endMinutes = parseTimeToMinutes(endTime);
-  return (endMinutes - startMinutes) / 60;
-};
-
-/**
- * Check if punch in is within grace period
- * @param {string} punchInTime - Actual punch in time
- * @param {string} reportingDeadline - Deadline time
- * @param {number} graceMinutes - Grace period in minutes
- * @param {number} graceUsedThisMonth - How many times grace used this month
- * @param {number} graceLimit - Maximum grace usage per month
- * @returns {object} - { isWithinGrace, graceUsed }
- */
-const checkGracePeriod = (punchInTime, reportingDeadline, graceMinutes, graceUsedThisMonth, graceLimit) => {
-  if (!punchInTime || !reportingDeadline) {
-    return { isWithinGrace: false, graceUsed: false };
-  }
-  
-  const punchInMinutes = parseTimeToMinutes(punchInTime);
-  const deadlineMinutes = parseTimeToMinutes(reportingDeadline);
-  const graceEndMinutes = deadlineMinutes + graceMinutes;
-  
-  // Check if punch in is after deadline but within grace period
-  const isLate = punchInMinutes > deadlineMinutes;
-  const isWithinGracePeriod = punchInMinutes <= graceEndMinutes;
-  const hasGraceAvailable = graceUsedThisMonth < graceLimit;
-  
-  const isWithinGrace = isLate && isWithinGracePeriod && hasGraceAvailable;
-  
-  return {
-    isWithinGrace,
-    graceUsed: isWithinGrace,
-    minutesLate: Math.max(0, punchInMinutes - deadlineMinutes)
-  };
-};
-
-/**
- * Calculate final attendance status based on all rules
- * @param {object} attendanceData - Attendance data
- * @param {object} settings - Attendance settings
- * @returns {object} - { status, count, reason }
- */
-const calculateAttendanceStatus = (attendanceData, settings) => {
-  const {
-    punch_in,
-    punch_out,
-    working_hours = 0,
-    is_holiday = false,
-    leave_status = null,
-    is_weekend = false,
-    grace_used_this_month = 0
-  } = attendanceData;
-  
-  const {
-    reporting_deadline = '10:15',
-    full_day_working_hours = 9.0,
-    half_day_minimum_working_hours = 5.0,
-    grace_period_minutes = 30,
-    grace_usage_limit = 2
-  } = settings;
-  
-  // Rule 0: Holiday
-  if (is_holiday) {
-    return { status: 'H', count: 0, reason: 'Holiday' };
-  }
-  
-  // Rule 1: Weekend
-  if (is_weekend) {
-    return { status: 'H', count: 0, reason: 'Weekend' };
-  }
-  
-  // Rule 2: Leave Status
-  if (leave_status === 'approved') {
-    return { status: 'LV', count: 0, reason: 'Leave Approved' };
-  }
-  if (leave_status === 'pending') {
-    return { status: 'PL', count: 0, reason: 'Leave Pending Approval' };
-  }
-  if (leave_status === 'absconding') {
-    return { status: 'AB', count: -1, reason: 'Absconding (Unapproved Leave > 3 days)' };
-  }
-  
-  // Rule 3: Missing Punch In or Punch Out = Issue
-  if (!punch_in || !punch_out) {
-    return { 
-      status: 'ISS', 
-      count: 0, 
-      reason: !punch_in ? 'Missing Punch In' : 'Missing Punch Out' 
-    };
-  }
-  
-  // Rule 4: Working Hours Logic (Main Calculation)
-  // This is the PRIMARY rule that determines status
-  
-  if (working_hours >= full_day_working_hours) {
-    // Full Day: Working hours >= 9 hours
-    return { status: 'P', count: 1, reason: `Full Day (${working_hours.toFixed(1)} hrs)` };
-  }
-  
-  if (working_hours >= half_day_minimum_working_hours) {
-    // Half Day: Working hours >= 5 hrs but < 9 hrs
-    return { status: 'HD', count: 0.5, reason: `Half Day (${working_hours.toFixed(1)} hrs)` };
-  }
-  
-  // Zero: Working hours < 5 hrs
-  return { status: 'Z', count: 0, reason: `Insufficient Hours (${working_hours.toFixed(1)} hrs)` };
-};
-
-/**
- * Determine punch in status (for display purposes)
- * This checks if punch in was late and whether grace was applied
- */
-const getPunchInStatus = (punchInTime, reportingDeadline, graceMinutes, graceUsedThisMonth, graceLimit) => {
-  if (!punchInTime) return { isLate: false, gracedApplied: false, message: 'Not Punched In' };
-  
-  const punchInMinutes = parseTimeToMinutes(punchInTime);
-  const deadlineMinutes = parseTimeToMinutes(reportingDeadline);
-  
-  if (punchInMinutes <= deadlineMinutes) {
-    return { 
-      isLate: false, 
-      graceApplied: false, 
-      message: 'On Time',
-      minutesEarly: deadlineMinutes - punchInMinutes
-    };
-  }
-  
-  // Check grace period
-  const graceResult = checkGracePeriod(
-    punchInTime, 
-    reportingDeadline, 
-    graceMinutes, 
-    graceUsedThisMonth, 
-    graceLimit
-  );
-  
-  if (graceResult.isWithinGrace) {
-    return {
-      isLate: true,
-      graceApplied: true,
-      message: `Late but grace applied (${graceResult.minutesLate} mins)`,
-      minutesLate: graceResult.minutesLate
-    };
-  }
-  
-  return {
-    isLate: true,
-    graceApplied: false,
-    message: `Late (${punchInMinutes - deadlineMinutes} mins)`,
-    minutesLate: punchInMinutes - deadlineMinutes
-  };
-};
-
-/**
- * Check if remaining working hours are possible after late punch in
- * @param {string} punchInTime - Actual punch in time
- * @param {string} shiftEndTime - Official shift end time
- * @param {number} requiredHours - Required working hours
- * @returns {object} - { isPossible, remainingHours, message }
- */
-const checkRemainingHoursPossible = (punchInTime, shiftEndTime, requiredHours) => {
-  if (!punchInTime || !shiftEndTime) {
-    return { isPossible: false, remainingHours: 0, message: 'Invalid time' };
-  }
-  
-  const remainingHours = calculateHoursDifference(punchInTime, shiftEndTime);
-  const isPossible = remainingHours >= requiredHours;
-  
-  return {
-    isPossible,
-    remainingHours: remainingHours.toFixed(1),
-    message: isPossible 
-      ? `${remainingHours.toFixed(1)} hrs possible` 
-      : `Only ${remainingHours.toFixed(1)} hrs possible (need ${requiredHours})`
-  };
-};
-
-/**
- * Apply Sunday and Sandwich Rules
- * Rule: If Saturday OR Monday is Absconding/Unapproved, Sunday = Zero
- * Rule: If working days < 5 in week, Sunday = Zero
- * @param {object} weekData - Attendance data for the week
- * @param {object} settings - Attendance settings
- * @returns {object} - { shouldApplySundayPenalty, reason }
- */
-const checkSundaySandwichRule = (weekData, settings) => {
-  const {
-    saturday_status,
-    monday_status,
-    working_days_in_week = 0,
-    sunday_penalty_applied = false
-  } = weekData;
-  
-  const {
-    enable_sunday_sandwich_rule = true,
-    minimum_working_days_for_sunday = 5
-  } = settings;
-  
-  // If rule is disabled, no penalty
-  if (!enable_sunday_sandwich_rule) {
-    return { shouldApplySundayPenalty: false, reason: 'Sunday sandwich rule disabled' };
-  }
-  
-  // If penalty already applied, don't apply again
-  if (sunday_penalty_applied) {
-    return { shouldApplySundayPenalty: false, reason: 'Penalty already applied' };
-  }
-  
-  // Check Saturday/Monday absconding or unapproved leave
-  const isSaturdayAbsconding = ['AB', 'PL'].includes(saturday_status);
-  const isMondayAbsconding = ['AB', 'PL'].includes(monday_status);
-  
-  if (isSaturdayAbsconding || isMondayAbsconding) {
-    return {
-      shouldApplySundayPenalty: true,
-      reason: `${isSaturdayAbsconding ? 'Saturday' : 'Monday'} absconding/unapproved`
-    };
-  }
-  
-  // Check working days in week
-  if (working_days_in_week < minimum_working_days_for_sunday) {
-    return {
-      shouldApplySundayPenalty: true,
-      reason: `Only ${working_days_in_week} working days (need ${minimum_working_days_for_sunday})`
-    };
-  }
-  
-  return { shouldApplySundayPenalty: false, reason: 'No penalty conditions met' };
-};
-
-/**
- * Auto-convert pending leave to absconding after X days
- * @param {object} leaveData - Leave application data
- * @param {object} settings - Attendance settings
- * @returns {object} - { shouldConvert, reason }
- */
-const checkLeaveAutoConversion = (leaveData, settings) => {
-  const {
-    leave_application_date,
-    leave_status,
-    days_pending
-  } = leaveData;
-  
-  const {
-    pending_leave_auto_convert_days = 3
-  } = settings;
-  
-  // Only convert if status is pending
-  if (leave_status !== 'pending') {
-    return { shouldConvert: false, reason: 'Status is not pending' };
-  }
-  
-  // Check if days exceeded
-  if (days_pending >= pending_leave_auto_convert_days) {
-    return {
-      shouldConvert: true,
-      reason: `Pending for ${days_pending} days (limit ${pending_leave_auto_convert_days})`,
-      newStatus: 'absconding'
-    };
-  }
-  
-  return { shouldConvert: false, reason: 'Within time limit' };
-};
 
 const getDayName = (year, month, day) => {
   const date = new Date(year, month - 1, day)
@@ -878,10 +508,7 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
           <span class="legend-color" style="background: linear-gradient(135deg, #eab308, #f97316);"></span>L = Late
         </div>
         <div class="legend-item">
-          <span class="legend-color" style="background-color: #f97316;"></span>LV = Leave Approved
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #ffffff; border: 2px solid #9ca3af;"></span>PL = Pending Leave
+          <span class="legend-color" style="background-color: #f97316;"></span>LV = Leave
         </div>
         <div class="legend-item">
           <span class="legend-color" style="background-color: #3b82f6;"></span>H = Holiday
@@ -891,12 +518,6 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
         </div>
         <div class="legend-item">
           <span class="legend-color" style="background-color: #ef4444;"></span>AB = Absconding
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #000000;"></span>ISS = Issue (Missing Punch)
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #000000;"></span>0 = Zero (Insufficient Hours)
         </div>
       </div>
       
@@ -1319,57 +940,39 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   }
 
   const handleUpdate = async () => {
-    // Validation: Status and comment are mandatory
-    if (!selectedAttendance) {
-      alert('Please select a new attendance status.')
-      return
-    }
-    
-    if (!newComment.trim()) {
-      alert('Comment is mandatory for manual override. Please provide a reason.')
-      return
-    }
-    
-    if (!user?.user_id) {
-      alert('User information not found. Please login again.')
-      return
-    }
+    if (!selectedAttendance || !user?.user_id) return
     
     setLoading(true)
     try {
-      // Convert status code to numeric value for backend
-      // Present → 1, Half Day → 0.5, Leave/Holiday → 0, Absconding → -1, Issue/Zero → 0
-      let statusValue = getAttendanceCount(selectedAttendance)
-      
+      // Convert status to backend format
+      let statusValue
+      switch (selectedAttendance) {
+        case "P": statusValue = 1; break
+        case "L": statusValue = 0.5; break
+        case "H": statusValue = 0; break
+        case "AB": statusValue = -1; break
+        default: statusValue = -1
+      }
+
       const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
       
       // If we have an attendance record, edit it
       if (attendanceDetail?.id) {
         const editData = {
           status: statusValue,
-          status_code: selectedAttendance, // Store the code
-          comments: newComment.trim(),
-          is_manual_override: true, // Flag for manual override
-          override_by: user.user_id,
-          override_by_name: user.name || user.userName,
-          override_date: new Date().toISOString(),
-          old_status: currentStatus // Store old status for history
+          comments: newComment || ''
         }
         await attendanceAPI.editAttendance(attendanceDetail.id, editData, user.user_id)
       } else {
-        // Create new attendance record with manual override
+        // Create new attendance record
         const attendanceData = {
           employee_id: employee.id,
           date: dateStr,
           status: statusValue,
-          status_code: selectedAttendance,
-          comments: newComment.trim(),
-          is_manual_override: true,
-          override_by: user.user_id,
-          override_by_name: user.name || user.userName,
+          comments: newComment || '',
           check_in_time: null,
           check_out_time: null,
-          is_holiday: selectedAttendance === 'H'
+          is_holiday: false
         }
         await attendanceAPI.markAttendance(attendanceData, user.user_id)
       }
@@ -1379,17 +982,13 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
         onUpdate(employee.id, selectedDate, selectedAttendance)
       }
       
-      // Clear form
-      setSelectedAttendance("")
-      setNewComment("")
-      
       // Reload detail to get updated data
       await loadAttendanceDetail()
       
-      alert(`✅ Attendance updated successfully!\n\nOld Status: ${getStatusText(currentStatus)}\nNew Status: ${getStatusText(selectedAttendance)}\n\nComment: ${newComment.trim()}`)
+      alert('Attendance updated successfully!')
     } catch (error) {
       console.error('Error updating attendance:', error)
-      alert('❌ Failed to update attendance. Please try again.\n\nError: ' + (error.response?.data?.detail || error.message))
+      alert('Failed to update attendance. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -1484,211 +1083,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
               <p className="text-gray-400 mt-2">Loading attendance details...</p>
             </div>
-          ) : (
-            <>
-              {/* Late Punch & Issue Alerts Section */}
-              {attendanceDetail?.type !== 'leave' && (
-                <div className="mb-6 space-y-4">
-                  {/* Late Punch Alert */}
-                  {attendanceDetail?.is_late && (
-                    <div className="bg-gradient-to-r from-yellow-700/20 to-orange-700/20 border-2 border-yellow-500 rounded-lg p-5">
-                      <div className="flex items-start gap-3">
-                        <div className="text-yellow-400 text-3xl">⏰</div>
-                        <div className="flex-1">
-                          <h3 className="font-bold text-yellow-400 text-lg mb-2">LATE PUNCH IN DETECTED</h3>
-                          <p className="text-gray-200 mb-3">
-                            {attendanceDetail.late_message || 'You punched in late today.'}
-                          </p>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* Shift Timing */}
-                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
-                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
-                                <span>🕐</span>
-                                <span>Shift Timing</span>
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Shift Start:</span>
-                                  <span className="text-white font-semibold">10:00 AM</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Deadline:</span>
-                                  <span className="text-orange-400 font-semibold">10:15 AM</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Grace Window:</span>
-                                  <span className="text-teal-400 font-semibold">30 mins</span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Your Timing */}
-                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
-                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
-                                <span>📍</span>
-                                <span>Your Timing</span>
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Punch In:</span>
-                                  <span className="text-cyan-400 font-bold">{attendanceDetail.check_in_time || 'N/A'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Late By:</span>
-                                  <span className="text-red-400 font-bold">{attendanceDetail.minutes_late || 0} mins</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Grace Used?</span>
-                                  <span className={`font-bold ${attendanceDetail.grace_applied_today ? 'text-yellow-400' : 'text-gray-400'}`}>
-                                    {attendanceDetail.grace_applied_today ? 'Yes ✓' : 'No'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Impact */}
-                            <div className="bg-gray-800 border border-yellow-500 rounded-lg p-4">
-                              <h4 className="text-yellow-300 font-semibold mb-2 flex items-center gap-2">
-                                <span>⚠️</span>
-                                <span>Impact</span>
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Status:</span>
-                                  <span className="text-yellow-400 font-bold">Late (L)</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">Final Count:</span>
-                                  <span className={`font-bold ${attendanceDetail.grace_applied_today ? 'text-green-400' : 'text-orange-400'}`}>
-                                    {attendanceDetail.grace_applied_today ? 'Full (1)' : 'Based on Hours'}
-                                  </span>
-                                </div>
-                                {!attendanceDetail.grace_applied_today && (
-                                  <div className="text-xs text-orange-300 mt-2">
-                                    ⚠️ Grace limit exhausted! Final status depends on working hours.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-3 bg-yellow-900/40 border border-yellow-600 rounded p-3">
-                            <h4 className="text-yellow-300 font-bold mb-2">💡 What This Means:</h4>
-                            <ul className="text-gray-200 text-sm space-y-1 list-disc list-inside">
-                              <li>Shift starts at <strong>10:00 AM</strong>, reporting deadline is <strong>10:15 AM</strong></li>
-                              <li>You have a <strong>30-minute grace window</strong> (10:15 - 10:45 AM)</li>
-                              <li>Grace period can be used <strong>maximum 2 times per month</strong></li>
-                              <li>After grace limit, late punch = <strong>Half Day or based on working hours</strong></li>
-                              {attendanceDetail.remaining_hours_possible !== undefined && (
-                                <li>Remaining possible hours: <strong className="text-cyan-400">{attendanceDetail.remaining_hours_possible} hrs</strong></li>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Missing Punch Issue Alert */}
-                  {attendanceDetail?.has_missing_punch && (
-                    <div className="bg-gradient-to-r from-red-700/20 to-pink-700/20 border-2 border-red-500 rounded-lg p-5">
-                      <div className="flex items-start gap-3">
-                        <div className="text-red-400 text-3xl">❌</div>
-                        <div className="flex-1">
-                          <h3 className="font-bold text-red-400 text-lg mb-2">ISSUE: MISSING PUNCH</h3>
-                          <p className="text-gray-200 mb-3">
-                            {attendanceDetail.missing_punch_message || 'You have missing punch in/out records.'}
-                          </p>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Missing Punch Details */}
-                            <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
-                              <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
-                                <span>🔍</span>
-                                <span>Missing Records</span>
-                              </h4>
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-3">
-                                  <span className={`text-2xl ${attendanceDetail.check_in_time ? '✅' : '❌'}`}></span>
-                                  <div>
-                                    <div className="text-gray-400 text-sm">Check In</div>
-                                    <div className={`font-semibold ${attendanceDetail.check_in_time ? 'text-green-400' : 'text-red-400'}`}>
-                                      {attendanceDetail.check_in_time || 'MISSING'}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className={`text-2xl ${attendanceDetail.check_out_time ? '✅' : '❌'}`}></span>
-                                  <div>
-                                    <div className="text-gray-400 text-sm">Check Out</div>
-                                    <div className={`font-semibold ${attendanceDetail.check_out_time ? 'text-green-400' : 'text-red-400'}`}>
-                                      {attendanceDetail.check_out_time || 'MISSING'}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Resolution Steps */}
-                            <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
-                              <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
-                                <span>✏️</span>
-                                <span>How to Fix</span>
-                              </h4>
-                              <div className="space-y-2 text-sm text-gray-200">
-                                <div className="flex items-start gap-2">
-                                  <span className="text-cyan-400 font-bold">1.</span>
-                                  <span>Contact your <strong>Team Leader</strong> or <strong>HR</strong></span>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <span className="text-cyan-400 font-bold">2.</span>
-                                  <span>Provide valid reason for missing punch</span>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <span className="text-cyan-400 font-bold">3.</span>
-                                  <span>HR will manually correct the record</span>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <span className="text-cyan-400 font-bold">4.</span>
-                                  <span>Until fixed, this day is marked as <strong className="text-red-400">Issue (ISS)</strong></span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-3 bg-red-900/40 border border-red-600 rounded p-3">
-                            <h4 className="text-red-300 font-bold mb-2">⚠️ Important:</h4>
-                            <p className="text-gray-200 text-sm">
-                              Days with missing punch are marked as <strong className="text-red-400">Issue (ISS = 0 count)</strong>.
-                              If you forgot to punch in/out, apply for <strong>retroactive attendance correction</strong> through your manager.
-                              HR can manually add/correct the punch records if valid reason is provided.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* No Issues - Clean Record */}
-                  {!attendanceDetail?.is_late && !attendanceDetail?.has_missing_punch && attendanceDetail?.check_in_time && (
-                    <div className="bg-gradient-to-r from-green-700/20 to-emerald-700/20 border-2 border-green-500 rounded-lg p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="text-green-400 text-2xl">✅</div>
-                        <div>
-                          <h3 className="font-bold text-green-400">On-Time & Complete</h3>
-                          <p className="text-gray-300 text-sm">
-                            Punched in on time at <strong className="text-cyan-400">{attendanceDetail.check_in_time}</strong>. No issues detected.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {attendanceDetail?.type === 'leave' ? (
-                /* Leave Details Section */
+          ) : attendanceDetail?.type === 'leave' ? (
+            /* Leave Details Section */
             <div className="space-y-6">
               <div className="bg-gradient-to-r from-orange-600 to-yellow-600 text-white p-4 rounded-lg">
                 <h3 className="text-xl font-bold mb-2">🏖️ LEAVE DETAILS</h3>
@@ -1880,444 +1276,22 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               </div>
             </div>
           )}
-          </>
-          )}
 
-          {/* Grace Period Tracking Section */}
-          {attendanceDetail?.type !== 'leave' && (
-            <div className="mt-6 bg-gradient-to-r from-teal-700/20 to-green-700/20 border-2 border-teal-500 rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-teal-400 text-2xl">⏰</div>
-                <div>
-                  <h3 className="font-bold text-teal-400 text-lg">GRACE PERIOD TRACKING</h3>
-                  <p className="text-gray-300 text-sm">Monitor late punch-in grace period usage</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Grace Period Settings */}
-                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
-                  <h4 className="text-gray-200 font-semibold mb-3 flex items-center gap-2">
-                    <span>⚙️</span>
-                    <span>Grace Period Settings</span>
-                  </h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Grace Window:</span>
-                      <span className="text-teal-400 font-semibold">30 minutes</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Monthly Limit:</span>
-                      <span className="text-teal-400 font-semibold">2 times</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Deadline:</span>
-                      <span className="text-orange-400 font-semibold">10:15 AM</span>
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-gray-700">
-                    <p className="text-xs text-gray-400">
-                      💡 If you punch in within 30 minutes after the deadline (10:00 AM), it's considered grace period.
-                      After using 2 grace periods in a month, late punch = Half Day.
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Grace Usage This Month */}
-                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
-                  <h4 className="text-gray-200 font-semibold mb-3 flex items-center gap-2">
-                    <span>📊</span>
-                    <span>This Month's Usage</span>
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Grace Used:</span>
-                      <span className="text-yellow-400 font-bold text-xl">
-                        {attendanceDetail?.grace_used_this_month || 0} / 2
-                      </span>
-                    </div>
-                    
-                    {/* Visual Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-gray-400">
-                        <span>Usage Progress</span>
-                        <span>{Math.round(((attendanceDetail?.grace_used_this_month || 0) / 2) * 100)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            (attendanceDetail?.grace_used_this_month || 0) >= 2 
-                              ? 'bg-red-500' 
-                              : (attendanceDetail?.grace_used_this_month || 0) >= 1 
-                                ? 'bg-yellow-500' 
-                                : 'bg-green-500'
-                          }`}
-                          style={{ width: `${Math.min(((attendanceDetail?.grace_used_this_month || 0) / 2) * 100, 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Remaining:</span>
-                      <span className={`font-bold text-xl ${
-                        (2 - (attendanceDetail?.grace_used_this_month || 0)) > 0 
-                          ? 'text-green-400' 
-                          : 'text-red-400'
-                      }`}>
-                        {Math.max(0, 2 - (attendanceDetail?.grace_used_this_month || 0))}
-                      </span>
-                    </div>
-                    
-                    {(attendanceDetail?.grace_used_this_month || 0) >= 2 && (
-                      <div className="bg-red-900/30 border border-red-500 rounded p-2 mt-2">
-                        <p className="text-red-400 text-xs font-semibold">
-                          ⚠️ Grace limit exhausted! Next late punch will be Half Day.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Today's Grace Status */}
-              {attendanceDetail?.grace_applied_today && (
-                <div className="mt-4 bg-yellow-900/20 border-2 border-yellow-500 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="text-yellow-400 text-xl">✅</div>
-                    <div className="flex-1">
-                      <h4 className="text-yellow-400 font-bold mb-1">Grace Period Used Today</h4>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-gray-400">Punch In Time:</span>
-                          <span className="text-white font-semibold ml-2">{attendanceDetail.check_in_time}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400">Minutes Late:</span>
-                          <span className="text-orange-400 font-semibold ml-2">{attendanceDetail.minutes_late || 0} mins</span>
-                        </div>
-                      </div>
-                      <p className="text-gray-300 text-xs mt-2">
-                        💡 This counts as one grace period usage for this month.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Grace History (Optional) */}
-              {attendanceDetail?.grace_history && attendanceDetail.grace_history.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="text-gray-200 font-semibold mb-2 flex items-center gap-2">
-                    <span>📜</span>
-                    <span>Grace Usage History (This Month)</span>
-                  </h4>
-                  <div className="bg-gray-800 border border-gray-600 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-700">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-gray-300">Date</th>
-                          <th className="px-3 py-2 text-left text-gray-300">Punch In</th>
-                          <th className="px-3 py-2 text-left text-gray-300">Minutes Late</th>
-                          <th className="px-3 py-2 text-left text-gray-300">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {attendanceDetail.grace_history.map((grace, index) => (
-                          <tr key={index} className="border-t border-gray-700 hover:bg-gray-750">
-                            <td className="px-3 py-2 text-gray-200">{grace.date}</td>
-                            <td className="px-3 py-2 text-cyan-400">{grace.punch_in_time}</td>
-                            <td className="px-3 py-2 text-orange-400">{grace.minutes_late} mins</td>
-                            <td className="px-3 py-2">
-                              <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">Grace Applied</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Sunday Sandwich Rule & Leave Alerts Section */}
-          {attendanceDetail?.type !== 'leave' && (
-            <div className="mt-6 space-y-4">
-              {/* Sunday Sandwich Rule Warning */}
-              {attendanceDetail?.sunday_sandwich_warning && (
-                <div className="bg-gradient-to-r from-red-700/20 to-orange-700/20 border-2 border-red-500 rounded-lg p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="text-red-400 text-3xl">⚠️</div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-red-400 text-lg mb-2">SUNDAY SANDWICH RULE ALERT</h3>
-                      <p className="text-gray-200 mb-3">
-                        {attendanceDetail.sunday_sandwich_warning}
-                      </p>
-                      
-                      <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
-                        <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
-                          <span>📊</span>
-                          <span>Week Summary (Current Week)</span>
-                        </h4>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                          <div className="text-center">
-                            <div className="text-gray-400 text-sm">Total Days</div>
-                            <div className="text-white text-2xl font-bold">{attendanceDetail.week_working_days?.total || 6}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-gray-400 text-sm">Present</div>
-                            <div className="text-green-400 text-2xl font-bold">{attendanceDetail.week_working_days?.present || 0}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-gray-400 text-sm">Absent</div>
-                            <div className="text-red-400 text-2xl font-bold">{attendanceDetail.week_working_days?.absent || 0}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-gray-400 text-sm">Required</div>
-                            <div className="text-yellow-400 text-2xl font-bold">5</div>
-                          </div>
-                        </div>
-                        
-                        {/* Week Calendar Visual */}
-                        <div className="flex justify-between items-center gap-2">
-                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
-                            const dayStatus = attendanceDetail.week_status?.[idx] || 'unknown'
-                            return (
-                              <div key={day} className="flex-1 text-center">
-                                <div className={`rounded-lg p-2 ${
-                                  dayStatus === 'present' ? 'bg-green-600' :
-                                  dayStatus === 'absent' ? 'bg-red-600' :
-                                  dayStatus === 'leave' ? 'bg-blue-600' :
-                                  'bg-gray-700'
-                                }`}>
-                                  <div className="text-xs text-white font-semibold">{day}</div>
-                                  <div className="text-xl mt-1">
-                                    {dayStatus === 'present' ? '✅' :
-                                     dayStatus === 'absent' ? '❌' :
-                                     dayStatus === 'leave' ? '🏖️' : '❓'}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 bg-red-900/40 border border-red-600 rounded p-3">
-                        <h4 className="text-red-300 font-bold mb-2">📋 Rule Explanation:</h4>
-                        <ul className="text-gray-200 text-sm space-y-1 list-disc list-inside">
-                          <li>If you work less than <strong>5 days</strong> in a week (Mon-Sat)</li>
-                          <li>Then the <strong>Sunday between that week</strong> will be marked as <strong>Absent (-1)</strong></li>
-                          <li>This is called the <strong>"Sunday Sandwich Rule"</strong></li>
-                          <li>Make sure to work at least 5 days to keep Sunday as a holiday!</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Pending Leave Auto-Conversion Alert */}
-              {attendanceDetail?.pending_leave_alert && (
-                <div className="bg-gradient-to-r from-orange-700/20 to-red-700/20 border-2 border-orange-500 rounded-lg p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="text-orange-400 text-3xl">⏳</div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-orange-400 text-lg mb-2">PENDING LEAVE AUTO-CONVERSION ALERT</h3>
-                      <p className="text-gray-200 mb-3">
-                        {attendanceDetail.pending_leave_alert}
-                      </p>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Pending Leave Info */}
-                        <div className="bg-gray-800 border border-orange-500 rounded-lg p-4">
-                          <h4 className="text-orange-300 font-semibold mb-3 flex items-center gap-2">
-                            <span>📝</span>
-                            <span>Pending Leave Details</span>
-                          </h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-gray-400">Leave Type:</span>
-                              <span className="text-orange-400 font-semibold">{attendanceDetail.pending_leave_type || 'Sick Leave'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-400">Applied On:</span>
-                              <span className="text-cyan-400">{attendanceDetail.pending_leave_date || 'N/A'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-400">Pending Since:</span>
-                              <span className="text-yellow-400 font-bold">{attendanceDetail.pending_days || 0} days</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-400">Auto-convert After:</span>
-                              <span className="text-red-400 font-bold">3 days</span>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Countdown Timer */}
-                        <div className="bg-gray-800 border border-red-500 rounded-lg p-4">
-                          <h4 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
-                            <span>⏰</span>
-                            <span>Time Remaining</span>
-                          </h4>
-                          <div className="text-center">
-                            <div className="text-5xl font-bold text-red-400 mb-2">
-                              {Math.max(0, 3 - (attendanceDetail.pending_days || 0))}
-                            </div>
-                            <div className="text-gray-400 text-sm mb-3">Days until auto-convert to Absconding</div>
-                            
-                            {/* Progress Bar */}
-                            <div className="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-yellow-500 to-red-500 transition-all duration-300"
-                                style={{ width: `${Math.min(((attendanceDetail.pending_days || 0) / 3) * 100, 100)}%` }}
-                              ></div>
-                            </div>
-                            
-                            {(attendanceDetail.pending_days || 0) >= 3 && (
-                              <div className="mt-3 text-red-400 font-bold text-sm">
-                                ⚠️ Will be auto-converted soon!
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 bg-orange-900/40 border border-orange-600 rounded p-3">
-                        <h4 className="text-orange-300 font-bold mb-2">⚡ Action Required:</h4>
-                        <p className="text-gray-200 text-sm">
-                          If your pending leave is <strong>not approved within 3 days</strong>, it will be 
-                          <strong className="text-red-400"> automatically converted to Absconding (AB = -1)</strong>.
-                          Please contact your reporting manager to approve the leave immediately.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* No Alerts - All Good */}
-              {!attendanceDetail?.sunday_sandwich_warning && !attendanceDetail?.pending_leave_alert && (
-                <div className="bg-gradient-to-r from-green-700/20 to-teal-700/20 border-2 border-green-500 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="text-green-400 text-2xl">✅</div>
-                    <div>
-                      <h3 className="font-bold text-green-400">All Clear!</h3>
-                      <p className="text-gray-300 text-sm">No pending alerts or warnings for this date.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Manual Override Section - Enhanced with all new features */}
+          {/* Change Attendance - Only show for attendance records, not leave, and only if user has edit permission */}
           {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
-            <div className="mt-6 bg-gradient-to-r from-purple-700/20 to-pink-700/20 border-2 border-purple-500 rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-purple-400 text-2xl">✏️</div>
-                <div>
-                  <h3 className="font-bold text-purple-400 text-lg">MANUAL OVERRIDE BY HR/ADMIN</h3>
-                  <p className="text-gray-300 text-sm">Manually update attendance status. Comment is mandatory.</p>
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                {/* Current Status Display */}
-                <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Current Status:</span>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(currentStatus)}
-                      <span className="text-gray-200 font-semibold">{getStatusText(currentStatus)}</span>
-                    </div>
-                  </div>
-                  {attendanceDetail?.working_hours && (
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-gray-400">Working Hours:</span>
-                      <span className="text-cyan-400 font-semibold">{attendanceDetail.working_hours} hrs</span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* New Status Selection */}
-                <div>
-                  <label className="block text-gray-200 font-semibold mb-2">
-                    SELECT NEW STATUS: <span className="text-red-400">*</span>
-                  </label>
-                  <select
-                    value={selectedAttendance}
-                    onChange={(e) => setSelectedAttendance(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    <option value="">-- Select New Attendance Status --</option>
-                    <optgroup label="✅ Positive Status">
-                      <option value="P">P - Present (Full Day = 1)</option>
-                      <option value="HD">HD - Half Day (0.5)</option>
-                    </optgroup>
-                    <optgroup label="⚠️ Late / Leave">
-                      <option value="L">L - Late (Check working hours)</option>
-                      <option value="LV">LV - Leave Approved (0)</option>
-                      <option value="PL">PL - Pending Leave (0)</option>
-                    </optgroup>
-                    <optgroup label="🔴 Negative Status">
-                      <option value="AB">AB - Absconding (-1)</option>
-                      <option value="ISS">ISS - Issue (Missing Punch)</option>
-                      <option value="Z">Z - Zero (Insufficient Hours)</option>
-                    </optgroup>
-                    <optgroup label="🔵 Holiday">
-                      <option value="H">H - Holiday (0)</option>
-                    </optgroup>
-                  </select>
-                  {selectedAttendance && (
-                    <div className="mt-2 text-sm">
-                      <span className="text-gray-400">Attendance Count: </span>
-                      <span className={`font-bold ${getAttendanceCount(selectedAttendance) >= 1 ? 'text-green-400' : getAttendanceCount(selectedAttendance) === 0.5 ? 'text-yellow-400' : getAttendanceCount(selectedAttendance) < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                        {getAttendanceCount(selectedAttendance)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Mandatory Comment Field */}
-                <div>
-                  <label className="block text-gray-200 font-semibold mb-2">
-                    REASON / COMMENT: <span className="text-red-400">* (Mandatory)</span>
-                  </label>
-                  <textarea
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Enter reason for manual override (mandatory)..."
-                    rows={3}
-                    className="w-full p-3 border-2 border-gray-600 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    ⚠️ This comment will be saved in history with your name and timestamp.
-                  </p>
-                </div>
-                
-                {/* Validation Warning */}
-                {selectedAttendance && !newComment.trim() && (
-                  <div className="bg-red-900/30 border border-red-500 rounded-lg p-3">
-                    <p className="text-red-400 text-sm font-semibold">⚠️ Comment is mandatory for manual override!</p>
-                  </div>
-                )}
-                
-                {/* Update Button - Disabled if comment empty */}
-                <button 
-                  onClick={handleUpdate} 
-                  disabled={!selectedAttendance || !newComment.trim() || loading}
-                  className={`w-full py-3 rounded-lg font-bold text-white transition-all duration-200 ${
-                    !selectedAttendance || !newComment.trim() || loading
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl'
-                  }`}
-                >
-                  {loading ? '⏳ UPDATING...' : '✅ UPDATE ATTENDANCE (MANUAL OVERRIDE)'}
-                </button>
-              </div>
+            <div className="mt-6">
+              <label className="block text-gray-200 font-semibold mb-2">CHANGE ATTENDANCE:</label>
+              <select
+                value={selectedAttendance}
+                onChange={(e) => setSelectedAttendance(e.target.value)}
+                className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              >
+                <option value="">Select Attendance Status</option>
+                <option value="P">Present</option>
+                <option value="L">Late</option>
+                <option value="H">Holiday</option>
+                <option value="AB">Absconding</option>
+              </select>
             </div>
           )}
 
@@ -2548,7 +1522,6 @@ export default function MonthlyAttendanceTable() {
   const [newComment, setNewComment] = useState("")
   const [history, setHistory] = useState([])
   const [holidays, setHolidays] = useState([])
-  const [activeTab, setActiveTab] = useState('calendar')
 
   // Table horizontal scroll controls
   const tableScrollRef = useRef(null)
@@ -2912,7 +1885,6 @@ export default function MonthlyAttendanceTable() {
   }
   return (
     <div className="w-full p-6 space-y-6 bg-black min-h-screen">
-      {/* Attendance Calendar View */}
       {/* Header */}
       <div className="bg-black rounded-lg p-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -3087,8 +2059,14 @@ export default function MonthlyAttendanceTable() {
             <table className="w-full bg-black border-collapse border border-gray-700" style={{ minWidth: '1200px' }}>
             <thead style={{backgroundColor: '#03b0f5'}}>
               <tr>
-                <th className="sticky left-0 px-4 py-1 text-left font-bold text-white min-w-[200px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
-                  Employee Details
+                <th className="sticky left-0 px-4 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                  Emp ID
+                </th>
+                <th className="px-4 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                  Name
+                </th>
+                <th className="px-4 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                  Team
                 </th>
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
                   <th key={day} className="px-3 py-1 text-center font-bold text-white min-w-[50px] border border-gray-300">
@@ -3112,15 +2090,14 @@ export default function MonthlyAttendanceTable() {
                     key={record.id}
                     className="bg-black hover:bg-gray-800 transition-colors border-b border-gray-700"
                   >
-                    <td
-                      className="sticky left-0 bg-black px-4 py-5 border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors"
-                      onClick={() => handleEmployeeClick(record)}
-                    >
-                      <div className="space-y-2">
-                        <div className="font-semibold text-white text-base">{record.name}</div>
-                        <div className="text-sm text-blue-300 font-medium">{record.employeeId}</div>
-                        <div className="text-sm text-gray-400">{record.department}</div>
-                      </div>
+                    <td className="sticky left-0 bg-black px-4 py-5 border border-gray-600 text-sm text-blue-300 font-medium cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
+                      {record.employeeId}
+                    </td>
+                    <td className="px-4 py-5 border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
+                      <div className="font-semibold text-white text-base">{record.name}</div>
+                    </td>
+                    <td className="px-4 py-5 border border-gray-600">
+                      <div className="text-sm text-gray-400">{record.department}</div>
                     </td>
                     {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
                       <td
@@ -3203,6 +2180,6 @@ export default function MonthlyAttendanceTable() {
         selectedYear={selectedYear}
         selectedMonth={selectedMonth}
       />
-    </div>
-  )
+    </div>
+  )
 }
