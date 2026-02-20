@@ -898,6 +898,7 @@ class SettingsDB:
                 "absconding_penalty": -1,
                 "enable_sunday_sandwich_rule": True,
                 "minimum_working_days_for_sunday": 5,
+                "enable_adjacent_absconding_rule": True,
                 # Legacy settings
                 "check_in_time": "09:00",
                 "check_out_time": "18:00",

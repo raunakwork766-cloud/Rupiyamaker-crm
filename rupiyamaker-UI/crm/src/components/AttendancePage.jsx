@@ -1522,8 +1522,54 @@ export default function MonthlyAttendanceTable() {
   const [newComment, setNewComment] = useState("")
   const [history, setHistory] = useState([])
   const [holidays, setHolidays] = useState([])
+  const [attendanceSettings, setAttendanceSettings] = useState({
+    enable_sunday_sandwich_rule: true,
+    enable_adjacent_absconding_rule: true,
+    minimum_working_days_for_sunday: 5
+  })
 
-  // Table horizontal scroll controls
+  // Apply attendance rules to formatted records
+  const applyAttendanceRules = (records, settings, year, month) => {
+    if (!settings) return records
+    const { enable_adjacent_absconding_rule, enable_sunday_sandwich_rule, minimum_working_days_for_sunday = 5 } = settings
+    return records.map(record => {
+      const updated = { ...record }
+      const daysInM = new Date(year, month, 0).getDate()
+
+      for (let d = 1; d <= daysInM; d++) {
+        const dateObj = new Date(year, month - 1, d)
+        const dow = dateObj.getDay() // 0=Sun,1=Mon,...,6=Sat
+
+        // Rule 1: Adjacent Absconding — Saturday AB → next Sunday absent
+        if (enable_adjacent_absconding_rule && dow === 6) { // Saturday
+          if (updated[`day${d}`] === 'AB') {
+            if (d + 1 <= daysInM) updated[`day${d + 1}`] = 'AB' // next Sunday
+          }
+        }
+        // Rule 1b: Monday AB → previous Saturday absent
+        if (enable_adjacent_absconding_rule && dow === 1) { // Monday
+          if (updated[`day${d}`] === 'AB') {
+            if (d - 2 >= 1) updated[`day${d - 2}`] = 'AB' // prev Saturday
+          }
+        }
+        // Rule 2: Sunday sandwich — Sunday needs minimum working days in week
+        if (enable_sunday_sandwich_rule && dow === 0) { // Sunday
+          const weekStart = d - 1 // prev Saturday
+          const weekEnd = d + 1 // next Monday
+          // Count working days Mon-Sat of the surrounding week (d-6 to d-1)
+          let workingCount = 0
+          for (let w = Math.max(1, d - 6); w <= Math.min(daysInM, d - 1); w++) {
+            const s = updated[`day${w}`]
+            if (s === 'P' || s === 'HD' || s === 'L') workingCount++
+          }
+          if (workingCount < minimum_working_days_for_sunday) {
+            if (!updated[`day${d}`] || updated[`day${d}`] === 'W') updated[`day${d}`] = ''
+          }
+        }
+      }
+      return updated
+    })
+  }
   const tableScrollRef = useRef(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -1709,8 +1755,16 @@ export default function MonthlyAttendanceTable() {
       
       try {
         const response = await attendanceAPI.getCalendar(selectedYear, selectedMonth, user.user_id)
-        
-        console.log('API Response:', response)
+
+        // Fetch attendance settings for rules
+        let settingsData = attendanceSettings
+        try {
+          const settingsResp = await axios.get(`${BASE_URL}/attendance/settings`, { headers: getAuthHeaders() })
+          if (settingsResp.data) {
+            settingsData = { ...attendanceSettings, ...settingsResp.data }
+            setAttendanceSettings(settingsData)
+          }
+        } catch (e) { /* use defaults */ }
         
         if (response && response.employees) {
           const formattedData = convertToCalendarFormat(response)
@@ -1746,8 +1800,9 @@ export default function MonthlyAttendanceTable() {
             }
           })
 
-          console.log('Formatted data:', enrichedData)
-          setAttendanceData(enrichedData)
+          const ruledData = applyAttendanceRules(enrichedData, settingsData, selectedYear, selectedMonth)
+          console.log('Formatted data:', ruledData)
+          setAttendanceData(ruledData)
         } else {
           setAttendanceData([])
         }

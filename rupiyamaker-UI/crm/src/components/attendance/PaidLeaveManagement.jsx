@@ -1,401 +1,207 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// API base URL
 const BASE_URL = '/api';
 
 const PaidLeaveManagement = () => {
-  const [user, setUser] = React.useState(() => {
+  const [user] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('userData') || 'null'); } catch { return null; }
   });
-  const [employees, setEmployees] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [leaveBalance, setLeaveBalance] = useState(null);
-  const [leaveHistory, setLeaveHistory] = useState([]);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  
-  // Modal states
-  const [showAllocationModal, setShowAllocationModal] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Modal
+  const [modalEmp, setModalEmp] = useState(null);
   const [leaveType, setLeaveType] = useState('paid');
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
+  const [modalLoading, setModalLoading] = useState(false);
 
-  useEffect(() => {
-    loadEmployees();
-  }, []);
+  const uid = user?.user_id || user?._id;
 
-  const loadEmployees = async () => {
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const uid = user?.user_id || user?._id;
-      const response = await axios.get(`${BASE_URL}/users/?user_id=${uid}`);
-      // API returns array directly
-      const empList = Array.isArray(response.data) ? response.data : (response.data.users || response.data.data || []);
-      setEmployees(empList);
-    } catch (error) {
-      console.error('Error loading employees:', error);
-      setError('Failed to load employees: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${uid}`);
+      const empList = Array.isArray(empRes.data) ? empRes.data : (empRes.data.users || empRes.data.data || []);
+      const employees = empList.filter(e => e.is_employee !== false);
 
-  const loadLeaveBalance = async (employeeId) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await axios.get(`${BASE_URL}/settings/leave-balance/${employeeId}?user_id=${user?.user_id || user?._id}`);
-      
-      if (response.data.success) {
-        setLeaveBalance(response.data.data);
-      }
-      
-      // Load history
-      const historyResponse = await axios.get(`${BASE_URL}/settings/leave-balance/history/${employeeId}?user_id=${user?.user_id || user?._id}`);
-      setLeaveHistory(historyResponse.data || []);
-      
-    } catch (error) {
-      console.error('Error loading leave balance:', error);
-      setError(error.response?.data?.detail || 'Failed to load leave balance');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmployeeSelect = (employee) => {
-    setSelectedEmployee(employee);
-    loadLeaveBalance(employee._id || employee.id);
-  };
-
-  const handleAllocateLeave = async () => {
-    if (!selectedEmployee || !quantity || !reason.trim()) {
-      setError('Please fill all fields');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const data = {
-        employee_id: selectedEmployee._id || selectedEmployee.id,
-        leave_type: leaveType,
-        quantity: parseInt(quantity),
-        reason: reason.trim()
-      };
-
-      const response = await axios.post(
-        `${BASE_URL}/settings/leave-balance/allocate?user_id=${user?.user_id || user?._id}`,
-        data
+      const balResults = await Promise.allSettled(
+        employees.map(emp =>
+          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${uid}`)
+            .then(r => r.data?.data || null)
+        )
       );
 
-      setSuccess(response.data.message);
-      setShowAllocationModal(false);
-      setQuantity('');
-      setReason('');
-      
-      // Reload balance
-      loadLeaveBalance(selectedEmployee._id || selectedEmployee.id);
-
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
-      console.error('Error allocating leave:', error);
-      setError(error.response?.data?.detail || 'Failed to allocate leave');
+      setRows(employees.map((emp, i) => ({
+        employee: emp,
+        balance: balResults[i].status === 'fulfilled' ? balResults[i].value : null
+      })));
+    } catch (e) {
+      setError('Failed to load data: ' + (e.response?.data?.detail || e.message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeductLeave = async () => {
-    if (!selectedEmployee || !quantity || !reason.trim()) {
-      setError('Please fill all fields');
-      return;
-    }
+  const openModal = (emp) => { setModalEmp(emp); setLeaveType('paid'); setQuantity(''); setReason(''); };
 
+  const handleAction = async (action) => {
+    if (!modalEmp || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
+    setModalLoading(true); setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
-      const data = {
-        employee_id: selectedEmployee._id || selectedEmployee.id,
-        leave_type: leaveType,
-        quantity: parseInt(quantity),
-        reason: reason.trim()
-      };
-
-      const response = await axios.post(
-        `${BASE_URL}/settings/leave-balance/deduct?user_id=${user?.user_id || user?._id}`,
-        data
+      const res = await axios.post(
+        `${BASE_URL}/settings/leave-balance/${action === 'allocate' ? 'allocate' : 'deduct'}?user_id=${uid}`,
+        { employee_id: modalEmp._id || modalEmp.id, leave_type: leaveType, quantity: parseInt(quantity), reason: reason.trim() }
       );
-
-      setSuccess(response.data.message);
-      setShowAllocationModal(false);
-      setQuantity('');
-      setReason('');
-      
-      // Reload balance
-      loadLeaveBalance(selectedEmployee._id || selectedEmployee.id);
-
+      setSuccess(res.data.message || `${action === 'allocate' ? 'Allocated' : 'Deducted'} successfully`);
+      setModalEmp(null);
       setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
-      console.error('Error deducting leave:', error);
-      setError(error.response?.data?.detail || 'Failed to deduct leave');
-    } finally {
-      setLoading(false);
-    }
+      loadAll();
+    } catch (e) {
+      setError(e.response?.data?.detail || `Failed to ${action}`);
+    } finally { setModalLoading(false); }
   };
 
-  const getLeaveTypeColor = (type) => {
-    const colors = {
-      paid: 'text-green-600 bg-green-100',
-      earned: 'text-blue-600 bg-blue-100',
-      sick: 'text-orange-600 bg-orange-100',
-      casual: 'text-purple-600 bg-purple-100'
-    };
-    return colors[type] || 'text-gray-600 bg-gray-100';
-  };
+  const filtered = rows.filter(({ employee: e }) => {
+    const q = search.toLowerCase();
+    return `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase().includes(q)
+      || (e.employee_code || e.emp_id || '').toLowerCase().includes(q)
+      || (e.department_name || e.department || '').toLowerCase().includes(q);
+  });
+
+  const HDR_COLS = [
+    { label: 'Paid Leave',    bg: '#1a6b2a', rKey: 'paid_leaves_remaining',   tKey: 'paid_leaves_total',   uKey: 'paid_leaves_used',   color: 'text-green-400' },
+    { label: 'Earned Leave',  bg: '#1565c0', rKey: 'earned_leaves_remaining', tKey: 'earned_leaves_total', uKey: 'earned_leaves_used', color: 'text-blue-400' },
+    { label: 'Sick Leave',    bg: '#b35900', rKey: 'sick_leaves_remaining',   tKey: 'sick_leaves_total',   uKey: 'sick_leaves_used',   color: 'text-orange-400' },
+    { label: 'Casual Leave',  bg: '#5e1b8a', rKey: 'casual_leaves_remaining', tKey: 'casual_leaves_total', uKey: 'casual_leaves_used', color: 'text-purple-400' },
+    { label: 'Grace Leave',   bg: '#7b1fa2', rKey: 'grace_leaves_remaining',  tKey: 'grace_leaves_total',  uKey: 'grace_leaves_used',  color: 'text-pink-400' },
+  ];
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-lg shadow-lg mb-6">
-        <h1 className="text-3xl font-bold mb-2">🏖️ Paid Leave Management</h1>
-        <p className="text-indigo-100">Allocate and manage employee leave balances</p>
+    <div className="p-4 bg-gray-950 min-h-screen">
+      <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white px-6 py-4 rounded-lg mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">🏖️ Leave Management</h1>
+          <p className="text-indigo-200 text-sm mt-1">View & manage all employee leave balances</p>
+        </div>
+        <button onClick={loadAll} className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">🔄 Refresh</button>
       </div>
 
-      {/* Success/Error Messages */}
-      {success && (
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          ✅ {success}
-        </div>
-      )}
-      
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          ❌ {error}
-        </div>
-      )}
+      {success && <div className="bg-green-900 border border-green-500 text-green-300 px-4 py-2 rounded mb-3 text-sm">✅ {success}</div>}
+      {error && <div className="bg-red-900 border border-red-500 text-red-300 px-4 py-2 rounded mb-3 text-sm flex justify-between">❌ {error}<button className="ml-2 underline text-xs" onClick={() => setError(null)}>✕</button></div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Employee List */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-md p-4">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">👥 Select Employee</h2>
-            
-            {loading && <p className="text-gray-400 text-center py-6">⏳ Loading employees...</p>}
-            {!loading && employees.length === 0 && <p className="text-gray-400 text-center py-6">No employees found</p>}
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {employees.map((employee) => (
-                <button
-                  key={employee._id || employee.id}
-                  onClick={() => handleEmployeeSelect(employee)}
-                  className={`w-full text-left p-3 rounded-lg transition-all ${
-                    selectedEmployee?._id === (employee._id || employee.id)
-                      ? 'bg-indigo-100 border-2 border-indigo-500'
-                      : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="font-semibold text-gray-800">{employee.first_name} {employee.last_name}</div>
-                  <div className="text-sm text-gray-600">{employee.department_name || employee.department || ''}</div>
-                  <div className="text-xs text-gray-500">{employee.emp_id || employee.employee_code || employee.code || ''}</div>
-                </button>
+      <div className="mb-3">
+        <input type="text" placeholder="🔍 Search name, emp ID, department..." value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full md:w-96 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded-lg text-sm focus:outline-none focus:border-indigo-500" />
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-gray-700">
+        <table className="w-full text-sm bg-black border-collapse" style={{ minWidth: '1100px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#03b0f5' }}>
+              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[140px]">Employee</th>
+              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[90px]">Emp ID</th>
+              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[110px]">Department</th>
+              {HDR_COLS.map(c => (
+                <th key={c.label} colSpan={3} className="px-2 py-2 text-center font-bold text-white border border-gray-400" style={{ backgroundColor: c.bg }}>{c.label}</th>
               ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Leave Balance Details */}
-        <div className="lg:col-span-2">
-          {selectedEmployee ? (
-            <div className="space-y-6">
-              {/* Employee Info Card */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-800">{selectedEmployee.first_name} {selectedEmployee.last_name}</h2>
-                    <p className="text-gray-600">{selectedEmployee.department_name || selectedEmployee.department || ""} | {selectedEmployee.emp_id || selectedEmployee.employee_code || selectedEmployee.code || ""}</p>
-                  </div>
-                  <button
-                    onClick={() => setShowAllocationModal(true)}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    ➕ Allocate/Deduct Leaves
-                  </button>
-                </div>
-
-                {loading && !leaveBalance ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                    <p className="text-gray-600 mt-2">Loading leave balance...</p>
-                  </div>
-                ) : leaveBalance ? (
-                  <>
-                    {/* Leave Balance Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      {/* Paid Leaves */}
-                      <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 rounded-lg shadow-lg">
-                        <div className="text-sm opacity-90 mb-1">Paid Leaves</div>
-                        <div className="text-3xl font-bold">{leaveBalance.paid_leaves_remaining}/{leaveBalance.paid_leaves_total}</div>
-                        <div className="text-xs mt-2">Used: {leaveBalance.paid_leaves_used}</div>
-                      </div>
-
-                      {/* Earned Leaves */}
-                      <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-4 rounded-lg shadow-lg">
-                        <div className="text-sm opacity-90 mb-1">Earned Leaves</div>
-                        <div className="text-3xl font-bold">{leaveBalance.earned_leaves_remaining}/{leaveBalance.earned_leaves_total}</div>
-                        <div className="text-xs mt-2">Used: {leaveBalance.earned_leaves_used}</div>
-                      </div>
-
-                      {/* Sick Leaves */}
-                      <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-4 rounded-lg shadow-lg">
-                        <div className="text-sm opacity-90 mb-1">Sick Leaves</div>
-                        <div className="text-3xl font-bold">{leaveBalance.sick_leaves_remaining}/{leaveBalance.sick_leaves_total}</div>
-                        <div className="text-xs mt-2">Used: {leaveBalance.sick_leaves_used}</div>
-                      </div>
-
-                      {/* Casual Leaves */}
-                      <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-lg shadow-lg">
-                        <div className="text-sm opacity-90 mb-1">Casual Leaves</div>
-                        <div className="text-3xl font-bold">{leaveBalance.casual_leaves_remaining}/{leaveBalance.casual_leaves_total}</div>
-                        <div className="text-xs mt-2">Used: {leaveBalance.casual_leaves_used}</div>
-                      </div>
-                    </div>
-
-                    {/* Leave History */}
-                    <div className="mt-6">
-                      <h3 className="text-lg font-bold text-gray-800 mb-3">📜 Leave Transaction History</h3>
-                      
-                      {leaveHistory.length === 0 ? (
-                        <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">
-                          No leave transactions yet
-                        </div>
-                      ) : (
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                          {leaveHistory.map((entry, index) => (
-                            <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3 mb-2">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getLeaveTypeColor(entry.leave_type)}`}>
-                                      {entry.leave_type.toUpperCase()}
-                                    </span>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                      entry.transaction_type === 'allocation' 
-                                        ? 'bg-green-100 text-green-600' 
-                                        : 'bg-red-100 text-red-600'
-                                    }`}>
-                                      {entry.transaction_type === 'allocation' ? '➕ Allocation' : '➖ Deduction'}
-                                    </span>
-                                    <span className="text-lg font-bold text-gray-800">{entry.quantity}</span>
-                                  </div>
-                                  
-                                  <div className="text-sm text-gray-700 mb-2">
-                                    <strong>Reason:</strong> {entry.reason}
-                                  </div>
-                                  
-                                  <div className="flex items-center gap-4 text-xs text-gray-600">
-                                    <span>👤 {entry.performed_by_name}</span>
-                                    <span>📅 {new Date(entry.timestamp).toLocaleString()}</span>
-                                    <span>Before: {entry.balance_before} → After: {entry.balance_after}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <div className="text-6xl mb-4">👈</div>
-              <h3 className="text-xl font-semibold text-gray-600 mb-2">Select an Employee</h3>
-              <p className="text-gray-500">Choose an employee from the list to view and manage their leave balance</p>
-            </div>
-          )}
-        </div>
+              <th rowSpan={2} className="px-3 py-2 text-center font-bold text-white border border-gray-400 min-w-[80px]">Action</th>
+            </tr>
+            <tr>
+              {HDR_COLS.map(c => (
+                <React.Fragment key={c.label}>
+                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[60px]" style={{ backgroundColor: c.bg }}>Allotted</th>
+                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[50px]" style={{ backgroundColor: c.bg }}>Used</th>
+                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[65px]" style={{ backgroundColor: c.bg }}>Remaining</th>
+                </React.Fragment>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading && <tr><td colSpan={19} className="text-center py-12 text-gray-400">⏳ Loading...</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={19} className="text-center py-12 text-gray-500">No employees found</td></tr>}
+            {filtered.map(({ employee: e, balance: b }, idx) => {
+              const name = `${e.first_name || ''} ${e.last_name || ''}`.trim();
+              const code = e.employee_code || e.emp_id || `EMP-${(e._id || e.id || '').slice(-6)}`;
+              return (
+                <tr key={e._id || e.id} className={`${idx % 2 === 0 ? 'bg-gray-950' : 'bg-gray-900'} hover:bg-gray-800 transition-colors`}>
+                  <td className="px-3 py-3 font-semibold text-white border border-gray-700">{name}</td>
+                  <td className="px-3 py-3 text-blue-300 text-xs border border-gray-700">{code}</td>
+                  <td className="px-3 py-3 text-gray-400 text-xs border border-gray-700">{e.department_name || e.department || '—'}</td>
+                  {HDR_COLS.map(c => {
+                    const rem = b?.[c.rKey];
+                    const tot = b?.[c.tKey];
+                    const used = b?.[c.uKey] ?? 0;
+                    const remNum = parseFloat(rem);
+                    const totNum = parseFloat(tot);
+                    const pct = totNum > 0 ? remNum / totNum : 1;
+                    const remColor = pct > 0.5 ? c.color : pct > 0.2 ? 'text-yellow-400' : 'text-red-400';
+                    return (
+                      <React.Fragment key={c.label}>
+                        <td className="px-2 py-3 text-center border border-gray-700 text-gray-300 text-xs">{tot ?? '—'}</td>
+                        <td className="px-2 py-3 text-center border border-gray-700 text-orange-300 text-xs font-semibold">{used}</td>
+                        <td className="px-2 py-3 text-center border border-gray-700">
+                          <span className={`font-bold text-sm ${remColor}`}>{rem ?? '—'}</span>
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
+                  <td className="px-2 py-3 text-center border border-gray-700">
+                    <button onClick={() => openModal(e)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs font-semibold transition-colors">✏️ Edit</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+      <p className="text-gray-600 text-xs mt-2">Showing {filtered.length} of {rows.length} employees</p>
 
-      {/* Allocation/Deduction Modal */}
-      {showAllocationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">🏖️ Manage Leaves</h3>
-            
+      {/* Modal */}
+      {modalEmp && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold text-white mb-1">✏️ Manage Leaves</h3>
+            <p className="text-gray-400 text-sm mb-4">{modalEmp.first_name} {modalEmp.last_name} · {modalEmp.employee_code || modalEmp.emp_id || ''}</p>
             <div className="space-y-4">
-              {/* Leave Type */}
               <div>
-                <label className="block text-gray-700 font-semibold mb-2">Leave Type</label>
-                <select
-                  value={leaveType}
-                  onChange={(e) => setLeaveType(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
+                <label className="block text-gray-300 text-sm font-semibold mb-1">Leave Type</label>
+                <select value={leaveType} onChange={e => setLeaveType(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500">
                   <option value="paid">Paid Leave</option>
                   <option value="earned">Earned Leave</option>
                   <option value="sick">Sick Leave</option>
                   <option value="casual">Casual Leave</option>
+                  <option value="grace">Grace Leave</option>
                 </select>
               </div>
-
-              {/* Quantity */}
               <div>
-                <label className="block text-gray-700 font-semibold mb-2">Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  placeholder="Enter number of leaves"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
+                <label className="block text-gray-300 text-sm font-semibold mb-1">Quantity</label>
+                <input type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)}
+                  placeholder="Number of leaves"
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500" />
               </div>
-
-              {/* Reason */}
               <div>
-                <label className="block text-gray-700 font-semibold mb-2">Reason *</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Enter reason for allocation/deduction"
-                  rows={3}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
+                <label className="block text-gray-300 text-sm font-semibold mb-1">Reason *</label>
+                <textarea value={reason} onChange={e => setReason(e.target.value)}
+                  placeholder="Reason for allocation / deduction" rows={3}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500 resize-none" />
               </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleAllocateLeave}
-                  disabled={loading}
-                  className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50"
-                >
-                  ➕ Allocate
-                </button>
-                <button
-                  onClick={handleDeductLeave}
-                  disabled={loading}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold disabled:opacity-50"
-                >
-                  ➖ Deduct
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAllocationModal(false);
-                    setQuantity('');
-                    setReason('');
-                  }}
-                  className="flex-1 bg-gray-300 text-gray-800 py-3 rounded-lg hover:bg-gray-400 transition-colors font-semibold"
-                >
-                  Cancel
-                </button>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => handleAction('allocate')} disabled={modalLoading}
+                  className="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50">➕ Allocate</button>
+                <button onClick={() => handleAction('deduct')} disabled={modalLoading}
+                  className="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50">➖ Deduct</button>
+                <button onClick={() => setModalEmp(null)}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors">Cancel</button>
               </div>
             </div>
           </div>

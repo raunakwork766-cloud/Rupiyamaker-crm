@@ -55,6 +55,7 @@ const AttendanceSettingsTab = ({ userId }) => {
     
     // Sunday & Sandwich Rules (New)
     enable_sunday_sandwich_rule: true,
+    enable_adjacent_absconding_rule: true,
     minimum_working_days_for_sunday: 5, // If less than 5 days worked, Sunday = 0
     
     // Original Settings (Keeping for compatibility)
@@ -504,6 +505,21 @@ const AttendanceSettingsTab = ({ userId }) => {
                     />
                     <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 1 }}>
                       Saturday/Monday absconding → Sunday automatically becomes Zero
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.enable_adjacent_absconding_rule ?? true}
+                          onChange={(e) => handleSettingChange('enable_adjacent_absconding_rule', e.target.checked)}
+                          color="warning"
+                        />
+                      }
+                      label="Enable Adjacent Absconding Rule"
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 1 }}>
+                      Saturday Absconding → next Sunday = Absent &nbsp;|&nbsp; Monday Absconding → previous Saturday = Absent
                     </Typography>
                   </Grid>
                   <Grid item xs={12}>
