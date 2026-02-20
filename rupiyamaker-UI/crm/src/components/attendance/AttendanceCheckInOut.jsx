@@ -257,8 +257,13 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           setFaceMsg(`❌ Face not matched${dist}. Retake in better lighting, or proceed anyway.`);
         }
       } catch (err) {
-        const detail = (err.response?.data?.detail || '').toLowerCase();
-        if (err.response?.status === 404 || detail.includes('not registered') || detail.includes('not found')) {
+        const detail = (err.response?.data?.detail || err.response?.data?.message || '').toLowerCase();
+        const isNotRegistered = err.response?.status === 404 ||
+          detail.includes('not registered') ||
+          detail.includes('not found') ||
+          detail.includes('no face') ||
+          detail.includes('invalid or empty');
+        if (isNotRegistered) {
           setFaceStep(FACE_STEP.VERIFIED);
           setFaceMsg('📷 Photo captured. Face not registered — proceeding with attendance.');
         } else {

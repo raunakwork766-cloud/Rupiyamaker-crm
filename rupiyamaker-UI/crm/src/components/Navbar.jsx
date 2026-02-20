@@ -1106,9 +1106,16 @@ export default function TopNavbar({
         body: JSON.stringify({ face_descriptor: { descriptor }, employee_id: userId }),
       });
       const data = await response.json();
-      if (response.ok && data.verified === true) {
+      const detail = (data.detail || data.message || '').toLowerCase();
+      const isNotRegistered = response.status === 404 ||
+        detail.includes('no face') ||
+        detail.includes('not registered') ||
+        detail.includes('not found') ||
+        detail.includes('invalid or empty');
+      if (isNotRegistered) {
+        // No face registered → skip verification, allow attendance
         setFaceVerifyState('verified');
-      } else if (response.status === 404 || (data.detail && (data.detail.includes('No face') || data.detail.includes('not registered')))) {
+      } else if (response.ok && data.verified === true) {
         setFaceVerifyState('verified');
       } else {
         setFaceVerifyState('failed');

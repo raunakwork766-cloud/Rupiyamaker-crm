@@ -3790,18 +3790,21 @@ async def register_employee_face(
                 detail="Admin user not found"
             )
         
-        # Check admin permissions (must be admin or super admin)
+        # Check admin permissions (allow admin, super admin, HR, manager, team leader)
         SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
-        is_super_admin = (
+        admin_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
+        is_self_registration = admin_user_id == employee_id
+        is_authorized = (
+            is_self_registration or
             admin_user.get("is_super_admin") or
             str(admin_user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
-            admin_user.get("role_name", "").lower() in ["admin", "super admin"] or
-            admin_user.get("role", {}).get("name", "").lower() in ["admin", "super admin"]
+            admin_user.get("role_name", "").lower() in admin_roles or
+            admin_user.get("role", {}).get("name", "").lower() in admin_roles
         )
-        if not is_super_admin:
+        if not is_authorized:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can register employee faces"
+                detail="Only admins, HR, or managers can register employee faces"
             )
         
         # Validate employee
@@ -3987,31 +3990,33 @@ async def verify_employee_face(
         registered_face = await attendance_db.get_employee_face_data(employee_id)
         
         if not registered_face:
-            return {
-                "verified": False,
-                "confidence": 0.0,
-                "threshold": 0.6,
-                "employee_id": employee_id,
-                "message": "No face registered for this employee"
-            }
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No face registered for this employee"
+            )
         
         # Compare with all registered samples
         registered_descriptors = registered_face.get("face_descriptors", [])
         
         if not registered_descriptors:
-            return {
-                "verified": False,
-                "confidence": 0.0,
-                "threshold": 0.6,
-                "employee_id": employee_id,
-                "message": "No face samples found"
-            }
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No face samples found for this employee"
+            )
         
-        # Calculate minimum distance across all samples
+        # Also handle case where ALL stored descriptors are invalid (empty from old broken registration)
+        valid_descriptors = [s for s in registered_descriptors if len(s.get("descriptor", [])) == 128]
+        if not valid_descriptors:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Face data is invalid or empty — please re-register the face"
+            )
+        
+        # Calculate minimum distance across all valid samples
         import numpy as np
         
         min_distance = float('inf')
-        for sample in registered_descriptors:
+        for sample in valid_descriptors:
             sample_desc = sample.get("descriptor", [])
             if len(sample_desc) == 128:
                 # Calculate Euclidean distance
