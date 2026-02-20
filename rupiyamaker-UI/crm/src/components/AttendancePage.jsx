@@ -1546,10 +1546,10 @@ export default function MonthlyAttendanceTable() {
             if (d + 1 <= daysInM) updated[`day${d + 1}`] = 'AB' // next Sunday
           }
         }
-        // Rule 1b: Monday AB → previous Saturday absent
+        // Rule 1b: Monday AB → previous Sunday absent
         if (enable_adjacent_absconding_rule && dow === 1) { // Monday
           if (updated[`day${d}`] === 'AB') {
-            if (d - 2 >= 1) updated[`day${d - 2}`] = 'AB' // prev Saturday
+            if (d - 1 >= 1) updated[`day${d - 1}`] = 'AB' // prev Sunday
           }
         }
         // Rule 2: Sunday sandwich — Sunday needs minimum working days in week
