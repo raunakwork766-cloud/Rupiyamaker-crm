@@ -3,7 +3,7 @@ import { message, Modal } from 'antd';
 import dayjs from 'dayjs';
 import hrmsService from '../../services/hrmsService';
 import { getMediaUrl, getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
-import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
+import { isSuperAdmin, getUserPermissions, getUserId } from '../../utils/permissions';
 import './EmployeeFormNew.css';
 
 const EmployeeForm = ({
@@ -80,6 +80,31 @@ const EmployeeForm = ({
     const [validationErrors, setValidationErrors] = useState({});
     const [forceRender, setForceRender] = useState(0); // Force re-render counter
     const [phoneCheckTimeout, setPhoneCheckTimeout] = useState(null);
+    // Live permissions: init from localStorage, then refresh from API to avoid stale cache
+    const [livePermissions, setLivePermissions] = useState(() => getUserPermissions());
+
+    // Fetch fresh permissions from API on mount so role-field filtering reflects latest settings
+    // (without requiring the user to re-login after an admin changes their role's permissions)
+    useEffect(() => {
+        const fetchLivePermissions = async () => {
+            try {
+                const userId = getUserId();
+                if (!userId) return;
+                const resp = await fetch(`/api/users/permissions/${userId}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        setLivePermissions(data);
+                        // Keep localStorage in sync
+                        localStorage.setItem('userPermissions', JSON.stringify(data));
+                    }
+                }
+            } catch (e) {
+                // Silently fall back to localStorage version already in state
+            }
+        };
+        fetchLivePermissions();
+    }, []);
 
     // Update form data when employee prop changes (for editing)
     useEffect(() => {
@@ -176,7 +201,7 @@ const EmployeeForm = ({
     }, [employee, employee?._refreshKey]); // Also respond to refresh key changes
 
     const isEditing = !!employee;
-    const userPermissions = getUserPermissions();
+    const userPermissions = livePermissions;
 
     // Create refs for required fields to enable auto-focus
     const firstNameRef = useRef(null);
@@ -188,45 +213,72 @@ const EmployeeForm = ({
     const passwordRef = useRef(null);
     const isUserSuperAdmin = isSuperAdmin(userPermissions);
     
-    // Check if user has permission to view/edit employee passwords
-    const hasPasswordPermission = () => {
-        // Super admin always has access
-        if (isUserSuperAdmin) {
-            return true;
-        }
-        
-        // Check for specific "employees" "password" permission
+    // Helper: check if a specific action is granted for a page in the permissions data
+    // Handles both array format [{page, actions}] (new) and object format (legacy)
+    const hasEmployeesAction = (action) => {
         try {
-            // Check if user has employees permission with password action
-            return userPermissions?.employees?.password === true || 
-                   userPermissions?.Employees?.password === true ||
-                   userPermissions?.employees?.includes?.('password') ||
-                   userPermissions?.Employees?.includes?.('password');
-        } catch (error) {
-            console.error('Error checking password permission:', error);
+            if (Array.isArray(userPermissions)) {
+                const perm = userPermissions.find(
+                    p => p.page === 'employees' || p.page === 'Employees'
+                );
+                if (!perm) return false;
+                const actions = perm.actions;
+                if (actions === '*') return true;
+                return Array.isArray(actions) && (actions.includes(action) || actions.includes('*'));
+            }
+            // Legacy object format
+            return userPermissions?.employees?.[action] === true ||
+                   userPermissions?.Employees?.[action] === true ||
+                   userPermissions?.employees?.includes?.(action) ||
+                   userPermissions?.Employees?.includes?.(action);
+        } catch {
             return false;
         }
+    };
+
+    // Check if user has permission to view/edit employee passwords
+    const hasPasswordPermission = () => {
+        if (isUserSuperAdmin) return true;
+        return hasEmployeesAction('password');
     };
     
     // Check if user has permission to view/edit employee roles
     const hasRolePermission = () => {
-        // Super admin always has access
-        if (isUserSuperAdmin) {
-            return true;
-        }
-        
-        // Check for specific "employees" "role" permission
+        if (isUserSuperAdmin) return true;
+        return hasEmployeesAction('role');
+    };
+
+    // Get the list of assignable role IDs configured in settings for this user's role
+    const getRoleFieldAllowedRoleIds = () => {
         try {
-            // Check if user has employees permission with role action
-            return userPermissions?.employees?.role === true || 
-                   userPermissions?.Employees?.role === true ||
-                   userPermissions?.employees?.includes?.('role') ||
-                   userPermissions?.Employees?.includes?.('role');
-        } catch (error) {
-            console.error('Error checking role permission:', error);
-            return false;
+            // Super admin can assign any role
+            if (isUserSuperAdmin) return null; // null = no filter, show all
+            let configuredIds = null;
+            // Handle array format (backend returns permissions as array of {page, actions} objects)
+            if (Array.isArray(userPermissions)) {
+                const perm = userPermissions.find(p => p.page === 'employees.role_field_roles');
+                configuredIds = perm?.actions || null;
+            } else if (userPermissions && typeof userPermissions === 'object') {
+                // Handle legacy object format
+                configuredIds =
+                    userPermissions['employees.role_field_roles'] ||
+                    userPermissions['employees_role_field_roles'] ||
+                    null;
+            }
+            // If it's an array with items, return it; else null = show all
+            return Array.isArray(configuredIds) && configuredIds.length > 0
+                ? configuredIds
+                : null;
+        } catch {
+            return null;
         }
     };
+
+    // Filter roles dropdown based on permission config
+    const allowedRoleIds = getRoleFieldAllowedRoleIds();
+    const filteredRoles = allowedRoleIds
+        ? roles.filter(r => allowedRoleIds.includes(r._id || r.id))
+        : roles;
     
     // Password field should be shown for users with password permission or super admins
     const shouldShowPasswordField = hasPasswordPermission();
@@ -2204,7 +2256,7 @@ const EmployeeForm = ({
                                         onChange={handleInputChange}
                                     >
                                         <option value="" disabled>Select Role</option>
-                                        {roles.map(role => (
+                                        {filteredRoles.map(role => (
                                             <option key={role._id || role.id} value={role._id || role.id}>
                                                 {role.name}
                                             </option>

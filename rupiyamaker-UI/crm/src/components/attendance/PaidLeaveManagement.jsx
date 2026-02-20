@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useAuth } from '../../context/AuthContext';
 
 // API base URL
 const BASE_URL = '/api';
 
 const PaidLeaveManagement = () => {
-  const { user } = useAuth();
+  const [user, setUser] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('userData') || 'null'); } catch { return null; }
+  });
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [leaveBalance, setLeaveBalance] = useState(null);
@@ -28,11 +29,15 @@ const PaidLeaveManagement = () => {
   const loadEmployees = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${BASE_URL}/employees?user_id=${user?.user_id}`);
-      setEmployees(response.data.employees || []);
+      setError(null);
+      const uid = user?.user_id || user?._id;
+      const response = await axios.get(`${BASE_URL}/users/?user_id=${uid}`);
+      // API returns array directly
+      const empList = Array.isArray(response.data) ? response.data : (response.data.users || response.data.data || []);
+      setEmployees(empList);
     } catch (error) {
       console.error('Error loading employees:', error);
-      setError('Failed to load employees');
+      setError('Failed to load employees: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -43,14 +48,14 @@ const PaidLeaveManagement = () => {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get(`${BASE_URL}/settings/leave-balance/${employeeId}?user_id=${user?.user_id}`);
+      const response = await axios.get(`${BASE_URL}/settings/leave-balance/${employeeId}?user_id=${user?.user_id || user?._id}`);
       
       if (response.data.success) {
         setLeaveBalance(response.data.data);
       }
       
       // Load history
-      const historyResponse = await axios.get(`${BASE_URL}/settings/leave-balance/history/${employeeId}?user_id=${user?.user_id}`);
+      const historyResponse = await axios.get(`${BASE_URL}/settings/leave-balance/history/${employeeId}?user_id=${user?.user_id || user?._id}`);
       setLeaveHistory(historyResponse.data || []);
       
     } catch (error) {
@@ -63,7 +68,7 @@ const PaidLeaveManagement = () => {
 
   const handleEmployeeSelect = (employee) => {
     setSelectedEmployee(employee);
-    loadLeaveBalance(employee.id);
+    loadLeaveBalance(employee._id || employee.id);
   };
 
   const handleAllocateLeave = async () => {
@@ -77,14 +82,14 @@ const PaidLeaveManagement = () => {
       setError(null);
 
       const data = {
-        employee_id: selectedEmployee.id,
+        employee_id: selectedEmployee._id || selectedEmployee.id,
         leave_type: leaveType,
         quantity: parseInt(quantity),
         reason: reason.trim()
       };
 
       const response = await axios.post(
-        `${BASE_URL}/settings/leave-balance/allocate?user_id=${user?.user_id}`,
+        `${BASE_URL}/settings/leave-balance/allocate?user_id=${user?.user_id || user?._id}`,
         data
       );
 
@@ -94,7 +99,7 @@ const PaidLeaveManagement = () => {
       setReason('');
       
       // Reload balance
-      loadLeaveBalance(selectedEmployee.id);
+      loadLeaveBalance(selectedEmployee._id || selectedEmployee.id);
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -116,14 +121,14 @@ const PaidLeaveManagement = () => {
       setError(null);
 
       const data = {
-        employee_id: selectedEmployee.id,
+        employee_id: selectedEmployee._id || selectedEmployee.id,
         leave_type: leaveType,
         quantity: parseInt(quantity),
         reason: reason.trim()
       };
 
       const response = await axios.post(
-        `${BASE_URL}/settings/leave-balance/deduct?user_id=${user?.user_id}`,
+        `${BASE_URL}/settings/leave-balance/deduct?user_id=${user?.user_id || user?._id}`,
         data
       );
 
@@ -133,7 +138,7 @@ const PaidLeaveManagement = () => {
       setReason('');
       
       // Reload balance
-      loadLeaveBalance(selectedEmployee.id);
+      loadLeaveBalance(selectedEmployee._id || selectedEmployee.id);
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -181,20 +186,22 @@ const PaidLeaveManagement = () => {
           <div className="bg-white rounded-lg shadow-md p-4">
             <h2 className="text-xl font-bold text-gray-800 mb-4">👥 Select Employee</h2>
             
+            {loading && <p className="text-gray-400 text-center py-6">⏳ Loading employees...</p>}
+            {!loading && employees.length === 0 && <p className="text-gray-400 text-center py-6">No employees found</p>}
             <div className="space-y-2 max-h-[600px] overflow-y-auto">
               {employees.map((employee) => (
                 <button
-                  key={employee.id}
+                  key={employee._id || employee.id}
                   onClick={() => handleEmployeeSelect(employee)}
                   className={`w-full text-left p-3 rounded-lg transition-all ${
-                    selectedEmployee?.id === employee.id
+                    selectedEmployee?._id === (employee._id || employee.id)
                       ? 'bg-indigo-100 border-2 border-indigo-500'
                       : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  <div className="font-semibold text-gray-800">{employee.name}</div>
-                  <div className="text-sm text-gray-600">{employee.department}</div>
-                  <div className="text-xs text-gray-500">{employee.employee_code}</div>
+                  <div className="font-semibold text-gray-800">{employee.first_name} {employee.last_name}</div>
+                  <div className="text-sm text-gray-600">{employee.department_name || employee.department || ''}</div>
+                  <div className="text-xs text-gray-500">{employee.emp_id || employee.employee_code || employee.code || ''}</div>
                 </button>
               ))}
             </div>
@@ -209,8 +216,8 @@ const PaidLeaveManagement = () => {
               <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-800">{selectedEmployee.name}</h2>
-                    <p className="text-gray-600">{selectedEmployee.department} | {selectedEmployee.employee_code}</p>
+                    <h2 className="text-2xl font-bold text-gray-800">{selectedEmployee.first_name} {selectedEmployee.last_name}</h2>
+                    <p className="text-gray-600">{selectedEmployee.department_name || selectedEmployee.department || ""} | {selectedEmployee.emp_id || selectedEmployee.employee_code || selectedEmployee.code || ""}</p>
                   </div>
                   <button
                     onClick={() => setShowAllocationModal(true)}

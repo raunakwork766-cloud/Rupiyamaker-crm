@@ -3791,7 +3791,14 @@ async def register_employee_face(
             )
         
         # Check admin permissions (must be admin or super admin)
-        if not admin_user.get("is_super_admin") and admin_user.get("role_name", "").lower() not in ["admin", "super admin"]:
+        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
+        is_super_admin = (
+            admin_user.get("is_super_admin") or
+            str(admin_user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
+            admin_user.get("role_name", "").lower() in ["admin", "super admin"] or
+            admin_user.get("role", {}).get("name", "").lower() in ["admin", "super admin"]
+        )
+        if not is_super_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only admins can register employee faces"
@@ -3831,9 +3838,10 @@ async def register_employee_face(
         # Save reference photo if provided
         photo_data = registration_data.get("photo_data")
         reference_photo_path = ""
+        UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "media")
         if photo_data:
             # Create face photos directory
-            face_photos_dir = os.path.join(Config.UPLOAD_DIR, "face_photos")
+            face_photos_dir = os.path.join(UPLOAD_DIR, "face_photos")
             os.makedirs(face_photos_dir, exist_ok=True)
             
             # Save photo
@@ -3904,7 +3912,7 @@ async def get_employee_face_data(
         
         # Check if user is requesting their own data or is admin
         is_own_data = user_id == employee_id
-        is_admin = user.get("is_super_admin") or user.get("role_name", "").lower() in ["admin", "super admin"]
+        is_admin = user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]
         
         if not is_own_data and not is_admin:
             raise HTTPException(
@@ -4060,7 +4068,13 @@ async def delete_employee_face(
                 detail="Admin user not found"
             )
         
-        if not admin_user.get("is_super_admin") and admin_user.get("role_name", "").lower() not in ["admin", "super admin"]:
+        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
+        _is_admin = (
+            admin_user.get("is_super_admin") or
+            str(admin_user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
+            admin_user.get("role_name", "").lower() in ["admin", "super admin"]
+        )
+        if not _is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only admins can delete employee faces"
@@ -4107,7 +4121,7 @@ async def list_all_registered_faces(
                 detail="User not found"
             )
         
-        if not user.get("is_super_admin") and user.get("role_name", "").lower() not in ["admin", "super admin"]:
+        if not (user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only admins can view all registered faces"

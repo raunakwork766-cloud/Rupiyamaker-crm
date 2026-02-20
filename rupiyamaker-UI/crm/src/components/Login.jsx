@@ -293,7 +293,9 @@ const Login = ({ onLogin }) => {
                     department_id: data.department?._id || data.department?.id || data.user?.department_id || 'default_department_id',
                     designation_id: data.designation?._id || data.designation?.id || data.user?.designation_id,
                     permissions: permissions, // Store the formatted permissions here too
-                    token: data.token || 'authenticated'
+                    token: data.token || 'authenticated',
+                    is_super_admin: data.role?.name === 'Super Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b',
+                    is_admin: data.role?.name === 'Super Admin' || data.role?.name === 'Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b'
                 };
                 localStorage.setItem('userData', JSON.stringify(userData));
                 localStorage.setItem('user', JSON.stringify(userData)); // Also store as 'user' for navbar compatibility

@@ -27,11 +27,14 @@ import {
   Camera as CameraIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import FaceRegistration from './FaceRegistration';
+import PaidLeaveManagement from './PaidLeaveManagement';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
 
 const AttendanceSettingsTab = ({ userId }) => {
+  const [subTab, setSubTab] = React.useState('settings'); // 'settings', 'face-registration', 'leave-management'
   const [settings, setSettings] = useState({
     // Shift Timing Settings (New)
     shift_start_time: '10:00',
@@ -218,6 +221,45 @@ const AttendanceSettingsTab = ({ userId }) => {
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 2 }}>
+      {/* Sub-Tab Navigation */}
+      <Box sx={{ display: 'flex', gap: 0, mb: 3, border: '1px solid #374151', borderRadius: '8px', overflow: 'hidden' }}>
+        <button
+          onClick={() => setSubTab('settings')}
+          style={{
+            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
+            background: subTab === 'settings' ? 'linear-gradient(to right, #2563eb, #7c3aed)' : '#111827',
+            color: subTab === 'settings' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+          }}>
+          ⚙️ Attendance Settings
+        </button>
+        <button
+          onClick={() => setSubTab('face-registration')}
+          style={{
+            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
+            background: subTab === 'face-registration' ? 'linear-gradient(to right, #7c3aed, #db2777)' : '#111827',
+            color: subTab === 'face-registration' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+          }}>
+          📷 Face Registration
+        </button>
+        <button
+          onClick={() => setSubTab('leave-management')}
+          style={{
+            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
+            background: subTab === 'leave-management' ? 'linear-gradient(to right, #059669, #0891b2)' : '#111827',
+            color: subTab === 'leave-management' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+          }}>
+          📋 Leave Management
+        </button>
+      </Box>
+
+      {/* Face Registration Sub-Tab */}
+      {subTab === 'face-registration' && <FaceRegistration />}
+
+      {/* Leave Management Sub-Tab */}
+      {subTab === 'leave-management' && <PaidLeaveManagement />}
+
+      {/* Attendance Settings Sub-Tab */}
+      {subTab === 'settings' && <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
         {/* Header */}
         <Card elevation={2} sx={{ mb: 3 }}>
           <CardHeader
@@ -785,7 +827,8 @@ const AttendanceSettingsTab = ({ userId }) => {
             {error}
           </Alert>
         </Snackbar>
-      </Box>
+      </Box>}
+    </Box>
   );
 };
 

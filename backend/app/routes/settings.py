@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from app.database import get_database_instances
 from app.database.Settings import SettingsDB
 from app.database.Users import UsersDB
+from app.utils.common_utils import convert_object_id
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
 from app.database.Leads import LeadsDB
@@ -1908,7 +1909,7 @@ async def get_employee_leave_balance(
         from app.schemas.attendance_schemas import EmployeeLeaveBalance
         
         # Get employee details
-        employee = await users_db.get_user_by_id(employee_id)
+        employee = await users_db.get_user(employee_id)
         if not employee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1943,7 +1944,7 @@ async def get_employee_leave_balance(
         
         return {
             "success": True,
-            "data": balance
+            "data": convert_object_id(balance)
         }
     except HTTPException:
         raise
@@ -2017,7 +2018,7 @@ async def allocate_leave_to_employee(
         
         if success:
             # Log the transaction
-            admin_user = await users_db.get_user_by_id(user_id)
+            admin_user = await users_db.get_user(user_id)
             admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
             
             history_entry = {
@@ -2111,7 +2112,7 @@ async def deduct_leave_from_employee(
         
         if success:
             # Log the transaction
-            admin_user = await users_db.get_user_by_id(user_id)
+            admin_user = await users_db.get_user(user_id)
             admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
             
             history_entry = {
@@ -2158,7 +2159,7 @@ async def get_leave_history(
     """Get leave transaction history for an employee"""
     try:
         history = await settings_db.get_leave_history(employee_id)
-        return history
+        return [convert_object_id(h) for h in history]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

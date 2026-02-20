@@ -11,6 +11,8 @@ const FaceRegistration = () => {
   const [capturing, setCapturing] = useState(false);
   const [capturedSamples, setCapturedSamples] = useState([]);
   const [registrationStatus, setRegistrationStatus] = useState(null);
+  const [modelsError, setModelsError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [faceStatus, setFaceStatus] = useState({});
   
   const videoRef = useRef(null);
@@ -41,7 +43,8 @@ const FaceRegistration = () => {
         console.log('Face-API models loaded successfully');
       } catch (error) {
         console.error('Error loading face-api models:', error);
-        alert('Failed to load face recognition models. Please ensure models are in public/models directory.');
+        setModelsError(true);
+        setModelsLoaded(false);
       }
     };
 
@@ -60,24 +63,23 @@ const FaceRegistration = () => {
     
     try {
       setLoading(true);
-      const response = await axios.get(`/api/users/all?user_id=${user._id}`);
-      if (response.data.success) {
-        setEmployees(response.data.users || []);
-        
-        // Load face registration status for each employee
-        const statusPromises = response.data.users.map(emp =>
-          axios.get(`/api/attendance/face/${emp._id}?user_id=${user._id}`)
-            .then(res => ({ [emp._id]: res.data }))
-            .catch(() => ({ [emp._id]: { face_registered: false } }))
-        );
-        
-        const statuses = await Promise.all(statusPromises);
-        const statusMap = statuses.reduce((acc, curr) => ({ ...acc, ...curr }), {});
-        setFaceStatus(statusMap);
-      }
+      const response = await axios.get(`/api/users/?user_id=${user._id}`);
+      // API returns array directly
+      const empList = Array.isArray(response.data) ? response.data : (response.data.users || response.data.data || []);
+      setEmployees(empList);
+      
+      // Load face registration status for each employee (limit to first 20 to avoid too many calls)
+      const statusPromises = empList.slice(0, 20).map(emp =>
+        axios.get(`/api/attendance/face/${emp._id}?user_id=${user._id}`)
+          .then(res => ({ [emp._id]: res.data }))
+          .catch(() => ({ [emp._id]: { face_registered: false } }))
+      );
+      
+      const statuses = await Promise.all(statusPromises);
+      const statusMap = statuses.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+      setFaceStatus(statusMap);
     } catch (error) {
       console.error('Error loading employees:', error);
-      alert('Failed to load employees');
     } finally {
       setLoading(false);
     }
@@ -116,63 +118,70 @@ const FaceRegistration = () => {
   };
 
   const captureFaceSample = async () => {
-    if (!videoRef.current || !modelsLoaded) {
-      alert('Camera not ready or models not loaded');
+    if (!videoRef.current) {
+      alert('Camera not ready');
       return;
     }
 
     try {
-      // Detect face with landmarks and descriptor
-      const detection = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!detection) {
-        alert('No face detected. Please ensure your face is clearly visible and try again.');
-        return;
-      }
-
-      // Draw detection on canvas for visual feedback
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        
-        // Clear canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw face detection box
-        const box = detection.detection.box;
-        ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(box.x, box.y, box.width, box.height);
-      }
-
       // Capture frame as base64 image
       const canvas2 = document.createElement('canvas');
-      canvas2.width = videoRef.current.videoWidth;
-      canvas2.height = videoRef.current.videoHeight;
+      canvas2.width = videoRef.current.videoWidth || 640;
+      canvas2.height = videoRef.current.videoHeight || 480;
       canvas2.getContext('2d').drawImage(videoRef.current, 0, 0);
       const photoData = canvas2.toDataURL('image/jpeg', 0.8);
 
-      // Add sample
+      let descriptor = [];
+      let detectionScore = 1.0;
+
+      // Try face detection if models are loaded
+      if (modelsLoaded) {
+        try {
+          const detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (!detection) {
+            alert('No face detected. Please ensure your face is clearly visible.');
+            return;
+          }
+
+          // Draw detection box on canvas
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            canvas.width = videoRef.current.videoWidth;
+            canvas.height = videoRef.current.videoHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const box = detection.detection.box;
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+          }
+
+          descriptor = Array.from(detection.descriptor);
+          detectionScore = detection.detection.score;
+        } catch (faceError) {
+          console.warn('Face detection failed, using raw capture:', faceError);
+        }
+      }
+
       const sample = {
-        descriptor: Array.from(detection.descriptor),
-        detection_score: detection.detection.score,
-        photoData: photoData,
+        descriptor,
+        detection_score: detectionScore,
+        photoData,
         timestamp: new Date().toISOString()
       };
 
-      setCapturedSamples(prev => [...prev, sample]);
-      
-      // Show success feedback
-      alert(`Sample ${capturedSamples.length + 1} captured successfully! (Confidence: ${(detection.detection.score * 100).toFixed(1)}%)`);
+      setCapturedSamples(prev => {
+        const newSamples = [...prev, sample];
+        return newSamples;
+      });
       
     } catch (error) {
       console.error('Error capturing face:', error);
-      alert('Failed to capture face sample. Please try again.');
+      alert('Failed to capture sample. Please try again.');
     }
   };
 
@@ -273,18 +282,43 @@ const FaceRegistration = () => {
       </div>
 
       {/* Models Status */}
-      {!modelsLoaded && (
+      {!modelsLoaded && !modelsError && (
         <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
           <p className="text-yellow-700">⏳ Loading face recognition models...</p>
+        </div>
+      )}
+      {modelsError && (
+        <div className="bg-orange-100 border-l-4 border-orange-500 p-4 mb-4">
+          <p className="text-orange-700">⚠️ Face detection models unavailable - basic camera capture will still work. Face auto-detection disabled.</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Employee List */}
         <div className="bg-white rounded-lg shadow-md p-4">
-          <h3 className="text-lg font-semibold mb-4">Select Employee</h3>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {employees.map(employee => (
+          <h3 className="text-lg font-semibold mb-3">Select Employee</h3>
+          <input
+            type="text"
+            placeholder="🔍 Search employee..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3 focus:outline-none focus:border-purple-400"
+          />
+          {loading ? (
+            <p className="text-gray-400 text-center py-8">⏳ Loading employees...</p>
+          ) : employees.length === 0 ? (
+            <p className="text-gray-400 text-center py-8">No employees found</p>
+          ) : (
+          <div className="space-y-2 max-h-[540px] overflow-y-auto">
+            {employees
+              .filter(emp => {
+                const name = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+                const email = (emp.email || '').toLowerCase();
+                const code = (emp.emp_id || emp.employee_id || emp.code || '').toLowerCase();
+                const q = searchQuery.toLowerCase();
+                return !q || name.includes(q) || email.includes(q) || code.includes(q);
+              })
+              .map(employee => (
               <div
                 key={employee._id}
                 className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
@@ -296,21 +330,22 @@ const FaceRegistration = () => {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-medium">{employee.name}</p>
-                    <p className="text-sm text-gray-600">{employee.email}</p>
-                    <p className="text-xs text-gray-500">{employee.employee_id}</p>
+                    <p className="font-medium text-gray-800">{employee.first_name} {employee.last_name}</p>
+                    <p className="text-sm text-gray-500">{employee.email}</p>
+                    <p className="text-xs text-gray-400">{employee.emp_id || employee.employee_id || employee.code || ''}</p>
                   </div>
-                  <div>
+                  <div className="ml-2 flex-shrink-0">
                     {faceStatus[employee._id]?.face_registered ? (
-                      <span className="text-green-500 text-xs">✓ Registered</span>
+                      <span className="text-green-600 text-xs font-semibold bg-green-50 px-2 py-1 rounded">✓ Face</span>
                     ) : (
-                      <span className="text-gray-400 text-xs">Not registered</span>
+                      <span className="text-gray-400 text-xs">—</span>
                     )}
                   </div>
                 </div>
               </div>
             ))}
           </div>
+          )}
         </div>
 
         {/* Camera & Capture */}
@@ -320,7 +355,7 @@ const FaceRegistration = () => {
           {selectedEmployee ? (
             <>
               <div className="mb-4 p-3 bg-blue-50 rounded">
-                <p className="font-medium">{selectedEmployee.name}</p>
+                <p className="font-medium">{selectedEmployee.first_name} {selectedEmployee.last_name}</p>
                 <p className="text-sm text-gray-600">
                   {faceStatus[selectedEmployee._id]?.face_registered
                     ? `Current samples: ${faceStatus[selectedEmployee._id].samples_count}`
@@ -350,7 +385,7 @@ const FaceRegistration = () => {
                 {!capturing ? (
                   <button
                     onClick={startCamera}
-                    disabled={!modelsLoaded || loading}
+                    disabled={loading}
                     className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300"
                   >
                     📷 Start Camera

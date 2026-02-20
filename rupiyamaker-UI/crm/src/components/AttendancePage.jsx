@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, Users2 } from "lucide-react"
 import axios from "axios"
 import { formatDateTime } from '../utils/dateUtils';
-import FaceRegistration from './attendance/FaceRegistration';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
 
@@ -2549,7 +2548,7 @@ export default function MonthlyAttendanceTable() {
   const [newComment, setNewComment] = useState("")
   const [history, setHistory] = useState([])
   const [holidays, setHolidays] = useState([])
-  const [activeTab, setActiveTab] = useState('calendar') // 'calendar' or 'face-registration'
+  const [activeTab, setActiveTab] = useState('calendar')
 
   // Table horizontal scroll controls
   const tableScrollRef = useRef(null)
@@ -2913,44 +2912,7 @@ export default function MonthlyAttendanceTable() {
   }
   return (
     <div className="w-full p-6 space-y-6 bg-black min-h-screen">
-      {/* Tab Navigation */}
-      <div className="bg-black rounded-lg border border-gray-800 overflow-hidden">
-        <div className="flex gap-0">
-          <button
-            onClick={() => setActiveTab('calendar')}
-            className={`flex-1 px-6 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-              activeTab === 'calendar'
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                : 'bg-black text-gray-400 hover:text-white hover:bg-gray-900'
-            }`}
-          >
-            <Calendar className="h-4 w-4" />
-            Attendance Calendar
-          </button>
-          {user?.is_super_admin && (
-            <button
-              onClick={() => setActiveTab('face-registration')}
-              className={`flex-1 px-6 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'face-registration'
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                  : 'bg-black text-gray-400 hover:text-white hover:bg-gray-900'
-              }`}
-            >
-              <Users2 className="h-4 w-4" />
-              Face Registration
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Face Registration View */}
-      {activeTab === 'face-registration' && (
-        <FaceRegistration />
-      )}
-
       {/* Attendance Calendar View */}
-      {activeTab === 'calendar' && (
-      <>
       {/* Header */}
       <div className="bg-black rounded-lg p-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -3241,8 +3203,6 @@ export default function MonthlyAttendanceTable() {
         selectedYear={selectedYear}
         selectedMonth={selectedMonth}
       />
-      </>
-      )}
     </div>
   )
 }

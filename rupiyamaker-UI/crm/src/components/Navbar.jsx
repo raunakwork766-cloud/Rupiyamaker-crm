@@ -64,6 +64,76 @@ const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
     document.body
   );
 };
+// Success Modal Component
+const SuccessModal = ({ successInfo, onClose }) => {
+  if (!successInfo) return null;
+  const configs = {
+    full_day: {
+      emoji: '🎉',
+      color: '#16a34a',
+      bg: '#f0fdf4',
+      border: '#86efac',
+      messages: [
+        'Great start to the day! Keep it up! 💪',
+        'You\'re on time! Productive day ahead! 🚀',
+        'Attendance marked! Let\'s crush it today! ⚡',
+        'On time and ready! Amazing! 🌟',
+      ],
+    },
+    half_day: {
+      emoji: '🌤️',
+      color: '#d97706',
+      bg: '#fffbeb',
+      border: '#fcd34d',
+      messages: [
+        'Half day marked! Make the most of it! 😊',
+        'Short day today, still counts! 👍',
+        'Half day attendance recorded! 📋',
+      ],
+    },
+    late: {
+      emoji: '⏰',
+      color: '#dc2626',
+      bg: '#fef2f2',
+      border: '#fca5a5',
+      messages: [
+        'You\'re a bit late today. Try to be earlier tomorrow! 😅',
+        'Late check-in recorded. No worries, happens to all! 🙂',
+        'Marked late. Remember: early bird gets the worm! 🐦',
+      ],
+    },
+    checked_out: {
+      emoji: '👋',
+      color: '#2563eb',
+      bg: '#eff6ff',
+      border: '#93c5fd',
+      messages: [
+        'Great work today! See you tomorrow! 😊',
+        'Another productive day done! Rest well! 🌙',
+        'Checked out! You deserve some rest! 🏠',
+        'Day complete! Good job today! ⭐',
+      ],
+    },
+  };
+  const cfg = configs[successInfo.type] || configs.full_day;
+  const randomMsg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '16px' }}>
+      <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: '16px', padding: '32px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'popIn 0.3s ease-out' }}>
+        <style>{`@keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
+        <div style={{ fontSize: '64px', marginBottom: '12px' }}>{cfg.emoji}</div>
+        <h2 style={{ color: cfg.color, fontSize: '22px', fontWeight: 700, marginBottom: '8px' }}>{successInfo.title}</h2>
+        <p style={{ color: '#374151', fontSize: '15px', marginBottom: '8px' }}>{successInfo.message}</p>
+        <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', fontStyle: 'italic' }}>{randomMsg}</p>
+        <button onClick={onClose} style={{ background: cfg.color, color: 'white', border: 'none', borderRadius: '10px', padding: '12px 32px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+          Done
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // Camera Modal Component
 const CameraModal = ({
   showCamera,
@@ -76,6 +146,7 @@ const CameraModal = ({
   retakePhoto,
   confirmPhoto,
   attendanceLoading,
+  faceVerifyState,
 }) => {
   if (!showCamera) return null;
 
@@ -84,7 +155,7 @@ const CameraModal = ({
       <div className="bg-white border border-gray-300 rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-sm sm:max-w-lg relative">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-black text-base sm:text-lg font-semibold">
-            {pendingAction === 'checkin' ? 'Check In' : 'Check Out'} - Take Photo
+            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'} - Take Photo
           </h3>
           <button
             onClick={closeCameraModal}
@@ -107,6 +178,24 @@ const CameraModal = ({
             )}
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
+
+          {/* Face Verify Status */}
+          {capturedPhoto && faceVerifyState === 'verifying' && (
+            <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#1d4ed8', fontSize: '14px', fontWeight: 500 }}>
+              🔍 Verifying your face... please wait
+            </div>
+          )}
+          {capturedPhoto && faceVerifyState === 'verified' && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#15803d', fontSize: '14px', fontWeight: 600 }}>
+              ✅ Face verified! You can mark your attendance.
+            </div>
+          )}
+          {capturedPhoto && faceVerifyState === 'failed' && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', color: '#dc2626', fontSize: '14px', fontWeight: 600 }}>
+              ❌ Face not recognized. Please retake photo.
+            </div>
+          )}
+
           <div className="flex gap-2 sm:gap-3">
             {!capturedPhoto ? (
               <>
@@ -121,7 +210,7 @@ const CameraModal = ({
                   className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                 >
                   <Camera className="w-4 h-4" />
-                  <span className="hidden sm:inline">Capture Photo</span>
+                  <span className="hidden sm:inline">📷 Capture Photo</span>
                   <span className="sm:hidden">Capture</span>
                 </button>
               </>
@@ -136,16 +225,19 @@ const CameraModal = ({
                 <button
                   onClick={retakePhoto}
                   className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+                  disabled={faceVerifyState === 'verifying'}
                 >
-                  Retake
+                  🔄 Retake
                 </button>
-                <button
-                  onClick={confirmPhoto}
-                  disabled={attendanceLoading}
-                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {attendanceLoading ? 'Processing...' : 'Confirm'}
-                </button>
+                {faceVerifyState === 'verified' && (
+                  <button
+                    onClick={confirmPhoto}
+                    disabled={attendanceLoading}
+                    className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {attendanceLoading ? '⏳ Marking...' : `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -172,6 +264,8 @@ export default function TopNavbar({
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [cameraStream, setCameraStream] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [faceVerifyState, setFaceVerifyState] = useState('idle'); // idle | verifying | verified | failed
+  const [successModal, setSuccessModal] = useState(null); // null | { type, title, message }
   const [userProfilePhoto, setUserProfilePhoto] = useState(null);
   const [profilePhotoError, setProfilePhotoError] = useState(false);
   const [currentUserData, setCurrentUserData] = useState(null);
@@ -930,14 +1024,47 @@ export default function TopNavbar({
       context.drawImage(video, 0, 0);
       const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedPhoto(photoDataUrl);
+      // Auto-verify face after capture
+      verifyFace(photoDataUrl);
     } else {
       console.error('Video or canvas not available');
       alert('Error capturing photo. Please try again.');
     }
   };
 
+  const verifyFace = async (photoDataUrl) => {
+    setFaceVerifyState('verifying');
+    try {
+      const userId = getUserId();
+      if (!userId) {
+        setFaceVerifyState('verified'); // No user ID, skip face verify
+        return;
+      }
+      const base64Data = photoDataUrl.split(',')[1];
+      const response = await fetch(`${API_BASE_URL}/attendance/face/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, photo_data: base64Data }),
+      });
+      const data = await response.json();
+      if (response.ok && (data.verified === true || data.match === true || data.success === true)) {
+        setFaceVerifyState('verified');
+      } else if (response.status === 404 || (data.detail && data.detail.includes('No face'))) {
+        // No face registered for this user - allow check-in anyway
+        setFaceVerifyState('verified');
+      } else {
+        setFaceVerifyState('failed');
+      }
+    } catch (error) {
+      console.warn('Face verify error (allowing check-in):', error);
+      // Network error - allow check-in anyway
+      setFaceVerifyState('verified');
+    }
+  };
+
   const retakePhoto = () => {
     setCapturedPhoto(null);
+    setFaceVerifyState('idle');
   };
 
   const closeCameraModal = () => {
@@ -946,6 +1073,7 @@ export default function TopNavbar({
     setCapturedPhoto(null);
     setPendingAction(null);
     setAttendanceLoading(false);
+    setFaceVerifyState('idle');
     document.body.style.overflow = 'unset';
     const modalContainer = document.getElementById('camera-modal-container');
     if (modalContainer) {
@@ -996,9 +1124,18 @@ export default function TopNavbar({
       if (apiResponse.ok) {
         const data = await apiResponse.json();
         setIsCheckedIn(pendingAction === 'checkin');
-        alert(data.message || `${pendingAction === 'checkin' ? 'Check-in' : 'Check-out'} successful!`);
         closeCameraModal();
         checkAttendanceStatus();
+        // Show success modal based on response
+        if (pendingAction === 'checkout') {
+          setSuccessModal({ type: 'checked_out', title: 'Checked Out! 👋', message: data.message || 'Check-out successful!' });
+        } else if (data.is_late || (data.status && data.status.includes('late'))) {
+          setSuccessModal({ type: 'late', title: 'Late Check In ⏰', message: data.message || 'Check-in recorded (late).' });
+        } else if (data.status && data.status.includes('half')) {
+          setSuccessModal({ type: 'half_day', title: 'Half Day 🌤️', message: data.message || 'Half day attendance marked!' });
+        } else {
+          setSuccessModal({ type: 'full_day', title: 'Checked In! 🎉', message: data.message || 'Check-in successful!' });
+        }
       } else {
         const errorData = await apiResponse.json();
         throw new Error(errorData.detail || 'Attendance action failed');
@@ -1412,6 +1549,12 @@ export default function TopNavbar({
         retakePhoto={retakePhoto}
         confirmPhoto={confirmPhoto}
         attendanceLoading={attendanceLoading}
+        faceVerifyState={faceVerifyState}
+      />
+
+      <SuccessModal
+        successInfo={successModal}
+        onClose={() => setSuccessModal(null)}
       />
 
       {/* Change Password Modal */}

@@ -8071,14 +8071,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             </td>
                                                             
                                                             {/* Created By column */}
-                                                            <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                            <td className="text-sm font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                                 <div className="flex items-center gap-3">
                                                                     <span className='text-sm text-wrap'>{typeof lead.created_by_name === 'object' ? lead.created_by_name?.name || "-" : lead.created_by_name || "-"}</span>
                                                                 </div>
                                                             </td>
                                                             
                                                             {/* Team Name column */}
-                                                            <td className="text-sm font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                            <td className="text-xl font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                                 {typeof lead.department_name === 'object' ? lead.department_name?.name || "-" : lead.department_name || "-"}
                                                             </td>
                                                             
