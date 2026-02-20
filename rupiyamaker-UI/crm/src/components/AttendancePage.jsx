@@ -1714,8 +1714,40 @@ export default function MonthlyAttendanceTable() {
         
         if (response && response.employees) {
           const formattedData = convertToCalendarFormat(response)
-          console.log('Formatted data:', formattedData)
-          setAttendanceData(formattedData)
+
+          // Fetch leave balances for all employees in parallel
+          const leaveBalanceResults = await Promise.allSettled(
+            formattedData.map(record =>
+              axios.get(`${BASE_URL}/settings/leave-balance/${record.id}`, {
+                params: { user_id: user.user_id },
+                headers: getAuthHeaders()
+              }).then(res => ({ id: record.id, data: res.data?.data || {} }))
+            )
+          )
+
+          // Merge leave balance data into each record
+          const balanceMap = {}
+          leaveBalanceResults.forEach(result => {
+            if (result.status === 'fulfilled' && result.value?.id) {
+              balanceMap[result.value.id] = result.value.data
+            }
+          })
+
+          const enrichedData = formattedData.map(record => {
+            const bal = balanceMap[record.id] || {}
+            return {
+              ...record,
+              earnedLeavesTotal: bal.earned_leaves_total ?? 15,
+              earnedLeavesUsed: bal.earned_leaves_used ?? 0,
+              earnedLeavesRemaining: bal.earned_leaves_remaining ?? 15,
+              graceTotal: bal.grace_leaves_total ?? 24,
+              graceUsed: bal.grace_leaves_used ?? 0,
+              graceRemaining: bal.grace_leaves_remaining ?? 24,
+            }
+          })
+
+          console.log('Formatted data:', enrichedData)
+          setAttendanceData(enrichedData)
         } else {
           setAttendanceData([])
         }
@@ -2074,6 +2106,12 @@ export default function MonthlyAttendanceTable() {
                 <th colSpan={7} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Summary
                 </th>
+                <th colSpan={3} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#1e7e34'}}>
+                  Earned Leave
+                </th>
+                <th colSpan={3} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#6f42c1'}}>
+                  Grace
+                </th>
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
               <tr>
@@ -2093,6 +2131,12 @@ export default function MonthlyAttendanceTable() {
                 <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Holiday</th>
                 <th className="px-3 py-1 text-center font-bold text-white min-w-[75px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Abscond</th>
                 <th className="px-3 py-1 text-center font-bold text-white min-w-[70px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Attend %</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Total</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Used</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Remaining</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Total</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Used</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Remaining</th>
               </tr>
             </thead>
             <tbody className="bg-black">
@@ -2131,6 +2175,22 @@ export default function MonthlyAttendanceTable() {
                     <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
                       <span className={Number.parseFloat(stats.attendancePercentage) >= 90 ? 'text-green-400' : Number.parseFloat(stats.attendancePercentage) >= 75 ? 'text-yellow-400' : 'text-red-400'}>
                         {stats.attendancePercentage}%
+                      </span>
+                    </td>
+                    {/* Earned Leave */}
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-300 text-sm">{record.earnedLeavesTotal ?? 15}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{record.earnedLeavesUsed ?? 0}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
+                      <span className={(record.earnedLeavesRemaining ?? 15) > 5 ? 'text-green-400' : (record.earnedLeavesRemaining ?? 15) > 0 ? 'text-yellow-400' : 'text-red-400'}>
+                        {record.earnedLeavesRemaining ?? 15}
+                      </span>
+                    </td>
+                    {/* Grace */}
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-purple-300 text-sm">{record.graceTotal ?? 24}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{record.graceUsed ?? 0}</td>
+                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
+                      <span className={(record.graceRemaining ?? 24) > 5 ? 'text-purple-400' : (record.graceRemaining ?? 24) > 0 ? 'text-yellow-400' : 'text-red-400'}>
+                        {record.graceRemaining ?? 24}
                       </span>
                     </td>
                   </tr>

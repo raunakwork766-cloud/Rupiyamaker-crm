@@ -1938,6 +1938,9 @@ async def get_employee_leave_balance(
                 "casual_leaves_total": 5,
                 "casual_leaves_used": 0,
                 "casual_leaves_remaining": 5,
+                "grace_leaves_total": 24,
+                "grace_leaves_used": 0,
+                "grace_leaves_remaining": 24,
             }
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
