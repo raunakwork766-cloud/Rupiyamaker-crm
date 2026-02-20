@@ -1433,7 +1433,9 @@ const EmployeeForm = ({
             let userId = currentUser.id || currentUser._id || 
                         userData.id || userData._id || 
                         userInfo.id || userInfo._id ||
-                        authUser.id || authUser._id;
+                        authUser.id || authUser._id ||
+                        getUserId() || // fallback: 'userId' key set by Login.jsx
+                        localStorage.getItem('user_id'); // fallback: 'user_id' key
                         
             console.log('🔍 Resolved userId:', userId);
             
