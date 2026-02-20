@@ -1394,6 +1394,7 @@ const EmployeeForm = ({
                 submissionData.is_active = true;
                 // Enable login if a password was provided so employee can login immediately
                 submissionData.login_enabled = !!(submissionData.password && submissionData.password.trim());
+                submissionData.otp_required = false;  // No OTP by default - admin can enable later
                 submissionData.is_employee = true;
                 submissionData.employee_status = 'active';
                 submissionData.onboarding_status = 'pending';
