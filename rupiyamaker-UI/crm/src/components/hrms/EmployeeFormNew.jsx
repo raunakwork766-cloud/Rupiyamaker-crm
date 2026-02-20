@@ -1392,7 +1392,8 @@ const EmployeeForm = ({
                 
                 // Basic defaults for new employees
                 submissionData.is_active = true;
-                submissionData.login_enabled = false;
+                // Enable login if a password was provided so employee can login immediately
+                submissionData.login_enabled = !!(submissionData.password && submissionData.password.trim());
                 submissionData.is_employee = true;
                 submissionData.employee_status = 'active';
                 submissionData.onboarding_status = 'pending';
