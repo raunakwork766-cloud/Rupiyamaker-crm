@@ -696,7 +696,7 @@ async def list_employees(
 ):
     """List all employees with optional filtering by status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get employees with readable passwords
     employees = await users_db.get_employees_with_readable_passwords(status, department_id)
@@ -711,8 +711,8 @@ async def create_employee(
     departments_db: DepartmentsDB = Depends(get_departments_db)
 ):
     """Create a new employee record with all necessary information"""
-    # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    # Check permission - allow users with employees.show OR hrms.show access
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if username exists (required field)
     if await users_db.get_user_by_username(employee.username):
@@ -763,7 +763,7 @@ async def upload_employee_photo(
 ):
     """Upload a profile photo for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -800,7 +800,7 @@ async def get_employee(
 ):
     """Get a specific employee by ID"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get employee with readable password
     employee = await users_db.get_user_with_readable_password(employee_id)
@@ -830,7 +830,7 @@ async def update_employee(
 ):
     """Update employee information"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     current_employee = await users_db.get_user(employee_id)
@@ -899,7 +899,7 @@ async def update_employee_status(
 ):
     """Update employee status (active/inactive)"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -941,7 +941,7 @@ async def update_onboarding_status(
 ):
     """Update employee onboarding status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -983,7 +983,7 @@ async def update_crm_access(
 ):
     """Update employee CRM access"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1014,7 +1014,7 @@ async def update_login_enabled(
 ):
     """Update employee login enabled status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Verify employee exists
     employee = await users_db.get_user(employee_id)
@@ -1045,7 +1045,7 @@ async def update_login_status(
 ):
     """Enable or disable login for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1076,7 +1076,7 @@ async def update_otp_required(
 ):
     """Toggle OTP requirement for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1360,7 +1360,7 @@ async def get_user_password(
 ):
     """Get a user's password (for admin use only)"""
     # First, check permission - only allow admins or users with special permission
-    await check_permission(requesting_user_id, "employees", "show", users_db, roles_db)
+    await check_permission(requesting_user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get the user
     user = await users_db.get_user(user_id)
@@ -1449,7 +1449,7 @@ async def update_user_with_photo(
     
     # Check permissions (users can update their own profile, or admin can update anyone)
     if str(user_id) != requesting_user_id:
-        await check_permission(requesting_user_id, "employees", "show", users_db, roles_db)
+        await check_permission(requesting_user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Build update data from form fields
     update_data = {}

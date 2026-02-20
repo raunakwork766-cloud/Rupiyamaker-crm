@@ -1332,21 +1332,6 @@ const EmployeeForm = ({
         
         console.log('✅ PASSWORD VALIDATION PASSED');
 
-        // Validate unique fields only if they are provided (mobile, alternate mobile, PAN, Aadhar)
-        const hasUniqueFields = formData.phone || formData.alternate_phone || formData.pan_number || formData.aadhaar_number;
-        if (hasUniqueFields) {
-            console.log('🔍 Starting unique field validation...');
-            const uniqueFieldsValid = await validateUniqueFields();
-            if (!uniqueFieldsValid) {
-                console.log('❌ Unique field validation failed');
-                console.log('❌ UNIQUE FIELDS VALIDATION FAILED - Stopping submission');
-                return;
-            }
-            console.log('✅ Unique field validation passed');
-        } else {
-            console.log('✅ No unique fields provided, skipping validation');
-        }
-        
         console.log('🎉 ALL VALIDATIONS PASSED - Proceeding to API submission');
         console.log('📊 Final form data before API call:', formData);
 
