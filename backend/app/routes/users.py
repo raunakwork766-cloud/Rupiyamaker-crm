@@ -432,39 +432,51 @@ async def login(
     otp_db: OTPDB = Depends(get_otp_db)
 ):
     """Authenticate a user with optional OTP verification"""
-    user = await users_db.authenticate_user(
-        login_data.username_or_email,
-        login_data.password
-    )
-    
-    if not user:
+    # Step 1: Look up user WITHOUT password check so we can give specific error messages
+    user_lookup = await users_db.get_user_by_username(login_data.username_or_email)
+    if not user_lookup:
+        user_lookup = await users_db.get_user_by_email(login_data.username_or_email)
+
+    if not user_lookup:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username/email or password"
         )
-        
-    # Check if user is active
-    if not user.get("is_active", True):
+
+    # Step 2: Check account status BEFORE verifying password (gives specific 403 errors)
+    # Previously these checks were dead code because authenticate_user returned None first
+    if not user_lookup.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
+            detail="Your account is inactive. Please contact the administrator."
         )
-    
+
     # 🔒 CRITICAL: Check employee status for HRMS employees
-    # This ensures inactive employees cannot login regardless of login_enabled status
-    if user.get("is_employee", False):
-        employee_status = user.get("employee_status", "active")
+    if user_lookup.get("is_employee", False):
+        employee_status = user_lookup.get("employee_status", "active")
         if employee_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Your account is inactive. Please contact the administrator."
             )
-    
+
     # Check if login is enabled for this user (default is True if not set)
-    if not user.get("login_enabled", True):
+    if not user_lookup.get("login_enabled", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Login access is disabled for this account"
+            detail="Login access is disabled for your account. Please contact the administrator."
+        )
+
+    # Step 3: Now verify the password
+    user = await users_db.authenticate_user(
+        login_data.username_or_email,
+        login_data.password
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username/email or password"
         )
     
     # 🔒 CRITICAL: Check if user's session was invalidated (for offline logout)

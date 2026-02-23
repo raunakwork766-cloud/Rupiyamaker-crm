@@ -1286,7 +1286,7 @@ export default function FeedPage({ user }) {
         return;
       }
       setFeeds(prevFeeds => prevFeeds.filter(feed => feed.id !== feedId));
-      const response = await fetch(buildApiUrl(`feeds/${feedId}/?user_id=${encodeURIComponent(currentUserId)}`), {
+      const response = await fetch(buildApiUrl(`feeds/${feedId}?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -1328,7 +1328,7 @@ export default function FeedPage({ user }) {
           return { ...feed, comments: removeComment(feed.comments) };
         })
       );
-      const response = await fetch(buildApiUrl(`feeds/comments/${commentId}/?user_id=${encodeURIComponent(currentUserId)}`), {
+      const response = await fetch(buildApiUrl(`feeds/comments/${commentId}?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
