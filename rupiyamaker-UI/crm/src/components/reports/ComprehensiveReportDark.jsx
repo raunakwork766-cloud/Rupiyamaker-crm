@@ -25,7 +25,7 @@ const { Search } = Input;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://156.67.111.95:8049';
 
 const SECTIONS = [
-    { key: 'plod-leads',  label: 'PL & OD Leads', icon: <CreditCardOutlined />, color: '#6366f1', group: 'leads' },
+    { key: 'plod-leads',  label: 'Lead CRM', icon: <CreditCardOutlined />, color: '#6366f1', group: 'leads' },
     { key: 'login-leads', label: 'Login Leads',   icon: <FileTextOutlined />,   color: '#3b82f6', group: 'leads' },
     { key: 'tasks',       label: 'Tasks',         icon: <CheckCircleOutlined />,color: '#10b981', group: 'work'  },
     { key: 'tickets',     label: 'Tickets',       icon: <SolutionOutlined />,   color: '#f59e0b', group: 'work'  },
