@@ -52,8 +52,8 @@ const ComprehensiveReportDark = () => {
     const [filters, setFilters] = useState({ dateRange: null, searchText: '', status: null });
     const [statistics, setStatistics]   = useState({ total: 0, active: 0, completed: 0, pending: 0 });
 
-    useEffect(() => { fetchUsers(); fetchAllLeads(); }, []);
-    useEffect(() => { fetchSectionData(); }, [selectedSection, allLeads]);
+    useEffect(() => { fetchUsers(); }, []);
+    useEffect(() => { fetchSectionData(); }, [selectedSection]);
     useEffect(() => { applyFilters(); }, [filters, data]);
     useEffect(() => { calculateStatistics(); }, [filteredData]);
 
@@ -89,7 +89,24 @@ const ComprehensiveReportDark = () => {
         try {
             let fetched = [];
             switch (selectedSection) {
-                case 'plod-leads':  fetched = [...allLeads]; break;
+                case 'plod-leads': {
+                    const res = await leadsService.getAllLeads();
+                    if (res.success) {
+                        fetched = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+                    } else {
+                        // try direct axios fallback
+                        try {
+                            const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+                            const r = await axios.get(`/api/leads?user_id=${userId}`, {
+                                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                            });
+                            fetched = Array.isArray(r.data) ? r.data : (r.data?.items || r.data?.leads || r.data?.data || []);
+                        } catch (e2) { console.error('leads fallback error', e2); }
+                    }
+                    setAllLeads(fetched);
+                    setCounts(p => ({ ...p, 'plod-leads': fetched.length }));
+                    break;
+                }
                 case 'login-leads': {
                     const token = localStorage.getItem('token');
                     const userId = localStorage.getItem('userId');
@@ -355,10 +372,7 @@ const ComprehensiveReportDark = () => {
         setSelectedSection(key); setData([]); setFilteredData([]);
         setSelectedRows([]); setSelectedRowKeys([]); resetFilters();
     };
-    const handleRefresh = () => {
-        if (selectedSection === 'plod-leads') fetchAllLeads();
-        else fetchSectionData();
-    };
+    const handleRefresh = () => { fetchSectionData(); };
     const grouped = ['leads','work','hr'].map(g => ({ label: GROUP_LABELS[g], items: SECTIONS.filter(s => s.group === g) }));
     const currentSection = SECTIONS.find(s => s.key === selectedSection);
 
