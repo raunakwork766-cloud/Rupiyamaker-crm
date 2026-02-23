@@ -75,12 +75,16 @@ const ComprehensiveReportDark = () => {
 
     const fetchAllLeads = async () => {
         try {
-            const res = await leadsService.getAllLeads();
-            if (res.success) {
-                const arr = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-                setAllLeads(arr);
-                setCounts(p => ({ ...p, 'plod-leads': arr.length }));
-            }
+            const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/api/leads/?user_id=${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
+            const data = await response.json();
+            const arr = data.items || (Array.isArray(data) ? data : []);
+            setAllLeads(arr);
+            setCounts(p => ({ ...p, 'plod-leads': arr.length }));
         } catch (e) { console.error('fetchAllLeads', e); }
     };
 
@@ -90,19 +94,19 @@ const ComprehensiveReportDark = () => {
             let fetched = [];
             switch (selectedSection) {
                 case 'plod-leads': {
-                    const res = await leadsService.getAllLeads();
-                    if (res.success) {
-                        fetched = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-                    } else {
-                        // try direct axios fallback
-                        try {
-                            const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
-                            const r = await axios.get(`/api/leads?user_id=${userId}`, {
-                                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-                            });
-                            fetched = Array.isArray(r.data) ? r.data : (r.data?.items || r.data?.leads || r.data?.data || []);
-                        } catch (e2) { console.error('leads fallback error', e2); }
-                    }
+                    try {
+                        const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+                        const token = localStorage.getItem('token');
+                        const response = await fetch(`/api/leads/?user_id=${userId}`, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            }
+                        });
+                        if (!response.ok) throw new Error(`API error: ${response.status}`);
+                        const data = await response.json();
+                        fetched = data.items || (Array.isArray(data) ? data : []);
+                    } catch (e2) { console.error('leads fetch error', e2); fetched = []; }
                     setAllLeads(fetched);
                     setCounts(p => ({ ...p, 'plod-leads': fetched.length }));
                     break;
