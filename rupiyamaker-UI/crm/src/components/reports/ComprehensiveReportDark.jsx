@@ -9,12 +9,13 @@ import {
     FileTextOutlined, EyeOutlined, FilterOutlined, SearchOutlined,
     FileProtectOutlined, HistoryOutlined, SolutionOutlined,
     TeamOutlined, CalendarOutlined, CreditCardOutlined,
-    BarChartOutlined, HomeOutlined
+    BarChartOutlined
 } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { leadsService } from '../../services/leadsService';
 import { hrmsService } from '../../services/hrmsService';
+import { ticketsAPI } from '../../services/api';
 import axios from 'axios';
 
 const { RangePicker } = DatePicker;
@@ -24,8 +25,7 @@ const { Search } = Input;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://156.67.111.95:8049';
 
 const SECTIONS = [
-    { key: 'pl-leads',    label: 'PL Leads',     icon: <CreditCardOutlined />, color: '#6366f1', group: 'leads' },
-    { key: 'od-leads',    label: 'OD Leads',      icon: <HomeOutlined />,       color: '#8b5cf6', group: 'leads' },
+    { key: 'plod-leads',  label: 'PL & OD Leads', icon: <CreditCardOutlined />, color: '#6366f1', group: 'leads' },
     { key: 'login-leads', label: 'Login Leads',   icon: <FileTextOutlined />,   color: '#3b82f6', group: 'leads' },
     { key: 'tasks',       label: 'Tasks',         icon: <CheckCircleOutlined />,color: '#10b981', group: 'work'  },
     { key: 'tickets',     label: 'Tickets',       icon: <SolutionOutlined />,   color: '#f59e0b', group: 'work'  },
@@ -35,17 +35,8 @@ const SECTIONS = [
 ];
 const GROUP_LABELS = { leads: 'CRM LEADS', work: 'WORK', hr: 'HR' };
 
-const isPLLead = (l) => {
-    const t = (l.loan_type_name || l.loan_type || '').toLowerCase();
-    return t.includes('personal') || t === 'pl' || t.startsWith('pl ') || t.includes(' pl') || t === 'pl & odd' || t === 'plod';
-};
-const isODLead = (l) => {
-    const t = (l.loan_type_name || l.loan_type || '').toLowerCase();
-    return t.includes('overdraft') || t.includes('over draft') || t === 'od' || t.startsWith('od ') || t.includes(' od') || t.includes('odd');
-};
-
 const ComprehensiveReportDark = () => {
-    const [selectedSection, setSelectedSection] = useState('pl-leads');
+    const [selectedSection, setSelectedSection] = useState('plod-leads');
     const [loading, setLoading]         = useState(false);
     const [allLeads, setAllLeads]       = useState([]);
     const [data, setData]               = useState([]);
@@ -88,7 +79,7 @@ const ComprehensiveReportDark = () => {
             if (res.success) {
                 const arr = Array.isArray(res.data) ? res.data : (res.data?.items || []);
                 setAllLeads(arr);
-                setCounts(p => ({ ...p, 'pl-leads': arr.filter(isPLLead).length, 'od-leads': arr.filter(isODLead).length }));
+                setCounts(p => ({ ...p, 'plod-leads': arr.length }));
             }
         } catch (e) { console.error('fetchAllLeads', e); }
     };
@@ -98,8 +89,7 @@ const ComprehensiveReportDark = () => {
         try {
             let fetched = [];
             switch (selectedSection) {
-                case 'pl-leads':    fetched = allLeads.filter(isPLLead); break;
-                case 'od-leads':    fetched = allLeads.filter(isODLead); break;
+                case 'plod-leads':  fetched = [...allLeads]; break;
                 case 'login-leads': {
                     const token = localStorage.getItem('token');
                     const userId = localStorage.getItem('userId');
@@ -117,13 +107,18 @@ const ComprehensiveReportDark = () => {
                     break;
                 }
                 case 'tasks': {
-                    const r = await axios.get(`${API_BASE_URL}/api/tasks`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-                    fetched = r.data.data || [];
+                    const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+                    const r = await axios.get(`/api/tasks/with-stats?user_id=${userId}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    });
+                    fetched = r.data.tasks || r.data.data || r.data || [];
+                    if (!Array.isArray(fetched)) fetched = [];
                     break;
                 }
                 case 'tickets': {
-                    const r = await axios.get(`${API_BASE_URL}/api/tickets`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-                    fetched = r.data.data || [];
+                    const r = await ticketsAPI.getTickets(1, 500, {});
+                    fetched = r.tickets || r.data || [];
+                    if (!Array.isArray(fetched)) fetched = [];
                     break;
                 }
                 case 'attendance': {
@@ -172,7 +167,7 @@ const ComprehensiveReportDark = () => {
     };
 
     const handleRowClick = (record) => {
-        if (['pl-leads','od-leads','login-leads'].includes(selectedSection)) {
+        if (['plod-leads','login-leads'].includes(selectedSection)) {
             setSelectedLead(record); setDetailModalVisible(true); setActiveDetailTab('about');
             fetchLeadDetails(record._id?.$oid || record._id);
         }
@@ -222,7 +217,7 @@ const ComprehensiveReportDark = () => {
         title:'', key:'act', width:70, fixed:'right',
         render: (_, record) => (
             <Space size={4}>
-                {['pl-leads','od-leads','login-leads'].includes(selectedSection) && (
+                {['plod-leads','login-leads'].includes(selectedSection) && (
                     <Tooltip title="View"><Button type="primary" size="small" icon={<EyeOutlined />}
                         onClick={e => { e.stopPropagation(); handleRowClick(record); }}
                         style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', border:'none' }} /></Tooltip>
@@ -235,7 +230,7 @@ const ComprehensiveReportDark = () => {
     };
 
     const getColumns = () => {
-        const isLead = ['pl-leads','od-leads','login-leads'].includes(selectedSection);
+        const isLead = ['plod-leads','login-leads'].includes(selectedSection);
         if (isLead) return [
             actionCol,
             { title:'Lead ID',  dataIndex:'custom_lead_id', key:'lid',    width:130, render:t=><span style={{color:'#a78bfa',fontWeight:500}}>{t||'-'}</span> },
@@ -259,19 +254,31 @@ const ComprehensiveReportDark = () => {
         ];
         if (selectedSection === 'tasks') return [
             actionCol,
-            { title:'Title',    dataIndex:'title',    key:'title',  width:250, render:t=><span style={{color:'#f3f4f6',fontWeight:500}}>{t||'-'}</span> },
-            { title:'Assigned', key:'asgn', width:155, render:(_,r)=><span style={{color:'#cbd5e1'}}>{getUserName(r.assigned_to)}</span> },
-            { title:'Status',   dataIndex:'status',   key:'st',     width:120, render:s=><Tag color={s==='completed'?'green':'orange'}>{s||'-'}</Tag> },
-            { title:'Priority', dataIndex:'priority', key:'prio',   width:100, render:p=><Tag color={p==='high'?'red':p==='medium'?'orange':'blue'}>{p||'-'}</Tag> },
-            { title:'Due Date', dataIndex:'due_date', key:'due',    width:140, render:d=><span style={{color:'#9ca3af'}}>{d?dayjs(d).format('DD-MM-YYYY'):'-'}</span> },
+            { title:'Subject',  dataIndex:'subject',  key:'subject', width:280, render:t=><span style={{color:'#f3f4f6',fontWeight:500}}>{t||'-'}</span> },
+            { title:'Type',     dataIndex:'task_type',key:'type',    width:120, render:t=><span style={{color:'#a78bfa'}}>{t||'-'}</span> },
+            { title:'Assigned', key:'asgn', width:170, render:(_,r)=>{
+                if (r.assigned_users?.length) return <span style={{color:'#cbd5e1'}}>{r.assigned_users.map(u=>u.name||u).join(', ')}</span>;
+                if (r.assigned_to) return <span style={{color:'#cbd5e1'}}>{getUserName(Array.isArray(r.assigned_to)?r.assigned_to[0]:r.assigned_to)}</span>;
+                return <span style={{color:'#9ca3af'}}>Unassigned</span>;
+            }},
+            { title:'Status',   dataIndex:'status',   key:'st',     width:120, render:s=><Tag color={s==='Completed'||s==='completed'?'green':s==='In Progress'?'blue':'orange'}>{s||'-'}</Tag> },
+            { title:'Priority', dataIndex:'priority', key:'prio',   width:100, render:p=><Tag color={p==='High'||p==='high'?'red':p==='Medium'||p==='medium'?'orange':'blue'}>{p||'-'}</Tag> },
+            { title:'Urgent',   dataIndex:'is_urgent',key:'urg',    width:80,  render:v=><Tag color={v?'red':'default'}>{v?'Yes':'No'}</Tag> },
+            { title:'Due Date', dataIndex:'due_date', key:'due',    width:130, render:d=><span style={{color:'#9ca3af'}}>{d?dayjs(d).format('DD-MM-YYYY'):'-'}</span> },
+            { title:'Created',  dataIndex:'created_at',key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
         ];
         if (selectedSection === 'tickets') return [
             actionCol,
-            { title:'Ticket #', dataIndex:'ticket_number', key:'tno',  width:130, render:t=><span style={{color:'#a78bfa'}}>{t||'-'}</span> },
-            { title:'Subject',  dataIndex:'subject',       key:'sub',  width:250, render:t=><span style={{color:'#f3f4f6'}}>{t||'-'}</span> },
-            { title:'Status',   dataIndex:'status',        key:'st',   width:120, render:s=><Tag color={getStatusColor(s)}>{s||'-'}</Tag> },
+            { title:'Subject',  dataIndex:'subject',       key:'sub',  width:280, render:t=><span style={{color:'#f3f4f6',fontWeight:500}}>{t||'-'}</span> },
+            { title:'Created By',dataIndex:'created_by_name',key:'cb', width:150, render:t=><span style={{color:'#a78bfa'}}>{t||'-'}</span> },
+            { title:'Assigned', key:'asgn', width:180, render:(_,r)=>{
+                if (r.assigned_users?.length) return <span style={{color:'#cbd5e1'}}>{r.assigned_users.map(u=>u.name||u.user_name||u).join(', ')}</span>;
+                return <span style={{color:'#9ca3af'}}>-</span>;
+            }},
+            { title:'Status',   dataIndex:'status',        key:'st',   width:110, render:s=><Tag color={getStatusColor(s)}>{s||'-'}</Tag> },
             { title:'Priority', dataIndex:'priority',      key:'prio', width:100, render:p=><Tag color={p==='high'?'red':'orange'}>{p||'-'}</Tag> },
-            { title:'Created',  dataIndex:'created_at',   key:'cr',   width:155, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
+            { title:'Tags',     dataIndex:'tags',          key:'tags', width:150, render:tags=>Array.isArray(tags)?tags.map(t=><Tag key={t} style={{fontSize:'10px'}}>{t}</Tag>):'-' },
+            { title:'Created',  dataIndex:'created_at',   key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
         ];
         const sample = filteredData[0] || {};
         const keys = Object.keys(sample).filter(k => !k.startsWith('_') && k!=='id').slice(0,7);
@@ -349,7 +356,7 @@ const ComprehensiveReportDark = () => {
         setSelectedRows([]); setSelectedRowKeys([]); resetFilters();
     };
     const handleRefresh = () => {
-        if (['pl-leads','od-leads'].includes(selectedSection)) fetchAllLeads();
+        if (selectedSection === 'plod-leads') fetchAllLeads();
         else fetchSectionData();
     };
     const grouped = ['leads','work','hr'].map(g => ({ label: GROUP_LABELS[g], items: SECTIONS.filter(s => s.group === g) }));
@@ -469,7 +476,7 @@ const ComprehensiveReportDark = () => {
                             scroll={{ x:'max-content' }}
                             size="small"
                             pagination={{ total:filteredData.length, pageSize:50, showSizeChanger:true, showQuickJumper:true, pageSizeOptions:['25','50','100','200'], showTotal:(t,[s,e])=>`${s}-${e} of ${t}` }}
-                            onRow={record => ({ onClick:()=>handleRowClick(record), style:{ cursor:['pl-leads','od-leads','login-leads'].includes(selectedSection)?'pointer':'default' } })}
+                            onRow={record => ({ onClick:()=>handleRowClick(record), style:{ cursor:['plod-leads','login-leads'].includes(selectedSection)?'pointer':'default' } })}
                         />
                     </Spin>
                 </div>
