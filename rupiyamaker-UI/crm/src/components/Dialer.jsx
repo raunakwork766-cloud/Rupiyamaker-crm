@@ -792,7 +792,16 @@ function parseExcelFile(file) {
                     const key = h.toLowerCase();
                     // Also try with all spaces removed (e.g. "ManualCall","manual call","MANUAL CALL" all → "manualcall")
                     const keyNoSpace = key.replace(/\s+/g, '');
-                    const f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace];
+                    const cleanKey = key.replace(/[^a-z0-9]/g, '');
+                    let f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace] || COLUMN_MAP[cleanKey];
+
+                    // Ultra-aggressive fallback: if it contains "manual" and "call", force map to manCalls
+                    if (!f && cleanKey.includes('manual') && (cleanKey.includes('call') || cleanKey.includes('mn'))) {
+                        f = cleanKey.includes('duration') || cleanKey.includes('time') ? 'manTT' : 'manCalls';
+                    }
+                    // Ultra-aggressive fallback for duration specifically
+                    if (!f && cleanKey.includes('manual') && cleanKey.includes('duration')) f = 'manTT';
+
                     if (f) {
                         // _ignore columns: always include in fieldMap (so the column is consumed),
                         // but do NOT add 'ignore' to mappedFieldSet — this ensures _ignore never
