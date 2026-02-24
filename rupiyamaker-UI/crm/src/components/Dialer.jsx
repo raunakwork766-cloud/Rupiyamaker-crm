@@ -539,6 +539,7 @@ const COLUMN_MAP = {
     'total manual calls': 'manCalls', 'inbound call': 'manCalls', 'ib call': 'manCalls',
     'manual call': 'manCalls', 'Manual Call': 'manCalls', 'Manual Calls': 'manCalls',
     'manual_call': 'manCalls', 'manual_calls': 'manCalls', 'man calls': 'manCalls', 'man call': 'manCalls',
+    'manualcall': 'manCalls', 'manualcalls': 'manCalls', // no-space variants
     // ── manual / inbound talk time ──
     'mantt': 'manTT', 'mn tt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT',
     'inbound talk time': 'manTT', 'ib tt': 'manTT',
@@ -783,14 +784,46 @@ function parseExcelFile(file) {
                 const fieldMap = {}; // colIndex → fieldName
                 const unmapped = [];
                 const mappedFieldSet = new Set();
+
+                // Debug: log exact raw headers so any column-name mismatch is visible
+                console.log('[parseExcelFile] raw headers:', headerRow);
+
                 headerRow.forEach((h, i) => {
                     const key = h.toLowerCase();
-                    const f = COLUMN_MAP[key] || COLUMN_MAP[h]; // try lowercase then original
-                    if (f && !mappedFieldSet.has(f)) {
-                        fieldMap[i] = f;
-                        mappedFieldSet.add(f);
-                    } else if (!f && h !== '') unmapped.push(h);
+                    // Also try with all spaces removed (e.g. "ManualCall","manual call","MANUAL CALL" all → "manualcall")
+                    const keyNoSpace = key.replace(/\s+/g, '');
+                    const f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace];
+                    if (f) {
+                        // _ignore columns: always include in fieldMap (so the column is consumed),
+                        // but do NOT add 'ignore' to mappedFieldSet — this ensures _ignore never
+                        // blocks any real field that happens to come later.
+                        if (f === '_ignore') {
+                            fieldMap[i] = f;
+                        } else if (!mappedFieldSet.has(f)) {
+                            fieldMap[i] = f;
+                            mappedFieldSet.add(f);
+                        }
+                    } else if (h !== '') {
+                        unmapped.push(h);
+                    }
                 });
+
+                // Debug: show what each column index resolved to
+                const fieldMapDebug = {};
+                Object.entries(fieldMap).forEach(([ci, fn]) => {
+                    fieldMapDebug[headerRow[parseInt(ci)]] = fn;
+                });
+                console.log('[parseExcelFile] fieldMap (header → field):', fieldMapDebug);
+                console.log('[parseExcelFile] unmapped headers:', unmapped);
+                // Log first data row values for each mapped field
+                if (rawRows[1]) {
+                    const firstRowDebug = {};
+                    Object.entries(fieldMap).forEach(([ci, fn]) => {
+                        if (fn !== '_ignore') firstRowDebug[fn] = rawRows[1][parseInt(ci)];
+                    });
+                    console.log('[parseExcelFile] first data row values:', firstRowDebug);
+                }
+
                 const mappedFields = Object.values(fieldMap);
                 const missing = REQUIRED_FIELDS.filter(f => !mappedFields.includes(f));
                 if (missing.length > 0) {
