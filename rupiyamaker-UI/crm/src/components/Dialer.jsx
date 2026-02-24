@@ -984,6 +984,18 @@ function ExcelUploadModal({ show, onClose, onUpload, existingAgents, uploadHisto
                 }
             }
 
+            // ── File-level duplicate detection — WARN only, do NOT block re-upload ──────
+            let fileDupWarning = '';
+            if (uploadHistory && uploadHistory.length > 0) {
+                const duplicate = uploadHistory.find(h =>
+                    h.filename === file.name &&
+                    Math.abs(h.record_count - result.agents.length) <= 2
+                );
+                if (duplicate) {
+                    fileDupWarning = `ℹ️ "${file.name}" was previously uploaded. Re-uploading with fresh data.`;
+                }
+            }
+
             // ── Duplicate detection against currently loaded data ──────────
             if (existingAgents && existingAgents.length > 0) {
                 const existingKeys = new Set(existingAgents.map(a => `${a.ext}__${a.date}`));
@@ -1003,16 +1015,22 @@ function ExcelUploadModal({ show, onClose, onUpload, existingAgents, uploadHisto
                 }
             }
 
-            // ── No duplicates — proceed normally ──────────────────────────
+            // ── No duplicates — proceed with upload ──────────────────────────
             setProgress(100);
             setStatus('success');
-            setMessage(`✅ Successfully loaded ${result.agents.length} record${result.agents.length !== 1 ? 's' : ''} from ${result.totalRows} row${result.totalRows !== 1 ? 's' : ''}.`);
+            // Show a preview of what was parsed for the first agent so user can verify
+            const firstAgent = result.agents[0];
+            const parsePreview = firstAgent
+                ? ` | 1st row: OB=${firstAgent.outCalls} MN=${firstAgent.manCalls} MN-TT=${firstAgent.manTT}`
+                : '';
+            setMessage(`✅ Loaded ${result.agents.length} records.${fileDupWarning ? ' ' + fileDupWarning : ''}${parsePreview}`);
             onUpload(result.agents, file.name, file.size, false);
         } catch (err) {
             setStatus('error');
             setMessage(err.message);
             setProgress(0);
         }
+
     }, [onUpload, existingAgents, uploadHistory]);
 
     const handleFile = (file) => processFile(file);
