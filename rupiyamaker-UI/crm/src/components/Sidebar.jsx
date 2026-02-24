@@ -64,6 +64,12 @@ const icons = {
       <path d="M8 2v4M16 2v4" />
     </svg>
   ),
+  "Dialer Report": (
+    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.11-.22 11.36 11.36 0 003.55.7A1 1 0 0121 17.5v3.5a1 1 0 01-1 1A17 17 0 013 5a1 1 0 011-1h3.5a1 1 0 011 .88 11.36 11.36 0 00.7 3.55 1 1 0 01-.24 1.01z" />
+      <path d="M16 2v6M13 5h6" />
+    </svg>
+  ),
   "Daily Performance": (
     <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -515,6 +521,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       "Leave": "HRMS",
       "Attendance": "HRMS",
       "Daily Performance": "HRMS",
+      "Dialer Report": "HRMS",
       "Warning Dashboard": "Warning",
       "All Warnings": "Warning",
       "My Warnings": "Warning",
@@ -1031,6 +1038,10 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       targetLabel = 'Daily Performance';
       parentDropdown = 'HRMS';
     }
+    else if (currentPath.includes('/dialer-report') || currentPath.includes('/hrms/dialer-report')) {
+      targetLabel = 'Dialer Report';
+      parentDropdown = 'HRMS';
+    }
     
     // Check for Warning pages
     else if (currentPath.includes('/warning/dashboard')) {
@@ -1530,6 +1541,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       canShowEmployees: checkPermission('employees', 'show') || 
                         checkPermission('Employees', 'show') ||
                         isSuperAdmin(userPermissions),
+
+      // Dialer Report
+      canShowDialerReport: checkPermission('dialer_report', 'show') ||
+                           checkPermission('dialer', 'show') ||
+                           checkPermission('hrms', 'show') ||
+                           isSuperAdmin(userPermissions),
       
       // Apps
       canShowApps: checkPermission('apps', 'show') || 
@@ -1787,6 +1804,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                   ...(permissions.canShowEmployees ? [{ label: "Employees", icon: icons["Employees"] }] : []),
                   { label: "Leave", icon: icons["Leave"] },
                   { label: "Attendance", icon: icons["Attendance"] },
+                  ...(permissions.canShowDialerReport ? [{ label: "Dialer Report", icon: icons["Dialer Report"] }] : []),
                 ]}
                 onItemSelect={handleSelection}
               />

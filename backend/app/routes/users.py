@@ -475,22 +475,7 @@ async def login(
     
     # Clear the session_invalidated_at timestamp after successful check
     # This allows them to login fresh without the flag blocking them
-    if session_invalidated_at:
-        print(f"🔒 User {user.get('username')} has session_invalidated_at: {session_invalidated_at}")
-        # Clear the invalidation flag on successful login
-        await users_db.collection.update_one(
-            {"_id": user["_id"]},
-            {
-                "$unset": {"session_invalidated_at": ""},
-                "$set": {"last_login": datetime.now()}
-            }
-        )
-    else:
-        # Update last login time
-        await users_db.collection.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"last_login": datetime.now()}}
-        )
+    # NOTE: last_login is only updated AFTER full auth (including OTP) below.
     
     # Check if OTP is required for this user (default is True if not set)
     otp_required = user.get("otp_required", True)
@@ -522,6 +507,27 @@ async def login(
                 detail=f"OTP verification failed: {otp_message}"
             )
     
+    # ✅ FULLY AUTHENTICATED — now generate session token and update DB.
+    # Doing this AFTER OTP so partial/failed logins never overwrite the active session.
+    new_session_token = str(uuid4())
+
+    if session_invalidated_at:
+        print(f"🔒 User {user.get('username')} has session_invalidated_at: {session_invalidated_at}")
+        # Clear the invalidation flag on successful login
+        await users_db.collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$unset": {"session_invalidated_at": ""},
+                "$set": {"last_login": datetime.now(), "active_session_token": new_session_token}
+            }
+        )
+    else:
+        # Update last login time and set new session token
+        await users_db.collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"last_login": datetime.now(), "active_session_token": new_session_token}}
+        )
+
     # Get role and permissions
     role = None
     role_permissions = []
@@ -546,7 +552,8 @@ async def login(
         "department": convert_object_id(department) if department else None,
         "designation": designation if designation else None,
         "permissions": role_permissions,
-        "otp_verified": otp_required  # Indicates if OTP was required and verified
+        "otp_verified": otp_required,  # Indicates if OTP was required and verified
+        "session_token": new_session_token  # 🔑 Unique token for this login session
     }
 
 @router.post("/verify-session", response_model=Dict)
@@ -610,6 +617,17 @@ async def verify_session_post(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Your session has been invalidated - please login again"
+            )
+
+    # 🔑 SINGLE ACTIVE SESSION CHECK: Validate session_token if provided
+    # If the client's session_token no longer matches DB, another device has logged in
+    client_session_token = user_data.get("session_token")
+    if client_session_token:
+        db_session_token = user.get("active_session_token")
+        if db_session_token and client_session_token != db_session_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="displaced"
             )
     
     return {

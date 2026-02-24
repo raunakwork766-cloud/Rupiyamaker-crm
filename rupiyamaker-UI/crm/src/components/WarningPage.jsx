@@ -2019,7 +2019,13 @@ const WarningPage = memo(() => {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {rankings.map((ranking, index) => (
+                                  {rankings.length === 0 ? (
+                                    <tr>
+                                      <td colSpan="5" className="text-center py-10 text-gray-400 font-semibold">
+                                        No ranking data available
+                                      </td>
+                                    </tr>
+                                  ) : rankings.map((ranking, index) => (
                                     <tr
                                       key={ranking.employee_id}
                                       className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"

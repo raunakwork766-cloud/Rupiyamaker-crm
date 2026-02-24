@@ -49,6 +49,7 @@ const LazyLoginCRM = createLazyComponent(() => import('../components/LoginCRM.js
 const LazyAppsPage = createLazyComponent(() => import('../components/AppsPage.jsx'), 'AppsPage');
 const LazyAttendancePage = createLazyComponent(() => import('../components/AttendancePage.jsx'), 'AttendancePage');
 const LazyLeavesPage = createLazyComponent(() => import('../components/LeavesPage.jsx'), 'LeavesPage');
+const LazyDialerReport = createLazyComponent(() => import('../components/Dialer.jsx'), 'Dialer');
 const LazyChartPage = createLazyComponent(() => import('../components/ChartPage.jsx'), 'ChartPage');
 const LazyWarningPage = createLazyComponent(() => import('../components/WarningPage.jsx'), 'WarningPage');
 const LazyPermissionTest = createLazyComponent(() => import('../components/PermissionTest.jsx'), 'PermissionTest');
@@ -521,6 +522,26 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             <RouteWithSuspense 
               component={LazyLeavesPage} 
               routeName="Leaves"
+              user={user}
+            />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/dialer-report" 
+        element={
+          <ProtectedRoute 
+            requiredPage="dialer_report" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'dialer', action: 'show' },
+              { page: 'hrms', action: 'show' },
+              { page: 'HRMS', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyDialerReport} 
+              routeName="Dialer Report"
               user={user}
             />
           </ProtectedRoute>

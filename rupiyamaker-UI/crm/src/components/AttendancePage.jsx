@@ -17,7 +17,10 @@ import {
   canDelete,
   getPermissionDisplayText,
   getCurrentUserId,
-  debugPermissions 
+  debugPermissions,
+  hasAttendancePermission,
+  isSuperAdmin,
+  getUserPermissions
 } from '../utils/permissions';
 
 // API Configuration
@@ -287,41 +290,43 @@ const getStatusBadge = (status) => {
     case "P":
       return (
         <div className="w-8 h-8 bg-green-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          P
+          1
         </div>
       )
     case "L":
       return (
         <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          L
+          1
         </div>
       )
     case "LV":
       return (
         <div className="w-8 h-8 bg-orange-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          LV
+          0
         </div>
       )
     case "H":
       return (
-        <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          H
+        <div className="w-8 h-8 bg-cyan-500 text-white rounded flex items-center justify-center text-xs font-bold">
+          1
         </div>
       )
     case "HD":
       return (
-        <div className="w-8 h-8 bg-yellow-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          HD
+        <div className="w-8 h-8 bg-yellow-400 text-white rounded flex items-center justify-center text-xs font-bold">
+          0.5
         </div>
       )
     case "AB":
       return (
-        <div className="w-8 h-8 bg-red-500 text-white rounded flex items-center justify-center text-xs font-bold">
-          AB
+        <div className="w-8 h-8 bg-red-600 text-white rounded flex items-center justify-center text-xs font-bold">
+          -1
         </div>
       )
+    case "W":
+      return <div className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center text-xs text-gray-500">—</div>
     default:
-      return <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">-</div>
+      return <div className="w-8 h-8 bg-gray-900 rounded flex items-center justify-center text-xs text-gray-700"></div>
   }
 }
 
@@ -879,19 +884,25 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   const hasEditPermission = () => {
     if (!employee?.id) return false;
     
-    // For attendance, regular users (own only) should NOT be able to edit even their own records
-    const level = getPermissionLevel('attendance');
-    if (level === 'own') {
-      return false; // Regular users cannot edit attendance records
+    // Get user permissions from localStorage
+    const userPermissions = getUserPermissions();
+    
+    // Superadmin with wildcard (*) can always edit attendance
+    if (isSuperAdmin(userPermissions)) {
+      return true;
     }
     
-    // Use the passed function if available, otherwise use direct import
-    if (canUserEdit && typeof canUserEdit === 'function') {
-      return canUserEdit(employee.id);
+    // STRICT CHECK: User must have explicit 'update' action in attendance permissions
+    // 'all' permission does NOT grant update access
+    if (Array.isArray(userPermissions)) {
+      const attendancePerm = userPermissions.find(p => p.page === 'attendance');
+      if (attendancePerm && Array.isArray(attendancePerm.actions)) {
+        // Only return true if 'update' is explicitly in the actions array
+        return attendancePerm.actions.includes('update');
+      }
     }
     
-    // Fallback: use direct permission check
-    return canEdit('attendance', employee.id);
+    return false; // No update permission found
   };
 
   const loadAttendanceDetail = async () => {
@@ -1033,43 +1044,56 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
         </div>
 
         {/* Employee Info */}
-        <div className=" bg-gray-800 border-b border border-gray-700">
-          <div className="text-gray-200 space-y-2">
-            <p className="font-semibold text-cyan-400">{employee.department.toUpperCase()} | ADMIN</p>
-            <p className="text-gray-300">EMP-ID: {employee.employee_code || employee.employee_number || employee.empId || `EMP-${employee.id?.slice(-6) || 'UNKNOWN'}`}</p>
-            <p className="text-gray-300">ATTENDANCE: <span className="text-cyan-400 font-semibold">{statusText}</span></p>
+        <div className="bg-gray-800 border-b border-gray-700 p-6">
+          <div className="text-gray-200 space-y-3">
+            <div className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+              <p className="font-bold text-cyan-400 text-base mb-3">{employee.department.toUpperCase()} | ADMIN</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <p className="text-gray-300">EMP-ID: <span className="text-white font-semibold">{employee.employee_code || employee.employee_number || employee.empId || `EMP-${employee.id?.slice(-6) || 'UNKNOWN'}`}</span></p>
+                <p className="text-gray-300">ATTENDANCE: <span className="text-cyan-400 font-semibold">{statusText}</span></p>
+              </div>
+            </div>
             {attendanceDetail && (
               <>
-                <p className="text-gray-300">EMPLOYEE NAME: <span className="text-cyan-400">{attendanceDetail.employee?.employee_name || attendanceDetail.employee_name}</span></p>
-                <p className="text-gray-300">DATE: <span className="text-cyan-400">{attendanceDetail.date}</span></p>
-                <p className="text-gray-300">STATUS: <span className="text-cyan-400">{attendanceDetail.status_text}</span></p>
+                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 mt-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <p className="text-gray-300">EMPLOYEE NAME: <span className="text-cyan-400 font-semibold">{attendanceDetail.employee?.employee_name || attendanceDetail.employee_name}</span></p>
+                    <p className="text-gray-300">DATE: <span className="text-cyan-400 font-semibold">{attendanceDetail.date}</span></p>
+                    <p className="text-gray-300">STATUS: <span className="text-cyan-400 font-semibold">{attendanceDetail.status_text}</span></p>
+                  </div>
+                </div>
                 
                 {/* Show leave details if type is leave */}
                 {attendanceDetail.type === 'leave' && attendanceDetail.leave_details && (
-                  <>
-                    <p className="text-gray-300">LEAVE TYPE: <span className="text-orange-400">{attendanceDetail.leave_details.leave_type_display}</span></p>
-                    <p className="text-gray-300">REASON: <span className="text-yellow-400">{attendanceDetail.leave_details.reason}</span></p>
-                    <p className="text-gray-300">DURATION: <span className="text-green-400">{attendanceDetail.leave_details.duration_days} day(s)</span></p>
-                    <p className="text-gray-300">APPROVED BY: <span className="text-purple-400">{attendanceDetail.leave_details.approved_by_name}</span></p>
-                    {attendanceDetail.leave_details.approval_comments && (
-                      <p className="text-gray-300">APPROVAL COMMENTS: <span className="text-blue-400">{attendanceDetail.leave_details.approval_comments}</span></p>
-                    )}
-                  </>
+                  <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 mt-3">
+                    <h4 className="font-bold text-orange-400 mb-3">Leave Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <p className="text-gray-300">LEAVE TYPE: <span className="text-orange-400 font-semibold">{attendanceDetail.leave_details.leave_type_display}</span></p>
+                      <p className="text-gray-300">DURATION: <span className="text-green-400 font-semibold">{attendanceDetail.leave_details.duration_days} day(s)</span></p>
+                      <p className="text-gray-300 col-span-2">REASON: <span className="text-yellow-400">{attendanceDetail.leave_details.reason}</span></p>
+                      <p className="text-gray-300">APPROVED BY: <span className="text-purple-400 font-semibold">{attendanceDetail.leave_details.approved_by_name}</span></p>
+                      {attendanceDetail.leave_details.approval_comments && (
+                        <p className="text-gray-300 col-span-2">APPROVAL COMMENTS: <span className="text-blue-400">{attendanceDetail.leave_details.approval_comments}</span></p>
+                      )}
+                    </div>
+                  </div>
                 )}
                 
                 {/* Show attendance details if type is attendance */}
                 {attendanceDetail.type === 'attendance' && (
-                  <>
-                    {attendanceDetail.attendance_details?.total_working_hours && (
-                      <p className="text-gray-300">TOTAL HOURS: <span className="text-green-400">{attendanceDetail.attendance_details.total_working_hours} hours</span></p>
-                    )}
-                    {attendanceDetail.working_hours && (
-                      <p className="text-gray-300">TOTAL HOURS: <span className="text-green-400">{attendanceDetail.working_hours} hours</span></p>
-                    )}
-                    {attendanceDetail.is_late && (
-                      <p className="text-gray-300">LATE: <span className="text-yellow-400">Yes</span></p>
-                    )}
-                  </>
+                  <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 mt-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      {attendanceDetail.attendance_details?.total_working_hours && (
+                        <p className="text-gray-300">TOTAL HOURS: <span className="text-green-400 font-semibold">{attendanceDetail.attendance_details.total_working_hours} hours</span></p>
+                      )}
+                      {attendanceDetail.working_hours && (
+                        <p className="text-gray-300">TOTAL HOURS: <span className="text-green-400 font-semibold">{attendanceDetail.working_hours} hours</span></p>
+                      )}
+                      {attendanceDetail.is_late && (
+                        <p className="text-gray-300">LATE: <span className="text-yellow-400 font-semibold">Yes</span></p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </>
             )}
@@ -1092,7 +1116,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               </div>
               
               {attendanceDetail.leave_details && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Leave Information */}
                   <div className="border border-gray-600 rounded-lg bg-gray-800">
                     <div className="bg-gray-700 p-3 border-b border-gray-600">
@@ -1202,17 +1226,17 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
             /* Regular Check In/Out Sections for Attendance */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Check In */}
-              <div className="border border-gray-600 rounded-lg bg-gray-800">
-                <div className="bg-gray-700 p-3 border-b border-gray-600">
-                  <h3 className="font-semibold text-gray-200">CHECK IN</h3>
+              <div className="border border-gray-600 rounded-lg bg-gray-800 shadow-lg">
+                <div className="bg-gradient-to-r from-blue-700 to-blue-600 p-4 border-b border-gray-600">
+                  <h3 className="font-bold text-white text-lg">CHECK IN</h3>
                 </div>
-                <div className="p-4">
-                  <div className="bg-gray-700 rounded-lg p-4 text-center mb-4">
+                <div className="p-6">
+                  <div className="bg-gray-700 rounded-lg p-6 text-center mb-4 min-h-[180px] flex flex-col items-center justify-center">
                     {(attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? (
                       <img 
                         src={`${BASE_URL}/${attendanceDetail.check_in_photo || attendanceDetail.attendance_details.check_in_photo_path}`}
                         alt="Check-in photo"
-                        className="w-full h-32 object-cover rounded-lg mx-auto mb-2"
+                        className="aspect-[3/4] w-full max-w-xs object-contain rounded-lg mx-auto mb-2"
                         onError={(e) => {
                           console.error('Failed to load check-in image:', e.target.src);
                           e.target.style.display = 'none';
@@ -1225,9 +1249,15 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                       <p className="text-gray-400">not found</p>
                     </div>
                   </div>
-                  <div className="space-y-2 text-sm text-gray-400">
-                    <p className="text-gray-300">PUNCH IN DATE: {formatDate(selectedYear, selectedMonth, selectedDate)}</p>
-                    <p className="text-gray-300">PUNCH IN TIME: {(attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time) || 'N/A'}</p>
+                  <div className="space-y-3 text-sm">
+                    <div className="bg-gray-600 rounded p-3">
+                      <p className="text-gray-400 text-xs mb-1">PUNCH IN DATE:</p>
+                      <p className="text-cyan-400 font-bold text-base">{formatDate(selectedYear, selectedMonth, selectedDate)}</p>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <p className="text-gray-400 text-xs mb-1">PUNCH IN TIME:</p>
+                      <p className="text-green-400 font-bold text-base">{(attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time) || 'N/A'}</p>
+                    </div>
                     {attendanceDetail?.check_in_geolocation?.address && attendanceDetail.check_in_geolocation.address !== 'Unknown' && (
                       <p className="text-gray-300">LOCATION: {attendanceDetail.check_in_geolocation.address}</p>
                     )}
@@ -1239,17 +1269,17 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               </div>
 
               {/* Check Out */}
-              <div className="border border-gray-600 rounded-lg bg-gray-800">
-                <div className="bg-gray-700 p-3 border-b border-gray-600">
-                  <h3 className="font-semibold text-gray-200">CHECK OUT</h3>
+              <div className="border border-gray-600 rounded-lg bg-gray-800 shadow-lg">
+                <div className="bg-gradient-to-r from-orange-700 to-red-600 p-4 border-b border-gray-600">
+                  <h3 className="font-bold text-white text-lg">CHECK OUT</h3>
                 </div>
-                <div className="p-4">
-                  <div className="bg-gray-700 rounded-lg p-4 text-center mb-4">
+                <div className="p-6">
+                  <div className="bg-gray-700 rounded-lg p-6 text-center mb-4 min-h-[180px] flex flex-col items-center justify-center">
                     {(attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? (
                       <img 
                         src={`${BASE_URL}/${attendanceDetail.check_out_photo || attendanceDetail.attendance_details.check_out_photo_path}`}
                         alt="Check-out photo"
-                        className="w-full h-32 object-cover rounded-lg mx-auto mb-2"
+                        className="aspect-[3/4] w-full max-w-xs object-contain rounded-lg mx-auto mb-2"
                         onError={(e) => {
                           console.error('Failed to load check-out image:', e.target.src);
                           e.target.style.display = 'none';
@@ -1262,9 +1292,15 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                       <p className="text-gray-400">not found</p>
                     </div>
                   </div>
-                  <div className="space-y-2 text-sm text-gray-400">
-                    <p className="text-gray-300">PUNCH OUT DATE: {formatDate(selectedYear, selectedMonth, selectedDate)}</p>
-                    <p className="text-gray-300">PUNCH OUT TIME: {(attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time) || 'N/A'}</p>
+                  <div className="space-y-3 text-sm">
+                    <div className="bg-gray-600 rounded p-3">
+                      <p className="text-gray-400 text-xs mb-1">PUNCH OUT DATE:</p>
+                      <p className="text-cyan-400 font-bold text-base">{formatDate(selectedYear, selectedMonth, selectedDate)}</p>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <p className="text-gray-400 text-xs mb-1">PUNCH OUT TIME:</p>
+                      <p className="text-red-400 font-bold text-base">{(attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time) || 'N/A'}</p>
+                    </div>
                     {attendanceDetail?.check_out_geolocation?.address && attendanceDetail.check_out_geolocation.address !== 'Unknown' && (
                       <p className="text-gray-300">LOCATION: {attendanceDetail.check_out_geolocation.address}</p>
                     )}
@@ -1279,18 +1315,18 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
 
           {/* Change Attendance - Only show for attendance records, not leave, and only if user has edit permission */}
           {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
-            <div className="mt-6">
-              <label className="block text-gray-200 font-semibold mb-2">CHANGE ATTENDANCE:</label>
+            <div className="mt-6 bg-gray-800 border border-gray-600 rounded-lg p-6">
+              <label className="block text-cyan-400 font-bold mb-3 text-base">CHANGE ATTENDANCE:</label>
               <select
                 value={selectedAttendance}
                 onChange={(e) => setSelectedAttendance(e.target.value)}
-                className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full p-4 border-2 border-gray-600 rounded-lg bg-gray-700 text-white text-base font-semibold focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all"
               >
                 <option value="">Select Attendance Status</option>
-                <option value="P">Present</option>
-                <option value="L">Late</option>
-                <option value="H">Holiday</option>
-                <option value="AB">Absconding</option>
+                <option value="P">✅ Present</option>
+                <option value="L">⏰ Late</option>
+                <option value="H">🎉 Holiday</option>
+                <option value="AB">❌ Absconding</option>
               </select>
             </div>
           )}
@@ -1327,18 +1363,18 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
           )}
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-4 mt-6">
+          <div className="mt-6 flex gap-4">
             {attendanceDetail?.type !== 'leave' && hasEditPermission() && (
               <button 
                 onClick={handleUpdate} 
-                className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white px-6 py-2 w-full rounded-md transition-all duration-200 font-semibold"
+                className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white px-6 py-3 rounded-lg transition-all duration-200 font-bold text-base shadow-lg"
               >
                 UPDATE ATTENDANCE
               </button>
             )}
             <button 
               onClick={onClose} 
-              className={`bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-2 w-full rounded-md transition-all duration-200 font-semibold ${(attendanceDetail?.type === 'leave' || !hasEditPermission()) ? 'col-span-2' : ''}`}
+              className={`${(attendanceDetail?.type === 'leave' || !hasEditPermission()) ? 'flex-1' : 'px-8'} bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-lg transition-all duration-200 font-bold text-base shadow-lg`}
             >
               CLOSE
             </button>
@@ -1346,14 +1382,14 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
 
           {/* Additional Buttons */}
           <div className="flex gap-4 mt-4">
-            <button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-2 rounded-md transition-all duration-200 font-semibold">
-              {attendanceDetail?.type === 'leave' ? '💬 ADD COMMENTS' : '🏠 ADD COMMENTS'}
+            <button className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-lg transition-all duration-200 font-bold text-base shadow-lg flex items-center justify-center gap-2">
+              <span>💬</span> ADD COMMENTS
             </button>
             <button
               onClick={handleShowHistory}
-              className="border border-gray-500 text-gray-300 px-6 py-2 bg-gray-800 rounded-md hover:bg-gray-700 transition-all duration-200 font-semibold"
+              className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-6 py-3 rounded-lg transition-all duration-200 font-bold text-base shadow-lg flex items-center justify-center gap-2"
             >
-              👤 HISTORY
+              <span>👤</span> HISTORY
             </button>
           </div>
 
@@ -1458,50 +1494,67 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   )
 }
 
+// Returns numeric value for a day status cell
+const getDayNumericValue = (status) => {
+  switch (status) {
+    case "P": return 1
+    case "L": return 1     // Late counts as full present
+    case "HD": return 0.5
+    case "LV": return 0    // Leave counts as 0 in present score
+    case "AB": return -1   // Absconding reduces score
+    case "H": return null  // Holiday – excluded from present calc
+    case "W": return null  // Weekend – excluded
+    default: return null   // Not marked – excluded
+  }
+}
+
 const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays) => {
-  let present = 0,
-    late = 0,
-    leave = 0,
-    halfDay = 0,
-    absconding = 0,
-    holidaysCount = 0
+  let presentScore = 0
+  let plDays = 0       // Leave days taken (LV)
+  let absconding = 0
+  let holidaysCount = 0
 
   for (let day = 1; day <= daysInMonth; day++) {
     const status = record[`day${day}`]
-    switch (status) {
-      case "P":
-        present++
-        break
-      case "L":
-        late++
-        break
-      case "LV":
-        leave++
-        break
-      case "H":
-        holidaysCount++
-        break
-      case "HD":
-        halfDay++
-        break
-      case "AB":
-        absconding++
-        break
+    const val = getDayNumericValue(status)
+    if (status === 'H') {
+      holidaysCount++
+    } else if (status === 'LV') {
+      plDays++
+    } else if (status === 'AB') {
+      presentScore -= 1
+      absconding++
+    } else if (val !== null) {
+      presentScore += val
     }
   }
 
+  // Monthly leave accruals (annual ÷ 12)
+  const elMonthly = Math.round((record.earnedLeavesTotal ?? 15) / 12) || 1  // Earned Leave monthly
+  const graceMonthly = Math.round((record.graceTotal ?? 24) / 12) || 2       // PL = Grace/Paid Leave monthly
+  const graceRemainingMonthly = Math.min(Math.round((record.graceRemaining ?? 24) / 12) || 2, graceMonthly)
+
+  const finalScore = presentScore + graceMonthly + elMonthly
+
   const workingDays = daysInMonth - holidaysCount
-  const attendancePercentage = workingDays > 0 ? (((present + late + halfDay) / workingDays) * 100).toFixed(1) : "0"
+  const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
 
   return {
-    present,
-    late,
-    leave,
-    halfDay,
+    presentScore,
+    plDays: graceMonthly,  // PL = monthly paid/grace leave allocation
+    elDays: elMonthly,     // EL = monthly earned leave allocation
+    graceRemaining: graceRemainingMonthly, // Monthly grace remaining
+    graceTotal: graceMonthly, // Monthly grace total
+    finalScore,
     absconding,
     holidays: holidaysCount,
     workingDays,
     attendancePercentage,
+    // Legacy compat
+    present: presentScore,
+    late: 0,
+    leave: plDays,
+    halfDay: 0,
   }
 }
 
@@ -1536,34 +1589,58 @@ export default function MonthlyAttendanceTable() {
       const updated = { ...record }
       const daysInM = new Date(year, month, 0).getDate()
 
+      // Rule 2: Sunday sandwich — scan weeks (Mon–Sat) per employee independently.
+      // Find the FIRST week where the employee HAS some attendance data but the score
+      // is below the threshold. Mark only the single Sunday immediately after that Saturday
+      // as AB for THIS employee. Then stop — no other Sundays are affected.
+      // Employees with NO data at all for a week are skipped (rule doesn't fire).
+      if (enable_sunday_sandwich_rule) {
+        let sundayRuleApplied = false
+        for (let d = 1; d <= daysInM && !sundayRuleApplied; d++) {
+          const dateObj = new Date(year, month - 1, d)
+          const dow = dateObj.getDay()
+          if (dow === 6) { // Saturday — end of Mon–Sat work week
+            let workingScore = 0
+            let hasAnyData = false
+            for (let w = Math.max(1, d - 5); w <= d; w++) {
+              const s = updated[`day${w}`]
+              // Only count actual work-day records as "has data" — not Leave (LV) or Holiday (H)
+              if (s === 'P' || s === 'L' || s === 'HD' || s === 'AB') hasAnyData = true
+              if (s === 'P' || s === 'L') workingScore += 1      // full day
+              else if (s === 'HD') workingScore += 0.5            // half day = 0.5
+              // AB, LV, H, empty, W → 0 contribution to score
+            }
+            // Only apply rule if employee has actual work-day records this week
+            // AND their score falls below the required threshold
+            if (hasAnyData && workingScore < minimum_working_days_for_sunday) {
+              const nextSunday = d + 1
+              if (nextSunday <= daysInM) {
+                const nextDow = new Date(year, month - 1, nextSunday).getDay()
+                if (nextDow === 0 && (!updated[`day${nextSunday}`] || updated[`day${nextSunday}`] === 'W')) {
+                  updated[`day${nextSunday}`] = 'AB'
+                }
+              }
+              sundayRuleApplied = true // stop — only one Sunday per employee per month
+            }
+          }
+        }
+      }
+
       for (let d = 1; d <= daysInM; d++) {
         const dateObj = new Date(year, month - 1, d)
         const dow = dateObj.getDay() // 0=Sun,1=Mon,...,6=Sat
 
-        // Rule 1: Adjacent Absconding — Saturday AB → next Sunday absent
+        // Rule 1: Adjacent Absconding — Saturday AB → next Sunday absconding
+        // This rule applies regardless of leave approval status
         if (enable_adjacent_absconding_rule && dow === 6) { // Saturday
           if (updated[`day${d}`] === 'AB') {
-            if (d + 1 <= daysInM) updated[`day${d + 1}`] = 'AB' // next Sunday
+            if (d + 1 <= daysInM) updated[`day${d + 1}`] = 'AB' // next Sunday – override even if LV
           }
         }
-        // Rule 1b: Monday AB → previous Sunday absent
+        // Rule 1b: Monday AB → previous Sunday absconding
         if (enable_adjacent_absconding_rule && dow === 1) { // Monday
           if (updated[`day${d}`] === 'AB') {
-            if (d - 1 >= 1) updated[`day${d - 1}`] = 'AB' // prev Sunday
-          }
-        }
-        // Rule 2: Sunday sandwich — Sunday needs minimum working days in week
-        if (enable_sunday_sandwich_rule && dow === 0) { // Sunday
-          const weekStart = d - 1 // prev Saturday
-          const weekEnd = d + 1 // next Monday
-          // Count working days Mon-Sat of the surrounding week (d-6 to d-1)
-          let workingCount = 0
-          for (let w = Math.max(1, d - 6); w <= Math.min(daysInM, d - 1); w++) {
-            const s = updated[`day${w}`]
-            if (s === 'P' || s === 'HD' || s === 'L') workingCount++
-          }
-          if (workingCount < minimum_working_days_for_sunday) {
-            if (!updated[`day${d}`] || updated[`day${d}`] === 'W') updated[`day${d}`] = ''
+            if (d - 1 >= 1) updated[`day${d - 1}`] = 'AB' // prev Sunday – override even if LV
           }
         }
       }
@@ -1675,12 +1752,25 @@ export default function MonthlyAttendanceTable() {
   const canUserViewJunior = () => canViewJunior('attendance');
   const canUserCreate = () => canCreate('attendance');
   const canUserEdit = (recordOwnerId) => {
-    // For attendance, regular users (own only) should NOT be able to edit even their own records
-    const level = getPermissionLevel('attendance');
-    if (level === 'own') {
-      return false; // Regular users cannot edit attendance records
+    // Get user permissions from localStorage
+    const userPermissions = getUserPermissions();
+    
+    // Superadmin with wildcard (*) can always edit attendance
+    if (isSuperAdmin(userPermissions)) {
+      return true;
     }
-    return canEdit('attendance', recordOwnerId);
+    
+    // STRICT CHECK: User must have explicit 'update' action in attendance permissions
+    // 'all' permission does NOT grant update access
+    if (Array.isArray(userPermissions)) {
+      const attendancePerm = userPermissions.find(p => p.page === 'attendance');
+      if (attendancePerm && Array.isArray(attendancePerm.actions)) {
+        // Only return true if 'update' is explicitly in the actions array
+        return attendancePerm.actions.includes('update');
+      }
+    }
+    
+    return false; // No update permission found
   };
   const canUserDelete = (recordOwnerId) => canDelete('attendance', recordOwnerId);
 
@@ -1847,6 +1937,15 @@ export default function MonthlyAttendanceTable() {
   const handleDayClick = async (employee, day) => {
     if (!user?.user_id) return
     
+    // Block editing for future dates
+    const clickedDate = new Date(selectedYear, selectedMonth - 1, day)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (clickedDate > today) {
+      alert('Cannot edit attendance for future dates!')
+      return
+    }
+    
     setSelectedEmployee(employee)
     setSelectedDate(day)
     setModalOpen(true)
@@ -1976,29 +2075,29 @@ export default function MonthlyAttendanceTable() {
     )
   }
   return (
-    <div className="w-full p-6 space-y-6 bg-black min-h-screen">
+    <div className="w-full bg-black leading-none" style={{lineHeight: '0'}}>
       {/* Header */}
-      <div className="bg-black rounded-lg p-6">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      <div className="bg-black mb-0" style={{marginBottom: '0', paddingBottom: '0'}}>
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center" style={{margin: '0', padding: '0'}}>
           <div></div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => navigateMonth("prev")}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-3 py-2 rounded-md transition-colors"
+                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <div className="flex items-center gap-2 min-w-[200px] justify-center">
-                <Calendar className="h-4 w-4 text-gray-400" />
-                <span className="font-semibold text-lg text-white">
-                  {months[selectedMonth - 1]} {selectedYear}
-                </span>
+                <div className="flex items-center gap-1 min-w-[200px] justify-center">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                  <span className="font-semibold text-xs text-white">
+                    {months[selectedMonth - 1]} {selectedYear}
+                  </span>
               </div>
               <button
                 onClick={() => navigateMonth("next")}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-3 py-2 rounded-md transition-colors"
+                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -2007,18 +2106,18 @@ export default function MonthlyAttendanceTable() {
             {canViewAllRecords() && (
               <button
                 onClick={() => setHolidayModalOpen(true)}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-3 py-2 rounded-md transition-colors flex items-center gap-2"
+                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 text-xs"
               >
-                <Calendar className="h-4 w-4 mr-2" />
+                <Calendar className="h-3 w-3 mr-1" />
                 Holidays
               </button>
             )}
 
             <button
               onClick={() => exportToPDF(attendanceData, selectedYear, selectedMonth, holidays)}
-              className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-3 py-2 rounded-md transition-colors flex items-center gap-2"
+              className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 text-xs"
             >
-              <Download className="h-4 w-4 mr-2" />
+              <Download className="h-3 w-3 mr-1" />
               Export
             </button>
           </div>
@@ -2026,91 +2125,100 @@ export default function MonthlyAttendanceTable() {
       </div>
 
       {/* Legend */}
-      <div className="bg-black rounded-lg p-4 ">
-        <div className="flex flex-wrap gap-6 items-center justify-center">
+      <div className="bg-black mb-2 mt-2 py-3">
+        <div className="flex flex-wrap gap-4 items-center justify-center">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-green-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Present (P)</span>
+            <div className="w-10 h-7 bg-green-500 rounded flex items-center justify-center text-white text-sm font-bold shadow-md">1</div>
+            <span className="text-sm font-semibold text-white">FULL DAY</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-yellow-500 to-orange-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Late (L)</span>
+            <div className="w-10 h-7 bg-yellow-400 rounded flex items-center justify-center text-black text-sm font-bold shadow-md">0.5</div>
+            <span className="text-sm font-semibold text-white">HALF DAY</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-orange-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Leave (LV)</span>
+            <div className="w-10 h-7 bg-orange-500 rounded flex items-center justify-center text-white text-sm font-bold shadow-md">0</div>
+            <span className="text-sm font-semibold text-white">ABSENT</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-blue-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Holiday (H)</span>
+            <div className="w-10 h-7 bg-red-600 rounded flex items-center justify-center text-white text-sm font-bold shadow-md">-1</div>
+            <span className="text-sm font-semibold text-white">ABSCONDING</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-yellow-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Half Day (HD)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-red-500 rounded"></div>
-            <span className="text-sm font-medium text-white">Absconding (AB)</span>
+            <div className="w-10 h-7 bg-cyan-500 rounded flex items-center justify-center text-white text-sm font-bold shadow-md">1</div>
+            <span className="text-sm font-semibold text-white">HOLIDAY</span>
           </div>
         </div>
       </div>
 
       {/* Monthly Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-black rounded-lg p-6 border border-gray-700">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2 mb-3 mt-2">
+        <div className="bg-black rounded p-3 border border-gray-700">
           <div className="text-center">
-            <div className="text-3xl font-bold text-green-400">
+            <div className="text-2xl font-bold text-green-400">
               {attendanceData.reduce(
                 (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).present,
+                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).presentScore,
+                0,
+              ).toFixed(1)}
+            </div>
+            <div className="text-sm text-gray-300 mt-1">Total Present Score</div>
+          </div>
+        </div>
+        <div className="bg-black rounded p-3 border border-gray-700">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-400">
+              {attendanceData.reduce(
+                (acc, record) =>
+                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).absconding,
                 0,
               )}
             </div>
-            <div className="text-sm text-gray-300 mt-1">Total Present Days</div>
+            <div className="text-sm text-gray-300 mt-1">Total Absconding Days</div>
           </div>
         </div>
-        <div className="bg-black rounded-lg p-6 border border-gray-700">
+        <div className="bg-black rounded p-3 border border-gray-700">
           <div className="text-center">
-            <div className="text-3xl font-bold text-yellow-400">
+            <div className="text-2xl font-bold text-cyan-400">
               {attendanceData.reduce(
-                (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).late,
+                (acc, record) => {
+                  const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
+                  return acc + stats.graceRemaining
+                },
                 0,
               )}
             </div>
-            <div className="text-sm text-gray-300 mt-1">Total Late Days</div>
+            <div className="text-sm text-gray-300 mt-1">Total Grace Remaining</div>
           </div>
         </div>
-        <div className="bg-black rounded-lg p-6 border border-gray-700">
+        <div className="bg-black rounded p-3 border border-gray-700">
           <div className="text-center">
-            <div className="text-3xl font-bold text-orange-400">
+            <div className="text-2xl font-bold text-purple-400">
               {attendanceData.reduce(
                 (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).leave,
+                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).plDays,
                 0,
               )}
             </div>
-            <div className="text-sm text-gray-300 mt-1">Total Leave Days</div>
+            <div className="text-sm text-gray-300 mt-1">Total PL (Paid Leave)</div>
           </div>
         </div>
-        <div className="bg-black rounded-lg p-6 border border-gray-700">
+        <div className="bg-black rounded p-3 border border-gray-700">
           <div className="text-center">
-            <div className="text-3xl font-bold text-blue-400">
-              {(
+            <div className="text-2xl font-bold text-orange-400">
+              {attendanceData.length > 0 ? (
                 attendanceData.reduce((acc, record) => {
                   const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-                  return acc + Number.parseFloat(stats.attendancePercentage)
-                }, 0) / attendanceData.length
-              ).toFixed(1)}
-              %
+                  return acc + stats.finalScore
+                }, 0).toFixed(1)
+              ) : '0'}
             </div>
-            <div className="text-sm text-gray-300 mt-1">Average Attendance</div>
+            <div className="text-sm text-gray-300 mt-1">Total FINAL Score</div>
           </div>
         </div>
       </div>
 
       {/* Attendance Table */}
-      <div className="bg-black rounded-lg overflow-hidden shadow-2xl">
+      <div className="bg-black overflow-hidden mt-0" style={{marginTop: '0'}}>
         <div className="relative">
           {/* Horizontal scroll buttons */}
           {/* Left scroll button - temporarily always show for testing */}
@@ -2152,7 +2260,7 @@ export default function MonthlyAttendanceTable() {
             <thead style={{backgroundColor: '#03b0f5'}}>
               {/* Row 1: main headers */}
               <tr>
-                <th colSpan={3} className="sticky left-0 px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th colSpan={3} className="sticky left-0 px-2 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Employee Details
                 </th>
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
@@ -2163,40 +2271,26 @@ export default function MonthlyAttendanceTable() {
                     </div>
                   </th>
                 ))}
-                <th colSpan={7} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th colSpan={5} className="px-2 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Summary
-                </th>
-                <th colSpan={3} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#1e7e34'}}>
-                  Earned Leave
-                </th>
-                <th colSpan={3} className="px-4 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#6f42c1'}}>
-                  Grace
                 </th>
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
               <tr>
-                <th className="sticky left-0 px-4 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th className="sticky left-0 px-2 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Emp ID
                 </th>
-                <th className="px-4 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th className="px-2 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Name
                 </th>
-                <th className="px-4 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th className="px-2 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
                   Team
                 </th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[60px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Present</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[60px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Leave</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Late</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Half Day</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Holiday</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[75px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Abscond</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[70px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>Attend %</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Total</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Used</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>Remaining</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Total</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Used</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>Remaining</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>present</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#17a2b8'}}>Grace</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>PL</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>EL</th>
+                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#e67e22'}}>FINAL</th>
               </tr>
             </thead>
             <tbody className="bg-black">
@@ -2208,61 +2302,31 @@ export default function MonthlyAttendanceTable() {
                     key={record.id}
                     className="bg-black hover:bg-gray-800 transition-colors border-b border-gray-700"
                   >
-                    <td className="sticky left-0 bg-black px-4 py-5 border border-gray-600 text-sm text-blue-300 font-medium cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
+                    <td className="sticky left-0 bg-black px-2 py-1 border border-gray-600 text-sm text-blue-300 font-medium cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
                       {record.employeeId}
                     </td>
-                    <td className="px-4 py-5 border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
+                    <td className="px-2 py-1 border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors" onClick={() => handleEmployeeClick(record)}>
                       <div className="font-semibold text-white text-base">{record.name}</div>
                     </td>
-                    <td className="px-4 py-5 border border-gray-600">
+                    <td className="px-2 py-1 border border-gray-600">
                       <div className="text-sm text-gray-400">{record.department}</div>
                     </td>
                     {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
                       <td
                         key={day}
-                        className="px-2 py-2 text-center cursor-pointer hover:bg-gray-700 border border-gray-600 transition-colors"
+                        className="px-2 py-1 text-center cursor-pointer hover:bg-gray-700 border border-gray-600 transition-colors"
                         onClick={() => handleDayClick(record, day)}
                       >
                         {getStatusBadge(record[`day${day}`])}
                       </td>
                     ))}
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-400 text-sm">{stats.present}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-400 text-sm">{stats.leave}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-yellow-400 text-sm">{stats.late}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-cyan-400 text-sm">{stats.halfDay}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-blue-400 text-sm">{stats.holidays}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-red-400 text-sm">{stats.absconding}</td>
-                    <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
-                      <span className={Number.parseFloat(stats.attendancePercentage) >= 90 ? 'text-green-400' : Number.parseFloat(stats.attendancePercentage) >= 75 ? 'text-yellow-400' : 'text-red-400'}>
-                        {stats.attendancePercentage}%
-                      </span>
+                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-sm">
+                      <span className={stats.presentScore >= 0 ? 'text-green-400' : 'text-red-400'}>{stats.presentScore}</span>
                     </td>
-                    {/* Earned Leave - monthly: annual/12, used = LV days this month */}
-                    {(() => {
-                      const elMonthly = Math.round((record.earnedLeavesTotal ?? 15) / 12) || 1
-                      const elUsed = stats.leave
-                      const elRemaining = Math.max(0, elMonthly - elUsed)
-                      return (<>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-green-300 text-sm">{elMonthly}</td>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{elUsed}</td>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
-                          <span className={elRemaining > 0 ? 'text-green-400' : 'text-red-400'}>{elRemaining}</span>
-                        </td>
-                      </>)
-                    })()}
-                    {/* Grace - monthly: annual/12, used = Late (L) days this month */}
-                    {(() => {
-                      const graceMonthly = Math.round((record.graceTotal ?? 24) / 12) || 2
-                      const graceUsed = stats.late
-                      const graceRemaining = Math.max(0, graceMonthly - graceUsed)
-                      return (<>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-purple-300 text-sm">{graceMonthly}</td>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-orange-300 text-sm">{graceUsed}</td>
-                        <td className="px-2 py-3 text-center border border-gray-600 font-bold text-sm">
-                          <span className={graceRemaining > 0 ? 'text-purple-400' : 'text-red-400'}>{graceRemaining}</span>
-                        </td>
-                      </>)
-                    })()}
+                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-cyan-300 text-sm">{stats.graceRemaining}/{stats.graceTotal}</td>
+                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-purple-300 text-sm">{stats.plDays}</td>
+                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-green-300 text-sm">{stats.elDays}</td>
+                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-orange-300 text-sm">{stats.finalScore}</td>
                   </tr>
                 )
               })}

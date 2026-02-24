@@ -62,6 +62,8 @@ function App() {
   const notificationSoundRef = useRef(null)
   const soundIntervalRef = useRef(null)
   const checkNotificationsRef = useRef(null)
+  // Track last acknowledged notification ID to prevent modal re-showing during API race window
+  const lastAcknowledgedIdRef = useRef(null)
 
   // Sound state management
   const [isSoundPlaying, setIsSoundPlaying] = useState(false)
@@ -140,6 +142,7 @@ function App() {
       'Leave': '/leaves',
       'Leaves': '/leaves',
       'Attendance': '/attendance',
+      'Dialer Report': '/dialer-report',
       'Warning Management': '/warnings',
       'Warning': '/warnings',
       'Warning Dashboard': '/warnings',
@@ -324,6 +327,7 @@ function App() {
       'Leave': '/leaves',
       'Leaves': '/leaves',
       'Attendance': '/attendance',
+      'Dialer Report': '/dialer-report',
       'Warning Management': '/warnings',
       'Warning': '/warnings',
       'Warning Dashboard': '/warnings',
@@ -478,8 +482,10 @@ function App() {
     localStorage.removeItem('profile_photo') // Clear profile photo
     localStorage.removeItem('userProfilePhoto') // Clear legacy profile photo key
     localStorage.removeItem('user') // Clear user object
+    localStorage.removeItem('sessionToken') // Clear single-session token
     setUser(null)
     setIsAuthenticated(false)
+    navigate('/login')
   }
 
   // GLOBAL: Check for global notification triggers
@@ -610,7 +616,7 @@ function App() {
             const isNewNotification = currentNotificationId !== lastNotificationId ||
                                     (Date.now() - lastCheckTime) > 5000; // 5 second grace period
 
-            if (isNewNotification) {
+            if (isNewNotification && currentNotificationId !== lastAcknowledgedIdRef.current) {
               console.log('🔔 NEW NOTIFICATION DETECTED - Playing sound and showing modal');
 
               // Update notification cache
@@ -891,6 +897,9 @@ function App() {
       return false;
     }
 
+    // Save type BEFORE entering try block so catch can access it
+    const isLogoutType = globalAnnouncementData.notificationType === 'logout';
+
     try {
       console.log('📤 Sending acknowledgment to backend...');
       console.log('🆔 Notification ID:', globalAnnouncementData.notificationId);
@@ -904,8 +913,11 @@ function App() {
       
       console.log('👤 User ID:', userId);
       
-      // Store notification ID before clearing state
+      // Store notification ID before clearing state (type already saved above)
       const notificationId = globalAnnouncementData.notificationId;
+      
+      // CRITICAL: Mark as acknowledged IMMEDIATELY to prevent polling from re-showing this notification
+      lastAcknowledgedIdRef.current = notificationId;
       
       // CRITICAL: Stop the repeating sound immediately with comprehensive cleanup
       cleanupAllSounds();
@@ -940,6 +952,12 @@ function App() {
         console.log('✅ Global notification acknowledged successfully in backend');
       }
 
+      // If this was a logout announcement, log out the user NOW (after accepting)
+      if (isLogoutType) {
+        console.log('🔓 Logout announcement acknowledged — logging out user...');
+        handleLogout();
+      }
+
     } catch (error) {
       console.error('Error in acknowledge handler:', error);
       
@@ -948,6 +966,12 @@ function App() {
       localStorage.removeItem('pendingAnnouncement');
       setShowGlobalAnnouncement(false);
       setGlobalAnnouncementData(null);
+
+      // Even on error, force logout for logout-type announcements
+      if (isLogoutType) {
+        console.log('🔓 Force logout after error in logout announcement...');
+        handleLogout();
+      }
     }
     
     // CRITICAL: Return false to prevent any default behavior
@@ -1485,36 +1509,22 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) 
                 display: 'none'
               }}
               onClick={async (e) => {
-                console.log('👆 Logout Button clicked!');
-                console.log('🛑 Preventing all default behaviors...');
+                console.log('👆 Logout Announcement — I Agree clicked!');
                 
-                // CRITICAL: Prevent ALL possible refresh triggers
                 if (e) {
-                  if (typeof e.preventDefault === 'function') {
-                    e.preventDefault();
-                  }
-                  if (typeof e.stopPropagation === 'function') {
-                    e.stopPropagation();
-                  }
-                  if (typeof e.stopImmediatePropagation === 'function') {
-                    e.stopImmediatePropagation();
-                  }
+                  if (typeof e.preventDefault === 'function') e.preventDefault();
+                  if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                  if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                   if (e.nativeEvent && typeof e.nativeEvent.preventDefault === 'function') {
                     e.nativeEvent.preventDefault();
                     e.nativeEvent.stopPropagation();
                   }
                 }
                 
-                // Call the acknowledge handler first
+                // onAcknowledge now handles logout internally for logout-type announcements
                 await onAcknowledge(e);
                 
-                // Then call the logout handler
-                console.log('🔓 Logging out user...');
-                onLogout();
-                
-                console.log('✅ Handler completed, ensuring modal closes...');
-                
-                return false; // Extra safety
+                return false;
               }}
               onMouseDown={(e) => {
                 // Backup prevention on mouse down
@@ -1526,7 +1536,7 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) 
               type="button"
             >
               <span style={{ fontWeight: 'bold', fontSize: '20px' }}>🔓</span>
-              Logout & Acknowledge
+              I Agree — Logout Now
             </button>
           ) : (
             <button
@@ -1576,7 +1586,9 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) 
           )}
 
           <div className="global-announcement-footer">
-            This notification will remain until you acknowledge it
+            {announcementData.notificationType === 'logout' 
+              ? '⚠️ You must acknowledge this notice and logout to continue.'
+              : 'This notification will remain until you acknowledge it'}
           </div>
         </div>
       </div>

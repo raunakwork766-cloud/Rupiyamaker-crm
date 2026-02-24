@@ -81,6 +81,13 @@ class AttendanceSettings(BaseModel):
     # Grace Period Settings
     grace_period_minutes: int = Field(30, description="Grace period in minutes after deadline")
     grace_usage_limit: int = Field(2, description="Maximum grace period usage per month")
+
+    # Auto Grace (Threshold-Based)
+    auto_grace_enabled: bool = Field(True, description="Enable threshold-based auto grace")
+    auto_grace_monthly_limit: int = Field(3, description="Max graces an employee can use per month")
+    auto_grace_threshold_1: int = Field(15, description="Days present to unlock 1st grace")
+    auto_grace_threshold_2: int = Field(20, description="Days present to unlock 2nd grace")
+    auto_grace_threshold_3: int = Field(24, description="Days present to unlock 3rd grace")
     
     # Leave Rules
     pending_leave_auto_convert_days: int = Field(3, description="Days after which pending leave converts to absconding")
@@ -119,6 +126,11 @@ class AttendanceSettingsUpdate(BaseModel):
     half_day_minimum_working_hours: Optional[float] = Field(None, description="Minimum hours for half day")
     grace_period_minutes: Optional[int] = Field(None, description="Grace period in minutes")
     grace_usage_limit: Optional[int] = Field(None, description="Grace usage limit per month")
+    auto_grace_enabled: Optional[bool] = Field(None, description="Enable threshold-based auto grace")
+    auto_grace_monthly_limit: Optional[int] = Field(None, description="Max graces per month")
+    auto_grace_threshold_1: Optional[int] = Field(None, description="Days present to unlock 1st grace")
+    auto_grace_threshold_2: Optional[int] = Field(None, description="Days present to unlock 2nd grace")
+    auto_grace_threshold_3: Optional[int] = Field(None, description="Days present to unlock 3rd grace")
     pending_leave_auto_convert_days: Optional[int] = Field(None, description="Pending leave auto-convert days")
     absconding_penalty: Optional[int] = Field(None, description="Absconding penalty")
     enable_sunday_sandwich_rule: Optional[bool] = Field(None, description="Enable Sunday sandwich rule")

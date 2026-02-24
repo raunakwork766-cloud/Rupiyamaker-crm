@@ -575,8 +575,6 @@ const COLUMN_MAP = {
     'in_meeting duration': '_ignore', 'in_disbursal duration': '_ignore',
     'in_discussion duration': '_ignore', 'on_other_call duration': '_ignore',
     'total calls': '_ignore',
-    // ── manual call duration (new alias) ──
-    'manual call duration': 'manTT',
 };
 
 // Required columns. Reduced to essential fields only.

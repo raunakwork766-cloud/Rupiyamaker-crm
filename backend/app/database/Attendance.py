@@ -21,6 +21,7 @@ class AttendanceDB:
         self.collection = self.db['attendance']
         self.users_collection = self.db['users']
         self.departments_collection = self.db['departments']
+        self.grace_usage_collection = self.db['attendance_grace_usage']
         
     async def init_indexes(self):
         """Initialize database indexes asynchronously"""
@@ -815,8 +816,59 @@ class AttendanceDB:
             print(f"Error checking in employee: {e}")
             raise
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # AUTO GRACE HELPERS
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def _count_present_days_this_month(self, user_id: str, year_month: str, exclude_date: str = None) -> int:
+        """Count days with status >= 0.5 in the given month (optionally excluding a date)."""
+        from_date = year_month + "-01"
+        year, month = map(int, year_month.split("-"))
+        to_date = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+        query: dict = {
+            "user_id": user_id,
+            "date": {"$gte": from_date, "$lt": to_date},
+            "status": {"$gte": 0.5}
+        }
+        if exclude_date:
+            query["date"]["$ne"] = exclude_date
+        return await self.collection.count_documents(query)
+
+    async def _get_grace_used_this_month(self, user_id: str, year_month: str) -> int:
+        """Return how many graces this employee has consumed this month."""
+        record = await self.grace_usage_collection.find_one(
+            {"user_id": user_id, "year_month": year_month}
+        )
+        return record.get("grace_used", 0) if record else 0
+
+    async def _record_grace_usage(self, user_id: str, year_month: str, date_used: str) -> None:
+        """Increment grace_used count and log the date it was auto-applied."""
+        await self.grace_usage_collection.update_one(
+            {"user_id": user_id, "year_month": year_month},
+            {
+                "$inc": {"grace_used": 1},
+                "$push": {"dates_applied": date_used},
+                "$setOnInsert": {"user_id": user_id, "year_month": year_month},
+                "$set": {"updated_at": datetime.now()}
+            },
+            upsert=True
+        )
+
+    def _calculate_earned_graces(self, present_days: int, settings: dict) -> int:
+        """Return how many grace marks the employee has earned based on present days."""
+        t1 = settings.get("auto_grace_threshold_1", 15)
+        t2 = settings.get("auto_grace_threshold_2", 20)
+        t3 = settings.get("auto_grace_threshold_3", 24)
+        monthly_limit = settings.get("auto_grace_monthly_limit", 3)
+        if present_days >= t3:
+            return min(3, monthly_limit)
+        if present_days >= t2:
+            return min(2, monthly_limit)
+        if present_days >= t1:
+            return min(1, monthly_limit)
+        return 0
+
     async def check_out_employee(self, user_id: str, check_out_data: Dict[str, Any]) -> str:
-        """Check-out employee with photo and geolocation"""
         try:
             from app.schemas.attendance_schemas import calculate_working_hours, determine_attendance_status
             from app.database.Settings import SettingsDB
@@ -846,7 +898,41 @@ class AttendanceDB:
             
             # Determine final attendance status
             final_status = determine_attendance_status(check_in_time, check_out_time, settings)
-            
+            grace_applied = False
+
+            # ── Auto Grace: override Half Day → Full Day if employee earned grace ──
+            if settings.get("auto_grace_enabled", False) and final_status < 1.0:
+                try:
+                    # Parse times to check if late check-in caused the half-day
+                    from datetime import datetime as _dt, time as _time
+                    deadline_str = settings.get("reporting_deadline", "10:15")
+                    deadline_t = _dt.strptime(deadline_str, "%H:%M").time()
+
+                    # Normalise check_in_time (may be HH:MM:SS or HH:MM)
+                    ci_parts = check_in_time.split(":")
+                    ci_t = _time(int(ci_parts[0]), int(ci_parts[1]))
+
+                    if ci_t > deadline_t:
+                        # Employee came in after deadline → candidate for auto-grace
+                        year_month = today[:7]
+                        # Count this month's present days (including today which will be present)
+                        past_present = await self._count_present_days_this_month(
+                            user_id, year_month, exclude_date=today
+                        )
+                        today_present_total = past_present + 1  # +1 for today
+
+                        grace_earned = self._calculate_earned_graces(today_present_total, settings)
+                        grace_used = await self._get_grace_used_this_month(user_id, year_month)
+
+                        if grace_earned > grace_used:
+                            final_status = 1.0
+                            grace_applied = True
+                            await self._record_grace_usage(user_id, year_month, today)
+                            print(f"[AutoGrace] Applied grace to {user_id} on {today} "
+                                  f"(present_days={today_present_total}, earned={grace_earned}, used={grace_used+1})")
+                except Exception as grace_err:
+                    print(f"[AutoGrace] Error applying auto grace: {grace_err}")
+
             # Update attendance record with check-out data
             update_data = {
                 "check_out_time": check_out_time,
@@ -854,6 +940,7 @@ class AttendanceDB:
                 "check_out_geolocation": check_out_data["check_out_location"],
                 "total_working_hours": total_working_hours,
                 "status": final_status,
+                "grace_applied": grace_applied,
                 "comments": check_out_data.get("comments", existing.get("comments", "")),
                 "updated_at": datetime.now()
             }

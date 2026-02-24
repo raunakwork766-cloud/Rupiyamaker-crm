@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 4521",
     "dev-http": "vite --host 0.0.0.0 --port 4521 --https false",
+    "prebuild": "node -e \"const{execSync}=require('child_process');const b=execSync('git branch --show-current').toString().trim();if(b==='dev'){console.error('\\n🚫  BLOCKED: You are on the dev branch!\\n    Run npm run build:dev to build into dist-dev (port 4522 only).\\n    Switch to main branch before building for production.\\n');process.exit(1);}console.log('✅ Branch:',b,'— production build allowed.');\"",
     "build": "vite build",
+    "build:dev": "vite build --outDir dist-dev --emptyOutDir",
     "build:analyze": "vite build --mode analyze && npx vite-bundle-analyzer dist",
     "build:production": "NODE_ENV=production vite build",
     "lint": "eslint .",

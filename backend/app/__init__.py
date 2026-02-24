@@ -300,6 +300,14 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+try:
+    from app.routes import dialer as dialer_route
+    print("✓ Dialer router imported successfully")
+except Exception as e:
+    print(f"✗ Error importing dialer router: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Include routers
 app.include_router(users.router)
 app.include_router(roles.router)
@@ -354,6 +362,14 @@ try:
     print("✓ Warnings router registered successfully")
 except Exception as e:
     print(f"✗ Error registering warnings router: {e}")
+    import traceback
+    traceback.print_exc()
+
+try:
+    app.include_router(dialer_route.router)
+    print("✓ Dialer router registered successfully")
+except Exception as e:
+    print(f"✗ Error registering dialer router: {e}")
     import traceback
     traceback.print_exc()
 

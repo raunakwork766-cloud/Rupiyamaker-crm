@@ -48,6 +48,13 @@ const AttendanceSettingsTab = ({ userId }) => {
     // Grace Period Settings (New)
     grace_period_minutes: 30,
     grace_usage_limit: 2, // per month
+
+    // Auto Grace (Threshold-Based)
+    auto_grace_enabled: true,
+    auto_grace_monthly_limit: 3,      // max graces per month
+    auto_grace_threshold_1: 15,       // present days to earn grace 1
+    auto_grace_threshold_2: 20,       // present days to earn grace 2
+    auto_grace_threshold_3: 24,       // present days to earn grace 3
     
     // Leave & Absconding Rules (New)
     pending_leave_auto_convert_days: 3, // Convert to absconding after 3 days
@@ -97,7 +104,7 @@ const AttendanceSettingsTab = ({ userId }) => {
     setError(null);
     
     try {
-      const response = await axios.get(`${BASE_URL}/settings/attendance-settings`, {
+      const response = await axios.get(`${API_BASE_URL}/settings/attendance-settings`, {
         params: { user_id: userId }
       });
       
@@ -141,7 +148,7 @@ const AttendanceSettingsTab = ({ userId }) => {
         }
       });
 
-      const response = await axios.put(`${BASE_URL}/settings/attendance-settings`, updateData, {
+      const response = await axios.put(`${API_BASE_URL}/settings/attendance-settings`, updateData, {
         params: { user_id: userId }
       });
       
@@ -167,7 +174,7 @@ const AttendanceSettingsTab = ({ userId }) => {
       setError(null);
       
       try {
-        const response = await axios.post(`${BASE_URL}/settings/attendance-settings/reset`, {}, {
+        const response = await axios.post(`${API_BASE_URL}/settings/attendance-settings/reset`, {}, {
           params: { user_id: userId }
         });
         
@@ -432,6 +439,116 @@ const AttendanceSettingsTab = ({ userId }) => {
                       • Punch In 10:40 with grace exhausted = <strong>Half Day</strong>
                     </Alert>
                   </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* === Auto Grace (Threshold-Based) === */}
+          <Grid item xs={12}>
+            <Card elevation={2} sx={{ bgcolor: '#e8f5e9', border: '2px solid #2e7d32' }}>
+              <CardHeader
+                title="🎖️ Auto Grace — Threshold Based"
+                subheader="Grace marks earned automatically based on monthly attendance"
+                titleTypographyProps={{ fontWeight: 'bold', color: '#1b5e20' }}
+              />
+              <CardContent>
+                <Grid container spacing={2} alignItems="flex-start">
+
+                  {/* Enable Toggle */}
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.auto_grace_enabled}
+                          onChange={(e) => handleSettingChange('auto_grace_enabled', e.target.checked)}
+                          color="success"
+                        />
+                      }
+                      label={
+                        <Typography fontWeight="bold">
+                          {settings.auto_grace_enabled ? '✅ Auto Grace Enabled' : '⛔ Auto Grace Disabled'}
+                        </Typography>
+                      }
+                    />
+                  </Grid>
+
+                  {/* Monthly Limit */}
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      label="Max Graces per Month"
+                      type="number"
+                      value={settings.auto_grace_monthly_limit}
+                      onChange={(e) => handleSettingChange('auto_grace_monthly_limit', parseInt(e.target.value))}
+                      fullWidth
+                      disabled={!settings.auto_grace_enabled}
+                      inputProps={{ min: 1, max: 10, step: 1 }}
+                      helperText="Total graces available per month"
+                    />
+                  </Grid>
+
+                  {/* Threshold 1 */}
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      label="Grace 1 — Present Days"
+                      type="number"
+                      value={settings.auto_grace_threshold_1}
+                      onChange={(e) => handleSettingChange('auto_grace_threshold_1', parseInt(e.target.value))}
+                      fullWidth
+                      disabled={!settings.auto_grace_enabled}
+                      inputProps={{ min: 1, max: 31, step: 1 }}
+                      helperText="Days present to unlock 1st grace"
+                      InputProps={{
+                        startAdornment: <Typography sx={{ mr: 1, color: '#388e3c', fontWeight: 'bold' }}>🥉</Typography>
+                      }}
+                    />
+                  </Grid>
+
+                  {/* Threshold 2 */}
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      label="Grace 2 — Present Days"
+                      type="number"
+                      value={settings.auto_grace_threshold_2}
+                      onChange={(e) => handleSettingChange('auto_grace_threshold_2', parseInt(e.target.value))}
+                      fullWidth
+                      disabled={!settings.auto_grace_enabled}
+                      inputProps={{ min: 1, max: 31, step: 1 }}
+                      helperText="Days present to unlock 2nd grace"
+                      InputProps={{
+                        startAdornment: <Typography sx={{ mr: 1, color: '#1976d2', fontWeight: 'bold' }}>🥈</Typography>
+                      }}
+                    />
+                  </Grid>
+
+                  {/* Threshold 3 */}
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      label="Grace 3 — Present Days"
+                      type="number"
+                      value={settings.auto_grace_threshold_3}
+                      onChange={(e) => handleSettingChange('auto_grace_threshold_3', parseInt(e.target.value))}
+                      fullWidth
+                      disabled={!settings.auto_grace_enabled}
+                      inputProps={{ min: 1, max: 31, step: 1 }}
+                      helperText="Days present to unlock 3rd grace"
+                      InputProps={{
+                        startAdornment: <Typography sx={{ mr: 1, color: '#f9a825', fontWeight: 'bold' }}>🥇</Typography>
+                      }}
+                    />
+                  </Grid>
+
+                  {/* Visual explanation */}
+                  <Grid item xs={12}>
+                    <Alert severity="success" sx={{ mt: 1 }}>
+                      <strong>How it works:</strong><br />
+                      🥉 After <strong>{settings.auto_grace_threshold_1} present days</strong> → Employee earns <strong>Grace 1</strong> (1st late check-in = Full Day)<br />
+                      🥈 After <strong>{settings.auto_grace_threshold_2} present days</strong> → Employee earns <strong>Grace 2</strong> (2nd late check-in = Full Day)<br />
+                      🥇 After <strong>{settings.auto_grace_threshold_3} present days</strong> → Employee earns <strong>Grace 3</strong> (3rd late check-in = Full Day)<br />
+                      <em>Grace is auto-applied on check-out — no manual action needed. Max <strong>{settings.auto_grace_monthly_limit} graces</strong> per month.</em>
+                    </Alert>
+                  </Grid>
+
                 </Grid>
               </CardContent>
             </Card>

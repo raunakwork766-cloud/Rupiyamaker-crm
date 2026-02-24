@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -23,10 +24,14 @@ export default defineConfig({
   server: {
     port: devPort,
     host: '0.0.0.0',
+    https: isDevEnvironment ? {
+      key: fs.readFileSync(path.resolve(__dirname, 'dev-key.pem')),
+      cert: fs.readFileSync(path.resolve(__dirname, 'dev-cert.pem'))
+    } : false,
     allowedHosts: ['rupiyamaker.com', 'localhost', '156.67.111.95'],
     hmr: isDevEnvironment ? {
-      protocol: 'ws',
-      host: 'localhost',
+      protocol: 'wss',
+      host: '156.67.111.95',
       port: devPort,
       clientPort: devPort
     } : {

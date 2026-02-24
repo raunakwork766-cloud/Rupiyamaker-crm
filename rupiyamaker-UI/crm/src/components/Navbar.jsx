@@ -68,12 +68,14 @@ const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
 // Success Modal Component
 const SuccessModal = ({ successInfo, onClose }) => {
   if (!successInfo) return null;
+  
   const configs = {
     full_day: {
       emoji: '🎉',
       color: '#16a34a',
       bg: '#f0fdf4',
       border: '#86efac',
+      statusLabel: 'Full Day - On Time',
       messages: [
         'Great start to the day! Keep it up! 💪',
         'You\'re on time! Productive day ahead! 🚀',
@@ -86,6 +88,7 @@ const SuccessModal = ({ successInfo, onClose }) => {
       color: '#d97706',
       bg: '#fffbeb',
       border: '#fcd34d',
+      statusLabel: 'Half Day',
       messages: [
         'Half day marked! Make the most of it! 😊',
         'Short day today, still counts! 👍',
@@ -97,10 +100,31 @@ const SuccessModal = ({ successInfo, onClose }) => {
       color: '#dc2626',
       bg: '#fef2f2',
       border: '#fca5a5',
+      statusLabel: 'Late Check-In',
       messages: [
         'You\'re a bit late today. Try to be earlier tomorrow! 😅',
         'Late check-in recorded. No worries, happens to all! 🙂',
         'Marked late. Remember: early bird gets the worm! 🐦',
+      ],
+    },
+    absent: {
+      emoji: '❌',
+      color: '#dc2626',
+      bg: '#fef2f2',
+      border: '#fca5a5',
+      statusLabel: 'Absent',
+      messages: [
+        'Marked as absent for today.',
+      ],
+    },
+    absconding: {
+      emoji: '🚫',
+      color: '#991b1b',
+      bg: '#fef2f2',
+      border: '#f87171',
+      statusLabel: 'Absconding',
+      messages: [
+        'Marked as absconding. Please contact HR.',
       ],
     },
     checked_out: {
@@ -108,6 +132,7 @@ const SuccessModal = ({ successInfo, onClose }) => {
       color: '#2563eb',
       bg: '#eff6ff',
       border: '#93c5fd',
+      statusLabel: 'Checked Out',
       messages: [
         'Great work today! See you tomorrow! 😊',
         'Another productive day done! Rest well! 🌙',
@@ -116,17 +141,56 @@ const SuccessModal = ({ successInfo, onClose }) => {
       ],
     },
   };
+  
   const cfg = configs[successInfo.type] || configs.full_day;
   const randomMsg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
+  
+  // Format time display
+  const formatTime = (timeStr) => {
+    if (!timeStr) return 'N/A';
+    // If it's already in HH:MM:SS format, just return it
+    if (timeStr.match(/^\d{2}:\d{2}:\d{2}$/)) return timeStr;
+    return timeStr;
+  };
+  
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '16px' }}>
-      <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: '16px', padding: '32px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'popIn 0.3s ease-out' }}>
+      <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: '16px', padding: '32px 24px', maxWidth: '420px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'popIn 0.3s ease-out' }}>
         <style>{`@keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
         <div style={{ fontSize: '64px', marginBottom: '12px' }}>{cfg.emoji}</div>
         <h2 style={{ color: cfg.color, fontSize: '22px', fontWeight: 700, marginBottom: '8px' }}>{successInfo.title}</h2>
-        <p style={{ color: '#374151', fontSize: '15px', marginBottom: '8px' }}>{successInfo.message}</p>
+        
+        {/* Status Badge */}
+        <div style={{ display: 'inline-block', background: cfg.color, color: 'white', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+          {cfg.statusLabel}
+        </div>
+        
+        {/* Attendance Details */}
+        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
+          {successInfo.checkInTime && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-In:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkInTime)}</span>
+            </div>
+          )}
+          {successInfo.checkOutTime && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-Out:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkOutTime)}</span>
+            </div>
+          )}
+          {successInfo.workHours && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Work Hours:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{successInfo.workHours}</span>
+            </div>
+          )}
+        </div>
+        
+        <p style={{ color: '#374151', fontSize: '15px', marginBottom: '8px', fontWeight: 500 }}>{successInfo.message}</p>
         <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', fontStyle: 'italic' }}>{randomMsg}</p>
-        <button onClick={onClose} style={{ background: cfg.color, color: 'white', border: 'none', borderRadius: '10px', padding: '12px 32px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+        
+        <button onClick={onClose} style={{ background: cfg.color, color: 'white', border: 'none', borderRadius: '10px', padding: '12px 32px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%', transition: 'all 0.2s' }} onMouseOver={(e) => e.target.style.opacity = '0.9'} onMouseOut={(e) => e.target.style.opacity = '1'}>
           Done
         </button>
       </div>
@@ -1020,7 +1084,6 @@ export default function TopNavbar({
     setCapturedPhoto(null);
     setPendingAction(null);
     setAttendanceLoading(false);
-    setFaceVerifyState('idle');
     document.body.style.overflow = 'unset';
     const modalContainer = document.getElementById('camera-modal-container');
     if (modalContainer) {
@@ -1070,18 +1133,85 @@ export default function TopNavbar({
       });
       if (apiResponse.ok) {
         const data = await apiResponse.json();
+        console.log('📊 Attendance API Response:', data);
         setIsCheckedIn(pendingAction === 'checkin');
         closeCameraModal();
         checkAttendanceStatus();
+        
+        // Extract attendance details
+        const checkInTime = data.check_in_time || data.checkInTime || data.check_in || null;
+        const checkOutTime = data.check_out_time || data.checkOutTime || data.check_out || null;
+        const workHours = data.work_hours || data.workHours || data.total_hours || null;
+        
         // Show success modal based on response
         if (pendingAction === 'checkout') {
-          setSuccessModal({ type: 'checked_out', title: 'Checked Out! 👋', message: data.message || 'Check-out successful!' });
-        } else if (data.is_late || (data.status && data.status.includes('late'))) {
-          setSuccessModal({ type: 'late', title: 'Late Check In ⏰', message: data.message || 'Check-in recorded (late).' });
-        } else if (data.status && data.status.includes('half')) {
-          setSuccessModal({ type: 'half_day', title: 'Half Day 🌤️', message: data.message || 'Half day attendance marked!' });
+          setSuccessModal({ 
+            type: 'checked_out', 
+            title: 'Checked Out! 👋', 
+            message: data.message || 'Check-out successful!',
+            checkInTime: checkInTime,
+            checkOutTime: checkOutTime,
+            workHours: workHours
+          });
         } else {
-          setSuccessModal({ type: 'full_day', title: 'Checked In! 🎉', message: data.message || 'Check-in successful!' });
+          // Check-in logic - determine type based on API response
+          const statusLower = (data.status || '').toLowerCase();
+          const messageLower = (data.message || '').toLowerCase();
+          
+          console.log('🔍 Check-in status:', { 
+            status: data.status, 
+            is_late: data.is_late, 
+            message: data.message,
+            statusLower,
+            messageLower,
+            checkInTime
+          });
+          
+          // Check for absent
+          if (statusLower.includes('absent') || messageLower.includes('absent')) {
+            setSuccessModal({ 
+              type: 'absent', 
+              title: 'Absent ❌', 
+              message: data.message || 'Marked as absent for today.',
+              checkInTime: checkInTime
+            });
+          }
+          // Check for absconding
+          else if (statusLower.includes('absconding') || messageLower.includes('absconding')) {
+            setSuccessModal({ 
+              type: 'absconding', 
+              title: 'Absconding 🚫', 
+              message: data.message || 'Marked as absconding. Please contact HR.',
+              checkInTime: checkInTime
+            });
+          }
+          // Check for late attendance
+          else if (data.is_late || statusLower.includes('late') || messageLower.includes('late')) {
+            setSuccessModal({ 
+              type: 'late', 
+              title: 'Late Check In ⏰', 
+              message: data.message || 'Check-in recorded (late).',
+              checkInTime: checkInTime
+            });
+          } 
+          // Check for half day
+          else if (statusLower.includes('half') || messageLower.includes('half')) {
+            setSuccessModal({ 
+              type: 'half_day', 
+              title: 'Half Day 🌤️', 
+              message: data.message || 'Half day attendance marked!',
+              checkInTime: checkInTime
+            });
+          } 
+          // Default to full day
+          else {
+            setSuccessModal({ 
+              type: 'full_day', 
+              title: 'Checked In! 🎉', 
+              message: data.message || 'Check-in successful!',
+              checkInTime: checkInTime
+            });
+          }
         }
       } else {
         const errorData = await apiResponse.json();

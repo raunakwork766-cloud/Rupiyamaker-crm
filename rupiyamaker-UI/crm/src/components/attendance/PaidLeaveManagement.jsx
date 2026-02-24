@@ -3,205 +3,293 @@ import axios from 'axios';
 
 const BASE_URL = '/api';
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const getUid = () => {
+  try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.user_id || u?._id || ''; }
+  catch { return ''; }
+};
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch { return d; }
+};
+
 const PaidLeaveManagement = () => {
-  const [user] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('userData') || 'null'); } catch { return null; }
-  });
+  const now = new Date();
+  const [selMonth, setSelMonth] = useState(now.getMonth()); // 0-indexed
+  const [selYear, setSelYear] = useState(now.getFullYear());
+
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [search, setSearch] = useState('');
 
-  // Modal
-  const [modalEmp, setModalEmp] = useState(null);
-  const [leaveType, setLeaveType] = useState('paid');
+  // modal
+  const [modal, setModal] = useState(null);
+  const [leaveType, setLeaveType] = useState('earned');
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
 
-  const uid = user?.user_id || user?._id;
+  // history
+  const [historyEmp, setHistoryEmp] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); }, [selMonth, selYear]);
 
   const loadAll = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
+    const userId = getUid();
     try {
-      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${uid}`);
+      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${userId}`);
       const empList = Array.isArray(empRes.data) ? empRes.data : (empRes.data.users || empRes.data.data || []);
       const employees = empList.filter(e => e.is_employee !== false);
-
       const balResults = await Promise.allSettled(
         employees.map(emp =>
-          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${uid}`)
+          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${userId}`)
             .then(r => r.data?.data || null)
         )
       );
-
       setRows(employees.map((emp, i) => ({
-        employee: emp,
-        balance: balResults[i].status === 'fulfilled' ? balResults[i].value : null
+        emp,
+        bal: balResults[i].status === 'fulfilled' ? balResults[i].value : null,
       })));
     } catch (e) {
-      setError('Failed to load data: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setLoading(false);
-    }
+      setError('Failed to load: ' + (e.response?.data?.detail || e.message));
+    } finally { setLoading(false); }
   };
 
-  const openModal = (emp) => { setModalEmp(emp); setLeaveType('paid'); setQuantity(''); setReason(''); };
+  const openModal = (emp, mode) => {
+    setModal({ emp, mode });
+    setLeaveType('earned'); setQuantity(''); setReason(''); setError(null);
+  };
 
-  const handleAction = async (action) => {
-    if (!modalEmp || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
+  const handleAction = async () => {
+    if (!modal || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
     setModalLoading(true); setError(null);
     try {
-      const res = await axios.post(
-        `${BASE_URL}/settings/leave-balance/${action === 'allocate' ? 'allocate' : 'deduct'}?user_id=${uid}`,
-        { employee_id: modalEmp._id || modalEmp.id, leave_type: leaveType, quantity: parseInt(quantity), reason: reason.trim() }
-      );
-      setSuccess(res.data.message || `${action === 'allocate' ? 'Allocated' : 'Deducted'} successfully`);
-      setModalEmp(null);
+      const endpoint = modal.mode === 'allot' ? 'allocate' : 'deduct';
+      const res = await axios.post(`${BASE_URL}/settings/leave-balance/${endpoint}?user_id=${getUid()}`, {
+        employee_id: modal.emp._id || modal.emp.id,
+        leave_type: leaveType,
+        quantity: parseFloat(quantity),
+        reason: reason.trim(),
+      });
+      setSuccess(res.data.message || 'Done');
+      setModal(null);
       setTimeout(() => setSuccess(null), 3000);
       loadAll();
     } catch (e) {
-      setError(e.response?.data?.detail || `Failed to ${action}`);
+      setError(e.response?.data?.detail || 'Failed');
     } finally { setModalLoading(false); }
   };
 
-  const filtered = rows.filter(({ employee: e }) => {
+  const openHistory = async (emp) => {
+    const id = emp._id || emp.id;
+    if (historyEmp?._id === id || historyEmp?.id === id) { setHistoryEmp(null); setHistory([]); return; }
+    setHistoryEmp(emp); setHistLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/settings/leave-balance/history/${id}?user_id=${getUid()}`);
+      // filter by selected month/year if possible
+      const all = Array.isArray(res.data) ? res.data : [];
+      setHistory(all);
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
+  };
+
+  const filtered = rows.filter(({ emp }) => {
     const q = search.toLowerCase();
-    return `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase().includes(q)
-      || (e.employee_code || e.emp_id || '').toLowerCase().includes(q)
-      || (e.department_name || e.department || '').toLowerCase().includes(q);
+    return `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase().includes(q)
+      || (emp.employee_code || emp.emp_id || '').toLowerCase().includes(q)
+      || (emp.department_name || emp.department || '').toLowerCase().includes(q);
   });
 
-  const HDR_COLS = [
-    { label: 'Paid Leave',    bg: '#1a6b2a', rKey: 'paid_leaves_remaining',   tKey: 'paid_leaves_total',   uKey: 'paid_leaves_used',   color: 'text-green-400' },
-    { label: 'Earned Leave',  bg: '#1565c0', rKey: 'earned_leaves_remaining', tKey: 'earned_leaves_total', uKey: 'earned_leaves_used', color: 'text-blue-400' },
-    { label: 'Sick Leave',    bg: '#b35900', rKey: 'sick_leaves_remaining',   tKey: 'sick_leaves_total',   uKey: 'sick_leaves_used',   color: 'text-orange-400' },
-    { label: 'Casual Leave',  bg: '#5e1b8a', rKey: 'casual_leaves_remaining', tKey: 'casual_leaves_total', uKey: 'casual_leaves_used', color: 'text-purple-400' },
-    { label: 'Grace Leave',   bg: '#7b1fa2', rKey: 'grace_leaves_remaining',  tKey: 'grace_leaves_total',  uKey: 'grace_leaves_used',  color: 'text-pink-400' },
-  ];
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
 
   return (
-    <div className="p-4 bg-gray-950 min-h-screen">
-      <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white px-6 py-4 rounded-lg mb-4 flex items-center justify-between">
+    <div style={{ padding: 16, background: '#0a0a0a', minHeight: '100vh', color: '#e5e7eb', fontFamily: 'sans-serif' }}>
+
+      {/* Top bar: title left, filters right */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 className="text-2xl font-bold">🏖️ Leave Management</h1>
-          <p className="text-indigo-200 text-sm mt-1">View & manage all employee leave balances</p>
+          <div style={{ fontWeight: 700, fontSize: 17, color: '#fff' }}>🏖️ Leave Balance — {MONTHS[selMonth]} {selYear}</div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Earned Leave · Paid Leave · Grace Leave</div>
         </div>
-        <button onClick={loadAll} className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">🔄 Refresh</button>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="text" placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ background: '#1f2937', border: '1px solid #374151', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 12, outline: 'none', width: 180 }} />
+          <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))} style={SEL}>
+            {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+          </select>
+          <select value={selYear} onChange={e => setSelYear(Number(e.target.value))} style={SEL}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={loadAll} style={{ background: '#1d4ed8', border: 'none', color: '#fff', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>🔄</button>
+        </div>
       </div>
 
-      {success && <div className="bg-green-900 border border-green-500 text-green-300 px-4 py-2 rounded mb-3 text-sm">✅ {success}</div>}
-      {error && <div className="bg-red-900 border border-red-500 text-red-300 px-4 py-2 rounded mb-3 text-sm flex justify-between">❌ {error}<button className="ml-2 underline text-xs" onClick={() => setError(null)}>✕</button></div>}
+      {/* Alerts */}
+      {success && <div style={ALERT_OK}>✅ {success} <span onClick={() => setSuccess(null)} style={{ cursor: 'pointer' }}>✕</span></div>}
+      {error   && <div style={ALERT_ERR}>❌ {error} <span onClick={() => setError(null)} style={{ cursor: 'pointer' }}>✕</span></div>}
 
-      <div className="mb-3">
-        <input type="text" placeholder="🔍 Search name, emp ID, department..." value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full md:w-96 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded-lg text-sm focus:outline-none focus:border-indigo-500" />
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-gray-700">
-        <table className="w-full text-sm bg-black border-collapse" style={{ minWidth: '1100px' }}>
+      {/* Table */}
+      <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid #1f2937' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#000', fontSize: 13 }}>
           <thead>
-            <tr style={{ backgroundColor: '#03b0f5' }}>
-              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[140px]">Employee</th>
-              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[90px]">Emp ID</th>
-              <th rowSpan={2} className="px-3 py-2 text-left font-bold text-white border border-gray-400 min-w-[110px]">Department</th>
-              {HDR_COLS.map(c => (
-                <th key={c.label} colSpan={3} className="px-2 py-2 text-center font-bold text-white border border-gray-400" style={{ backgroundColor: c.bg }}>{c.label}</th>
-              ))}
-              <th rowSpan={2} className="px-3 py-2 text-center font-bold text-white border border-gray-400 min-w-[80px]">Action</th>
-            </tr>
             <tr>
-              {HDR_COLS.map(c => (
-                <React.Fragment key={c.label}>
-                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[60px]" style={{ backgroundColor: c.bg }}>Allotted</th>
-                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[50px]" style={{ backgroundColor: c.bg }}>Used</th>
-                  <th className="px-2 py-1 text-center font-semibold text-white text-xs border border-gray-400 min-w-[65px]" style={{ backgroundColor: c.bg }}>Remaining</th>
-                </React.Fragment>
-              ))}
+              <th style={TH('#03b0f5')}>Employee</th>
+              <th style={TH('#03b0f5')}>Emp ID</th>
+              <th style={TH('#03b0f5')}>Department</th>
+              <th style={TH('#1565c0')}>EL Allotted</th>
+              <th style={TH('#1565c0')}>EL Used</th>
+              <th style={TH('#1565c0')}>EL Remaining</th>
+              <th style={TH('#1a6b2a')}>PL Allotted</th>
+              <th style={TH('#1a6b2a')}>PL Used</th>
+              <th style={TH('#1a6b2a')}>PL Remaining</th>
+              <th style={TH('#6a1b9a')}>Grace Allotted</th>
+              <th style={TH('#6a1b9a')}>Grace Used</th>
+              <th style={TH('#6a1b9a')}>Grace Remaining</th>
+              <th style={TH('#03b0f5')}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={19} className="text-center py-12 text-gray-400">⏳ Loading...</td></tr>}
-            {!loading && filtered.length === 0 && <tr><td colSpan={19} className="text-center py-12 text-gray-500">No employees found</td></tr>}
-            {filtered.map(({ employee: e, balance: b }, idx) => {
-              const name = `${e.first_name || ''} ${e.last_name || ''}`.trim();
-              const code = e.employee_code || e.emp_id || `EMP-${(e._id || e.id || '').slice(-6)}`;
+            {loading && <tr><td colSpan={13} style={{ textAlign:'center', padding:40, color:'#6b7280' }}>⏳ Loading...</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={13} style={{ textAlign:'center', padding:40, color:'#4b5563' }}>No employees found</td></tr>}
+            {filtered.map(({ emp, bal }, idx) => {
+              const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+              const code = emp.employee_code || emp.emp_id || `EMP-${(emp._id || emp.id || '').slice(-6)}`;
+              const id = emp._id || emp.id;
+              const isHistOpen = historyEmp?._id === id || historyEmp?.id === id;
+              const bg = idx % 2 === 0 ? '#080808' : '#0f0f0f';
               return (
-                <tr key={e._id || e.id} className={`${idx % 2 === 0 ? 'bg-gray-950' : 'bg-gray-900'} hover:bg-gray-800 transition-colors`}>
-                  <td className="px-3 py-3 font-semibold text-white border border-gray-700">{name}</td>
-                  <td className="px-3 py-3 text-blue-300 text-xs border border-gray-700">{code}</td>
-                  <td className="px-3 py-3 text-gray-400 text-xs border border-gray-700">{e.department_name || e.department || '—'}</td>
-                  {HDR_COLS.map(c => {
-                    const rem = b?.[c.rKey];
-                    const tot = b?.[c.tKey];
-                    const used = b?.[c.uKey] ?? 0;
-                    const remNum = parseFloat(rem);
-                    const totNum = parseFloat(tot);
-                    const pct = totNum > 0 ? remNum / totNum : 1;
-                    const remColor = pct > 0.5 ? c.color : pct > 0.2 ? 'text-yellow-400' : 'text-red-400';
-                    return (
-                      <React.Fragment key={c.label}>
-                        <td className="px-2 py-3 text-center border border-gray-700 text-gray-300 text-xs">{tot ?? '—'}</td>
-                        <td className="px-2 py-3 text-center border border-gray-700 text-orange-300 text-xs font-semibold">{used}</td>
-                        <td className="px-2 py-3 text-center border border-gray-700">
-                          <span className={`font-bold text-sm ${remColor}`}>{rem ?? '—'}</span>
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-                  <td className="px-2 py-3 text-center border border-gray-700">
-                    <button onClick={() => openModal(e)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs font-semibold transition-colors">✏️ Edit</button>
-                  </td>
-                </tr>
+                <React.Fragment key={id}>
+                  <tr style={{ background: bg }}>
+                    <td style={TD}><strong style={{ color:'#fff' }}>{name}</strong></td>
+                    <td style={{ ...TD, color:'#93c5fd', fontSize:11 }}>{code}</td>
+                    <td style={{ ...TD, color:'#9ca3af', fontSize:11 }}>{emp.department_name || emp.department || '—'}</td>
+                    {/* EL */}
+                    <td style={{ ...TD, textAlign:'center', color:'#93c5fd' }}>{bal?.earned_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.earned_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.earned_leaves_remaining, bal?.earned_leaves_total, '#60a5fa') }}>{bal?.earned_leaves_remaining ?? '—'}</td>
+                    {/* PL */}
+                    <td style={{ ...TD, textAlign:'center', color:'#86efac' }}>{bal?.paid_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.paid_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.paid_leaves_remaining, bal?.paid_leaves_total, '#4ade80') }}>{bal?.paid_leaves_remaining ?? '—'}</td>
+                    {/* Grace */}
+                    <td style={{ ...TD, textAlign:'center', color:'#d8b4fe' }}>{bal?.grace_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.grace_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.grace_leaves_remaining, bal?.grace_leaves_total, '#c084fc') }}>{bal?.grace_leaves_remaining ?? '—'}</td>
+                    {/* Actions */}
+                    <td style={{ ...TD, textAlign:'center' }}>
+                      <div style={{ display:'flex', gap:5, justifyContent:'center' }}>
+                        <Btn bg="#15803d" onClick={() => openModal(emp, 'allot')}>➕ Allot</Btn>
+                        <Btn bg="#b91c1c" onClick={() => openModal(emp, 'deduct')}>➖ Deduct</Btn>
+                        <Btn bg={isHistOpen ? '#4338ca' : '#374151'} onClick={() => openHistory(emp)}>📋 History</Btn>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Inline history */}
+                  {isHistOpen && (
+                    <tr>
+                      <td colSpan={13} style={{ padding:0, borderTop:'2px solid #4338ca' }}>
+                        <div style={{ background:'#0d0d1a', padding:'14px 20px' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
+                            <strong style={{ color:'#a5b4fc', fontSize:13 }}>📋 Leave History — {name} ({MONTHS[selMonth]} {selYear})</strong>
+                            <span onClick={() => { setHistoryEmp(null); setHistory([]); }} style={{ cursor:'pointer', color:'#6b7280', fontSize:12 }}>✕ Close</span>
+                          </div>
+                          {histLoading
+                            ? <p style={{ color:'#6b7280', textAlign:'center', padding:16 }}>⏳ Loading...</p>
+                            : history.length === 0
+                              ? <p style={{ color:'#4b5563', textAlign:'center', padding:16 }}>No transactions found</p>
+                              : (
+                                <div style={{ overflowX:'auto' }}>
+                                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                                    <thead>
+                                      <tr style={{ background:'#1e1e2e', color:'#9ca3af' }}>
+                                        {['#','Date','Leave Type','Action','Qty','Reason','By'].map(h => (
+                                          <th key={h} style={{ padding:'6px 10px', textAlign:'left', border:'1px solid #374151' }}>{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {history.map((h, i) => {
+                                        const qty = parseFloat(h.quantity ?? h.amount ?? 0);
+                                        const isAllot = (h.action||'').toLowerCase().includes('alloc') || qty > 0;
+                                        return (
+                                          <tr key={h._id||i} style={{ background: i%2===0 ? '#0d0d0d' : '#111' }}>
+                                            <td style={HTD}>{i+1}</td>
+                                            <td style={HTD}>{fmtDate(h.created_at||h.timestamp||h.date)}</td>
+                                            <td style={HTD}><span style={{ background:'#1f2937', color:'#e5e7eb', padding:'2px 8px', borderRadius:4, textTransform:'capitalize', fontSize:11 }}>{h.leave_type||'—'}</span></td>
+                                            <td style={{ ...HTD, color: isAllot?'#4ade80':'#f87171', fontWeight:700 }}>{h.action||(isAllot?'Allocated':'Deducted')}</td>
+                                            <td style={{ ...HTD, color: isAllot?'#86efac':'#fca5a5', fontWeight:700 }}>{isAllot?'+':'-'}{Math.abs(qty)}</td>
+                                            <td style={{ ...HTD, color:'#9ca3af' }}>{h.reason||h.note||'—'}</td>
+                                            <td style={{ ...HTD, color:'#93c5fd' }}>{h.performed_by_name||h.created_by_name||'—'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="text-gray-600 text-xs mt-2">Showing {filtered.length} of {rows.length} employees</p>
+      <p style={{ color:'#374151', fontSize:11, marginTop:6 }}>Showing {filtered.length} of {rows.length} employees · {MONTHS[selMonth]} {selYear}</p>
 
-      {/* Modal */}
-      {modalEmp && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold text-white mb-1">✏️ Manage Leaves</h3>
-            <p className="text-gray-400 text-sm mb-4">{modalEmp.first_name} {modalEmp.last_name} · {modalEmp.employee_code || modalEmp.emp_id || ''}</p>
-            <div className="space-y-4">
+      {/* Allot / Deduct Modal */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.82)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
+          <div style={{ background:'#111827', border:'1px solid #374151', borderRadius:14, padding:24, width:420, maxWidth:'95vw' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14 }}>
+              <strong style={{ fontSize:16, color:'#fff' }}>{modal.mode==='allot'?'➕ Allocate Leave':'➖ Deduct Leave'}</strong>
+              <span onClick={()=>{ setModal(null); setError(null); }} style={{ cursor:'pointer', color:'#6b7280', fontSize:18 }}>✕</span>
+            </div>
+            <p style={{ color:'#9ca3af', fontSize:12, marginBottom:14 }}>
+              <strong style={{ color:'#fff' }}>{modal.emp.first_name} {modal.emp.last_name}</strong>
+              {' · '}<span style={{ color:'#93c5fd' }}>{modal.emp.employee_code||modal.emp.emp_id||''}</span>
+            </p>
+            {error && <div style={ALERT_ERR}>❌ {error}</div>}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div>
-                <label className="block text-gray-300 text-sm font-semibold mb-1">Leave Type</label>
-                <select value={leaveType} onChange={e => setLeaveType(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500">
-                  <option value="paid">Paid Leave</option>
+                <label style={LBL}>Leave Type</label>
+                <select value={leaveType} onChange={e=>setLeaveType(e.target.value)} style={INP}>
                   <option value="earned">Earned Leave</option>
-                  <option value="sick">Sick Leave</option>
-                  <option value="casual">Casual Leave</option>
+                  <option value="paid">Paid Leave</option>
                   <option value="grace">Grace Leave</option>
                 </select>
               </div>
               <div>
-                <label className="block text-gray-300 text-sm font-semibold mb-1">Quantity</label>
-                <input type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)}
-                  placeholder="Number of leaves"
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500" />
+                <label style={LBL}>Quantity (days)</label>
+                <input type="number" min="0.5" step="0.5" value={quantity} onChange={e=>setQuantity(e.target.value)} placeholder="e.g. 1 or 0.5" style={INP} />
               </div>
               <div>
-                <label className="block text-gray-300 text-sm font-semibold mb-1">Reason *</label>
-                <textarea value={reason} onChange={e => setReason(e.target.value)}
-                  placeholder="Reason for allocation / deduction" rows={3}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500 resize-none" />
+                <label style={LBL}>Reason <span style={{ color:'#ef4444' }}>*</span></label>
+                <textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason..." rows={3} style={{ ...INP, resize:'none' }} />
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => handleAction('allocate')} disabled={modalLoading}
-                  className="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50">➕ Allocate</button>
-                <button onClick={() => handleAction('deduct')} disabled={modalLoading}
-                  className="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50">➖ Deduct</button>
-                <button onClick={() => setModalEmp(null)}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-semibold text-sm transition-colors">Cancel</button>
+              <div style={{ display:'flex', gap:10, marginTop:4 }}>
+                <button onClick={handleAction} disabled={modalLoading}
+                  style={{ flex:1, background: modal.mode==='allot'?'#15803d':'#b91c1c', color:'#fff', border:'none', padding:10, borderRadius:8, fontWeight:700, cursor:'pointer', opacity: modalLoading?0.6:1, fontSize:13 }}>
+                  {modalLoading ? '⏳ Processing...' : modal.mode==='allot' ? '➕ Allocate' : '➖ Deduct'}
+                </button>
+                <button onClick={()=>{ setModal(null); setError(null); }}
+                  style={{ flex:1, background:'#374151', color:'#fff', border:'none', padding:10, borderRadius:8, fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -209,6 +297,29 @@ const PaidLeaveManagement = () => {
       )}
     </div>
   );
+};
+
+// ── style tokens ──────────────────────────────────────────────────────────────
+const TH = (bg) => ({ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#fff', border:'1px solid #374151', fontSize:12, whiteSpace:'nowrap', background: bg });
+const TD  = { padding:'8px 10px', border:'1px solid #1a1a1a', color:'#e5e7eb', fontSize:13 };
+const HTD = { padding:'6px 10px', border:'1px solid #1f2937', color:'#d1d5db' };
+const LBL = { display:'block', color:'#d1d5db', fontSize:13, fontWeight:600, marginBottom:4 };
+const INP = { width:'100%', background:'#1f2937', border:'1px solid #374151', color:'#fff', padding:'8px 12px', borderRadius:8, fontSize:13, outline:'none', boxSizing:'border-box' };
+const SEL = { background:'#1f2937', border:'1px solid #374151', color:'#fff', padding:'6px 10px', borderRadius:8, fontSize:12, outline:'none', cursor:'pointer' };
+const ALERT_OK  = { background:'#14532d', border:'1px solid #16a34a', color:'#86efac', padding:'7px 14px', borderRadius:8, marginBottom:12, fontSize:13, display:'flex', justifyContent:'space-between' };
+const ALERT_ERR = { background:'#450a0a', border:'1px solid #dc2626', color:'#fca5a5', padding:'7px 14px', borderRadius:8, marginBottom:12, fontSize:13, display:'flex', justifyContent:'space-between' };
+
+const Btn = ({ bg, onClick, children }) => (
+  <button onClick={onClick} style={{ background:bg, color:'#fff', border:'none', padding:'4px 9px', borderRadius:6, cursor:'pointer', fontSize:11, fontWeight:600, whiteSpace:'nowrap' }}>
+    {children}
+  </button>
+);
+
+const rc = (rem, tot, good) => {
+  const r = parseFloat(rem??0), t = parseFloat(tot??0);
+  if (t===0) return good;
+  const p = r/t;
+  return p>0.5 ? good : p>0.2 ? '#facc15' : '#f87171';
 };
 
 export default PaidLeaveManagement;

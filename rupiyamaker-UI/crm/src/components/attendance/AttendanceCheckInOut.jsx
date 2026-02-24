@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import * as faceapi from '@vladmandic/face-api';
 
 const API_BASE = '/api';
 
@@ -105,8 +104,6 @@ const SuccessModal = ({ data, onClose }) => {
   );
 };
 
-const FACE_STEP = { CAMERA: 'camera', VERIFYING: 'verifying', VERIFIED: 'verified', FAILED: 'failed' };
-
 const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [loading, setLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(null);
@@ -114,14 +111,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [attendanceType, setAttendanceType] = useState(null);
 
   const [showDialog, setShowDialog] = useState(false);
-  const [faceStep, setFaceStep] = useState(FACE_STEP.CAMERA);
   const [photoData, setPhotoData] = useState(null);
-  const [faceDescriptor, setFaceDescriptor] = useState(null);
-  const [faceMsg, setFaceMsg] = useState('');
   const [comments, setComments] = useState('');
   const [successModal, setSuccessModal] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -130,25 +123,6 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(t);
-  }, []);
-
-  // Load face-api.js models once on mount
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        const MODEL_URL = '/models';
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
-        setModelsLoaded(true);
-        console.log('Face-API models loaded for check-in/out');
-      } catch (err) {
-        console.warn('Face-API models could not be loaded:', err);
-      }
-    };
-    loadModels();
   }, []);
 
   useEffect(() => {
@@ -183,10 +157,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
   const openDialog = (type) => {
     setAttendanceType(type);
-    setFaceStep(FACE_STEP.CAMERA);
     setPhotoData(null);
-    setFaceDescriptor(null);
-    setFaceMsg('');
     setComments('');
     setErrorMsg('');
     setShowDialog(true);
@@ -197,13 +168,12 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     stopCamera();
     setShowDialog(false);
     setAttendanceType(null);
-    setFaceStep(FACE_STEP.CAMERA);
     setPhotoData(null);
     setLoading(false);
     setErrorMsg('');
   };
 
-  const captureAndVerify = async () => {
+  const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -214,68 +184,6 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     const base64Only = fullBase64.split(',')[1];
     setPhotoData(base64Only);
     stopCamera();
-    setFaceStep(FACE_STEP.VERIFYING);
-    setFaceMsg('🔍 Verifying your face...');
-
-    // Compute 128-dim face descriptor using face-api.js (same as FaceRegistration)
-    let descriptor = null;
-    if (modelsLoaded) {
-      try {
-        setFaceMsg('🧠 Analysing facial features...');
-        const detection = await faceapi
-          .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-        if (detection) {
-          descriptor = Array.from(detection.descriptor);
-        } else {
-          setFaceStep(FACE_STEP.FAILED);
-          setFaceMsg('❌ No face detected in the photo. Please retake with your face clearly visible.');
-          return;
-        }
-      } catch (faceErr) {
-        console.warn('Face descriptor extraction failed:', faceErr);
-      }
-    }
-
-    // If we have a descriptor, call the verify endpoint with it
-    if (descriptor) {
-      try {
-        const res = await axios.post(
-          `${API_BASE}/attendance/face/verify`,
-          { face_descriptor: { descriptor }, employee_id: userId },
-          { params: { user_id: userId } }
-        );
-        if (res.data.verified) {
-          setFaceDescriptor(res.data.descriptor || descriptor);
-          setFaceStep(FACE_STEP.VERIFIED);
-          setFaceMsg(`✅ Face matched! Confidence: ${((res.data.confidence || 0) * 100).toFixed(1)}%`);
-        } else {
-          setFaceDescriptor(descriptor); // store anyway so Proceed Anyway works
-          setFaceStep(FACE_STEP.FAILED);
-          const dist = res.data.distance != null ? ` (distance: ${res.data.distance})` : '';
-          setFaceMsg(`❌ Face not matched${dist}. Retake in better lighting, or proceed anyway.`);
-        }
-      } catch (err) {
-        const detail = (err.response?.data?.detail || err.response?.data?.message || '').toLowerCase();
-        const isNotRegistered = err.response?.status === 404 ||
-          detail.includes('not registered') ||
-          detail.includes('not found') ||
-          detail.includes('no face') ||
-          detail.includes('invalid or empty');
-        if (isNotRegistered) {
-          setFaceStep(FACE_STEP.VERIFIED);
-          setFaceMsg('📷 Photo captured. Face not registered — proceeding with attendance.');
-        } else {
-          setFaceStep(FACE_STEP.VERIFIED);
-          setFaceMsg('📷 Photo captured. Face verification unavailable — proceeding.');
-        }
-      }
-    } else {
-      // Models not loaded — fall back to photo-only mode (no descriptor check)
-      setFaceStep(FACE_STEP.VERIFIED);
-      setFaceMsg('📷 Photo captured. Face analysis unavailable — proceeding.');
-    }
   };
 
   const markAttendance = async () => {
@@ -296,7 +204,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const endpoint = attendanceType === 'check-in' ? 'check-in' : 'check-out';
       const r = await axios.post(
         `${API_BASE}/attendance/${endpoint}`,
-        { photo_data: photoData, geolocation: location, comments, face_descriptor: faceDescriptor },
+        { photo_data: photoData, geolocation: location, comments, face_descriptor: null },
         { params: { user_id: userId } }
       );
 
@@ -408,44 +316,30 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
             </div>
 
             <div style={{ padding: 20 }}>
-              {/* Camera */}
-              {faceStep === FACE_STEP.CAMERA && (
+              {/* Camera — shown when no photo yet */}
+              {!photoData && (
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ borderRadius: 12, overflow: 'hidden', border: '3px solid #e5e7eb', marginBottom: 16 }}>
                     <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', display: 'block', background: '#111', minHeight: 200 }} />
                   </div>
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
                   {errorMsg && <div style={{ color: '#dc2626', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
-                  <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }} onClick={captureAndVerify}>
+                  <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }} onClick={capturePhoto}>
                     📷 Capture Photo
                   </button>
                 </div>
               )}
 
-              {/* Verifying */}
-              {faceStep === FACE_STEP.VERIFYING && (
-                <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                  {photoData && <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 16 }} />}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#3b82f6', fontSize: 15, fontWeight: 600 }}>
-                    <div style={{ width: 22, height: 22, border: '3px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-                    {faceMsg}
-                  </div>
-                </div>
-              )}
-
-              {/* Verified */}
-              {faceStep === FACE_STEP.VERIFIED && (
+              {/* Captured — shown after photo taken */}
+              {photoData && (
                 <div style={{ textAlign: 'center' }}>
-                  {photoData && <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 12, border: '3px solid #bbf7d0' }} />}
-                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14, fontWeight: 600 }}>
-                    {faceMsg}
-                  </div>
+                  <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 12, border: '3px solid #bbf7d0' }} />
                   <textarea placeholder="Comments (optional)..." value={comments} onChange={e => setComments(e.target.value)} rows={2}
                     style={{ width: '100%', borderRadius: 10, border: '1px solid #e5e7eb', padding: '10px 12px', fontSize: 14, resize: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
                   {errorMsg && <div style={{ background: '#fef2f2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button className="att-btn" style={{ background: '#f3f4f6', color: '#374151', flex: 1 }}
-                      onClick={() => { setFaceStep(FACE_STEP.CAMERA); setPhotoData(null); setFaceMsg(''); startCamera(); }}>
+                      onClick={() => { setPhotoData(null); setErrorMsg(''); startCamera(); }}>
                       🔄 Retake
                     </button>
                     <button className="att-btn" style={{ background: loading ? '#9ca3af' : 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white', flex: 2 }}
@@ -454,26 +348,6 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                         ? <><div style={{ width: 18, height: 18, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Processing...</>
                         : (attendanceType === 'check-in' ? '✅ Mark Check In' : '👋 Mark Check Out')
                       }
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Failed */}
-              {faceStep === FACE_STEP.FAILED && (
-                <div style={{ textAlign: 'center' }}>
-                  {photoData && <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 12, border: '3px solid #fca5a5' }} />}
-                  <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 14, fontWeight: 600 }}>
-                    {faceMsg}
-                  </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', flex: 1 }}
-                      onClick={() => { setFaceStep(FACE_STEP.CAMERA); setPhotoData(null); setFaceDescriptor(null); setFaceMsg(''); startCamera(); }}>
-                      🔄 Retake
-                    </button>
-                    <button className="att-btn" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', flex: 1 }}
-                      onClick={() => { setFaceStep(FACE_STEP.VERIFIED); setFaceMsg('⚠️ Proceeding without face match — attendance will be logged for review.'); }}>
-                      ⚠️ Proceed Anyway
                     </button>
                   </div>
                 </div>
