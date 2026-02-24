@@ -979,20 +979,6 @@ function ExcelUploadModal({ show, onClose, onUpload, existingAgents, uploadHisto
                 return;
             }
 
-            // ── File-level duplicate detection (same filename & similar record count) ──────
-            if (uploadHistory && uploadHistory.length > 0) {
-                const duplicate = uploadHistory.find(h =>
-                    h.filename === file.name &&
-                    Math.abs(h.record_count - result.agents.length) <= 2 // Allow ±2 records difference
-                );
-                if (duplicate) {
-                    setProgress(100);
-                    setStatus('file_duplicate');
-                    setMessage(`⚠️ This file "${file.name}" was already uploaded on ${new Date(duplicate.uploaded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}\n\nRecord count: ${duplicate.record_count}\n\nPlease upload a different file or load from Upload History.`);
-                    return;
-                }
-            }
-
             // ── File-level duplicate detection — WARN only, do NOT block re-upload ──────
             let fileDupWarning = '';
             if (uploadHistory && uploadHistory.length > 0) {
