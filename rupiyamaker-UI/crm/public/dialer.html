@@ -1744,8 +1744,7 @@
       'outcalls': 'outCalls', 'ob calls': 'outCalls', 'outbound calls': 'outCalls', 'out calls': 'outCalls', 'ob': 'outCalls', 'dialed calls': 'outCalls', 'total outbound calls': 'outCalls', 'outbound call': 'outCalls',
       'outtt': 'outTT', 'ob tt': 'outTT', 'outbound tt': 'outTT', 'ob talk time': 'outTT', 'out tt': 'outTT', 'outbound talk time': 'outTT', 'dialed talk time': 'outTT', 'outbound duration': 'outTT', 'ob duration': 'outTT',
       'mancalls': 'manCalls', 'mn calls': 'manCalls', 'manual calls': 'manCalls', 'mn': 'manCalls', 'inbound calls': 'manCalls', 'ib calls': 'manCalls', 'total manual calls': 'manCalls', 'inbound call': 'manCalls', 'ib call': 'manCalls', 'manual call': 'manCalls', 'manual_call': 'manCalls', 'manual_calls': 'manCalls', 'man calls': 'manCalls', 'man call': 'manCalls',
-      'mantt': 'manTT', 'mn tt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT', 'inbound talk time': 'manTT', 'ib tt': 'manTT', 'ib duration': 'manTT', 'inbound duration': 'manTT', 'manual duration': 'manTT', 'manual call duration': 'manTT',
-      'mantt': 'manTT', 'mn tt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT', 'inbound talk time': 'manTT', 'ib tt': 'manTT', 'ib duration': 'manTT', 'inbound duration': 'manTT', 'manual duration': 'manTT',
+      'mantt': 'manTT', 'mn tt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT', 'inbound talk time': 'manTT', 'ib tt': 'manTT', 'ib duration': 'manTT', 'inbound duration': 'manTT', 'manual duration': 'manTT', 'manual call duration': 'manTT', 'manual duration': 'manTT',
       'totaltt': 'totalTT', 'total tt': 'totalTT', 'total talk time': 'totalTT', 'total time': 'totalTT', 'talk time': 'totalTT', 'talktime': 'totalTT', 'att': 'totalTT', 'aht': 'totalTT',
       'autoidle': 'autoIdle', 'auto idle': 'autoIdle', 'system idle': 'autoIdle', 'idle time': 'autoIdle', 'idletime': 'autoIdle', 'idle duration': 'autoIdle', 'auto idle duration': 'autoIdle',
       'manualIdle': 'manualIdle', 'manual idle': 'manualIdle', 'mn idle': 'manualIdle', 'manual idle duration': 'manualIdle',
@@ -1753,10 +1752,7 @@
       'wrapup': 'wrapup', 'wrap up': 'wrapup', 'wrap-up': 'wrapup', 'after call work': 'wrapup', 'acw': 'wrapup', 'wrapup duration': 'wrapup', 'wrap up duration': 'wrapup',
       'loginmin': 'loginMin', 'login min': 'loginMin', 'logoutmin': 'logoutMin', 'logout min': 'logoutMin',
       // Additional columns (ignored but mapped to prevent "unrecognized" errors)
-      'campaign': '_ignore', 'transfer': '_ignore', 'transfer duration': '_ignore', 'conf': '_ignore', 'conf.': '_ignore', 'conf. duration': '_ignore', 'recall': '_ignore', 'recall duration': '_ignore', 'hold': '_ignore', 'hold duration': '_ignore', 'review': '_ignore', 'review duration': '_ignore', 'sms': '_ignore', 'e-mail': '_ignore', 'in_meeting duration': '_ignore', 'in_disbursal duration': '_ignore', 'in_discussion duration': '_ignore', 'on_other_call duration': '_ignore',
-      'total calls': '_ignore',
-      // ── manual call duration (new alias) ──
-      'manual call duration': 'manTT',
+      'campaign': '_ignore', 'transfer': '_ignore', 'transfer duration': '_ignore', 'conf': '_ignore', 'conf.': '_ignore', 'conf. duration': '_ignore', 'recall': '_ignore', 'recall duration': '_ignore', 'hold': '_ignore', 'hold duration': '_ignore', 'review': '_ignore', 'review duration': '_ignore', 'sms': '_ignore', 'e-mail': '_ignore', 'in_meeting duration': '_ignore', 'in_disbursal duration': '_ignore', 'in_discussion duration': '_ignore', 'on_other_call duration': '_ignore', 'total calls': '_ignore',
     };
     const REQUIRED_FIELDS = ['name', 'ext', 'loginTime', 'logoutTime', 'loginDur'];
 
@@ -1772,14 +1768,8 @@
       if (val === '' || val === null || val === undefined) return { display: '—', minutes: 0 };
       if (typeof val === 'number') { const tf = val > 1 ? val % 1 : val; const tm = Math.round(tf * 1440); const h24 = Math.floor(tm / 60) % 24, mn = tm % 60; const ap = h24 >= 12 ? 'PM' : 'AM'; const h12 = h24 % 12 === 0 ? 12 : h24 % 12; return { display: `${String(h12).padStart(2, '0')}:${String(mn).padStart(2, '0')} ${ap}`, minutes: h24 * 60 + mn }; }
       const s = String(val).trim();
-      // Extract the TIME portion after the first space or anywhere in the string that follows a date-like prefix
-      // Also handling complex ordinals e.g "24th Feb 2026 10:21:56 AM"
-      const dtm = s.match(/(?:^|\s)(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)$/i);
-      if (dtm && s.length > dtm[1].length) {
-        // Recurse with just the time part
-        return parseDisplayTime(dtm[1].trim());
-      }
-      // "10:21 AM", "7:07 PM", "10:21:34 AM", "07:07:00 PM"
+      const dtm = s.match(/^\S+\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)$/i);
+      if (dtm) return parseDisplayTime(dtm[1]);
       const m12 = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
       if (m12) { let h = parseInt(m12[1]), mn = parseInt(m12[2]); const ap = m12[3].toUpperCase(); if (ap === 'AM' && h === 12) h = 0; else if (ap === 'PM' && h !== 12) h += 12; const h12 = h % 12 === 0 ? 12 : h % 12; return { display: `${String(h12).padStart(2, '0')}:${String(mn).padStart(2, '0')} ${ap}`, minutes: h * 60 + mn }; }
       const m24 = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
@@ -1825,18 +1815,31 @@
             const sheet = wb.Sheets[wb.SheetNames[0]];
             const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
             if (rawRows.length < 2) { reject(new Error('File is empty or has no data rows.')); return; }
-            // Map headers case-insensitively — first matching column wins
-            // (prevents later columns like 'Agent' from overwriting earlier 'Name' column)
-            // We also sanitize whitespace like newlines in headers
-            const headerRow = rawRows[0].map(h => String(h).replace(/\s+/g, ' ').trim());
-            const fieldMap = {}; // colIndex → fieldName
-            const unmapped = [];
-            const mappedFieldSet = new Set();
+            const headerRow = rawRows[0].map(h => String(h).trim());
+            const fieldMap = {}; const unmapped = []; const mappedFieldSet = new Set();
+            console.log('[parseExcelFile] raw headers:', headerRow);
+
             headerRow.forEach((h, i) => {
               const key = h.toLowerCase();
-              const f = COLUMN_MAP[key] || COLUMN_MAP[h];
-              if (f && !mappedFieldSet.has(f)) { fieldMap[i] = f; mappedFieldSet.add(f); }
-              else if (!f && h !== '') unmapped.push(h);
+              const keyNoSpace = key.replace(/\s+/g, '');
+              const cleanKey = key.replace(/[^a-z0-9]/g, '');
+              let f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace] || COLUMN_MAP[cleanKey];
+
+              if (!f && cleanKey.includes('manual') && (cleanKey.includes('call') || cleanKey.includes('mn'))) {
+                f = cleanKey.includes('duration') || cleanKey.includes('time') ? 'manTT' : 'manCalls';
+              }
+              if (!f && cleanKey.includes('manual') && cleanKey.includes('duration')) f = 'manTT';
+
+              if (f) {
+                if (f === '_ignore') {
+                  fieldMap[i] = f;
+                } else if (!mappedFieldSet.has(f)) {
+                  fieldMap[i] = f;
+                  mappedFieldSet.add(f);
+                }
+              } else if (h !== '') {
+                unmapped.push(h);
+              }
             });
             const mappedFields = Object.values(fieldMap);
             const missing = REQUIRED_FIELDS.filter(f => !mappedFields.includes(f));

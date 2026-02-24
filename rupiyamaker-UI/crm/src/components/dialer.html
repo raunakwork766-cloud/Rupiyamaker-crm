@@ -1817,11 +1817,29 @@
             if (rawRows.length < 2) { reject(new Error('File is empty or has no data rows.')); return; }
             const headerRow = rawRows[0].map(h => String(h).trim());
             const fieldMap = {}; const unmapped = []; const mappedFieldSet = new Set();
+            console.log('[parseExcelFile] raw headers:', headerRow);
+
             headerRow.forEach((h, i) => {
               const key = h.toLowerCase();
-              const f = COLUMN_MAP[key] || COLUMN_MAP[h];
-              if (f && !mappedFieldSet.has(f)) { fieldMap[i] = f; mappedFieldSet.add(f); }
-              else if (!f && h !== '') unmapped.push(h);
+              const keyNoSpace = key.replace(/\s+/g, '');
+              const cleanKey = key.replace(/[^a-z0-9]/g, '');
+              let f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace] || COLUMN_MAP[cleanKey];
+
+              if (!f && cleanKey.includes('manual') && (cleanKey.includes('call') || cleanKey.includes('mn'))) {
+                f = cleanKey.includes('duration') || cleanKey.includes('time') ? 'manTT' : 'manCalls';
+              }
+              if (!f && cleanKey.includes('manual') && cleanKey.includes('duration')) f = 'manTT';
+
+              if (f) {
+                if (f === '_ignore') {
+                  fieldMap[i] = f;
+                } else if (!mappedFieldSet.has(f)) {
+                  fieldMap[i] = f;
+                  mappedFieldSet.add(f);
+                }
+              } else if (h !== '') {
+                unmapped.push(h);
+              }
             });
             const mappedFields = Object.values(fieldMap);
             const missing = REQUIRED_FIELDS.filter(f => !mappedFields.includes(f));
