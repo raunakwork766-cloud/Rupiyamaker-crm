@@ -1554,8 +1554,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       
       // Dialer Report
       canShowDialerReport: checkPermission('dialer_report', 'show') ||
-                           checkPermission('dialer', 'show') ||
-                           checkPermission('hrms', 'show') ||
                            isSuperAdmin(userPermissions),
 
       // Apps

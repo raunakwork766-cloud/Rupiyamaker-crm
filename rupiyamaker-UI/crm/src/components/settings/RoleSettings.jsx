@@ -67,6 +67,7 @@ const RoleSettings = () => {
         'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
         'leaves': ['show', 'own', 'junior', 'all', 'delete'],
         'attendance': ['show', 'own', 'junior', 'all', 'delete'],
+        'dialer_report': ['show'],
         'apps': ['show', 'manage'],
         "notification":['show', 'delete', 'send'],
         'reports': ['show'],

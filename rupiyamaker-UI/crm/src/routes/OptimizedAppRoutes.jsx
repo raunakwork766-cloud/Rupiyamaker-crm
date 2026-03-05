@@ -535,11 +535,6 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
           <ProtectedRoute 
             requiredPage="dialer_report" 
             requiredAction="show"
-            alternativeChecks={[
-              { page: 'dialer', action: 'show' },
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
-            ]}
           >
             <RouteWithSuspense 
               component={LazyDialerReport} 
