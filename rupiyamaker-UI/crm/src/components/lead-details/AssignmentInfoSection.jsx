@@ -48,7 +48,11 @@ export default function AssignmentInfoSection({
             const response = await fetch(`${API_BASE_URL}/users?role_id=${currentUserRole}&user_id=${userId}`);
             if (response.ok) {
                 const data = await response.json();
-                setReportToUsers(data || []);
+                // ✅ FILTER: Only show active employees in Report To dropdown
+                const activeUsers = (data || []).filter(user => 
+                    user.employee_status !== 'inactive' && user.is_active !== false
+                );
+                setReportToUsers(activeUsers);
             }
         } catch (error) {
             console.error('Error loading report-to users:', error);

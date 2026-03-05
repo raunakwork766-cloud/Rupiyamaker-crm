@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import OverdueTaskPopup from '../components/OverdueTaskPopup';
 import DailyTasksSummary from '../components/DailyTasksSummary';
+import { getISTDateYMD } from '../utils/dateUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -203,7 +204,7 @@ export const NotificationProvider = ({ children }) => {
   
   // Handle viewing all of today's tasks
   const handleViewAllTasks = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDateYMD();
     navigate(`/tasks?date=${today}`);
     setShowDailySummary(null);
   };

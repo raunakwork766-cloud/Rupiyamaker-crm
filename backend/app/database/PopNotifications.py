@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any, Union, Tuple
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import pymongo
 
 class PopNotificationsDB:
@@ -58,14 +59,14 @@ class PopNotificationsDB:
                 if cache_key in self._user_count_cache:
                     cached_time, cached_count = self._user_count_cache[cache_key]
                     # Cache for 5 minutes to avoid repeated database queries
-                    if (datetime.now() - cached_time).seconds < 300:
+                    if (get_ist_now() - cached_time).seconds < 300:
                         return cached_count
 
                 active_users = await users_db.list_users({"status": {"$ne": "inactive"}})
                 count = len(active_users)
 
                 # Cache the result
-                self._user_count_cache[cache_key] = (datetime.now(), count)
+                self._user_count_cache[cache_key] = (get_ist_now(), count)
                 return count
 
             elif target_type == "individual":
@@ -85,7 +86,7 @@ class PopNotificationsDB:
                 for user_id in target_employees:
                     if user_id in self._user_status_cache:
                         cached_time, is_active = self._user_status_cache[user_id]
-                        if (datetime.now() - cached_time).seconds < 300:  # 5 minute cache
+                        if (get_ist_now() - cached_time).seconds < 300:  # 5 minute cache
                             if is_active:
                                 active_count += 1
                             continue
@@ -99,7 +100,7 @@ class PopNotificationsDB:
                         is_active = user and user.get("status") != "inactive"
 
                         # Cache the result
-                        self._user_status_cache[user_id] = (datetime.now(), is_active)
+                        self._user_status_cache[user_id] = (get_ist_now(), is_active)
 
                         if is_active:
                             active_count += 1
@@ -119,7 +120,7 @@ class PopNotificationsDB:
 
                 if dept_key in self._dept_count_cache:
                     cached_time, cached_count = self._dept_count_cache[dept_key]
-                    if (datetime.now() - cached_time).seconds < 300:  # 5 minute cache
+                    if (get_ist_now() - cached_time).seconds < 300:  # 5 minute cache
                         return cached_count
 
                 # Count active users in target departments
@@ -134,7 +135,7 @@ class PopNotificationsDB:
                 count = len(department_users)
 
                 # Cache the result
-                self._dept_count_cache[dept_key] = (datetime.now(), count)
+                self._dept_count_cache[dept_key] = (get_ist_now(), count)
                 return count
 
             return 0
@@ -157,7 +158,7 @@ class PopNotificationsDB:
             str: Notification ID if successful, None if failed
         """
         try:
-            now = datetime.now()
+            now = get_ist_now()
 
             # Generate a unique version for this notification
             version = f"{int(now.timestamp())}_{sender_id}"
@@ -268,7 +269,7 @@ class PopNotificationsDB:
             bool: Success status
         """
         try:
-            now = datetime.now()
+            now = get_ist_now()
             
             # Check if user already accepted
             existing = await self.collection.find_one({
@@ -363,7 +364,7 @@ class PopNotificationsDB:
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(notification_id)},
-                {"$set": {"is_active": False, "deactivated_at": datetime.now()}}
+                {"$set": {"is_active": False, "deactivated_at": get_ist_now()}}
             )
             
             return result.modified_count > 0

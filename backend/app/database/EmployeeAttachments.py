@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import os
 from app.config import Config
+from app.utils.timezone import get_ist_now
 import pymongo
 
 class EmployeeAttachmentsDB:
@@ -29,8 +30,8 @@ class EmployeeAttachmentsDB:
 
     async def create_attachment(self, attachment_data: Dict[str, Any]) -> str:
         """Create a new attachment record for an employee"""
-        attachment_data["created_at"] = datetime.now()
-        attachment_data["updated_at"] = datetime.now()
+        attachment_data["created_at"] = get_ist_now()
+        attachment_data["updated_at"] = get_ist_now()
         
         result = await self.attachments_collection.insert_one(attachment_data)
         return str(result.inserted_id)
@@ -65,7 +66,7 @@ class EmployeeAttachmentsDB:
     async def update_attachment(self, attachment_id: str, update_data: Dict[str, Any]) -> bool:
         """Update an attachment record"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             result = await self.attachments_collection.update_one(
                 {"_id": ObjectId(attachment_id)},
                 {"$set": update_data}

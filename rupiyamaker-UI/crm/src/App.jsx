@@ -630,6 +630,7 @@ function App() {
               // Format timestamp
               const now = new Date();
               const options = {
+                timeZone: 'Asia/Kolkata',
                 day: '2-digit',
                 month: 'long',
                 year: 'numeric',
@@ -637,7 +638,7 @@ function App() {
                 minute: '2-digit',
                 hour12: true
               };
-              const timestamp = 'Sent: ' + now.toLocaleDateString('en-GB', options).replace(',', '');
+              const timestamp = 'Sent: ' + now.toLocaleDateString('en-IN', options).replace(',', '');
 
               const announcementPayload = {
                 title: firstNotification.title,

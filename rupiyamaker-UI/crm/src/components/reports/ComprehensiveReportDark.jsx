@@ -13,6 +13,10 @@ import {
 } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+dayjs.extend(utc);
+dayjs.extend(timezone);
 import { leadsService } from '../../services/leadsService';
 import { hrmsService } from '../../services/hrmsService';
 import { ticketsAPI } from '../../services/api';
@@ -262,7 +266,7 @@ const ComprehensiveReportDark = () => {
             { title:'Sub Status',dataIndex:'sub_status', key:'sub',   width:150, render:t=><span style={{color:'#9ca3af'}}>{t||'-'}</span> },
             { title:'Loan Amt', dataIndex:'loan_amount', key:'la',    width:120, render:a=><span style={{color:'#34d399',fontWeight:600}}>{a?`₹${Number(a).toLocaleString()}`:'-'}</span> },
             { title:'Assigned', key:'asgn', width:160, render:(_,r)=><span style={{color:'#cbd5e1'}}>{getUserName(r.assigned_to)}</span> },
-            { title:'Created',  dataIndex:'created_date',key:'cr',    width:150, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
+            { title:'Created',  dataIndex:'created_date',key:'cr',    width:150, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).tz('Asia/Kolkata').format('DD-MM-YY HH:mm'):'-'}</span> },
         ];
         if (selectedSection === 'employees') return [
             actionCol,
@@ -285,8 +289,8 @@ const ComprehensiveReportDark = () => {
             { title:'Status',   dataIndex:'status',   key:'st',     width:120, render:s=><Tag color={s==='Completed'||s==='completed'?'green':s==='In Progress'?'blue':'orange'}>{s||'-'}</Tag> },
             { title:'Priority', dataIndex:'priority', key:'prio',   width:100, render:p=><Tag color={p==='High'||p==='high'?'red':p==='Medium'||p==='medium'?'orange':'blue'}>{p||'-'}</Tag> },
             { title:'Urgent',   dataIndex:'is_urgent',key:'urg',    width:80,  render:v=><Tag color={v?'red':'default'}>{v?'Yes':'No'}</Tag> },
-            { title:'Due Date', dataIndex:'due_date', key:'due',    width:130, render:d=><span style={{color:'#9ca3af'}}>{d?dayjs(d).format('DD-MM-YYYY'):'-'}</span> },
-            { title:'Created',  dataIndex:'created_at',key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
+            { title:'Due Date', dataIndex:'due_date', key:'due',    width:130, render:d=><span style={{color:'#9ca3af'}}>{d?dayjs(d).tz('Asia/Kolkata').format('DD-MM-YYYY'):'-'}</span> },
+            { title:'Created',  dataIndex:'created_at',key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).tz('Asia/Kolkata').format('DD-MM-YY HH:mm'):'-'}</span> },
         ];
         if (selectedSection === 'tickets') return [
             actionCol,
@@ -299,7 +303,7 @@ const ComprehensiveReportDark = () => {
             { title:'Status',   dataIndex:'status',        key:'st',   width:110, render:s=><Tag color={getStatusColor(s)}>{s||'-'}</Tag> },
             { title:'Priority', dataIndex:'priority',      key:'prio', width:100, render:p=><Tag color={p==='high'?'red':'orange'}>{p||'-'}</Tag> },
             { title:'Tags',     dataIndex:'tags',          key:'tags', width:150, render:tags=>Array.isArray(tags)?tags.map(t=><Tag key={t} style={{fontSize:'10px'}}>{t}</Tag>):'-' },
-            { title:'Created',  dataIndex:'created_at',   key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).format('DD-MM-YY HH:mm'):'-'}</span> },
+            { title:'Created',  dataIndex:'created_at',   key:'cr',   width:145, render:d=><span style={{color:'#6b7280'}}>{d?dayjs(d).tz('Asia/Kolkata').format('DD-MM-YY HH:mm'):'-'}</span> },
         ];
         const sample = filteredData[0] || {};
         const keys = Object.keys(sample).filter(k => !k.startsWith('_') && k!=='id').slice(0,7);
@@ -324,7 +328,7 @@ const ComprehensiveReportDark = () => {
                               ['Loan Amt',selectedLead.loan_amount?`₹${Number(selectedLead.loan_amount).toLocaleString()}`:'-'],
                               ['Salary',selectedLead.salary?`₹${Number(selectedLead.salary).toLocaleString()}`:'-'],
                               ['Company',selectedLead.company_name],['Assigned To',getUserName(selectedLead.assigned_to)],
-                              ['Created',selectedLead.created_date?dayjs(selectedLead.created_date).format('DD-MM-YYYY HH:mm'):'-'],
+                              ['Created',selectedLead.created_date?dayjs(selectedLead.created_date).tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm'):'-'],
                               ['Source',selectedLead.source],
                             ].map(([lbl,val])=>(
                                 <Descriptions.Item key={lbl} label={lbl}
@@ -362,7 +366,7 @@ const ComprehensiveReportDark = () => {
                             <Table size="small" pagination={false} scroll={{x:600}}
                                 dataSource={selectedLead.activity.map((a,i)=>({...a,key:i}))}
                                 columns={[
-                                    {title:'Date',dataIndex:'timestamp',width:150,render:t=><span style={{color:'#9ca3af',fontSize:'11px'}}>{t?dayjs(t).format('DD-MM-YY HH:mm'):'-'}</span>},
+                                    {title:'Date',dataIndex:'timestamp',width:150,render:t=><span style={{color:'#9ca3af',fontSize:'11px'}}>{t?dayjs(t).tz('Asia/Kolkata').format('DD-MM-YY HH:mm'):'-'}</span>},
                                     {title:'User',dataIndex:'user',width:120,render:u=><span style={{color:'#a78bfa'}}>{u||'-'}</span>},
                                     {title:'Action',dataIndex:'action',render:a=><span style={{color:'#e5e7eb'}}>{a||'-'}</span>},
                                 ]} />

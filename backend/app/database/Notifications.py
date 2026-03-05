@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Any, Union, Tuple
 from bson import ObjectId
 from datetime import datetime
 import pymongo
+from app.utils.timezone import get_ist_now
 
 class NotificationsDB:
     def __init__(self, db=None):
@@ -39,7 +40,7 @@ class NotificationsDB:
         """
         try:
             # Add timestamps
-            now = datetime.now()
+            now = get_ist_now()
             
             # Prepare notification data
             notification = {
@@ -124,7 +125,7 @@ class NotificationsDB:
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(notification_id)},
-                {"$set": {"read": True, "updated_at": datetime.now()}}
+                {"$set": {"read": True, "updated_at": get_ist_now()}}
             )
             
             return result.modified_count > 0
@@ -146,7 +147,7 @@ class NotificationsDB:
         try:
             result = await self.collection.update_many(
                 {"user_id": user_id, "read": False},
-                {"$set": {"read": True, "updated_at": datetime.now()}}
+                {"$set": {"read": True, "updated_at": get_ist_now()}}
             )
             
             return result.modified_count
@@ -387,7 +388,7 @@ class NotificationsDB:
             if not tasks:
                 return None
                 
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = get_ist_now().strftime("%Y-%m-%d")
             num_tasks = len(tasks)
             
             # Create a summary of task priorities

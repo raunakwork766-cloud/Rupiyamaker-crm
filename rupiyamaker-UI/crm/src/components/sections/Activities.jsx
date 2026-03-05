@@ -10,6 +10,7 @@ const groupActivitiesByDateAndTime = (activities) => {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
     if (!acc[date]) {
       acc[date] = {};
@@ -18,6 +19,7 @@ const groupActivitiesByDateAndTime = (activities) => {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
+      timeZone: 'Asia/Kolkata',
     });
     if (!acc[date][time]) {
       acc[date][time] = [];

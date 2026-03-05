@@ -4,6 +4,7 @@ import { checkForDirectLeadView, handleDirectLeadViewOnMount } from '../utils/le
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
 import { leadEvents } from '../utils/auth';
 import { getCurrentIST, formatDateIST, formatTimeIST, formatDateTimeIST, formatShortDateIST, convertToIST } from '../utils/timezoneUtils';
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
 
 // ⚡ PERFORMANCE: Debounce hook for optimizing search/filter inputs
@@ -1126,8 +1127,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         
         return {
-            from: firstDay.toISOString().split('T')[0], // YYYY-MM-DD format
-            to: lastDay.toISOString().split('T')[0]
+            from: toISTDateYMD(firstDay), // YYYY-MM-DD format
+            to: toISTDateYMD(lastDay)
         };
     };
 
@@ -1339,7 +1340,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         console.log('🎯 Current timestamp:', Date.now());
         
         const handleLeadCreated = (data) => {
-            console.log('🚨🚨🚨 EVENT RECEIVED AT:', new Date().toLocaleTimeString());
+            console.log('🚨🚨🚨 EVENT RECEIVED AT:', new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }));
             console.log('🎉 NEW LEAD CREATED EVENT RECEIVED IN LEADCRM!');
             console.log('📦 Event data:', data);
             
@@ -2773,8 +2774,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         if (filterOptions.dateRange && filterOptions.dateRange.length === 2) {
             const [startDate, endDate] = filterOptions.dateRange;
             filtered = filtered.filter(lead => {
-                const createdDate = moment(lead.created_at);
-                return createdDate.isBetween(startDate, endDate, 'day', '[]');
+                const createdDate = new Date(lead.created_at);
+                if (isNaN(createdDate.getTime())) return false;
+                const start = startDate instanceof Date ? startDate : new Date(startDate);
+                const end = endDate instanceof Date ? endDate : new Date(endDate);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                return createdDate >= start && createdDate <= end;
             });
         }
 
@@ -3338,8 +3344,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         if (filterOptions.dateRange && filterOptions.dateRange.length === 2) {
             const [startDate, endDate] = filterOptions.dateRange;
             filtered = filtered.filter(lead => {
-                const createdDate = moment(lead.created_at);
-                return createdDate.isBetween(startDate, endDate, 'day', '[]');
+                const createdDate = new Date(lead.created_at);
+                if (isNaN(createdDate.getTime())) return false;
+                const start = startDate instanceof Date ? startDate : new Date(startDate);
+                const end = endDate instanceof Date ? endDate : new Date(endDate);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                return createdDate >= start && createdDate <= end;
             });
         }
 
@@ -5729,7 +5740,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             
             // If changing from "NOT A LEAD" to another status, update created date
             if (currentLeadIsNotALead && !newStatusIsNotALead) {
-                updateData.created_at = new Date().toISOString();
+                updateData.created_at = getISTTimestamp();
             }
             if (shouldSetFileSentToLogin) {
                 updateData.file_sent_to_login = true;
@@ -6240,7 +6251,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 description: 'Important questions validated',
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 details: {
                     questions_validated: Object.keys(responses).length,
                     question_ids: Object.keys(responses)
@@ -6341,8 +6352,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     employees = data.employees;
                 }
                 
-                // Filter for team leaders - try different designation field names
-                const teamLeaders = employees.filter(emp => {
+                // Filter for active employees first, then filter for team leaders
+                const activeEmployees = employees.filter(emp => 
+                    emp.employee_status === 'active' || 
+                    emp.is_active === true || 
+                    emp.employee_status === undefined
+                );
+                
+                const teamLeaders = activeEmployees.filter(emp => {
                     const designation = emp.designation || emp.role || emp.position || emp.job_title;
                     return designation && designation.toLowerCase().includes('team leader');
                 });

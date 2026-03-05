@@ -2184,6 +2184,10 @@ async def get_junior_users(
             if str(user.get("_id")) == user_id:
                 continue
             
+            # ✅ FILTER: Skip inactive employees — they should not appear in junior users dropdown
+            if user.get("employee_status", "active") == "inactive" or user.get("is_active", True) == False:
+                continue
+            
             # Get user's role efficiently
             user_role = None
             if user.get("role_id"):

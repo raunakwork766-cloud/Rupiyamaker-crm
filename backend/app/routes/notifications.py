@@ -4,6 +4,7 @@ from app.database.Notifications import NotificationsDB
 from app.database.Users import UsersDB
 from app.database import get_database_instances
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -156,9 +157,9 @@ async def create_test_overdue_task_notification(
         # Create a mock overdue task
         from datetime import datetime, timedelta
         mock_task = {
-            "_id": "test_task_id_" + datetime.now().strftime("%Y%m%d%H%M%S"),
+            "_id": "test_task_id_" + get_ist_now().strftime("%Y%m%d%H%M%S"),
             "title": "Test Overdue Task for Popup",
-            "due_date": (datetime.now() - timedelta(hours=2)).isoformat(),
+            "due_date": (get_ist_now() - timedelta(hours=2)).isoformat(),
             "priority": "High",
             "status": "In Progress",
             "description": "This is a test overdue task created for testing popup notifications. This task is automatically generated and not real.",

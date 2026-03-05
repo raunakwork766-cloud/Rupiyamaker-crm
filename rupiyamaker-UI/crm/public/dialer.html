@@ -56,14 +56,14 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      background: #000000;
+      background: linear-gradient(180deg, #000000 0%, #020a12 100%);
       border-bottom: 2px solid #00BCD4;
       padding: 10px 20px;
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-      box-shadow: 0 2px 20px rgba(0, 0, 0, .8);
+      box-shadow: 0 4px 24px rgba(0, 188, 212, .08);
     }
 
     .live-dot {
@@ -132,17 +132,19 @@
     }
 
     .kpi {
-      background: #000000;
+      background: linear-gradient(135deg, #0a0a0a 0%, #050510 100%);
       border: 1px solid var(--border2);
-      border-radius: 10px;
-      padding: 12px 14px;
+      border-radius: 12px;
+      padding: 14px 16px;
       position: relative;
       overflow: hidden;
-      transition: border-color .2s;
+      transition: all .25s ease;
     }
 
     .kpi:hover {
-      border-color: var(--border2);
+      border-color: #333;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0,0,0,.4);
     }
 
     .kpi::before {
@@ -397,16 +399,16 @@
 
     /* Rules open button in ctrl-bar */
     .rules-open-btn {
-      padding: 6px 14px;
-      background: #003d4d;
-      border: 2px solid #00BCD4;
+      padding: 7px 14px;
+      background: linear-gradient(135deg, #003d4d, #002a33);
+      border: 1.5px solid #00BCD4;
       color: #00BCD4;
       font-size: 11px;
       font-weight: 900;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       transition: all .2s;
-      font-family: 'Arial Black', Arial, sans-serif;
+      font-family: 'Segoe UI', system-ui, sans-serif;
       white-space: nowrap;
     }
 
@@ -427,14 +429,14 @@
     }
 
     thead th {
-      padding: 10px 12px;
+      padding: 10px 10px;
       background: #ffffff;
       border-bottom: 2px solid #00BCD4;
       border-right: 1px solid #e0e0e0;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: .8px;
+      letter-spacing: .6px;
       color: #00BCD4;
       cursor: pointer;
       white-space: nowrap;
@@ -452,6 +454,17 @@
       color: #0097a7;
     }
 
+    thead th.sort-asc::after {
+      content: ' ▲';
+      font-size: 9px;
+      color: #0097a7;
+    }
+    thead th.sort-desc::after {
+      content: ' ▼';
+      font-size: 9px;
+      color: #0097a7;
+    }
+
     /* ROWS */
     tbody tr {
       border-bottom: 2px solid #1a1a1a;
@@ -466,7 +479,7 @@
     }
 
     td {
-      padding: 8px 10px;
+      padding: 7px 8px;
       border-right: 1px solid var(--border);
       vertical-align: top;
       background: transparent;
@@ -511,16 +524,25 @@
     /* AGENT */
     .ag-name {
       font-weight: 900;
-      font-size: 16px;
+      font-size: 14px;
       color: #ffffff;
       letter-spacing: .2px;
+      line-height: 1.2;
     }
 
     .ag-ext {
-      font-size: 12px;
+      font-size: 11px;
       color: #aaaaaa;
       font-weight: 700;
-      margin-top: 3px;
+      margin-top: 2px;
+      line-height: 1.3;
+    }
+
+    .ag-date {
+      font-size: 11px;
+      color: #00BCD4;
+      font-weight: 900;
+      margin-top: 2px;
     }
 
     /*  CELL BOX  */
@@ -572,7 +594,7 @@
 
     /* LOGIN DURATION */
     .ld-dur {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 900;
       line-height: 1.1;
       color: #ffffff;
@@ -624,7 +646,7 @@
 
     /* CALLS */
     .calls-big {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 900;
       color: #ffffff;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -680,7 +702,7 @@
 
     /* TALK TIME */
     .tt-big {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 900;
       color: #ffffff;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -714,7 +736,7 @@
 
     /* WRAPUP */
     .wu-row1 {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 900;
       color: #ffffff;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -766,7 +788,7 @@
 
     /* IDLE */
     .idle-main {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       color: #ffffff;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -774,7 +796,7 @@
 
     /* BREAK */
     .brk-main {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       color: #ffffff;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -797,7 +819,7 @@
     }
 
     .iw-head {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 900;
       margin-bottom: 8px;
       font-family: 'Arial Black', Arial, sans-serif;
@@ -826,14 +848,14 @@
     }
 
     .iw-label {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       line-height: 1.4;
       font-family: 'Arial Black', Arial, sans-serif;
     }
 
     .iw-val {
-      font-size: 17px;
+      font-size: 15px;
       font-weight: 900;
       text-align: right;
       white-space: nowrap;
@@ -863,12 +885,12 @@
 
     /* CONTROLS BAR */
     .ctrl-bar {
-      padding: 10px 20px;
+      padding: 12px 20px;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
       flex-wrap: wrap;
-      background: #000000;
+      background: linear-gradient(180deg, #020a12 0%, #000000 100%);
       border-bottom: 1px solid #1a1a1a;
     }
 
@@ -945,18 +967,456 @@
       background: #444;
     }
 
+    /* COMPACT COLUMN WIDTHS */
+    table {
+      table-layout: auto;
+    }
+    td, th {
+      white-space: nowrap;
+    }
+    /* Agent column - allow wrapping for 3- line layout */
+    td:nth-child(2) {
+      white-space: normal;
+      min-width: 100px;
+      max-width: 160px;
+    }
+    /* Login Duration */
+    td:nth-child(3) { min-width: 120px; max-width: 155px; }
+    /* Calls */
+    td:nth-child(4) { min-width: 80px; max-width: 110px; }
+    /* Talk Time */
+    td:nth-child(5) { min-width: 110px; max-width: 150px; }
+    /* Wrapup */
+    td:nth-child(6) { min-width: 130px; max-width: 180px; white-space: normal; }
+    /* Auto Idle */
+    td:nth-child(7) { min-width: 80px; max-width: 110px; }
+    /* Manual Idle */
+    td:nth-child(8) { min-width: 80px; max-width: 120px; }
+    /* Break */
+    td:nth-child(9) { min-width: 80px; max-width: 120px; }
+    /* Waste Time */
+    td:nth-child(10) { min-width: 200px; max-width: 280px; white-space: normal; }
+
+    /* ─── MODERN DATE PICKER ─── */
+    .date-picker-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .date-picker-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      background: #0a1628;
+      border: 1.5px solid #00BCD4;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .date-picker-trigger:hover {
+      background: #0d2040;
+      border-color: #26d9f0;
+    }
+    .date-picker-trigger svg {
+      width: 15px;
+      height: 15px;
+      stroke: #00BCD4;
+      flex-shrink: 0;
+    }
+    .date-picker-trigger .dp-text {
+      color: #fff;
+    }
+    .date-picker-trigger .dp-chevron {
+      width: 12px;
+      height: 12px;
+      stroke: #00BCD4;
+      transition: transform .2s;
+      margin-left: 4px;
+    }
+    .date-picker-trigger .dp-chevron.open {
+      transform: rotate(180deg);
+    }
+    .date-picker-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      min-width: 290px;
+      background: #0d1117;
+      border: 1.5px solid #00BCD4;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,188,212,.15), 0 4px 12px rgba(0,0,0,.4);
+      z-index: 200;
+      overflow: hidden;
+      animation: dpSlideIn .15s ease;
+    }
+    .date-picker-dropdown.show {
+      display: block;
+    }
+    @keyframes dpSlideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .dp-segmented {
+      display: flex;
+      padding: 10px 12px 0;
+      gap: 4px;
+    }
+    .dp-seg-btn {
+      flex: 1;
+      padding: 7px 0;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      text-align: center;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: all .2s;
+      background: transparent;
+      color: #888;
+    }
+    .dp-seg-btn.active {
+      background: #003d4d;
+      border-color: #00BCD4;
+      color: #00BCD4;
+    }
+    .dp-seg-btn:not(.active):hover {
+      background: #111;
+      color: #ccc;
+    }
+    .dp-body {
+      padding: 12px;
+    }
+    .dp-field-group {
+      margin-bottom: 10px;
+    }
+    .dp-field-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #00BCD4;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 5px;
+    }
+    .dp-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: #111;
+      border: 1.5px solid #333;
+      border-radius: 8px;
+      padding: 0 10px;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .dp-input-wrap:hover {
+      border-color: #555;
+    }
+    .dp-input-wrap:focus-within {
+      border-color: #00BCD4;
+    }
+    .dp-input-display {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      padding: 8px 0;
+    }
+    .dp-input-display.placeholder {
+      color: #666;
+    }
+    .dp-input-wrap input[type="date"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .dp-input-wrap input[type="date"]::-webkit-calendar-picker-indicator {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .dp-input-wrap svg {
+      width: 14px;
+      height: 14px;
+      stroke: #666;
+      flex-shrink: 0;
+    }
+    .dp-apply-btn {
+      width: 100%;
+      padding: 9px 0;
+      background: #00BCD4;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all .2s;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .dp-apply-btn:hover {
+      background: #26d9f0;
+    }
+
+    /* ─── MODERN AGENT FILTER ─── */
+    .agent-filter-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .agent-filter-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      background: #0a1628;
+      border: 1.5px solid #00BCD4;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .agent-filter-trigger:hover {
+      background: #0d2040;
+      border-color: #26d9f0;
+    }
+    .agent-filter-trigger svg {
+      width: 14px;
+      height: 14px;
+      stroke: #00BCD4;
+      flex-shrink: 0;
+    }
+    .agent-filter-trigger .af-chevron {
+      width: 12px;
+      height: 12px;
+      stroke: #00BCD4;
+      transition: transform .2s;
+      margin-left: 4px;
+    }
+    .agent-filter-trigger .af-chevron.open {
+      transform: rotate(180deg);
+    }
+    .agent-filter-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      min-width: 230px;
+      max-height: 360px;
+      background: #0d1117;
+      border: 1.5px solid #00BCD4;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,188,212,.15), 0 4px 12px rgba(0,0,0,.4);
+      z-index: 200;
+      overflow: hidden;
+      animation: dpSlideIn .15s ease;
+    }
+    .agent-filter-dropdown.show { display: block; }
+    .af-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #222;
+    }
+    .af-search svg {
+      width: 14px;
+      height: 14px;
+      stroke: #666;
+      flex-shrink: 0;
+    }
+    .af-search input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .af-search input::placeholder { color: #555; }
+    .af-list {
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .af-item {
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ccc;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .af-item:hover {
+      background: #1a2a3a;
+      color: #fff;
+    }
+    .af-item.selected {
+      background: #003d4d;
+      color: #00BCD4;
+    }
+    .af-item .af-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+    .af-item.selected .af-dot {
+      background: #00BCD4;
+      box-shadow: 0 0 6px rgba(0,188,212,.4);
+    }
+
+    /* ─── WARNING FILTER ─── */
+    .warning-filter-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .warning-filter-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      background: linear-gradient(135deg, #1a0808, #2a0a0a);
+      border: 1.5px solid #c0392b;
+      color: #f87171;
+      font-size: 12px;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .warning-filter-trigger:hover {
+      background: linear-gradient(135deg, #2a0808, #3a0a0a);
+      border-color: #e74c3c;
+    }
+    .warning-filter-trigger .wf-icon {
+      font-size: 13px;
+    }
+    .warning-filter-trigger .wf-chevron {
+      width: 12px;
+      height: 12px;
+      stroke: #f87171;
+      transition: transform .2s;
+      margin-left: 2px;
+    }
+    .warning-filter-trigger .wf-chevron.open {
+      transform: rotate(180deg);
+    }
+    .warning-filter-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      min-width: 260px;
+      background: #0d1117;
+      border: 1.5px solid #c0392b;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(192,57,43,.15), 0 4px 12px rgba(0,0,0,.4);
+      z-index: 200;
+      overflow: hidden;
+      animation: dpSlideIn .15s ease;
+    }
+    .warning-filter-dropdown.show { display: block; }
+    .wf-header {
+      padding: 10px 14px;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: #c0392b;
+      border-bottom: 1px solid #222;
+    }
+    .wf-list { padding: 4px 0; }
+    .wf-item {
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ccc;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .wf-item:hover {
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .wf-item.selected {
+      background: #1a0808;
+      color: #f87171;
+    }
+    .wf-check {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1.5px solid #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .wf-item.selected .wf-check {
+      background: #c0392b;
+      border-color: #c0392b;
+      color: #fff;
+    }
+    .wf-all-btn {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 6px 12px 10px;
+      padding: 7px;
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all .2s;
+      text-transform: uppercase;
+    }
+    .wf-all-btn:hover { background: #e74c3c; }
+
     /* UPLOAD BUTTON */
     .upload-btn {
-      padding: 6px 16px;
-      background: #003d4d;
-      border: 2px solid #00BCD4;
+      padding: 7px 16px;
+      background: linear-gradient(135deg, #003d4d, #002a33);
+      border: 1.5px solid #00BCD4;
       color: #00BCD4;
       font-size: 11px;
       font-weight: 900;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       transition: all .2s;
-      font-family: 'Arial Black', Arial, sans-serif;
+      font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
     .upload-btn:hover {
@@ -1214,14 +1674,85 @@
     <button class="rules-open-btn" onclick="toggleRules()">📋 Performance Rules</button>
     <button class="upload-btn" id="uploadBtn" onclick="openUpload()">📊 Upload Excel</button>
     <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFileInput(this)" />
-    <span class="ds-label">� Agent:</span>
-    <select class="dt-sel" id="agentSelect" onchange="applyFilters()">
-      <option value="">All Agents</option>
-    </select>
-    <span class="ds-label">📅 From:</span>
-    <select class="dt-sel" id="dateFrom" onchange="applyFilters()"></select>
-    <span class="ds-label">To:</span>
-    <select class="dt-sel" id="dateTo" onchange="applyFilters()"></select>
+
+    <!-- Warning Filter -->
+    <div class="warning-filter-wrapper" id="warningFilterWrap">
+      <div class="warning-filter-trigger" onclick="toggleWarningFilter()">
+        <span class="wf-icon">⚠</span>
+        <span id="wfLabel">Warning Filter</span>
+        <svg class="wf-chevron" id="wfChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="warning-filter-dropdown" id="warningDropdown">
+        <div class="wf-header">Filter by Issues</div>
+        <div class="wf-list" id="wfList"></div>
+        <button class="wf-all-btn" onclick="applyWarningFilter()">Apply Filter</button>
+      </div>
+    </div>
+
+    <!-- Agent Filter -->
+    <div class="agent-filter-wrapper" id="agentFilterWrap">
+      <div class="agent-filter-trigger" onclick="toggleAgentFilter()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="afLabel">All Agents</span>
+        <svg class="af-chevron" id="afChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="agent-filter-dropdown" id="agentDropdown">
+        <div class="af-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" placeholder="Search agent..." id="agentSearchInput" oninput="filterAgentList()" />
+        </div>
+        <div class="af-list" id="afList"></div>
+      </div>
+    </div>
+
+    <!-- Date Picker -->
+    <div class="date-picker-wrapper" id="datePickerWrap">
+      <div class="date-picker-trigger" onclick="toggleDatePicker()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        <span class="dp-text" id="dpLabel">Select Date</span>
+        <svg class="dp-chevron" id="dpChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="date-picker-dropdown" id="datePickerDropdown">
+        <div class="dp-segmented">
+          <div class="dp-seg-btn active" id="dpSegSingle" onclick="switchDateMode('single')">Single Date</div>
+          <div class="dp-seg-btn" id="dpSegRange" onclick="switchDateMode('range')">Date Range</div>
+        </div>
+        <div class="dp-body">
+          <div id="dpSingleFields">
+            <div class="dp-field-group">
+              <div class="dp-field-label">Select Date</div>
+              <div class="dp-input-wrap" onclick="this.querySelector('input').showPicker?.()">
+                <span class="dp-input-display placeholder" id="dpSingleDisplay">DD/MM/YYYY</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <input type="date" id="dpSingleInput" onchange="dpSingleChanged()" />
+              </div>
+            </div>
+          </div>
+          <div id="dpRangeFields" style="display:none">
+            <div class="dp-field-group">
+              <div class="dp-field-label">From</div>
+              <div class="dp-input-wrap" onclick="this.querySelector('input').showPicker?.()">
+                <span class="dp-input-display placeholder" id="dpFromDisplay">DD/MM/YYYY</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <input type="date" id="dpFromInput" onchange="dpFromChanged()" />
+              </div>
+            </div>
+            <div class="dp-field-group">
+              <div class="dp-field-label">To</div>
+              <div class="dp-input-wrap" onclick="this.querySelector('input').showPicker?.()">
+                <span class="dp-input-display placeholder" id="dpToDisplay">DD/MM/YYYY</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <input type="date" id="dpToInput" onchange="dpToChanged()" />
+              </div>
+            </div>
+          </div>
+          <button class="dp-apply-btn" onclick="dpApply()">Apply Filter</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Upload History Button -->
+    <button class="upload-btn" onclick="showUploadHistory()" style="margin-left:auto">📁 Upload History</button>
   </div>
 
   <!-- UPLOAD MODAL -->
@@ -1487,6 +2018,9 @@
 
     const LATE_MIN = 630, EARLY_MIN = 1140, MAX_BRK_SEC = 60 * 60, MAX_WU_SEC = 10, SHIFT_SEC = 8.5 * 3600;
     let selectedAgent = '', filterFrom = '', filterTo = '', sortKey = 'totalCalls', sortDir = -1;
+    let activeWarningFilters = []; // warning type filters
+    let dateMode = 'single'; // 'single' or 'range'
+    let _availableDates = [];
     // Permanent agent serial numbers based on first-appearance order in ALL_AGENTS
     const _agentSN = {};
     (() => { let n = 1; ALL_AGENTS.forEach(a => { if (_agentSN[a.ext] === undefined) _agentSN[a.ext] = n++; }); })();
@@ -1495,45 +2029,203 @@
     function hms(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sc = s % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sc).padStart(2, '0')}`; }
     function hmShort(s) { s = Math.max(0, Math.round(s)); if (s < 60) return `${s}s`; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); if (h > 0 && m > 0) return `${h}h ${m}m`; if (h > 0) return `${h}h`; return `${m}m`; }
     function fmtDate(d) { if (!d) return '—'; const [y, mo, dy] = d.split('-'); const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return `${parseInt(dy)} ${mn[parseInt(mo) - 1]} ${y}`; }
+    function fmtDateShort(d) { if (!d) return '—'; const [y, mo, dy] = d.split('-'); const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return `${parseInt(dy)} ${mn[parseInt(mo) - 1]}`; }
+    function isoToDDMMYYYY(d) { if (!d) return ''; const [y, m, dy] = d.split('-'); return `${dy}/${m}/${y}`; }
 
-    function initFilters() {
-      console.log('[initFilters] Called - ALL_AGENTS length:', ALL_AGENTS.length);
-      console.log('[initFilters] Sample agents:', ALL_AGENTS.slice(0, 3).map(a => ({ name: a.name, date: a.date })));
-      const dates = [...new Set(ALL_AGENTS.map(a => a.date))].sort();
-      console.log('[initFilters] Unique dates array (sorted):', dates);
-      const latest = dates[dates.length - 1];
-      console.log('[initFilters] Latest date selected for dropdown:', latest);
-      filterFrom = latest; filterTo = latest;
-      ['dateFrom', 'dateTo'].forEach(id => {
-        const sel = document.getElementById(id);
-        [...dates].reverse().forEach(d => {
-          const o = document.createElement('option');
-          o.value = d; o.textContent = fmtDate(d); sel.appendChild(o);
-        });
-        sel.value = latest;
+    /* ─── DATE PICKER FUNCTIONS ─── */
+    function toggleDatePicker() {
+      const dd = document.getElementById('datePickerDropdown');
+      const ch = document.getElementById('dpChevron');
+      const isOpen = dd.classList.contains('show');
+      closeAllDropdowns();
+      if (!isOpen) { dd.classList.add('show'); ch.classList.add('open'); }
+    }
+    function switchDateMode(mode) {
+      dateMode = mode;
+      document.getElementById('dpSegSingle').className = `dp-seg-btn ${mode === 'single' ? 'active' : ''}`;
+      document.getElementById('dpSegRange').className = `dp-seg-btn ${mode === 'range' ? 'active' : ''}`;
+      document.getElementById('dpSingleFields').style.display = mode === 'single' ? '' : 'none';
+      document.getElementById('dpRangeFields').style.display = mode === 'range' ? '' : 'none';
+    }
+    function dpSingleChanged() {
+      const v = document.getElementById('dpSingleInput').value;
+      const disp = document.getElementById('dpSingleDisplay');
+      if (v) { disp.textContent = isoToDDMMYYYY(v); disp.classList.remove('placeholder'); }
+      else { disp.textContent = 'DD/MM/YYYY'; disp.classList.add('placeholder'); }
+    }
+    function dpFromChanged() {
+      const v = document.getElementById('dpFromInput').value;
+      const disp = document.getElementById('dpFromDisplay');
+      if (v) { disp.textContent = isoToDDMMYYYY(v); disp.classList.remove('placeholder'); }
+      else { disp.textContent = 'DD/MM/YYYY'; disp.classList.add('placeholder'); }
+    }
+    function dpToChanged() {
+      const v = document.getElementById('dpToInput').value;
+      const disp = document.getElementById('dpToDisplay');
+      if (v) { disp.textContent = isoToDDMMYYYY(v); disp.classList.remove('placeholder'); }
+      else { disp.textContent = 'DD/MM/YYYY'; disp.classList.add('placeholder'); }
+    }
+    function dpApply() {
+      if (dateMode === 'single') {
+        const v = document.getElementById('dpSingleInput').value;
+        if (!v) return;
+        // Find closest available date
+        const closest = _availableDates.includes(v) ? v : findClosestDate(v);
+        filterFrom = closest; filterTo = closest;
+        document.getElementById('dpLabel').textContent = fmtDate(closest);
+      } else {
+        let from = document.getElementById('dpFromInput').value;
+        let to = document.getElementById('dpToInput').value;
+        if (!from || !to) return;
+        if (from > to) { const t = from; from = to; to = t; }
+        filterFrom = from; filterTo = to;
+        document.getElementById('dpLabel').textContent = `${fmtDateShort(from)} → ${fmtDateShort(to)}`;
+      }
+      closeAllDropdowns();
+      updateTopbar();
+      render();
+    }
+    function findClosestDate(target) {
+      if (_availableDates.length === 0) return target;
+      let closest = _availableDates[0];
+      let minDiff = Math.abs(new Date(target) - new Date(closest));
+      _availableDates.forEach(d => {
+        const diff = Math.abs(new Date(target) - new Date(d));
+        if (diff < minDiff) { minDiff = diff; closest = d; }
       });
+      return closest;
+    }
+    function setDatePickerAvailableDates() {
+      _availableDates = [...new Set(ALL_AGENTS.map(a => a.date))].sort();
+      const minD = _availableDates[0] || '';
+      const maxD = _availableDates[_availableDates.length - 1] || '';
+      ['dpSingleInput', 'dpFromInput', 'dpToInput'].forEach(id => {
+        const inp = document.getElementById(id);
+        if (inp && minD) { inp.min = minD; inp.max = maxD; }
+      });
+    }
+
+    /* ─── AGENT FILTER FUNCTIONS ─── */
+    function toggleAgentFilter() {
+      const dd = document.getElementById('agentDropdown');
+      const ch = document.getElementById('afChevron');
+      const isOpen = dd.classList.contains('show');
+      closeAllDropdowns();
+      if (!isOpen) { dd.classList.add('show'); ch.classList.add('open'); document.getElementById('agentSearchInput').focus(); }
+    }
+    function populateAgentList() {
+      const list = document.getElementById('afList');
+      list.innerHTML = '';
       const seen = new Set();
-      const asel = document.getElementById('agentSelect');
+      // All Agents option
+      const allItem = document.createElement('div');
+      allItem.className = `af-item ${selectedAgent === '' ? 'selected' : ''}`;
+      allItem.innerHTML = `<span class="af-dot"></span>All Agents`;
+      allItem.onclick = () => { selectAgent('', 'All Agents'); };
+      list.appendChild(allItem);
       ALL_AGENTS.forEach(a => {
         if (!seen.has(a.ext)) {
           seen.add(a.ext);
-          const o = document.createElement('option');
-          o.value = a.ext; o.textContent = a.name; asel.appendChild(o);
+          const item = document.createElement('div');
+          item.className = `af-item ${selectedAgent === a.ext ? 'selected' : ''}`;
+          item.dataset.ext = a.ext;
+          item.dataset.name = a.name.toLowerCase();
+          item.innerHTML = `<span class="af-dot"></span>${a.name} <span style="color:#666;font-size:10px">(${a.ext})</span>`;
+          item.onclick = () => { selectAgent(a.ext, a.name); };
+          list.appendChild(item);
         }
       });
+    }
+    function selectAgent(ext, name) {
+      selectedAgent = ext;
+      document.getElementById('afLabel').textContent = ext ? name : 'All Agents';
+      closeAllDropdowns();
+      updateTopbar();
+      render();
+    }
+    function filterAgentList() {
+      const q = document.getElementById('agentSearchInput').value.toLowerCase();
+      document.querySelectorAll('#afList .af-item').forEach(item => {
+        const n = item.dataset.name || '';
+        const e = item.dataset.ext || '';
+        item.style.display = (!q || n.includes(q) || e.includes(q) || !item.dataset.ext) ? '' : 'none';
+      });
+    }
+
+    /* ─── WARNING FILTER FUNCTIONS ─── */
+    const WARNING_TYPES = [
+      { key: 'late', label: '🔴 Late Login', icon: '🕐' },
+      { key: 'early', label: '🔴 Early Exit', icon: '🔚' },
+      { key: 'manualIdle', label: '🚫 Manual Idle', icon: '⏸' },
+      { key: 'wrapup', label: '📝 Wrapup > 10s/call', icon: '📝' },
+      { key: 'talkTime', label: '⚠ Suspicious Talk Time', icon: '📞' },
+      { key: 'break', label: '☕ Break Exceeded', icon: '☕' },
+    ];
+    function toggleWarningFilter() {
+      const dd = document.getElementById('warningDropdown');
+      const ch = document.getElementById('wfChevron');
+      const isOpen = dd.classList.contains('show');
+      closeAllDropdowns();
+      if (!isOpen) { dd.classList.add('show'); ch.classList.add('open'); }
+    }
+    function populateWarningList() {
+      const list = document.getElementById('wfList');
+      list.innerHTML = '';
+      WARNING_TYPES.forEach(w => {
+        const item = document.createElement('div');
+        const isSelected = activeWarningFilters.includes(w.key);
+        item.className = `wf-item ${isSelected ? 'selected' : ''}`;
+        item.innerHTML = `<span class="wf-check">${isSelected ? '✓' : ''}</span>${w.label}`;
+        item.onclick = () => {
+          const idx = activeWarningFilters.indexOf(w.key);
+          if (idx >= 0) activeWarningFilters.splice(idx, 1);
+          else activeWarningFilters.push(w.key);
+          populateWarningList();
+        };
+        list.appendChild(item);
+      });
+    }
+    function applyWarningFilter() {
+      closeAllDropdowns();
+      const count = activeWarningFilters.length;
+      document.getElementById('wfLabel').textContent = count > 0 ? `${count} Warning${count > 1 ? 's' : ''}` : 'Warning Filter';
+      render();
+    }
+
+    /* ─── CLOSE ALL DROPDOWNS ─── */
+    function closeAllDropdowns() {
+      document.querySelectorAll('.date-picker-dropdown, .agent-filter-dropdown, .warning-filter-dropdown').forEach(d => d.classList.remove('show'));
+      document.querySelectorAll('.dp-chevron, .af-chevron, .wf-chevron').forEach(c => c.classList.remove('open'));
+    }
+    document.addEventListener('mousedown', (e) => {
+      if (!e.target.closest('.date-picker-wrapper') && !e.target.closest('.agent-filter-wrapper') && !e.target.closest('.warning-filter-wrapper')) {
+        closeAllDropdowns();
+      }
+    });
+
+    function initFilters() {
+      console.log('[initFilters] Called - ALL_AGENTS length:', ALL_AGENTS.length);
+      _availableDates = [...new Set(ALL_AGENTS.map(a => a.date))].sort();
+      const latest = _availableDates[_availableDates.length - 1];
+      filterFrom = latest; filterTo = latest;
+      
+      // Setup date picker
+      setDatePickerAvailableDates();
+      document.getElementById('dpSingleInput').value = latest;
+      dpSingleChanged();
+      document.getElementById('dpLabel').textContent = fmtDate(latest);
+      
+      // Setup agent filter
+      populateAgentList();
+      
+      // Setup warning filter
+      populateWarningList();
+      
       updateTopbar();
       render();
     }
 
     function applyFilters() {
-      selectedAgent = document.getElementById('agentSelect').value;
-      filterFrom = document.getElementById('dateFrom').value;
-      filterTo = document.getElementById('dateTo').value;
-      if (filterFrom > filterTo) {
-        const t = filterFrom; filterFrom = filterTo; filterTo = t;
-        document.getElementById('dateFrom').value = filterFrom;
-        document.getElementById('dateTo').value = filterTo;
-      }
       updateTopbar();
       render();
     }
@@ -1579,23 +2271,29 @@
       // Filter records
       let raw = ALL_AGENTS.filter(a => a.date >= filterFrom && a.date <= filterTo && (!selectedAgent || a.ext === selectedAgent));
 
-      // Pre-sort raw before proc()
-      if (isSingleAgent) {
-        raw.sort((a, b) => a.date.localeCompare(b.date));
-      } else if (isMultiDate) {
-        const _ao = [];
-        ALL_AGENTS.forEach(a => { if (!_ao.includes(a.ext)) _ao.push(a.ext); });
-        raw.sort((a, b) => { const ai = _ao.indexOf(a.ext), bi = _ao.indexOf(b.ext); return ai !== bi ? ai - bi : a.date.localeCompare(b.date); });
-      }
-
       let pd = raw.map(a => proc(a));
 
-      // Assign permanent serial numbers
-      if (isSingleAgent) {
-        pd.forEach((a, i) => { a._sn = i + 1; }); // day 1,2,3... for single agent
-      } else {
-        pd.forEach(a => { a._sn = _agentSN[a.ext]; }); // fixed agent number always
+      // Apply warning filters
+      if (activeWarningFilters.length > 0) {
+        pd = pd.filter(a => {
+          return activeWarningFilters.some(f => {
+            if (f === 'late') return a.isLate;
+            if (f === 'early') return a.isEarly;
+            if (f === 'manualIdle') return a.miBad;
+            if (f === 'wrapup') return a.wuBad;
+            if (f === 'talkTime') return a.ttBad;
+            if (f === 'break') return a.brkBad;
+            return false;
+          });
+        });
       }
+
+      // Assign serial numbers - same agent always gets same SN regardless of date count
+      const _snMap = {};
+      let _snCounter = 1;
+      // Build SN from the original order of appearance
+      ALL_AGENTS.forEach(a => { if (_snMap[a.ext] === undefined) _snMap[a.ext] = _snCounter++; });
+      pd.forEach(a => { a._sn = _snMap[a.ext] || 0; });
 
       // Rank map (for rank badges)
       const rkMap = {};
@@ -1612,15 +2310,40 @@
       document.getElementById('k5').textContent = pd.filter(a => a.miBad).length;
       document.getElementById('k6').textContent = (pd.reduce((s, a) => s + a.wasteSec, 0) / 3600).toFixed(1) + 'h';
 
-      // Column sort (only in single-date all-agents or single-agent view; preserve grouping in multi-date)
+      // Column sort — NOW WORKS FOR ALL VIEWS including multi-date
       let list = [...pd];
-      if (!isMultiDate || isSingleAgent) {
-        const kfn = {
-          rank: x => x.outCalls, name: x => x.name.toLowerCase(), loginDur: x => x.ldSec,
-          totalCalls: x => x.tc, totalTT: x => x.ttSec, wrapup: x => x.avgWu,
-          autoIdle: x => toSec(x.autoIdle), manualIdle: x => x.miSec,
-          breakTime: x => x.brkSec, wasteSec: x => x.wasteSec
-        };
+      const kfn = {
+        rank: x => x.outCalls, name: x => x.name.toLowerCase(), loginDur: x => x.ldSec,
+        totalCalls: x => x.tc, totalTT: x => x.ttSec, wrapup: x => x.avgWu,
+        autoIdle: x => toSec(x.autoIdle), manualIdle: x => x.miSec,
+        breakTime: x => x.brkSec, wasteSec: x => x.wasteSec
+      };
+      
+      if (isMultiDate && !isSingleAgent) {
+        // Multi-date: sort primarily by sort key, then group same agent's dates together
+        // First, sort all records by the sort key
+        const sorted = [...pd].sort((a, b) => {
+          const f = kfn[sortKey] || (() => 0);
+          const av = f(a), bv = f(b);
+          return av < bv ? -sortDir : av > bv ? sortDir : 0;
+        });
+        // Group by agent, preserving the order of first appearance after sort
+        const agentOrder = [];
+        const agentGroups = {};
+        sorted.forEach(a => {
+          if (!agentGroups[a.ext]) {
+            agentGroups[a.ext] = [];
+            agentOrder.push(a.ext);
+          }
+          agentGroups[a.ext].push(a);
+        });
+        // Within each group, sort by date
+        list = [];
+        agentOrder.forEach(ext => {
+          const group = agentGroups[ext].sort((a, b) => a.date.localeCompare(b.date));
+          list.push(...group);
+        });
+      } else {
         list.sort((a, b) => { const f = kfn[sortKey] || (() => 0); const av = f(a), bv = f(b); return av < bv ? -sortDir : av > bv ? sortDir : 0; });
       }
 
@@ -1630,13 +2353,12 @@
       list.forEach(a => {
         const r = rkMap[`${a.ext}_${a.date}`] || 99;
         const rc = r === 1 ? 'r1' : r === 2 ? 'r2' : r === 3 ? 'r3' : 'rn';
-        // Agent cell ext line: show date context in multi-date or single-agent views
-        const extLine = (isMultiDate && !isSingleAgent)
-          ? `${a.ext}&nbsp;·&nbsp;<span style="color:#00BCD4;font-weight:900">${fmtDate(a.date)}</span>`
-          : isSingleAgent
-            ? `<span style="color:#00BCD4;font-weight:900">${fmtDate(a.date)}</span>`
-            : a.ext;
-        const nameExtra = `<div class="ag-ext">${extLine}</div>`;
+        
+        // Agent cell: 3-row layout - Name, ext, date
+        const showDate = isMultiDate || isSingleAgent;
+        const agentHTML = `<div class="ag-name">${a.name}</div>`
+          + `<div class="ag-ext">${a.name.toLowerCase()} (${a.ext})</div>`
+          + (showDate ? `<div class="ag-date">${fmtDate(a.date)}</div>` : '');
 
         /* LOGIN */
         const sc = a.sessOk ? 'cbox-green' : 'cbox-red';
@@ -1687,10 +2409,18 @@
       <div class="brk-main">${a.breakTime}${a.brkBad ? ' ⚠' : ''}</div>
       ${a.brkBad ? `<div class="brk-sub">+${hmShort(a.brkSec - MAX_BRK_SEC)} over</div>` : ''}</div>`;
 
-        /* WASTE */
+        /* WASTE — Fixed time formatting: Late/Early now properly show in hours if >= 60 minutes */
         const issues = [];
-        if (a.isLate) issues.push({ label: `Late Login: +${a.lateMins}m`, value: hmShort(a.lateWaste) });
-        if (a.isEarly) issues.push({ label: `Early Exit: -${a.earlyMins}m`, value: hmShort(a.earlyWaste) });
+        if (a.isLate) {
+          const lateSec = a.lateWaste;
+          const lateLabel = lateSec >= 3600 ? `+${hmShort(lateSec)}` : `+${a.lateMins}m`;
+          issues.push({ label: `Late Login: ${lateLabel}`, value: hmShort(a.lateWaste) });
+        }
+        if (a.isEarly) {
+          const earlySec = a.earlyWaste;
+          const earlyLabel = earlySec >= 3600 ? `-${hmShort(earlySec)}` : `-${a.earlyMins}m`;
+          issues.push({ label: `Early Exit: ${earlyLabel}`, value: hmShort(a.earlyWaste) });
+        }
         if (a.miBad) issues.push({ label: `Manual Idle`, value: hmShort(a.miSec) });
         if (a.wuBad) { const _d = a.avgWu < 60 ? `${a.avgWu}s` : `${Math.floor(a.avgWu / 60)}m ${a.avgWu % 60 > 0 ? a.avgWu % 60 + 's' : ''}`; issues.push({ label: `Wrapup Avg ${_d}/call (>10s)`, value: hmShort(a.wuWaste) }); }
         if (a.ttBad) issues.push({ label: `⚠ Suspicious Talk Time (info only)`, value: hmShort(a.manTTs) });
@@ -1709,7 +2439,7 @@
           const issueList = issues.map(i => `<div class="iw-row"><div class="iw-label">• ${i.label}</div><div class="iw-val">${i.value}</div></div>`).join('');
           iwHTML = `<div class="cbox cbox-red">
         <div class="iw-head">
-          <span class="iw-head-txt"><span style="font-size:12px;opacity:.8">${issues.length} Issue${issues.length !== 1 ? 's' : ''} &nbsp;·&nbsp;</span>Total: ${hms(a.wasteSec)} (${a.wastePct}%)</span>
+          <span class="iw-head-txt"><span style="font-size:11px;opacity:.8">${issues.length} Issue${issues.length !== 1 ? 's' : ''} &nbsp;·&nbsp;</span>Total: ${hms(a.wasteSec)} (${a.wastePct}%)</span>
           <button class="wa-btn" onclick="cpI(this,${cpIdx})" title="Copy for WhatsApp">📱</button>
         </div>
         <div class="iw-items">${issueList}</div>
@@ -1719,7 +2449,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
       <td><span class="sn-num">${a._sn}</span></td>
-      <td><div class="ag-name">${a.name}</div>${nameExtra}</td>
+      <td>${agentHTML}</td>
       <td>${sessHTML}</td>
       <td>${callsHTML}</td>
       <td>${ttHTML}</td>
@@ -1743,8 +2473,8 @@
       'logindur': 'loginDur', 'login duration': 'loginDur', 'login dur': 'loginDur', 'duration': 'loginDur', 'session': 'loginDur', 'session duration': 'loginDur', 'total login duration': 'loginDur', 'mode duration': 'loginDur', 'modeduration': 'loginDur', 'login session': 'loginDur', 'total duration': 'loginDur',
       'outcalls': 'outCalls', 'ob calls': 'outCalls', 'outbound calls': 'outCalls', 'out calls': 'outCalls', 'ob': 'outCalls', 'dialed calls': 'outCalls', 'total outbound calls': 'outCalls', 'outbound call': 'outCalls',
       'outtt': 'outTT', 'ob tt': 'outTT', 'outbound tt': 'outTT', 'ob talk time': 'outTT', 'out tt': 'outTT', 'outbound talk time': 'outTT', 'dialed talk time': 'outTT', 'outbound duration': 'outTT', 'ob duration': 'outTT',
-      'mancalls': 'manCalls', 'mn calls': 'manCalls', 'manual calls': 'manCalls', 'mn': 'manCalls', 'inbound calls': 'manCalls', 'ib calls': 'manCalls', 'total manual calls': 'manCalls', 'inbound call': 'manCalls', 'ib call': 'manCalls', 'manual call': 'manCalls', 'manual_call': 'manCalls', 'manual_calls': 'manCalls', 'man calls': 'manCalls', 'man call': 'manCalls',
-      'mantt': 'manTT', 'mn tt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT', 'inbound talk time': 'manTT', 'ib tt': 'manTT', 'ib duration': 'manTT', 'inbound duration': 'manTT', 'manual duration': 'manTT', 'manual call duration': 'manTT', 'manual duration': 'manTT',
+      'mancalls': 'manCalls', 'mn calls': 'manCalls', 'mn call': 'manCalls', 'manual calls': 'manCalls', 'mn': 'manCalls', 'inbound calls': 'manCalls', 'ib calls': 'manCalls', 'total manual calls': 'manCalls', 'inbound call': 'manCalls', 'ib call': 'manCalls', 'manual call': 'manCalls', 'Manual Call': 'manCalls', 'Manual Calls': 'manCalls', 'mncalls': 'manCalls', 'manual_call': 'manCalls', 'manual_calls': 'manCalls', 'man calls': 'manCalls', 'man call': 'manCalls',
+      'mantt': 'manTT', 'mn tt': 'manTT', 'mntt': 'manTT', 'manual tt': 'manTT', 'manual talk time': 'manTT', 'inbound talk time': 'manTT', 'ib tt': 'manTT', 'ib duration': 'manTT', 'inbound duration': 'manTT', 'manual duration': 'manTT', 'manual call duration': 'manTT', 'Manual Call Duration': 'manTT', 'Manual Duration': 'manTT', 'manual call tt': 'manTT',
       'totaltt': 'totalTT', 'total tt': 'totalTT', 'total talk time': 'totalTT', 'total time': 'totalTT', 'talk time': 'totalTT', 'talktime': 'totalTT', 'att': 'totalTT', 'aht': 'totalTT',
       'autoidle': 'autoIdle', 'auto idle': 'autoIdle', 'system idle': 'autoIdle', 'idle time': 'autoIdle', 'idletime': 'autoIdle', 'idle duration': 'autoIdle', 'auto idle duration': 'autoIdle',
       'manualIdle': 'manualIdle', 'manual idle': 'manualIdle', 'mn idle': 'manualIdle', 'manual idle duration': 'manualIdle',
@@ -1825,10 +2555,10 @@
               const cleanKey = key.replace(/[^a-z0-9]/g, '');
               let f = COLUMN_MAP[key] || COLUMN_MAP[h] || COLUMN_MAP[keyNoSpace] || COLUMN_MAP[cleanKey];
 
-              if (!f && cleanKey.includes('manual') && (cleanKey.includes('call') || cleanKey.includes('mn'))) {
-                f = cleanKey.includes('duration') || cleanKey.includes('time') ? 'manTT' : 'manCalls';
+              if (!f && (cleanKey.includes('manual') || cleanKey.includes('inbound') || cleanKey.includes('ib')) && (cleanKey.includes('call') || cleanKey.includes('mn'))) {
+                f = cleanKey.includes('duration') || cleanKey.includes('time') || cleanKey.includes('tt') ? 'manTT' : 'manCalls';
               }
-              if (!f && cleanKey.includes('manual') && cleanKey.includes('duration')) f = 'manTT';
+              if (!f && (cleanKey.includes('manual') || cleanKey.includes('inbound') || cleanKey.includes('ib')) && (cleanKey.includes('duration') || cleanKey.includes('time'))) f = 'manTT';
 
               if (f) {
                 if (f === '_ignore') {
@@ -1841,6 +2571,11 @@
                 unmapped.push(h);
               }
             });
+            // Debug: show exactly what each column mapped to
+            const fieldMapDebug = {};
+            Object.entries(fieldMap).forEach(([ci, fn]) => { if (fn !== '_ignore') fieldMapDebug[headerRow[parseInt(ci)]] = fn; });
+            console.log('[parseExcelFile] fieldMap:', fieldMapDebug);
+            console.log('[parseExcelFile] unmapped headers:', unmapped);
             const mappedFields = Object.values(fieldMap);
             const missing = REQUIRED_FIELDS.filter(f => !mappedFields.includes(f));
             if (missing.length > 0) {
@@ -1905,6 +2640,10 @@
               if (errs.length > 0) { rowErrors.push(`Row ${ri + 2}: ${errs.join(', ')}`); return; }
               agents.push({ date: dateVal, name: nameVal, ext: extVal, loginTime: loginP.display, logoutTime: logoutP.display, loginDur: parseTimeToHMS(rec.loginDur || 0), outCalls: parseInt(rec.outCalls) || 0, outTT: outTTstr, manCalls: parseInt(rec.manCalls) || 0, manTT: manTTstr, totalTT: totalTTstr, autoIdle: parseTimeToHMS(rec.autoIdle || 0), manualIdle: parseTimeToHMS(rec.manualIdle || 0), breakTime: parseTimeToHMS(rec.breakTime || 0), wrapup: parseTimeToHMS(rec.wrapup || 0), loginMin: rec.loginMin !== undefined && rec.loginMin !== '' ? parseInt(rec.loginMin) : loginP.minutes, logoutMin: rec.logoutMin !== undefined && rec.logoutMin !== '' ? parseInt(rec.logoutMin) : logoutP.minutes, _sn: excelSN });
             });
+            // DEBUG: Show parsed manCalls values via alert so user can see immediately 
+            const mnDebug = agents.slice(0, 5).map(a => `${a.name}: MN=${a.manCalls} MN-TT=${a.manTT} OB=${a.outCalls}`).join('\n');
+            console.log('[parseExcelFile] PARSED AGENTS (first 5):', mnDebug);
+            alert('PARSED DATA (first 5 agents):\n\n' + mnDebug + '\n\nIf MN shows 0 here, the Excel column is not being read correctly.');
             resolve({ agents, rowErrors, totalRows: rawRows.length - 1, unmapped });
           } catch (err) { reject(new Error('Parse error: ' + err.message)); }
         };
@@ -1959,15 +2698,13 @@
       ALL_AGENTS.length = 0;
       _uplParsed.agents.forEach(a => ALL_AGENTS.push(a));
       console.log('[loadParsedData] Loaded agents count:', ALL_AGENTS.length);
-      console.log('[loadParsedData] First 3 agent dates:', ALL_AGENTS.slice(0, 3).map(a => ({ name: a.name, date: a.date })));
-      console.log('[loadParsedData] All unique dates:', [...new Set(ALL_AGENTS.map(a => a.date))].sort());
       // Rebuild serial numbers
       Object.keys(_agentSN).forEach(k => delete _agentSN[k]);
       let n = 1; ALL_AGENTS.forEach(a => { if (_agentSN[a.ext] === undefined) _agentSN[a.ext] = n++; });
-      // Clear filter selects
-      ['dateFrom', 'dateTo'].forEach(id => { const s = document.getElementById(id); while (s.options.length) s.remove(0); });
-      const as = document.getElementById('agentSelect'); while (as.options.length > 1) as.remove(1);
-      selectedAgent = ''; filterFrom = ''; filterTo = '';
+      // Reset filters
+      selectedAgent = '';
+      filterFrom = ''; filterTo = '';
+      activeWarningFilters = [];
       // Update upload button
       document.getElementById('uploadBtn').textContent = '📊 Excel Loaded ✓';
       document.getElementById('uploadBtn').className = 'upload-btn loaded';
@@ -1984,7 +2721,24 @@
         setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1800);
       });
     }
-    function sortBy(k) { if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = -1; } render(); }
+    function sortBy(k) {
+      if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+      // Update header sort indicators
+      document.querySelectorAll('thead th').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+      });
+      const thIdx = { name: 1, loginDur: 2, totalCalls: 3, totalTT: 4, wrapup: 5, autoIdle: 6, manualIdle: 7, breakTime: 8, wasteSec: 9 };
+      const idx = thIdx[k];
+      if (idx !== undefined) {
+        const th = document.querySelectorAll('thead th')[idx];
+        if (th) th.classList.add(sortDir === -1 ? 'sort-desc' : 'sort-asc');
+      }
+      render();
+    }
+    function showUploadHistory() {
+      // Placeholder - can be expanded later
+      alert('Upload History feature coming soon!');
+    }
     function toggleRules() {
       document.getElementById('rulesModal').classList.toggle('show');
       if (document.getElementById('rulesModal').classList.contains('show')) {

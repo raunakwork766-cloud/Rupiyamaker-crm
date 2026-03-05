@@ -5,6 +5,7 @@ import { Search, Info } from "lucide-react";
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import './attachments.css';
+import { getISTDateYMD } from '../../utils/dateUtils';
 
 export default function Attachments({ leadId, userId }) {
   // State for notifications
@@ -53,6 +54,9 @@ export default function Attachments({ leadId, userId }) {
       setCurrentModalCategory(null);
     }, 300);
   };
+
+  // Profile switcher (applicant vs co-applicant)
+  const [currentProfile, setCurrentProfile] = useState('applicant');
 
   // Dynamic states
   const [attachmentTypes, setAttachmentTypes] = useState([]);
@@ -326,8 +330,8 @@ export default function Attachments({ leadId, userId }) {
       doc.setTextColor(0, 0, 0);
       const customerName = leadInfo?.first_name || leadInfo?.customerName || leadInfo?.name || 'N/A';
       const leadId = leadInfo?._id || 'N/A';
-      const generatedDate = new Date().toLocaleDateString();
-      const generatedTime = new Date().toLocaleTimeString();
+      const generatedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const generatedTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
       
       doc.text(`Customer: ${customerName}`, 20, yPosition);
       doc.text(`Lead ID: ${leadId}`, 20, yPosition + 8);
@@ -616,8 +620,8 @@ export default function Attachments({ leadId, userId }) {
       doc.setTextColor(0, 0, 0);
       const customerName = leadInfo?.first_name || leadInfo?.customerName || leadInfo?.name || 'N/A';
       const leadId = leadInfo?._id || 'N/A';
-      const generatedDate = new Date().toLocaleDateString();
-      const generatedTime = new Date().toLocaleTimeString();
+      const generatedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const generatedTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
       
       doc.text(`Customer: ${customerName}`, 20, yPosition);
       doc.text(`Lead ID: ${leadId}`, 20, yPosition + 8);
@@ -1022,6 +1026,7 @@ export default function Attachments({ leadId, userId }) {
       formData.append('user_id', currentUserId);
       formData.append('document_type', attachmentType.name);
       formData.append('category', 'general');  // Required by backend API
+      formData.append('owner_type', currentProfile); // applicant or coapplicant
       
       // Add password if provided for this specific attachment type
       const password = dynamicPasswords[key];
@@ -1326,7 +1331,7 @@ export default function Attachments({ leadId, userId }) {
           const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
           
           if (applicantBlob) {
-            const applicantFilename = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${new Date().toISOString().split('T')[0]}.pdf`;
+            const applicantFilename = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
             console.log('💾 Adding applicant PDF to folder:', applicantFilename, 'Size:', applicantBlob.size);
             formsFolder.file(applicantFilename, applicantBlob);
             allFolderDownloadedCount++;
@@ -1363,7 +1368,7 @@ export default function Attachments({ leadId, userId }) {
           const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
           
           if (coApplicantBlob) {
-            const coApplicantFilename = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${new Date().toISOString().split('T')[0]}.pdf`;
+            const coApplicantFilename = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
             console.log('💾 Adding co-applicant PDF to folder:', coApplicantFilename, 'Size:', coApplicantBlob.size);
             formsFolder.file(coApplicantFilename, coApplicantBlob);
             allFolderDownloadedCount++;
@@ -1458,7 +1463,7 @@ export default function Attachments({ leadId, userId }) {
       if (passwordInfo.length > 0) {
         let passwordText = "PASSWORD INFORMATION FOR DOWNLOADED FILES\n";
         passwordText += "=" + "=".repeat(45) + "\n\n";
-        passwordText += `Generated on: ${new Date().toLocaleString()}\n`;
+        passwordText += `Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}\n`;
         passwordText += `Lead ID: ${leadId}\n\n`;
         
         // Group by folder
@@ -1497,7 +1502,7 @@ export default function Attachments({ leadId, userId }) {
           zipFolders: Object.keys(zip.files)
         });
         const zipBlob = await zip.generateAsync({ type: "blob" });
-        const zipFilename = `Lead_${leadId}_Documents_${new Date().toISOString().split('T')[0]}.zip`;
+        const zipFilename = `Lead_${leadId}_Documents_${getISTDateYMD()}.zip`;
         saveAs(zipBlob, zipFilename);
 
         let successMessage = `Successfully downloaded ${downloadedCount} file(s) as ZIP archive.`;
@@ -1681,599 +1686,375 @@ export default function Attachments({ leadId, userId }) {
     return null;
   };
 
-  // Show loading state while attachment types are being loaded
+  // ── helpers ──────────────────────────────────────────────────
+  const getProfileDocs = (docs) => docs.filter(doc => {
+    if (currentProfile === 'applicant') return !doc.owner_type || doc.owner_type === 'applicant';
+    return doc.owner_type === 'coapplicant';
+  });
+
+  const getFileIconClass = (filename) => {
+    const name = (filename || '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'fa-file-pdf text-blue-500';
+    if (name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) return 'fa-file-image text-green-500';
+    if (name.match(/\.(doc|docx)$/)) return 'fa-file-word text-blue-600';
+    if (name.match(/\.(xls|xlsx|csv)$/)) return 'fa-file-excel text-emerald-600';
+    return 'fa-file text-gray-400';
+  };
+
+  // ── drag-to-reorder state ─────────────────────────────────────
+  // We use refs so we don't re-render during drag; only re-render on drop.
+  const dragFile = React.useRef(null);          // { docType, fromIdx }
+  const [dragOverKey, setDragOverKey] = React.useState(null); // `${docType}_${idx}`
+
+  const handleFileDragStart = (e, docType, fromIdx) => {
+    dragFile.current = { docType, fromIdx };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', fromIdx); // needed for Firefox
+    // slight delay so the element doesn't disappear before the ghost is captured
+    setTimeout(() => {
+      if (e.target) e.target.style.opacity = '0.45';
+    }, 0);
+  };
+
+  const handleFileDragOver = (e, docType, toIdx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const key = `${docType}_${toIdx}`;
+    if (dragOverKey !== key) setDragOverKey(key);
+  };
+
+  const handleFileDragEnd = (e) => {
+    if (e.target) e.target.style.opacity = '1';
+    dragFile.current = null;
+    setDragOverKey(null);
+  };
+
+  const handleFileDrop = (e, docType, toIdx) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    if (!dragFile.current) return;
+    const { docType: fromDocType, fromIdx } = dragFile.current;
+    dragFile.current = null;
+    if (fromDocType !== docType || fromIdx === toIdx) return;
+
+    // Reorder uploadedDocuments in state (visual only – no backend call needed for ordering)
+    setUploadedDocuments(prev => {
+      const typeDocs = prev.filter(d => d.document_type === docType && getProfileDocs([d]).length > 0);
+      const otherDocs = prev.filter(d => !(d.document_type === docType && getProfileDocs([d]).length > 0));
+      const moved = [...typeDocs];
+      const item = moved.splice(fromIdx, 1)[0];
+      const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx; // adjust since we removed one
+      moved.splice(insertAt, 0, item);
+      return [...otherDocs, ...moved];
+    });
+  };
+
+  // Prevent browser navigation when OS file is accidentally dropped outside zones
+  React.useEffect(() => {
+    const stop = e => e.preventDefault();
+    window.addEventListener('dragover', stop, false);
+    window.addEventListener('drop', stop, false);
+    return () => {
+      window.removeEventListener('dragover', stop, false);
+      window.removeEventListener('drop', stop, false);
+    };
+  }, []);
+
+  // ── loading / error guards ────────────────────────────────────
   if (loadingTypes) {
     return (
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h1 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style={{borderColor: "#3b82f640"}}>Attachments</h1>
-          <div className="flex items-center justify-center p-8">
-            <div className="flex items-center space-x-3">
-              <div className="loader"></div>
-              <div className="text-lg text-gray-600">Loading attachment types...</div>
-            </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-center py-10">
+          <div className="flex items-center gap-3 text-gray-500">
+            <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+            <span className="text-sm font-medium">Loading attachments...</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // Show error state if userId is not available
   if (!currentUserId || currentUserId === 'default_user') {
     return (
-      <div className="max-w-9xl mx-auto">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h1 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style={{borderColor: "#3b82f640"}}>Attachments</h1>
-          <div className="flex items-center justify-center p-8">
-            <div className="text-lg text-red-600 text-center">
-              Error: User ID not found. Please log in again.
-              <br />
-              <small className="text-gray-500">
-                Debug: userId prop = {userId}, localStorage userId = {localStorage.getItem('userId')}
-              </small>
-            </div>
-          </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-center py-10 text-red-500 text-sm font-medium">
+          Error: User ID not found. Please log in again.
         </div>
       </div>
     );
   }
 
+  // active types + historical types that have uploaded files
+  const allDisplayTypes = [
+    ...attachmentTypes.map(t => ({ ...t, isHistorical: false })),
+    ...historicalAttachmentTypes
+      .filter(t => !attachmentTypes.some(a => a.name === t.name))
+      .filter(t => getProfileDocs(uploadedDocuments.filter(d => d.document_type === t.name)).length > 0)
+      .map(t => ({ ...t, isHistorical: true }))
+  ];
+
+  // ── render ────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style={{borderColor: "#3b82f640"}}>Attachments</h1>
-        
-        {/* Notification area */}
-        {notification && (
-          <div className={`mb-4 p-3 rounded-lg flex items-center ${
-            notification.type === 'error' ? 'bg-red-100 border border-red-300 text-red-800' : 
-            notification.type === 'warning' ? 'bg-yellow-100 border border-yellow-300 text-yellow-800' :
-            'bg-green-100 border border-green-300 text-green-800'
-          }`}>
-            <i className={`mr-2 fas ${
-              notification.type === 'error' ? 'fa-exclamation-circle' : 
-              notification.type === 'warning' ? 'fa-exclamation-triangle' :
-              'fa-check-circle'
-            }`}></i>
-            <span>{notification.message}</span>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-4 w-full">
+
+      {/* Notification Banner */}
+      {notification && (
+        <div className={`mb-3 px-3 py-2 rounded flex items-center gap-2 text-xs font-medium ${
+          notification.type === 'error'   ? 'bg-red-50 border border-red-200 text-red-700' :
+          notification.type === 'warning' ? 'bg-yellow-50 border border-yellow-200 text-yellow-700' :
+                                            'bg-green-50 border border-green-200 text-green-700'
+        }`}>
+          <i className={`fa-solid ${
+            notification.type === 'error'   ? 'fa-circle-xmark' :
+            notification.type === 'warning' ? 'fa-triangle-exclamation' :
+                                              'fa-circle-check'
+          }`}></i>
+          <span className="flex-1">{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="ml-auto opacity-60 hover:opacity-100 transition">
+            <i className="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      )}
+
+      {/* ── Header: DL ALL (left) + Switcher (right) ── */}
+      <div className="mb-2 border-b border-gray-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleDownloadAll}
+            disabled={isDownloadingAll || getProfileDocs(uploadedDocuments).length === 0}
+            className="bg-gray-900 border border-gray-900 text-white px-3 py-1 rounded text-[11px] font-bold hover:bg-black transition flex items-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isDownloadingAll
+              ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
+              : <><i className="fa-solid fa-download mr-1 text-xs"></i> DL ALL ({getProfileDocs(uploadedDocuments).length})</>
+            }
+          </button>
+          <button
+            onClick={loadUploadedDocuments}
+            disabled={isLoading}
+            className="bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-800 px-3 py-1 rounded text-[11px] font-bold transition flex items-center shadow-sm"
+          >
+            <i className="fa-solid fa-rotate-right mr-1 text-xs"></i> REFRESH
+          </button>
+        </div>
+
+        {/* Applicant / Co-Applicant Switcher */}
+        <div className="flex items-center gap-1 bg-gray-100/80 p-0.5 rounded-lg self-start sm:self-auto border border-gray-200 shadow-inner">
+          {['applicant', 'coapplicant'].map(prof => (
+            <button
+              key={prof}
+              onClick={() => setCurrentProfile(prof)}
+              className={`px-4 py-1 rounded-md text-[11px] tracking-wide transition-all ${
+                currentProfile === prof
+                  ? 'font-black bg-white text-[#2563eb] shadow-sm border border-gray-200'
+                  : 'font-bold text-gray-500 hover:text-gray-800 border border-transparent hover:bg-gray-200/50'
+              }`}
+            >
+              {prof === 'applicant' ? 'APPLICANT' : 'CO-APPLICANT'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Document rows ── */}
+      <div className="space-y-2" id="categories-container">
+        {allDisplayTypes.length === 0 && (
+          <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+            No documents active in this section. Go to Settings → Others → Attachment Types to add them.
           </div>
         )}
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Display active attachment types */}
-          {attachmentTypes.map((attachmentType, index) => {
+
+        {(() => {
+          // Global file counter across all doc types — exactly like the HTML's globalFileIndex
+          let globalFileIndex = 1;
+
+          return allDisplayTypes.map((attachmentType) => {
             const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
-            const files = dynamicFiles[key] || [];
             const inputRef = dynamicRefs[key];
             const password = dynamicPasswords[key] || '';
-            
-            // Find uploaded documents for this type
-            const typeDocuments = uploadedDocuments.filter(doc => 
-              doc.document_type === attachmentType.name
+            const typeDocuments = getProfileDocs(
+              uploadedDocuments.filter(doc => doc.document_type === attachmentType.name)
             );
-            
+            // Snapshot the starting global index for this doc type, then advance by count
+            const typeStartGlobal = globalFileIndex;
+            globalFileIndex += typeDocuments.length;
+
             return (
-              <div 
-                key={attachmentType.id || attachmentType._id} 
-                className="attachment-card" 
-                data-category={attachmentType.name}
+              <div
+                key={attachmentType.id || attachmentType._id}
+                className="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <h2 className="text-md font-semibold text-gray-700">
-                      {attachmentType.name}
-                    </h2>
+                {/* ── LEFT: doc label ── */}
+                <div className="w-full md:w-[200px] lg:w-[220px] shrink-0 flex items-start gap-2">
+                  <div className="w-7 h-7 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-xs shrink-0 mt-0.5">
+                    <i className="fa-solid fa-file-invoice"></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-gray-900 text-xs leading-tight pr-1 tracking-tight">
+                      {attachmentType.name.toUpperCase()}
+                    </h4>
+                    {attachmentType.isHistorical && (
+                      <span className="inline-block mt-1 px-1 py-0.5 bg-yellow-100 text-yellow-800 text-[8px] font-bold rounded">ARCHIVE</span>
+                    )}
                     {attachmentType.description && (
-                      <div className="relative">
-                        <div 
-                          className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center cursor-help"
+                      <div className="relative mt-1">
+                        <div
+                          className="w-4 h-4 bg-[#2563eb] rounded-full flex items-center justify-center cursor-help"
                           onMouseEnter={() => handleTooltipEnter(attachmentType.id || attachmentType._id)}
                           onMouseLeave={() => handleTooltipLeave(attachmentType.id || attachmentType._id)}
                         >
-                          <span className="text-white text-xs font-bold">i</span>
+                          <span className="text-white text-[9px] font-bold leading-none">i</span>
                         </div>
                         {showTooltip[attachmentType.id || attachmentType._id] && (
-                          <div 
-                            className="absolute z-[9999] p-4 text-sm text-white bg-gray-800 rounded-lg shadow-lg"
-                            style={{
-                              left: '50%',
-                              bottom: '100%',
-                              transform: 'translateX(-50%)',
-                              marginBottom: '8px',
-                              minWidth: '250px',
-                              maxWidth: '400px',
-                              width: 'auto',
-                              minHeight: '40px',
-                              maxHeight: 'none',
-                              overflow: 'visible',
-                              border: '1px solid rgba(255,255,255,0.2)',
-                              boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
-                            }}
-                            onMouseEnter={() => {
-                              // Debug: Log the description content
-                              console.log('📝 Tooltip Description Debug:', {
-                                raw: attachmentType.description,
-                                type: typeof attachmentType.description,
-                                length: attachmentType.description?.length,
-                                charCodes: attachmentType.description?.split('').map(char => char.charCodeAt(0))
-                              });
-                            }}
+                          <div
+                            className="absolute z-[9999] p-3 text-xs text-white bg-gray-800 rounded-lg shadow-2xl"
+                            style={{ left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: 8, minWidth: 220, maxWidth: 360, border: '1px solid rgba(255,255,255,0.15)' }}
                           >
-                            <div 
-                              style={{ 
-                                wordWrap: 'break-word',
-                                lineHeight: '1.6', 
-                                fontSize: '13px',
-                                padding: '4px 0',
-                                textAlign: 'left',
-                                display: 'block',
-                                maxWidth: '350px',
-                                overflowWrap: 'break-word',
-                                fontFamily: 'inherit'
-                              }}
-                            >
-                              {attachmentType.description ? 
-                                attachmentType.description
-                                  .split(/\r\n|\r|\n|\\n/)
-                                  .map((line, index, array) => (
-                                    <React.Fragment key={index}>
-                                      {line}
-                                      {index < array.length - 1 && <br />}
-                                    </React.Fragment>
-                                  )) :
-                                'No description available'
-                              }
-                            </div>
-                            
-                            <div 
-                              className="absolute w-0 h-0"
-                              style={{
-                                top: '100%',
-                                left: '50%',
-                                transform: 'translateX(-50%)',
-                                borderLeft: '6px solid transparent',
-                                borderRight: '6px solid transparent',
-                                borderTop: '6px solid #374151'
-                              }}
-                            ></div>
+                            {attachmentType.description.split(/\r?\n/).map((line, i, arr) => (
+                              <React.Fragment key={i}>{line}{i < arr.length - 1 && <br />}</React.Fragment>
+                            ))}
+                            <div className="absolute w-0 h-0" style={{ top: '100%', left: '50%', transform: 'translateX(-50%)', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #1f2937' }}></div>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
                 </div>
-                
-                {typeDocuments.length === 0 ? (
-                  <div className="upload-box space-y-3">
-                    <input 
-                      type="password"
-                      placeholder="Password (optional)"
-                      className="password-input w-full px-3 py-2 text-black border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={password}
-                      onChange={(e) => handlePasswordChange(key, e.target.value)}
-                      disabled={isLoading}
-                    />
-                    <div className="relative">
-                      <input 
-                        type="file"
-                        multiple
-                        ref={inputRef}
-                        onChange={handleFileChange(key)}
-                        className="file-input block w-full text-sm text-black file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                        disabled={isLoading}
-                      />
-                      {isLoading && (
-                        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-md">
-                          <div className="flex items-center space-x-2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
-                            <span className="text-sm text-blue-600">Uploading...</span>
+
+                {/* ── MIDDLE: draggable file list ── */}
+                <div className="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-1 flex flex-col gap-1 min-h-[44px]">
+                  {typeDocuments.length > 0 ? (
+                    <div className="space-y-1 w-full">
+                      {typeDocuments.map((doc, fileIdx) => {
+                        const displayNum = typeStartGlobal + fileIdx; // global file number
+                        const fname = (doc.filename || doc.file_name || `Document ${displayNum}`).toUpperCase();
+                        const isLocked = doc.has_password;
+                        const overKey = `${attachmentType.name}_${fileIdx}`;
+                        const isDraggedOver = dragOverKey === overKey;
+
+                        return (
+                          <div
+                            key={doc._id}
+                            draggable
+                            onDragStart={e => handleFileDragStart(e, attachmentType.name, fileIdx)}
+                            onDragOver={e => handleFileDragOver(e, attachmentType.name, fileIdx)}
+                            onDragEnd={handleFileDragEnd}
+                            onDrop={e => handleFileDrop(e, attachmentType.name, fileIdx)}
+                            className={`cursor-grab active:cursor-grabbing bg-white border rounded p-1.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition group/filerow
+                              ${isLocked ? 'border-red-200' : 'border-gray-200'}
+                              ${isDraggedOver ? 'border-t-2 border-t-[#2563eb] !border-blue-300' : 'hover:border-blue-300'}`}
+                          >
+                            {/* file info */}
+                            <div className="flex items-start gap-1.5 min-w-0 pr-2 flex-1 w-full">
+                              <div className="text-[9px] font-black w-4 h-4 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 mt-0.5 group-hover/filerow:bg-blue-100 group-hover/filerow:text-[#2563eb] transition-colors select-none">
+                                {displayNum}
+                              </div>
+                              <i className="fa-solid fa-grip-vertical text-gray-300 text-[10px] mt-0.5 mr-0.5 shrink-0 cursor-grab select-none"></i>
+                              <i className={`fa-solid ${isLocked ? 'fa-file-shield text-red-500' : getFileIconClass(fname)} text-base shrink-0 mt-0.5 select-none`}></i>
+                              <div className="flex-1 w-full min-w-0">
+                                <div className="flex items-start gap-2 group/rn">
+                                  <span className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title={fname}>
+                                    {fname}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* action buttons */}
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto relative z-10">
+                              {isLocked && (
+                                <>
+                                  <input
+                                    type="password"
+                                    id={`pw_${doc._id}`}
+                                    placeholder="Password"
+                                    className="text-[9px] border border-red-200 px-1 py-0.5 rounded w-20 outline-none focus:border-red-400 text-gray-700 bg-white"
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const pw = document.getElementById(`pw_${doc._id}`)?.value || getDocumentPassword(doc);
+                                      if (pw && !String(pw).includes('not available')) {
+                                        navigator.clipboard.writeText(pw);
+                                        showNotification('Password copied!', 'success');
+                                      } else {
+                                        showNotification('Enter the password or it is not stored', 'warning');
+                                      }
+                                    }}
+                                    className="bg-gray-800 hover:bg-black text-white text-[8px] font-bold px-2 py-0.5 rounded whitespace-nowrap transition"
+                                  >
+                                    DECRYPT
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => window.open(`${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`, '_blank')}
+                                className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-[#2563eb] hover:bg-white transition shadow-sm"
+                                title="View"
+                              >
+                                <i className="fa-solid fa-eye text-[10px]"></i>
+                              </button>
+                              <button
+                                onClick={() => handleDownload(doc._id)}
+                                className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-green-600 hover:bg-white transition shadow-sm"
+                                title="Download"
+                              >
+                                <i className="fa-solid fa-download text-[10px]"></i>
+                              </button>
+                              <div className="w-px h-4 bg-gray-200 mx-0.5 hidden sm:block"></div>
+                              <button
+                                onClick={() => handleDelete(doc._id)}
+                                className="bg-red-50 border border-red-100 rounded p-1 text-gray-500 hover:text-red-500 hover:bg-red-100 transition shadow-sm"
+                                title="Delete"
+                              >
+                                <i className="fa-solid fa-trash-can text-[10px]"></i>
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
-                    <p className="text-xs text-gray-500">Files will be uploaded automatically when selected.</p>
+                  ) : (
+                    <div className="text-[11px] text-gray-400 font-medium italic py-2 flex items-center justify-center h-full w-full border border-dashed border-gray-300 rounded bg-gray-50/50">No files attached yet. Click "Attach Files".</div>
+                  )}
+                </div>
+
+                {/* ── RIGHT: upload + password ── */}
+                <div className="w-full md:w-[120px] shrink-0 flex flex-col gap-1 justify-center">
+                  <div className="relative w-full">
+                    <input
+                      type="file"
+                      multiple
+                      ref={inputRef}
+                      onChange={handleFileChange(key)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
+                      disabled={isLoading}
+                      title=""
+                    />
+                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1 transition uppercase pointer-events-none">
+                      {isLoading
+                        ? <><i className="fa-solid fa-spinner fa-spin text-xs"></i> Uploading…</>
+                        : <><i className="fa-solid fa-cloud-arrow-up text-xs"></i> Attach Files</>
+                      }
+                    </button>
                   </div>
-                ) : (
-                  <div className="summary-box flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
-                    <div className="flex items-center space-x-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                      </svg>
-                      <div>
-                        <h3 className="font-bold text-gray-800 file-count-text">
-                          {typeDocuments.length} File{typeDocuments.length !== 1 ? 's' : ''} Uploaded
-                        </h3>
-                        <p className="text-sm text-gray-500">Ready to view or download.</p>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 mt-2 sm:mt-0">
-                      <input 
-                        type="file"
-                        multiple
-                        ref={inputRef}
-                        onChange={handleFileChange(key)}
-                        className="hidden"
-                        disabled={isLoading}
-                      />
-                      <button 
-                        className="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800"
-                        onClick={() => openModal(attachmentType)}
-                      >
-                        Manage
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  <input
+                    type="password"
+                    placeholder="Password (opt.)"
+                    value={password}
+                    onChange={e => handlePasswordChange(key, e.target.value)}
+                    className="w-full text-[10px] px-1.5 py-1 border border-gray-200 rounded focus:outline-none focus:border-blue-400 text-gray-600 bg-white"
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
             );
-          })}
-          
-          {/* Display historical attachment types with uploaded files */}
-          {historicalAttachmentTypes
-            .filter(type => !attachmentTypes.some(active => active.name === type.name))
-            .map((attachmentType, index) => {
-              const typeDocuments = uploadedDocuments.filter(doc => 
-                doc.document_type === attachmentType.name
-              );
-              
-              // Only show if there are uploaded documents
-              if (typeDocuments.length === 0) return null;
-              
-              const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
-              
-              return (
-                <div 
-                  key={attachmentType.id || attachmentType._id} 
-                  className="attachment-card" 
-                  data-category={attachmentType.name}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <h2 className="text-md font-semibold text-gray-700">
-                        {attachmentType.name}
-                      </h2>
-                      <span className="ml-2 text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full">
-                        Archive
-                      </span>
-                      {attachmentType.description && (
-                        <div className="relative">
-                          <div 
-                            className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center cursor-help"
-                            onMouseEnter={() => handleTooltipEnter(attachmentType.id || attachmentType._id)}
-                            onMouseLeave={() => handleTooltipLeave(attachmentType.id || attachmentType._id)}
-                          >
-                            <span className="text-white text-xs font-bold">i</span>
-                          </div>
-                          {showTooltip[attachmentType.id || attachmentType._id] && (
-                            <div 
-                              className="absolute z-[9999] p-4 text-sm text-white bg-gray-800 rounded-lg shadow-lg"
-                              style={{
-                                left: '50%',
-                                bottom: '100%',
-                                transform: 'translateX(-50%)',
-                                marginBottom: '8px',
-                                minWidth: '250px',
-                                maxWidth: '400px',
-                                width: 'auto',
-                                minHeight: '40px',
-                                maxHeight: 'none',
-                                overflow: 'visible',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
-                              }}
-                            >
-                              <div 
-                                style={{ 
-                                  wordWrap: 'break-word',
-                                  lineHeight: '1.6', 
-                                  fontSize: '13px',
-                                  padding: '4px 0',
-                                  textAlign: 'left',
-                                  display: 'block',
-                                  maxWidth: '350px',
-                                  overflowWrap: 'break-word',
-                                  fontFamily: 'inherit'
-                                }}
-                              >
-                                {attachmentType.description ? 
-                                  attachmentType.description
-                                    .split(/\r\n|\r|\n|\\n/)
-                                    .map((line, index, array) => (
-                                      <React.Fragment key={index}>
-                                        {line}
-                                        {index < array.length - 1 && <br />}
-                                      </React.Fragment>
-                                    )) :
-                                  'No description available'
-                                }
-                              </div>
-                              <div 
-                                className="absolute w-0 h-0"
-                                style={{
-                                  top: '100%',
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  borderLeft: '6px solid transparent',
-                                  borderRight: '6px solid transparent',
-                                  borderTop: '6px solid #374151'
-                                }}
-                              ></div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="summary-box flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
-                    <div className="flex items-center space-x-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                      </svg>
-                      <div>
-                        <h3 className="font-bold text-gray-800 file-count-text">
-                          {typeDocuments.length} File{typeDocuments.length !== 1 ? 's' : ''} Uploaded
-                        </h3>
-                        <p className="text-sm text-gray-500">Ready to view or download.</p>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 mt-2 sm:mt-0">
-                      <button 
-                        className="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800"
-                        onClick={() => openModal(attachmentType)}
-                      >
-                        Manage
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            }).filter(Boolean)}
-        </div>
-
-        <div className="mt-8 pt-6 border-t flex items-center justify-end space-x-3">
-          <button
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-blue-300"
-            onClick={loadUploadedDocuments}
-            disabled={isLoading}
-          >
-            Refresh Documents
-          </button>
-          <button
-            id="downloadAllBtn"
-            className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:ring-4 focus:ring-green-300 flex items-center"
-            onClick={handleDownloadAll}
-            disabled={isDownloadingAll || uploadedDocuments.length === 0}
-          >
-            <span id="downloadAllText">
-              {isDownloadingAll ? 'Creating ZIP...' : `Download All Files (${uploadedDocuments.length})`}
-            </span>
-            {isDownloadingAll && (
-              <div id="downloadAllLoader" className="loader ml-2"></div>
-            )}
-          </button>
-          <button
-            className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300"
-            onClick={handleSaveAll}
-            disabled={isLoading || Object.values(dynamicFiles).every(files => files.length === 0)}
-          >
-            {isLoading ? 'Uploading...' : 'Upload All Files'}
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 text-right mt-2">
-          * Each attachment type has its own password field for secure uploads
-        </p>
+          });
+        })()}
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div id="attachmentsModal" className="modal-overlay fixed top-0 left-0 right-0 bottom-0 bg-[rgba(17,24,39,0.6)] backdrop-blur-sm z-40 flex items-center justify-center">
-          <div 
-            ref={modalRef}
-            className={`bg-white rounded-xl shadow-2xl w-full max-w-3xl m-4 transform transition-all duration-300 ease-out ${
-              showModal ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-            }`} 
-            id="modal-panel"
-          >
-            <div className="flex items-center justify-between p-5 border-b">
-              <div className="flex items-center space-x-3">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                </svg>
-                <h2 id="modalTitle" className="text-xl font-bold text-gray-800">
-                  Manage: {currentModalCategory?.name}
-                </h2>
-              </div>
-              <button 
-                id="closeModalBtn" 
-                className="p-1 rounded-full hover:bg-gray-200"
-                onClick={closeModal}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            </div>
-            
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
-              <div id="fileCardGrid" className="file-card-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {currentModalCategory && uploadedDocuments
-                  .filter(doc => doc.document_type === currentModalCategory.name)
-                  .map((doc, idx) => (
-                    <div 
-                      key={idx} 
-                      className="file-card flex flex-col items-center p-3 text-center rounded-lg bg-white border"
-                      data-id={doc._id}
-                    >
-                      <div className="relative">
-                        {doc.file_name?.toLowerCase().endsWith('.pdf') || doc.filename?.toLowerCase().endsWith('.pdf') ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" />
-                          </svg>
-                        ) : doc.file_name?.match(/\.(jpg|jpeg|png|gif)$/i) || doc.filename?.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                          </svg>
-                        )}
-                        
-                        {doc.has_password && (
-                          <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-4 w-4 bg-yellow-500 items-center justify-center">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path>
-                              </svg>
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      
-                      <p className="mt-2 text-sm font-semibold text-gray-800 break-all w-full">
-                        {doc.filename || doc.file_name || `Document ${idx + 1}`}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {doc.fileSize ? `${(doc.fileSize / 1024 / 1024).toFixed(2)} MB` : 'Size unknown'}
-                      </p>
-                      
-                      <div className="w-full border-t my-2"></div>
-                      
-                      <div className="flex items-center justify-center space-x-1 w-full">
-                        <button 
-                          className="view-btn flex items-center justify-center p-1.5 text-gray-500 hover:bg-gray-100 rounded-md tooltip"
-                          onClick={() => window.open(`${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`, '_blank')}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                          </svg>
-                          <span className="tooltiptext">View</span>
-                        </button>
-                        
-                        <button 
-                          className="download-btn flex items-center justify-center p-1.5 text-gray-500 hover:bg-gray-100 rounded-md tooltip"
-                          onClick={() => handleDownload(doc._id)}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                          </svg>
-                          <span className="tooltiptext">Download</span>
-                        </button>
-                        
-                        {doc.has_password && (
-                          <button 
-                            data-password={getDocumentPassword(doc)}
-                            className="copy-password-btn flex items-center justify-center p-1.5 text-blue-600 hover:bg-blue-100 rounded-md tooltip"
-                            onClick={() => {
-                              const password = getDocumentPassword(doc);
-                              if (password && !password.includes("not available")) {
-                                navigator.clipboard.writeText(password);
-                                showNotification("Password copied to clipboard!", "success");
-                              } else {
-                                showNotification("No password available to copy", "warning");
-                              }
-                            }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m-6 4h.01M9 16h.01"></path>
-                            </svg>
-                            <span className="tooltiptext">Copy Password</span>
-                          </button>
-                        )}
-                        
-                        <button 
-                          className="delete-btn flex items-center justify-center p-1.5 text-red-500 hover:bg-red-100 rounded-md tooltip"
-                          onClick={() => handleDelete(doc._id)}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                          </svg>
-                          <span className="tooltiptext">Delete</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  
-                {currentModalCategory && uploadedDocuments.filter(doc => doc.document_type === currentModalCategory.name).length === 0 && (
-                  <p className="text-gray-500 col-span-full text-center">No files uploaded for this category yet.</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-5 border-t bg-gray-50 rounded-b-xl">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload More Files</label>
-              <p className="text-xs text-gray-500 mb-3">Select files and click "Add Files" to upload</p>
-              {isLoading && (
-                <div className="mb-3 text-center">
-                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-sm text-blue-600">Uploading...</span>
-                </div>
-              )}
-              <div className="flex flex-col gap-3">
-                {currentModalCategory && (
-                  <>
-                    <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <input 
-                        id="modalFileInput" 
-                        type="file" 
-                        multiple 
-                        onChange={handleModalFileChange(currentModalCategory.name.toLowerCase().replace(/\s+/g, '_'))}
-                        className="block w-full text-sm text-black file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer flex-grow" 
-                      />
-                      <div className="flex items-center gap-2">
-                        <input 
-                          id="modalPasswordInput" 
-                          type="password" 
-                          placeholder="Password (optional)" 
-                          value={dynamicPasswords[currentModalCategory.name.toLowerCase().replace(/\s+/g, '_')] || ''}
-                          onChange={(e) => {
-                            console.log('Password input change:', e.target.value);
-                            handlePasswordChange(
-                              currentModalCategory.name.toLowerCase().replace(/\s+/g, '_'), 
-                              e.target.value
-                            );
-                          }}
-                          onFocus={() => console.log('Password input focused')}
-                          className="w-full sm:w-auto px-3 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
-                          disabled={false}
-                          readOnly={false}
-                        />
-                        {dynamicPasswords[currentModalCategory.name.toLowerCase().replace(/\s+/g, '_')] && (
-                          <button
-                            type="button"
-                            onClick={() => handlePasswordChange(currentModalCategory.name.toLowerCase().replace(/\s+/g, '_'), '')}
-                            className="px-2 py-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                            title="Clear password"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleModalUpload}
-                        disabled={isLoading || !dynamicFiles[currentModalCategory.name.toLowerCase().replace(/\s+/g, '_')]?.length}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
-                      >
-                        {isLoading ? 'Uploading...' : 'Add Files'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Hidden copy helper textarea */}
-      <textarea id="copy-helper" style={{ position: "absolute", left: "-9999px" }}></textarea>
+      <textarea id="copy-helper" style={{ position: 'absolute', left: '-9999px' }} readOnly></textarea>
     </div>
   );
 }
+

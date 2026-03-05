@@ -10,7 +10,7 @@ class WarningType(str, Enum):
     EARLY_LEAVE = "Early Leave"
 
 class WarningCreate(BaseModel):
-    warning_type: WarningType = Field(..., description="Type of warning")
+    warning_type: str = Field(..., description="Type of warning")
     issued_to: str = Field(..., description="Employee ID who receives the warning")
     penalty_amount: float = Field(..., description="Penalty amount for this warning")
     warning_message: str = Field(..., description="Warning message/description")
@@ -22,7 +22,7 @@ class WarningCreate(BaseModel):
         return v
 
 class WarningUpdate(BaseModel):
-    warning_type: Optional[WarningType] = Field(None, description="Type of warning")
+    warning_type: Optional[str] = Field(None, description="Type of warning")
     penalty_amount: Optional[float] = Field(None, description="Penalty amount for this warning")
     warning_message: Optional[str] = Field(None, description="Warning message/description")
     
@@ -46,6 +46,11 @@ class WarningResponse(BaseModel):
     issued_date: datetime = Field(..., description="Date when warning was issued")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
+    is_waived: bool = Field(default=False, description="Whether the penalty has been waived")
+    waived_by: Optional[str] = Field(None, description="User ID who waived the penalty")
+    waived_at: Optional[str] = Field(None, description="Timestamp when penalty was waived")
+    status: Optional[str] = Field(None, description="Warning status (Pending/Accepted)")
+    employee_status: Optional[str] = Field(None, description="Employee response status")
 
 class WarningStats(BaseModel):
     total_warnings: int = Field(0, description="Total number of warnings")

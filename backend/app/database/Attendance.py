@@ -5,6 +5,7 @@ import pytz
 from typing import Optional, List, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
+from app.utils.timezone import get_ist_now
 
 # Define IST timezone for consistent date/time handling
 IST = pytz.timezone('Asia/Kolkata')
@@ -73,9 +74,9 @@ class AttendanceDB:
                     "status": attendance_data["status"],
                     "comments": attendance_data.get("comments", ""),
                     "marked_by": attendance_data.get("marked_by"),
-                    "marked_at": datetime.now(),
+                    "marked_at": get_ist_now(),
                     "photo_path": attendance_data.get("photo_path"),
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 }
                 
                 await self.collection.update_one(
@@ -95,12 +96,12 @@ class AttendanceDB:
                     "status": attendance_data["status"],  # 1 = Full Day, 0.5 = Half Day, -1 = Absent
                     "comments": attendance_data.get("comments", ""),
                     "marked_by": attendance_data.get("marked_by"),
-                    "marked_at": datetime.now(),
+                    "marked_at": get_ist_now(),
                     "photo_path": attendance_data.get("photo_path"),
                     "check_in_time": attendance_data.get("check_in_time"),
                     "is_holiday": attendance_data.get("is_holiday", False),
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now()
+                    "created_at": get_ist_now(),
+                    "updated_at": get_ist_now()
                 }
                 
                 result = await self.collection.insert_one(attendance_doc)
@@ -354,9 +355,9 @@ class AttendanceDB:
         """Get monthly attendance data for calendar view"""
         try:
             if not year:
-                year = datetime.now().year
+                year = get_ist_now().year
             if not month:
-                month = datetime.now().month
+                month = get_ist_now().month
                 
             # Create date range for the month
             start_date = date(year, month, 1)
@@ -662,7 +663,7 @@ class AttendanceDB:
     async def update_attendance_record(self, attendance_id: str, update_data: Dict[str, Any], updated_by: str) -> bool:
         """Update an existing attendance record (for editing functionality)"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             update_data["updated_by"] = updated_by
             
             # Recalculate working hours if times are updated
@@ -736,7 +737,7 @@ class AttendanceDB:
             update_doc = {
                 "type": "attendance_settings",
                 "data": settings_data,
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             result = await settings_collection.update_one(
@@ -772,6 +773,10 @@ class AttendanceDB:
                     "updated_at": datetime.now(IST)
                 }
                 
+                # Update status if provided (based on timing rules)
+                if "status" in check_in_data:
+                    update_data["status"] = check_in_data["status"]
+                
                 await self.collection.update_one(
                     {"_id": existing["_id"]},
                     {"$set": update_data}
@@ -801,12 +806,12 @@ class AttendanceDB:
                     "check_out_photo_path": None,
                     "check_out_geolocation": None,
                     "total_working_hours": 0.0,
-                    "status": 1.0,  # Will be updated on check-out
+                    "status": check_in_data.get("status", 1.0),  # Use status from check_in_data (based on timing rules)
                     "comments": check_in_data.get("comments", ""),
                     "admin_comments": "",
                     "is_holiday": False,
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now()
+                    "created_at": get_ist_now(),
+                    "updated_at": get_ist_now()
                 }
                 
                 result = await self.collection.insert_one(attendance_doc)
@@ -849,7 +854,7 @@ class AttendanceDB:
                 "$inc": {"grace_used": 1},
                 "$push": {"dates_applied": date_used},
                 "$setOnInsert": {"user_id": user_id, "year_month": year_month},
-                "$set": {"updated_at": datetime.now()}
+                "$set": {"updated_at": get_ist_now()}
             },
             upsert=True
         )
@@ -942,7 +947,7 @@ class AttendanceDB:
                 "status": final_status,
                 "grace_applied": grace_applied,
                 "comments": check_out_data.get("comments", existing.get("comments", "")),
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             await self.collection.update_one(
@@ -1046,9 +1051,9 @@ class AttendanceDB:
             
             # Prepare update data
             update_data = {
-                "updated_at": datetime.now(),
+                "updated_at": get_ist_now(),
                 "edited_by": edited_by,
-                "edited_at": datetime.now()
+                "edited_at": get_ist_now()
             }
             
             # Update fields if provided
@@ -1100,7 +1105,7 @@ class AttendanceDB:
                     "face_descriptors": face_data["face_descriptors"],
                     "samples_count": len(face_data["face_descriptors"]),
                     "reference_photo_path": face_data.get("reference_photo_path"),
-                    "last_updated": datetime.now(),
+                    "last_updated": get_ist_now(),
                     "updated_by": face_data.get("registered_by")
                 }
                 
@@ -1117,9 +1122,9 @@ class AttendanceDB:
                     "face_descriptors": face_data["face_descriptors"],
                     "samples_count": len(face_data["face_descriptors"]),
                     "reference_photo_path": face_data.get("reference_photo_path"),
-                    "registered_at": datetime.now(),
+                    "registered_at": get_ist_now(),
                     "registered_by": face_data.get("registered_by"),
-                    "last_updated": datetime.now(),
+                    "last_updated": get_ist_now(),
                     "is_active": True
                 }
                 
@@ -1151,7 +1156,7 @@ class AttendanceDB:
             face_collection = self.db['employee_faces']
             result = await face_collection.update_one(
                 {"employee_id": employee_id},
-                {"$set": {"is_active": False, "deleted_at": datetime.now()}}
+                {"$set": {"is_active": False, "deleted_at": get_ist_now()}}
             )
             
             return result.modified_count > 0
@@ -1192,7 +1197,7 @@ class AttendanceDB:
                 "confidence_score": log_data.get("confidence_score", 0.0),
                 "threshold_used": log_data.get("threshold_used", 0.6),
                 "photo_path": log_data.get("photo_path"),
-                "timestamp": datetime.now(),
+                "timestamp": get_ist_now(),
                 "ip_address": log_data.get("ip_address"),
                 "device_info": log_data.get("device_info")
             }

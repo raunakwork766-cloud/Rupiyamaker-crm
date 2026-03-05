@@ -17,7 +17,7 @@ const DailyTasksSummary = ({ summaryData, onClose, onViewTask, onViewAllTasks })
   const { date, task_count, high_priority_count, tasks } = summaryData.details;
 
   // Format date
-  const formattedDate = date ? new Date(date).toLocaleDateString() : 'Today';
+  const formattedDate = date ? new Date(date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Today';
 
   // Get priority color
   const getPriorityColor = (priority) => {
@@ -82,7 +82,7 @@ const DailyTasksSummary = ({ summaryData, onClose, onViewTask, onViewAllTasks })
                       <div>
                         <h4 className="font-medium text-gray-800">{task.title}</h4>
                         <p className="text-sm text-gray-500">
-                          {task.status} • Due: {task.due_date ? new Date(task.due_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Not set'}
+                          {task.status} • Due: {task.due_date ? new Date(task.due_date).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute:'2-digit' }) : 'Not set'}
                         </p>
                       </div>
                     </div>

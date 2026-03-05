@@ -1,31 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  Button,
-  TextField,
-  Grid,
-  Typography,
-  Box,
-  Switch,
-  FormControlLabel,
-  FormGroup,
-  Checkbox,
-  Divider,
-  Alert,
-  Snackbar,
-  Paper,
-  CircularProgress,
-} from '@mui/material';
-import {
-  Save as SaveIcon,
-  Settings as SettingsIcon,
-  RestoreFromTrash as ResetIcon,
-  AccessTime as TimeIcon,
-  LocationOn as LocationIcon,
-  Camera as CameraIcon,
-} from '@mui/icons-material';
 import axios from 'axios';
 import FaceRegistration from './FaceRegistration';
 import PaidLeaveManagement from './PaidLeaveManagement';
@@ -48,6 +21,10 @@ const AttendanceSettingsTab = ({ userId }) => {
     // Grace Period Settings (New)
     grace_period_minutes: 30,
     grace_usage_limit: 2, // per month
+
+    // Leave Monthly Allotments — shown in attendance page PL/EL columns
+    default_earned_leave_monthly: 1.5,  // EL credited per month
+    default_paid_leave_monthly: 1.0,    // PL credited per month
 
     // Auto Grace (Threshold-Based)
     auto_grace_enabled: true,
@@ -221,747 +198,426 @@ const AttendanceSettingsTab = ({ userId }) => {
 
   if (loading) {
     return (
-      <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
-        <Typography>Loading attendance settings...</Typography>
-      </Paper>
+      <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+        <i className="fa-solid fa-spinner fa-spin mr-2 text-blue-500"></i> Loading attendance settings…
+      </div>
     );
   }
 
+  // ── shared Tailwind helpers ──────────────────────────────────
+  const SectionCard = ({ icon, title, subtitle, color = 'blue', children }) => {
+    const border = {
+      blue:   'border-blue-400',   green:  'border-green-500',
+      yellow: 'border-yellow-400', red:    'border-red-400',
+      purple: 'border-purple-400', indigo: 'border-indigo-400',
+      teal:   'border-teal-400',
+    }[color] || 'border-gray-300';
+    const iconBg = {
+      blue:   'bg-blue-100 text-blue-600',   green:  'bg-green-100 text-green-600',
+      yellow: 'bg-yellow-100 text-yellow-600', red: 'bg-red-100 text-red-600',
+      purple: 'bg-purple-100 text-purple-600', indigo: 'bg-indigo-100 text-indigo-600',
+      teal:   'bg-teal-100 text-teal-600',
+    }[color] || 'bg-gray-100 text-gray-600';
+    return (
+      <div className={`bg-white rounded-xl border-2 ${border} shadow-sm overflow-hidden`}>
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
+          {icon && <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${iconBg} shrink-0`}>{icon}</div>}
+          <div>
+            <h3 className="font-black text-gray-800 text-sm leading-tight">{title}</h3>
+            {subtitle && <p className="text-[11px] text-gray-500 mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    );
+  };
+
+  const FieldLabel = ({ children, hint }) => (
+    <div className="mb-1">
+      <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">{children}</span>
+      {hint && <span className="ml-1.5 text-[10px] text-gray-400">({hint})</span>}
+    </div>
+  );
+
+  const TimeInput = ({ label, hint, field, value }) => (
+    <div>
+      <FieldLabel hint={hint}>{label}</FieldLabel>
+      <input
+        type="time"
+        value={formatTime(value)}
+        onChange={e => handleTimeChange(field, e.target.value)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-white"
+      />
+    </div>
+  );
+
+  const NumberInput = ({ label, hint, field, value, min, max, step = 1, disabled = false }) => (
+    <div>
+      <FieldLabel hint={hint}>{label}</FieldLabel>
+      <input
+        type="number"
+        value={value ?? ''}
+        onChange={e => handleSettingChange(field, parseFloat(e.target.value) || 0)}
+        min={min} max={max} step={step}
+        disabled={disabled}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-white disabled:bg-gray-50 disabled:text-gray-400"
+      />
+    </div>
+  );
+
+  const Toggle = ({ label, desc, field, value, color = 'blue' }) => {
+    const track = value
+      ? { blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-400', red: 'bg-red-500' }[color] || 'bg-blue-500'
+      : 'bg-gray-300';
+    return (
+      <label className="flex items-start gap-3 cursor-pointer group">
+        <div className="relative mt-0.5 shrink-0">
+          <input type="checkbox" checked={value} onChange={e => handleSettingChange(field, e.target.checked)} className="sr-only" />
+          <div className={`w-10 h-5 rounded-full transition-colors ${track}`}></div>
+          <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${value ? 'translate-x-5' : ''}`}></div>
+        </div>
+        <div>
+          <div className="text-sm font-bold text-gray-700 leading-tight">{label}</div>
+          {desc && <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{desc}</div>}
+        </div>
+      </label>
+    );
+  };
+
+  const InfoBox = ({ type = 'info', children }) => {
+    const styles = {
+      info:    'bg-blue-50 border-blue-200 text-blue-700',
+      success: 'bg-green-50 border-green-200 text-green-700',
+      warning: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+      error:   'bg-red-50 border-red-200 text-red-700',
+    }[type];
+    const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '🚫' }[type];
+    return (
+      <div className={`rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed ${styles}`}>
+        <span className="mr-1">{icons}</span>{children}
+      </div>
+    );
+  };
+  // ─────────────────────────────────────────────────────────────
+
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 2 }}>
-      {/* Sub-Tab Navigation */}
-      <Box sx={{ display: 'flex', gap: 0, mb: 3, border: '1px solid #374151', borderRadius: '8px', overflow: 'hidden' }}>
-        <button
-          onClick={() => setSubTab('settings')}
-          style={{
-            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
-            background: subTab === 'settings' ? 'linear-gradient(to right, #2563eb, #7c3aed)' : '#111827',
-            color: subTab === 'settings' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-          }}>
-          ⚙️ Attendance Settings
-        </button>
-        <button
-          onClick={() => setSubTab('face-registration')}
-          style={{
-            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
-            background: subTab === 'face-registration' ? 'linear-gradient(to right, #7c3aed, #db2777)' : '#111827',
-            color: subTab === 'face-registration' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-          }}>
-          📷 Face Registration
-        </button>
-        <button
-          onClick={() => setSubTab('leave-management')}
-          style={{
-            flex: 1, padding: '12px 16px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500',
-            background: subTab === 'leave-management' ? 'linear-gradient(to right, #059669, #0891b2)' : '#111827',
-            color: subTab === 'leave-management' ? '#fff' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-          }}>
-          📋 Leave Management
-        </button>
-      </Box>
+    <div className="w-full">
+      {/* ── Sub-Tab Navigation ── */}
+      <div className="flex rounded-xl overflow-hidden border border-gray-200 shadow-sm mb-5">
+        {[
+          { id: 'settings',         label: 'Attendance Settings', icon: '⚙️' },
+          { id: 'face-registration', label: 'Face Registration',  icon: '📷' },
+          { id: 'leave-management',  label: 'Leave Management',   icon: '📋' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSubTab(t.id)}
+            className={`flex-1 py-2.5 px-3 text-[11px] font-bold transition flex items-center justify-center gap-1.5 ${
+              subTab === t.id
+                ? 'bg-[#2563eb] text-white shadow-inner'
+                : 'bg-white text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <span>{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Face Registration Sub-Tab */}
       {subTab === 'face-registration' && <FaceRegistration />}
+      {subTab === 'leave-management'  && <PaidLeaveManagement />}
 
-      {/* Leave Management Sub-Tab */}
-      {subTab === 'leave-management' && <PaidLeaveManagement />}
+      {subTab === 'settings' && (
+        <div className="space-y-5">
 
-      {/* Attendance Settings Sub-Tab */}
-      {subTab === 'settings' && <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
-        {/* Header */}
-        <Card elevation={2} sx={{ mb: 3 }}>
-          <CardHeader
-            avatar={<SettingsIcon />}
-            title="Attendance Settings"
-            subheader="Configure attendance system parameters and rules"
-            action={
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<ResetIcon />}
-                  onClick={resetToDefaults}
-                  disabled={saveLoading}
-                >
-                  Reset to Defaults
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  onClick={saveSettings}
-                  disabled={!hasChanges || saveLoading}
-                  loading={saveLoading}
-                >
-                  {saveLoading ? 'Saving...' : 'Save Settings'}
-                </Button>
-              </Box>
-            }
-          />
-        </Card>
+          {/* ── Sticky Save Bar ── */}
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div>
+              <h2 className="text-sm font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
+                <span className="text-base">⚙️</span> Attendance Settings
+              </h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">Configure attendance system parameters and rules</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(success || error) && (
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                  {success || error}
+                </span>
+              )}
+              <button
+                onClick={resetToDefaults}
+                disabled={saveLoading}
+                className="border border-gray-300 text-gray-600 hover:border-gray-700 hover:text-gray-800 px-3 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 disabled:opacity-40"
+              >
+                🔄 Reset to Defaults
+              </button>
+              <button
+                onClick={saveSettings}
+                disabled={!hasChanges || saveLoading}
+                className="bg-[#2563eb] hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              >
+                {saveLoading ? <><i className="fa-solid fa-spinner fa-spin mr-1"></i> Saving…</> : '💾 Save Settings'}
+              </button>
+            </div>
+          </div>
 
-        <Grid container spacing={3}>
-          {/* === NEW: Shift Timing Settings === */}
-          <Grid item xs={12}>
-            <Card elevation={2} sx={{ bgcolor: '#f8f9fa', border: '2px solid #2196f3' }}>
-              <CardHeader
-                avatar={<TimeIcon sx={{ color: '#2196f3' }} />}
-                title="Shift Timing Settings (Primary)"
-                subheader="⚠️ Main shift timing configuration - This overrides check-in/check-out times"
-                titleTypographyProps={{ fontWeight: 'bold' }}
+          {/* ── ROW 1: Shift Timing (full width) ── */}
+          <SectionCard
+            icon={<i className="fa-regular fa-clock text-sm"></i>}
+            title="Shift Timing Settings (Primary)"
+            subtitle="Main shift timing — overrides check-in/check-out times"
+            color="blue"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <TimeInput label="Shift Start Time" hint="e.g. 10:00 AM" field="shift_start_time" value={settings.shift_start_time} />
+              <TimeInput label="Shift End Time"   hint="e.g. 7:00 PM"  field="shift_end_time"   value={settings.shift_end_time} />
+              <div>
+                <FieldLabel hint="After this = Half Day">Reporting Deadline</FieldLabel>
+                <input
+                  type="time"
+                  value={formatTime(settings.reporting_deadline)}
+                  onChange={e => handleTimeChange('reporting_deadline', e.target.value)}
+                  className="w-full border-2 border-yellow-400 rounded-lg px-3 py-2 text-sm font-mono text-gray-800 focus:outline-none focus:border-yellow-500 bg-yellow-50"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <InfoBox type="info">
+                <strong>Rule:</strong> Punch In before <strong>{formatTime(settings.reporting_deadline)}</strong> = Present &nbsp;|&nbsp; Punch In after <strong>{formatTime(settings.reporting_deadline)}</strong> = Half Day
+              </InfoBox>
+            </div>
+          </SectionCard>
+
+          {/* ── ROW 2: Working Hours + Leave Allotment ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard
+              icon={<i className="fa-solid fa-timer text-sm"></i>}
+              title="Working Hours (Main Calculation)"
+              subtitle="These hours determine final attendance status"
+              color="indigo"
+            >
+              <div className="space-y-3">
+                <NumberInput label="Full Day Working Hours" hint="hours" field="full_day_working_hours" value={settings.full_day_working_hours} min={1} max={24} step={0.5} />
+                <NumberInput label="Half Day Minimum Hours"  hint="hours" field="half_day_minimum_working_hours" value={settings.half_day_minimum_working_hours} min={1} max={12} step={0.5} />
+                <InfoBox type="warning">
+                  ≥ <strong>{settings.full_day_working_hours} hrs</strong> = Full Day (1) &nbsp;•&nbsp;
+                  ≥ <strong>{settings.half_day_minimum_working_hours} hrs</strong> = Half Day (0.5) &nbsp;•&nbsp;
+                  Below = Zero (0)
+                </InfoBox>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              icon="📋"
+              title="Monthly Leave Allotment per Employee"
+              subtitle="EL & PL days credited each month per employee"
+              color="teal"
+            >
+              <div className="space-y-3">
+                <NumberInput label="EL per Month (Earned Leave)" hint="days" field="default_earned_leave_monthly" value={settings.default_earned_leave_monthly} min={0} max={5} step={0.5} />
+                <NumberInput label="PL per Month (Paid Leave)"   hint="days" field="default_paid_leave_monthly"  value={settings.default_paid_leave_monthly}  min={0} max={5} step={0.5} />
+                <InfoBox type="info">
+                  Every employee gets <strong>{Math.round(settings.default_earned_leave_monthly ?? 1.5)} EL</strong> and <strong>{settings.default_paid_leave_monthly ?? 1} PL</strong> per month.
+                </InfoBox>
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── ROW 3: Grace Period ── */}
+          <SectionCard
+            icon="⏱️"
+            title="Grace Period Configuration"
+            subtitle="Allow limited late arrival without penalty"
+            color="yellow"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <NumberInput label="Grace Period" hint="minutes" field="grace_period_minutes" value={settings.grace_period_minutes} min={0} max={60} step={5} />
+              <NumberInput label="Grace Usage Limit" hint="per month" field="grace_usage_limit" value={settings.grace_usage_limit} min={0} max={10} step={1} />
+            </div>
+            <div className="mt-3">
+              <InfoBox type="info">
+                Deadline {formatTime(settings.reporting_deadline)} + {settings.grace_period_minutes} min grace = check-in by <strong>{(() => {
+                  const [h, m] = (settings.reporting_deadline || '10:15').split(':').map(Number);
+                  const total = h * 60 + m + (settings.grace_period_minutes || 0);
+                  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+                })()}</strong> = Present (if grace applies)
+              </InfoBox>
+            </div>
+          </SectionCard>
+
+          {/* ── ROW 4: Auto Grace ── */}
+          <SectionCard
+            icon="🎖️"
+            title="Auto Grace — Threshold Based"
+            subtitle="Grace marks earned automatically based on monthly attendance"
+            color="green"
+          >
+            <div className="space-y-4">
+              <Toggle
+                label={settings.auto_grace_enabled ? '✅ Auto Grace Enabled' : '⛔ Auto Grace Disabled'}
+                field="auto_grace_enabled"
+                value={settings.auto_grace_enabled}
+                color="green"
               />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      label="Shift Start Time"
-                      type="time"
-                      value={formatTime(settings.shift_start_time)}
-                      onChange={(e) => handleTimeChange('shift_start_time', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      helperText="Official shift start (e.g., 10:00 AM)"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      label="Shift End Time"
-                      type="time"
-                      value={formatTime(settings.shift_end_time)}
-                      onChange={(e) => handleTimeChange('shift_end_time', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      helperText="Official shift end (e.g., 7:00 PM)"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      label="Reporting Deadline"
-                      type="time"
-                      value={formatTime(settings.reporting_deadline)}
-                      onChange={(e) => handleTimeChange('reporting_deadline', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      helperText="After this = Half Day (e.g., 10:15 AM)"
-                      sx={{ '& .MuiInputBase-root': { bgcolor: '#fff3cd' } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Alert severity="info">
-                      <strong>Rule:</strong> Punch In before {formatTime(settings.reporting_deadline)} = Present | 
-                      Punch In after {formatTime(settings.reporting_deadline)} = Half Day
-                    </Alert>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <NumberInput label="Max Graces / Month" field="auto_grace_monthly_limit" value={settings.auto_grace_monthly_limit} min={1} max={10} disabled={!settings.auto_grace_enabled} />
+                <div>
+                  <FieldLabel hint="unlock 1st grace">🥉 Grace 1 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_1} onChange={e => handleSettingChange('auto_grace_threshold_1', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+                <div>
+                  <FieldLabel hint="unlock 2nd grace">🥈 Grace 2 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_2} onChange={e => handleSettingChange('auto_grace_threshold_2', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+                <div>
+                  <FieldLabel hint="unlock 3rd grace">🥇 Grace 3 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_3} onChange={e => handleSettingChange('auto_grace_threshold_3', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+              </div>
+              <InfoBox type="success">
+                🥉 After <strong>{settings.auto_grace_threshold_1} days</strong> → Grace 1 &nbsp;|&nbsp;
+                🥈 After <strong>{settings.auto_grace_threshold_2} days</strong> → Grace 2 &nbsp;|&nbsp;
+                🥇 After <strong>{settings.auto_grace_threshold_3} days</strong> → Grace 3 &nbsp;|&nbsp;
+                Max <strong>{settings.auto_grace_monthly_limit}</strong> graces/month. All auto-applied on check-out.
+              </InfoBox>
+            </div>
+          </SectionCard>
 
-          {/* === NEW: Enhanced Working Hours Settings === */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2} sx={{ bgcolor: '#f1f8ff', border: '2px solid #0366d6' }}>
-              <CardHeader
-                title="Working Hours Settings (Main Calculation)"
-                subheader="These hours determine final attendance status"
-                titleTypographyProps={{ fontWeight: 'bold' }}
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Full Day Working Hours"
-                      type="number"
-                      value={settings.full_day_working_hours}
-                      onChange={(e) => handleSettingChange('full_day_working_hours', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 24, step: 0.5 }}
-                      helperText="Working ≥ 9 hrs = Full Day (Count = 1)"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Half Day Minimum Working Hours"
-                      type="number"
-                      value={settings.half_day_minimum_working_hours}
-                      onChange={(e) => handleSettingChange('half_day_minimum_working_hours', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 12, step: 0.5 }}
-                      helperText="Working ≥ 5 hrs but < 9 = Half Day (Count = 0.5)"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Alert severity="warning">
-                      <strong>Logic:</strong> <br/>
-                      • ≥ {settings.full_day_working_hours} hrs = <strong>Full Day</strong> (1) <br/>
-                      • ≥ {settings.half_day_minimum_working_hours} hrs but &lt; {settings.full_day_working_hours} = <strong>Half Day</strong> (0.5) <br/>
-                      • &lt; {settings.half_day_minimum_working_hours} hrs = <strong>Zero</strong> (0)
-                    </Alert>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
+          {/* ── ROW 5: Leave Rules + Sunday Rules ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon="🚫" title="Leave & Absconding Rules" subtitle="Auto-conversion and penalty settings" color="red">
+              <div className="space-y-3">
+                <NumberInput label="Pending Leave Auto-Convert" hint="days" field="pending_leave_auto_convert_days" value={settings.pending_leave_auto_convert_days} min={1} max={7} />
+                <div>
+                  <FieldLabel hint="fixed at -1">Absconding Penalty</FieldLabel>
+                  <input type="number" value={settings.absconding_penalty} disabled
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-400 bg-gray-50 cursor-not-allowed" />
+                </div>
+                <InfoBox type="error">
+                  Leave not approved for <strong>{settings.pending_leave_auto_convert_days} days</strong> → Auto Absconding (-1). Manager can still approve to convert back.
+                </InfoBox>
+              </div>
+            </SectionCard>
 
-          {/* === NEW: Grace Period Settings === */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2} sx={{ bgcolor: '#fff8e1', border: '2px solid #ffc107' }}>
-              <CardHeader
-                title="Grace Period Configuration"
-                subheader="Limited late coming without penalty"
-                titleTypographyProps={{ fontWeight: 'bold' }}
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Grace Period (Minutes)"
-                      type="number"
-                      value={settings.grace_period_minutes}
-                      onChange={(e) => handleSettingChange('grace_period_minutes', parseInt(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 0, max: 60, step: 5 }}
-                      helperText="E.g., 30 mins grace after deadline"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Grace Usage Limit (per month)"
-                      type="number"
-                      value={settings.grace_usage_limit}
-                      onChange={(e) => handleSettingChange('grace_usage_limit', parseInt(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 0, max: 10, step: 1 }}
-                      helperText="How many times grace can be used per month"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Alert severity="info">
-                      <strong>Example:</strong> Reporting deadline 10:15, Grace 30 mins<br/>
-                      • Punch In 10:40 with grace available = <strong>Present</strong><br/>
-                      • Punch In 10:40 with grace exhausted = <strong>Half Day</strong>
-                    </Alert>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
+            <SectionCard icon="📅" title="Sunday & Sandwich Rules" subtitle="Weekend penalty rules for absconding" color="purple">
+              <div className="space-y-4">
+                <Toggle
+                  label="Sunday Sandwich Rule"
+                  desc="Saturday/Monday absconding → Sunday automatically becomes Zero"
+                  field="enable_sunday_sandwich_rule"
+                  value={settings.enable_sunday_sandwich_rule}
+                  color="blue"
+                />
+                <Toggle
+                  label="Adjacent Absconding Rule"
+                  desc="Sat Abscond → next Sunday = Absent | Mon Abscond → prev Sunday = Absent"
+                  field="enable_adjacent_absconding_rule"
+                  value={settings.enable_adjacent_absconding_rule ?? true}
+                  color="yellow"
+                />
+                <NumberInput
+                  label="Minimum Working Days for Sunday"
+                  hint="if less → Sunday = 0"
+                  field="minimum_working_days_for_sunday"
+                  value={settings.minimum_working_days_for_sunday}
+                  min={3} max={6}
+                  disabled={!settings.enable_sunday_sandwich_rule}
+                />
+                <InfoBox type="warning">
+                  Working days &lt; <strong>{settings.minimum_working_days_for_sunday}</strong> in a week → Sunday = <strong>Zero (0)</strong>. Penalty applied once per Sunday.
+                </InfoBox>
+              </div>
+            </SectionCard>
+          </div>
 
-          {/* === Auto Grace (Threshold-Based) === */}
-          <Grid item xs={12}>
-            <Card elevation={2} sx={{ bgcolor: '#e8f5e9', border: '2px solid #2e7d32' }}>
-              <CardHeader
-                title="🎖️ Auto Grace — Threshold Based"
-                subheader="Grace marks earned automatically based on monthly attendance"
-                titleTypographyProps={{ fontWeight: 'bold', color: '#1b5e20' }}
-              />
-              <CardContent>
-                <Grid container spacing={2} alignItems="flex-start">
+          {/* ── ROW 6: Time Config + Working Hours (Legacy) ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon={<i className="fa-regular fa-clock text-sm"></i>} title="Time Configuration (Legacy)" subtitle="Standard check-in/check-out times (overridden by Shift Timing above)" color="blue">
+              <div className="grid grid-cols-2 gap-3">
+                <TimeInput label="Check-in Time"              field="check_in_time"            value={settings.check_in_time} />
+                <TimeInput label="Check-out Time"             field="check_out_time"           value={settings.check_out_time} />
+                <TimeInput label="Late Arrival Threshold"     hint="after = half day" field="late_arrival_threshold"  value={settings.late_arrival_threshold} />
+                <TimeInput label="Early Departure Threshold"  hint="before = half day" field="early_departure_threshold" value={settings.early_departure_threshold} />
+              </div>
+            </SectionCard>
 
-                  {/* Enable Toggle */}
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.auto_grace_enabled}
-                          onChange={(e) => handleSettingChange('auto_grace_enabled', e.target.checked)}
-                          color="success"
-                        />
-                      }
-                      label={
-                        <Typography fontWeight="bold">
-                          {settings.auto_grace_enabled ? '✅ Auto Grace Enabled' : '⛔ Auto Grace Disabled'}
-                        </Typography>
-                      }
-                    />
-                  </Grid>
+            <SectionCard icon="🕐" title="Working Hours Configuration (Legacy)" subtitle="Legacy minimum hours per attendance status" color="indigo">
+              <div className="grid grid-cols-2 gap-3">
+                <NumberInput label="Total Working Hours"     hint="hrs/day" field="total_working_hours"           value={settings.total_working_hours}           min={1} max={24} step={0.5} />
+                <NumberInput label="Min Hours Full Day"      hint="hours"   field="minimum_working_hours_full_day" value={settings.minimum_working_hours_full_day} min={1} max={24} step={0.5} />
+                <NumberInput label="Min Hours Half Day"      hint="hours"   field="minimum_working_hours_half_day" value={settings.minimum_working_hours_half_day} min={1} max={12} step={0.5} />
+                <NumberInput label="Overtime Threshold"      hint="hours"   field="overtime_threshold"             value={settings.overtime_threshold}             min={1} max={24} step={0.5} />
+              </div>
+            </SectionCard>
+          </div>
 
-                  {/* Monthly Limit */}
-                  <Grid item xs={12} sm={3}>
-                    <TextField
-                      label="Max Graces per Month"
-                      type="number"
-                      value={settings.auto_grace_monthly_limit}
-                      onChange={(e) => handleSettingChange('auto_grace_monthly_limit', parseInt(e.target.value))}
-                      fullWidth
-                      disabled={!settings.auto_grace_enabled}
-                      inputProps={{ min: 1, max: 10, step: 1 }}
-                      helperText="Total graces available per month"
+          {/* ── ROW 7: Weekend + Permissions + Security + Geofence ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon="📆" title="Weekend Configuration" subtitle="Days considered as non-working weekends" color="teal">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {weekDays.map(d => (
+                  <label key={d.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition text-sm font-medium ${
+                    settings.weekend_days.includes(d.value)
+                      ? 'bg-blue-50 border-blue-400 text-blue-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={settings.weekend_days.includes(d.value)}
+                      onChange={() => handleWeekendDayChange(d.value)}
+                      className="hidden"
                     />
-                  </Grid>
+                    <div className={`w-4 h-4 rounded flex items-center justify-center border ${settings.weekend_days.includes(d.value) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                      {settings.weekend_days.includes(d.value) && <i className="fa-solid fa-check text-white text-[8px]"></i>}
+                    </div>
+                    {d.label}
+                  </label>
+                ))}
+              </div>
+            </SectionCard>
 
-                  {/* Threshold 1 */}
-                  <Grid item xs={12} sm={3}>
-                    <TextField
-                      label="Grace 1 — Present Days"
-                      type="number"
-                      value={settings.auto_grace_threshold_1}
-                      onChange={(e) => handleSettingChange('auto_grace_threshold_1', parseInt(e.target.value))}
-                      fullWidth
-                      disabled={!settings.auto_grace_enabled}
-                      inputProps={{ min: 1, max: 31, step: 1 }}
-                      helperText="Days present to unlock 1st grace"
-                      InputProps={{
-                        startAdornment: <Typography sx={{ mr: 1, color: '#388e3c', fontWeight: 'bold' }}>🥉</Typography>
-                      }}
-                    />
-                  </Grid>
+            <div className="space-y-5">
+              <SectionCard icon="🔐" title="Check-in/out Permissions" subtitle="Control early/late check-in and check-out" color="green">
+                <div className="space-y-3">
+                  <Toggle label="Allow Early Check-in"  desc="Employees can check in before scheduled time" field="allow_early_check_in"  value={settings.allow_early_check_in}  color="green" />
+                  <Toggle label="Allow Late Check-out"  desc="Employees can check out after scheduled time" field="allow_late_check_out"  value={settings.allow_late_check_out}   color="green" />
+                </div>
+              </SectionCard>
 
-                  {/* Threshold 2 */}
-                  <Grid item xs={12} sm={3}>
-                    <TextField
-                      label="Grace 2 — Present Days"
-                      type="number"
-                      value={settings.auto_grace_threshold_2}
-                      onChange={(e) => handleSettingChange('auto_grace_threshold_2', parseInt(e.target.value))}
-                      fullWidth
-                      disabled={!settings.auto_grace_enabled}
-                      inputProps={{ min: 1, max: 31, step: 1 }}
-                      helperText="Days present to unlock 2nd grace"
-                      InputProps={{
-                        startAdornment: <Typography sx={{ mr: 1, color: '#1976d2', fontWeight: 'bold' }}>🥈</Typography>
-                      }}
-                    />
-                  </Grid>
+              <SectionCard icon={<i className="fa-solid fa-camera text-sm"></i>} title="Requirements & Security" subtitle="Mandatory fields and validations" color="indigo">
+                <div className="space-y-3">
+                  <Toggle label="Photo Required"          desc="Selfie required for check-in/check-out"          field="require_photo"       value={settings.require_photo}       color="blue" />
+                  <Toggle label="Geolocation Required"    desc="GPS location required for check-in/check-out"     field="require_geolocation" value={settings.require_geolocation} color="blue" />
+                  <Toggle label="Enable Geofence"         desc="Restrict check-in to office radius"               field="geofence_enabled"    value={settings.geofence_enabled}    color="blue" />
+                </div>
+              </SectionCard>
+            </div>
+          </div>
 
-                  {/* Threshold 3 */}
-                  <Grid item xs={12} sm={3}>
-                    <TextField
-                      label="Grace 3 — Present Days"
-                      type="number"
-                      value={settings.auto_grace_threshold_3}
-                      onChange={(e) => handleSettingChange('auto_grace_threshold_3', parseInt(e.target.value))}
-                      fullWidth
-                      disabled={!settings.auto_grace_enabled}
-                      inputProps={{ min: 1, max: 31, step: 1 }}
-                      helperText="Days present to unlock 3rd grace"
-                      InputProps={{
-                        startAdornment: <Typography sx={{ mr: 1, color: '#f9a825', fontWeight: 'bold' }}>🥇</Typography>
-                      }}
-                    />
-                  </Grid>
+          {/* ── ROW 8: Geofence ── */}
+          {settings.geofence_enabled && (
+            <SectionCard icon={<i className="fa-solid fa-location-dot text-sm"></i>} title="Geofence Configuration" subtitle="Set office location and allowed radius" color="teal">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <FieldLabel>Office Latitude</FieldLabel>
+                  <input type="number" step="any" value={settings.office_latitude || ''} onChange={e => handleSettingChange('office_latitude', parseFloat(e.target.value) || null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-teal-400 bg-white" />
+                </div>
+                <div>
+                  <FieldLabel>Office Longitude</FieldLabel>
+                  <input type="number" step="any" value={settings.office_longitude || ''} onChange={e => handleSettingChange('office_longitude', parseFloat(e.target.value) || null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-teal-400 bg-white" />
+                </div>
+                <NumberInput label="Geofence Radius" hint="meters" field="geofence_radius" value={settings.geofence_radius} min={10} max={10000} step={10} />
+              </div>
+            </SectionCard>
+          )}
 
-                  {/* Visual explanation */}
-                  <Grid item xs={12}>
-                    <Alert severity="success" sx={{ mt: 1 }}>
-                      <strong>How it works:</strong><br />
-                      🥉 After <strong>{settings.auto_grace_threshold_1} present days</strong> → Employee earns <strong>Grace 1</strong> (1st late check-in = Full Day)<br />
-                      🥈 After <strong>{settings.auto_grace_threshold_2} present days</strong> → Employee earns <strong>Grace 2</strong> (2nd late check-in = Full Day)<br />
-                      🥇 After <strong>{settings.auto_grace_threshold_3} present days</strong> → Employee earns <strong>Grace 3</strong> (3rd late check-in = Full Day)<br />
-                      <em>Grace is auto-applied on check-out — no manual action needed. Max <strong>{settings.auto_grace_monthly_limit} graces</strong> per month.</em>
-                    </Alert>
-                  </Grid>
-
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* === NEW: Leave & Absconding Rules === */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2} sx={{ bgcolor: '#fff3f3', border: '2px solid #dc3545' }}>
-              <CardHeader
-                title="Leave & Absconding Rules"
-                subheader="Auto-conversion and penalty settings"
-                titleTypographyProps={{ fontWeight: 'bold' }}
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Pending Leave Auto-Convert (Days)"
-                      type="number"
-                      value={settings.pending_leave_auto_convert_days}
-                      onChange={(e) => handleSettingChange('pending_leave_auto_convert_days', parseInt(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 7, step: 1 }}
-                      helperText="Convert unapproved leave to Absconding after X days"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Absconding Penalty"
-                      type="number"
-                      value={settings.absconding_penalty}
-                      onChange={(e) => handleSettingChange('absconding_penalty', parseInt(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: -2, max: 0, step: 1 }}
-                      helperText="Attendance count for absconding (negative value)"
-                      disabled
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Alert severity="error">
-                      <strong>Rule:</strong> <br/>
-                      • Leave not approved for {settings.pending_leave_auto_convert_days} days = Auto Absconding (-1)<br/>
-                      • Manager can still approve later to convert back to Leave
-                    </Alert>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* === NEW: Sunday & Sandwich Rules === */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2} sx={{ bgcolor: '#f3e5f5', border: '2px solid #9c27b0' }}>
-              <CardHeader
-                title="Sunday & Sandwich Rules"
-                subheader="Weekend penalty rules for absconding"
-                titleTypographyProps={{ fontWeight: 'bold' }}
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.enable_sunday_sandwich_rule}
-                          onChange={(e) => handleSettingChange('enable_sunday_sandwich_rule', e.target.checked)}
-                          color="primary"
-                        />
-                      }
-                      label="Enable Sunday Sandwich Rule"
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 1 }}>
-                      Saturday/Monday absconding → Sunday automatically becomes Zero
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.enable_adjacent_absconding_rule ?? true}
-                          onChange={(e) => handleSettingChange('enable_adjacent_absconding_rule', e.target.checked)}
-                          color="warning"
-                        />
-                      }
-                      label="Enable Adjacent Absconding Rule"
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 1 }}>
-                      Saturday Absconding → next Sunday = Absent &nbsp;|&nbsp; Monday Absconding → previous Saturday = Absent
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Minimum Working Days for Sunday"
-                      type="number"
-                      value={settings.minimum_working_days_for_sunday}
-                      onChange={(e) => handleSettingChange('minimum_working_days_for_sunday', parseInt(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 3, max: 6, step: 1 }}
-                      helperText="If worked days < this, Sunday = 0"
-                      disabled={!settings.enable_sunday_sandwich_rule}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Alert severity="warning">
-                      <strong>Rules:</strong> <br/>
-                      • Saturday OR Monday absconding/unapproved = Sunday becomes <strong>Zero (0)</strong><br/>
-                      • Working days &lt; {settings.minimum_working_days_for_sunday} in week = Sunday <strong>Zero (0)</strong><br/>
-                      • Penalty applied only once per Sunday
-                    </Alert>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Time Settings */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                avatar={<TimeIcon />}
-                title="Time Configuration"
-                subheader="Set standard check-in and check-out times"
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Check-in Time"
-                      type="time"
-                      value={formatTime(settings.check_in_time)}
-                      onChange={(e) => handleTimeChange('check_in_time', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Check-out Time"
-                      type="time"
-                      value={formatTime(settings.check_out_time)}
-                      onChange={(e) => handleTimeChange('check_out_time', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Late Arrival Threshold"
-                      type="time"
-                      value={formatTime(settings.late_arrival_threshold)}
-                      onChange={(e) => handleTimeChange('late_arrival_threshold', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      helperText="Check-in after this time = Half Day"
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Early Departure Threshold"
-                      type="time"
-                      value={formatTime(settings.early_departure_threshold)}
-                      onChange={(e) => handleTimeChange('early_departure_threshold', e.target.value)}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      helperText="Check-out before this time = Half Day"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Working Hours Settings */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                title="Working Hours Configuration"
-                subheader="Define minimum hours for attendance status"
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Total Working Hours"
-                      type="number"
-                      value={settings.total_working_hours}
-                      onChange={(e) => handleSettingChange('total_working_hours', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 24, step: 0.5 }}
-                      helperText="Expected daily working hours"
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Minimum Hours for Full Day"
-                      type="number"
-                      value={settings.minimum_working_hours_full_day}
-                      onChange={(e) => handleSettingChange('minimum_working_hours_full_day', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 24, step: 0.5 }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Minimum Hours for Half Day"
-                      type="number"
-                      value={settings.minimum_working_hours_half_day}
-                      onChange={(e) => handleSettingChange('minimum_working_hours_half_day', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 12, step: 0.5 }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Overtime Threshold (hours)"
-                      type="number"
-                      value={settings.overtime_threshold}
-                      onChange={(e) => handleSettingChange('overtime_threshold', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 1, max: 24, step: 0.5 }}
-                      helperText="Hours after which overtime is calculated"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Weekend Configuration */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                title="Weekend Configuration"
-                subheader="Select days considered as weekends"
-              />
-              <CardContent>
-                <FormGroup row>
-                  {weekDays.map((day) => (
-                    <FormControlLabel
-                      key={day.value}
-                      control={
-                        <Checkbox
-                          checked={settings.weekend_days.includes(day.value)}
-                          onChange={() => handleWeekendDayChange(day.value)}
-                          color="primary"
-                        />
-                      }
-                      label={day.label}
-                    />
-                  ))}
-                </FormGroup>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Check-in/Check-out Permissions */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                title="Check-in/Check-out Permissions"
-                subheader="Control early and late check-in/out options"
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.allow_early_check_in}
-                          onChange={(e) => handleSettingChange('allow_early_check_in', e.target.checked)}
-                          color="primary"
-                        />
-                      }
-                      label="Allow Early Check-in"
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
-                      Allow employees to check-in before scheduled time
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.allow_late_check_out}
-                          onChange={(e) => handleSettingChange('allow_late_check_out', e.target.checked)}
-                          color="primary"
-                        />
-                      }
-                      label="Allow Late Check-out"
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
-                      Allow employees to check-out after scheduled time
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Requirements & Security */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                avatar={<CameraIcon />}
-                title="Requirements & Security"
-                subheader="Configure mandatory fields and validations"
-              />
-              <CardContent>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.require_photo}
-                        onChange={(e) => handleSettingChange('require_photo', e.target.checked)}
-                      />
-                    }
-                    label="Photo Required for Check-in/out"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.require_geolocation}
-                        onChange={(e) => handleSettingChange('require_geolocation', e.target.checked)}
-                      />
-                    }
-                    label="Geolocation Required"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.geofence_enabled}
-                        onChange={(e) => handleSettingChange('geofence_enabled', e.target.checked)}
-                      />
-                    }
-                    label="Enable Geofence Validation"
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Geofence Settings */}
-          <Grid item xs={12} md={6}>
-            <Card elevation={2}>
-              <CardHeader
-                avatar={<LocationIcon />}
-                title="Geofence Configuration"
-                subheader="Set office location and allowed radius"
-              />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Office Latitude"
-                      type="number"
-                      value={settings.office_latitude || ''}
-                      onChange={(e) => handleSettingChange('office_latitude', parseFloat(e.target.value) || null)}
-                      fullWidth
-                      inputProps={{ step: 'any' }}
-                      disabled={!settings.geofence_enabled}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Office Longitude"
-                      type="number"
-                      value={settings.office_longitude || ''}
-                      onChange={(e) => handleSettingChange('office_longitude', parseFloat(e.target.value) || null)}
-                      fullWidth
-                      inputProps={{ step: 'any' }}
-                      disabled={!settings.geofence_enabled}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Geofence Radius (meters)"
-                      type="number"
-                      value={settings.geofence_radius}
-                      onChange={(e) => handleSettingChange('geofence_radius', parseFloat(e.target.value))}
-                      fullWidth
-                      inputProps={{ min: 10, max: 10000, step: 10 }}
-                      disabled={!settings.geofence_enabled}
-                      helperText="Allowed distance from office location"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-
-        {/* Success/Error Messages */}
-        <Snackbar
-          open={!!success}
-          autoHideDuration={6000}
-          onClose={() => setSuccess(null)}
-        >
-          <Alert onClose={() => setSuccess(null)} severity="success">
-            {success}
-          </Alert>
-        </Snackbar>
-
-        <Snackbar
-          open={!!error}
-          autoHideDuration={6000}
-          onClose={() => setError(null)}
-        >
-          <Alert onClose={() => setError(null)} severity="error">
-            {error}
-          </Alert>
-        </Snackbar>
-      </Box>}
-    </Box>
+        </div>
+      )}
+    </div>
   );
 };
 

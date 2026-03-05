@@ -10,6 +10,7 @@ from app.database.InterviewHistory import InterviewHistoryDB
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.utils.permissions import check_permission, PermissionManager
+from app.utils.timezone import get_ist_now
 import logging
 
 # Setup logging
@@ -1193,10 +1194,10 @@ async def request_interview_reassignment(
         update_data = {
             "pending_reassignment": True,
             "reassignment_requested_by": user_id,
-            "reassignment_requested_at": datetime.now(),
+            "reassignment_requested_at": get_ist_now(),
             "reassignment_target_user": new_user_id,
             "reassignment_reason": reason,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # Update the interview
@@ -1282,9 +1283,9 @@ async def approve_interview_reassignment(
                 "pending_reassignment": False,
                 "reassignment_status": "approved",
                 "reassignment_approved_by": user_id,
-                "reassignment_approved_at": datetime.now(),
+                "reassignment_approved_at": get_ist_now(),
                 "reassignment_remarks": remarks,
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             # Add history entry
@@ -1296,9 +1297,9 @@ async def approve_interview_reassignment(
                 "pending_reassignment": False,
                 "reassignment_status": "rejected",
                 "reassignment_approved_by": user_id,
-                "reassignment_approved_at": datetime.now(),
+                "reassignment_approved_at": get_ist_now(),
                 "reassignment_remarks": remarks,
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             # Add history entry
@@ -1379,7 +1380,7 @@ async def approve_interview_reassignment(
         if not user_role or user_role.get("name", "").lower() not in ["super admin", "admin"]:
             raise HTTPException(status_code=403, detail="Only admins can approve reassignments")
         
-        current_time = datetime.now()
+        current_time = get_ist_now()
         
         if approved:
             # Approve reassignment - update the interview owner
@@ -1467,7 +1468,7 @@ async def get_pending_interview_reassignments(
                 {
                     "reassignment_status": {"$in": ["rejected", "approved"]},
                     "reassignment_approved_at": {
-                        "$gte": datetime.now() - timedelta(days=30)  # Show processed requests from last 30 days
+                        "$gte": get_ist_now() - timedelta(days=30)  # Show processed requests from last 30 days
                     }
                 }
             ]

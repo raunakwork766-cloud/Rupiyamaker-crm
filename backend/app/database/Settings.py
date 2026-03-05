@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import pandas as pd
 from difflib import SequenceMatcher
 import re
@@ -72,7 +73,7 @@ class SettingsDB:
     
     async def create_campaign_name(self, campaign_data: dict) -> str:
         """Create a new campaign name"""
-        campaign_data["created_at"] = datetime.now()
+        campaign_data["created_at"] = get_ist_now()
         campaign_data["updated_at"] = campaign_data["created_at"]
         campaign_data["is_active"] = campaign_data.get("is_active", True)
         
@@ -104,7 +105,7 @@ class SettingsDB:
         if not ObjectId.is_valid(campaign_id):
             return False
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         result = await self.campaign_names_collection.update_one(
             {"_id": ObjectId(campaign_id)}, 
             {"$set": update_data}
@@ -123,7 +124,7 @@ class SettingsDB:
     
     async def create_data_code(self, data_code_data: dict) -> str:
         """Create a new data code"""
-        data_code_data["created_at"] = datetime.now()
+        data_code_data["created_at"] = get_ist_now()
         data_code_data["updated_at"] = data_code_data["created_at"]
         data_code_data["is_active"] = data_code_data.get("is_active", True)
         
@@ -155,7 +156,7 @@ class SettingsDB:
         if not ObjectId.is_valid(code_id):
             return False
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         result = await self.data_codes_collection.update_one(
             {"_id": ObjectId(code_id)}, 
             {"$set": update_data}
@@ -174,7 +175,7 @@ class SettingsDB:
     
     async def create_channel_name(self, channel_data: dict) -> str:
         """Create a new channel name"""
-        channel_data["created_at"] = datetime.now()
+        channel_data["created_at"] = get_ist_now()
         channel_data["updated_at"] = channel_data["created_at"]
         channel_data["is_active"] = channel_data.get("is_active", True)
         
@@ -206,7 +207,7 @@ class SettingsDB:
         if not ObjectId.is_valid(channel_id):
             return False
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         result = await self.channel_names_collection.update_one(
             {"_id": ObjectId(channel_id)}, 
             {"$set": update_data}
@@ -225,7 +226,7 @@ class SettingsDB:
     
     async def create_bank_name(self, bank_data: dict) -> str:
         """Create a new bank name"""
-        bank_data["created_at"] = datetime.now()
+        bank_data["created_at"] = get_ist_now()
         bank_data["updated_at"] = bank_data["created_at"]
         bank_data["is_active"] = bank_data.get("is_active", True)
         
@@ -257,7 +258,7 @@ class SettingsDB:
         if not ObjectId.is_valid(bank_id):
             return False
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         result = await self.bank_names_collection.update_one(
             {"_id": ObjectId(bank_id)}, 
             {"$set": update_data}
@@ -346,7 +347,7 @@ class SettingsDB:
                             "bank": bank_name if bank_name and bank_name.lower() not in ['nan', 'null', ''] else '',
                             "bank_names": [bank_name] if bank_name and bank_name.lower() not in ['nan', 'null', ''] else [],
                             "is_active": True,
-                            "updated_at": datetime.now().isoformat()
+                            "updated_at": get_ist_now().isoformat()
                         }
                         
                         records_to_process.append(record)
@@ -561,11 +562,11 @@ class SettingsDB:
                             update_doc = {
                                 "$setOnInsert": {
                                     "company_name": company_name,
-                                    "created_at": datetime.now(),
+                                    "created_at": get_ist_now(),
                                     "is_active": True
                                 },
                                 "$set": {
-                                    "updated_at": datetime.now()
+                                    "updated_at": get_ist_now()
                                 },
                                 "$addToSet": {}
                             }
@@ -779,7 +780,7 @@ class SettingsDB:
     
     async def create_attachment_type(self, attachment_type_data: dict) -> str:
         """Create a new attachment type"""
-        attachment_type_data["created_at"] = datetime.now()
+        attachment_type_data["created_at"] = get_ist_now()
         attachment_type_data["updated_at"] = attachment_type_data["created_at"]
         attachment_type_data["is_active"] = attachment_type_data.get("is_active", True)
         
@@ -860,7 +861,7 @@ class SettingsDB:
             if existing_sort:
                 raise ValueError(f"Sort number {update_data['sort_number']} already exists for target type '{update_data['target_type']}'")
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         result = await self.attachment_types_collection.update_one(
             {"_id": ObjectId(attachment_type_id)}, 
             {"$set": update_data}
@@ -896,13 +897,15 @@ class SettingsDB:
                 "grace_usage_limit": 2,
                 "auto_grace_enabled": True,
                 "auto_grace_monthly_limit": 3,
+                "default_earned_leave_monthly": 1.5,
+                "default_paid_leave_monthly": 1.0,
                 "auto_grace_threshold_1": 15,
                 "auto_grace_threshold_2": 20,
                 "auto_grace_threshold_3": 24,
                 "pending_leave_auto_convert_days": 3,
                 "absconding_penalty": -1,
                 "enable_sunday_sandwich_rule": True,
-                "minimum_working_days_for_sunday": 5,
+                "minimum_working_days_for_sunday": 4,
                 "enable_adjacent_absconding_rule": True,
                 # Legacy settings
                 "check_in_time": "09:00",
@@ -922,8 +925,8 @@ class SettingsDB:
                 "office_latitude": None,
                 "office_longitude": None,
                 "geofence_radius": 100.0,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
             }
             await self.attendance_settings_collection.insert_one(default_settings)
     
@@ -942,7 +945,7 @@ class SettingsDB:
     
     async def update_attendance_settings(self, settings_data: dict) -> bool:
         """Update attendance settings"""
-        settings_data["updated_at"] = datetime.now()
+        settings_data["updated_at"] = get_ist_now()
         
         # Remove None values
         settings_data = {k: v for k, v in settings_data.items() if v is not None}
@@ -966,15 +969,15 @@ class SettingsDB:
     async def create_leave_balance(self, balance_data: dict) -> str:
         """Create leave balance for an employee"""
         from datetime import datetime
-        balance_data["created_at"] = datetime.now()
-        balance_data["last_updated"] = datetime.now()
+        balance_data["created_at"] = get_ist_now()
+        balance_data["last_updated"] = get_ist_now()
         
         result = await self.db.leave_balances.insert_one(balance_data)
         return str(result.inserted_id)
     
     async def update_leave_balance(self, employee_id: str, update_data: dict) -> bool:
         """Update leave balance for an employee"""
-        update_data["last_updated"] = datetime.now()
+        update_data["last_updated"] = get_ist_now()
         
         result = await self.db.leave_balances.update_one(
             {"employee_id": employee_id},
@@ -1030,7 +1033,7 @@ class SettingsDB:
                 "leave_cycle_start_day": 1,
                 "carry_forward_enabled": False,
                 "max_carry_forward": 5,
-                "created_at": datetime.now()
+                "created_at": get_ist_now()
             }
             await self.db.leave_config.insert_one(default_config)
             config = default_config
@@ -1042,7 +1045,7 @@ class SettingsDB:
     
     async def update_leave_config_defaults(self, config_data: dict) -> bool:
         """Update default leave configuration"""
-        config_data["updated_at"] = datetime.now()
+        config_data["updated_at"] = get_ist_now()
         
         result = await self.db.leave_config.update_one(
             {"type": "defaults"},
@@ -1050,3 +1053,53 @@ class SettingsDB:
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
+
+    # ── Leave Approval Routing ──────────────────────────────────────────────
+
+    async def get_leave_approval_routes(self) -> list:
+        """Get all leave approval routing rules"""
+        cursor = self.db.leave_approval_routes.find({}).sort("created_at", -1)
+        routes = []
+        async for r in cursor:
+            r["_id"] = str(r["_id"])
+            routes.append(r)
+        return routes
+
+    async def get_leave_approval_route_by_role(self, role_id: str) -> dict:
+        """Get approval route for a specific role"""
+        route = await self.db.leave_approval_routes.find_one({"role_id": role_id})
+        if route:
+            route["_id"] = str(route["_id"])
+        return route
+
+    async def upsert_leave_approval_route(self, role_id: str, role_name: str, approver_ids: list, approver_names: list) -> dict:
+        """Create or update leave approval route for a role"""
+        now = get_ist_now()
+        doc = {
+            "role_id": role_id,
+            "role_name": role_name,
+            "approver_ids": approver_ids,
+            "approver_names": approver_names,
+            "updated_at": now,
+        }
+        result = await self.db.leave_approval_routes.update_one(
+            {"role_id": role_id},
+            {"$set": doc, "$setOnInsert": {"created_at": now}},
+            upsert=True
+        )
+        saved = await self.db.leave_approval_routes.find_one({"role_id": role_id})
+        if saved:
+            saved["_id"] = str(saved["_id"])
+        return saved
+
+    async def delete_leave_approval_route(self, role_id: str) -> bool:
+        """Delete approval route for a role"""
+        result = await self.db.leave_approval_routes.delete_one({"role_id": role_id})
+        return result.deleted_count > 0
+
+    async def get_approvers_for_employee(self, employee_role_id: str) -> list:
+        """Get approver employee IDs for a given role"""
+        route = await self.db.leave_approval_routes.find_one({"role_id": employee_role_id})
+        if route:
+            return route.get("approver_ids", [])
+        return []

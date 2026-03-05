@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { CheckSquare, Plus, Loader2 } from 'lucide-react';
 import { message } from "antd";
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../../utils/dateUtils';
 
 // Lazy load heavy components for better code splitting
 const CreateTask = lazy(() => import("../CreateTask"));
@@ -69,7 +70,7 @@ export default function TaskSectionInLead({ leadData }) {
             typeTask: task.task_type || task.type || 'TO DO',
             leadLogin: leadData.lead_number || '',
             customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
-            date: new Date(task.due_date || task.created_at).toISOString().split('T')[0],
+            date: toISTDateYMD(task.due_date || task.created_at),
             time: task.due_time || '12:00 PM',
             assign: task.assigned_users && task.assigned_users.length > 0 ? 
               task.assigned_users.map(user => user.name || user.username || 'Unknown').join(', ') : 
@@ -283,7 +284,7 @@ export default function TaskSectionInLead({ leadData }) {
           typeTask: task.task_type || task.type || 'TO DO',
           leadLogin: leadData.lead_number || '',
           customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
-          date: new Date(task.due_date || task.created_at).toISOString().split('T')[0],
+          date: toISTDateYMD(task.due_date || task.created_at),
           time: task.due_time || '12:00 PM',
           assign: task.assigned_users && task.assigned_users.length > 0 ? 
             task.assigned_users.map(user => user.name || user.username || 'Unknown').join(', ') : 
@@ -687,7 +688,7 @@ const initialTaskForm = {
       leadLogin: leadData.lead_number || '',
       customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim(),
       // Use the provided due date or today's date
-      date: taskData.due_date || taskData.date || new Date().toISOString().split('T')[0],
+      date: taskData.due_date || taskData.date || getISTDateYMD(),
       time: taskData.due_time || taskData.time || '12:00 PM',
       // Use the current user ID as the assignee, API expects user IDs not names
       assigned_to: [currentUser], // Always use current user ID as the API needs IDs, not names

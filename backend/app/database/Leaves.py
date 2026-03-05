@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime, date
+from app.utils.timezone import get_ist_now
 from enum import Enum
 
 class LeaveStatus(str, Enum):
@@ -43,7 +44,7 @@ class LeavesDB:
         
     async def create_leave(self, leave_data: dict) -> str:
         """Create a new leave application with timestamps"""
-        leave_data["created_at"] = datetime.now()
+        leave_data["created_at"] = get_ist_now()
         leave_data["updated_at"] = leave_data["created_at"]
         
         # Ensure default values
@@ -114,7 +115,7 @@ class LeavesDB:
             
         update_data = {
             "status": status,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # Add comments if provided
@@ -123,13 +124,13 @@ class LeavesDB:
         
         if status == LeaveStatus.APPROVED and approved_by:
             update_data["approved_by"] = approved_by
-            update_data["approved_at"] = datetime.now()
+            update_data["approved_at"] = get_ist_now()
         elif status == LeaveStatus.REJECTED:
             if approved_by:
                 update_data["rejected_by"] = approved_by
             if rejection_reason:
                 update_data["rejection_reason"] = rejection_reason
-            update_data["rejected_at"] = datetime.now()
+            update_data["rejected_at"] = get_ist_now()
             
         result = await self.collection.update_one(
             {"_id": ObjectId(leave_id)}, 
@@ -142,7 +143,7 @@ class LeavesDB:
         if not ObjectId.is_valid(leave_id):
             return False
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         
         # Recalculate duration if dates are being updated
         if "from_date" in update_fields or "to_date" in update_fields:

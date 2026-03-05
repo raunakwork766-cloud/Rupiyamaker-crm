@@ -22,6 +22,8 @@ import {
     Save,
     Award,
     ChevronDown,
+    ChevronUp,
+    GripVertical,
     Menu,
     Mail,
     HelpCircle
@@ -56,13 +58,13 @@ import { hrmsService } from '../services/hrmsService';
 const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
     const [isOpen, setIsOpen] = useState(false);
     
-    // Filter to show only the main tabs that go in the dropdown: campaigns, dataCodes, bankNames, channelNames, companyData, statuses, importantQuestions, warningData
+    // Filter to show only the main tabs that go in the dropdown: campaigns, dataCodes, bankNames, channelNames, companyData, statuses, importantQuestions
     const manageTabs = tabs.filter(tab => 
-        ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions', 'warningData'].includes(tab.id)
+        ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(tab.id)
     );
     
     const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isManageTabActive = ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions', 'warningData'].includes(activeTab);
+    const isManageTabActive = ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(activeTab);
     
     return (
         <div className="relative">
@@ -118,7 +120,7 @@ const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
                         
                         {/* System Management Tabs */}
                         {manageTabs
-                            .filter(tab => ['statuses', 'importantQuestions', 'warningData'].includes(tab.id))
+                            .filter(tab => ['statuses', 'importantQuestions'].includes(tab.id))
                             .map((tab) => (
                                 <button
                                     key={tab.id}
@@ -321,6 +323,12 @@ const SettingsPage = () => {
     // Attachment type filter and delete state
     const [attachmentTypeFilter, setAttachmentTypeFilter] = useState('');
     const [deletingItems, setDeletingItems] = useState(new Set());
+    // Attachment type drag-reorder & inline-edit state
+    const [atDragIdx, setAtDragIdx]           = useState(null);
+    const [atDragOverIdx, setAtDragOverIdx]   = useState(null);
+    const [atInlineEditing, setAtInlineEditing] = useState(null); // { id, value }
+    const [atQuickAddName, setAtQuickAddName] = useState('');
+    const [atQuickAddTarget, setAtQuickAddTarget] = useState('leads');
     const [attendanceSettings, setAttendanceSettings] = useState({
         check_in_time: '10:00',
         check_out_time: '19:00',
@@ -583,8 +591,7 @@ const SettingsPage = () => {
         { id: 'adminEmails', label: 'Admin Emails', icon: Shield, color: 'red' },
         { id: 'statuses', label: 'Status Management', icon: CheckCircle, color: 'teal' },
         { id: 'attendance', label: 'Attendance Settings', icon: Clock, color: 'emerald' },
-        { id: 'importantQuestions', label: 'Important Questions', icon: HelpCircle, color: 'violet' },
-        { id: 'warningData', label: 'Warning Data', icon: AlertCircle, color: 'orange' }
+        { id: 'importantQuestions', label: 'Important Questions', icon: HelpCircle, color: 'violet' }
     ];
 
     // Helper functions for department hierarchy
@@ -805,10 +812,7 @@ const SettingsPage = () => {
             case 'importantQuestions':
                 loadImportantQuestions();
                 break;
-            case 'warningData':
-                loadMistakeTypes();
-                loadWarningActions();
-                break;
+
         }
     }, [activeTab]);
 
@@ -2295,7 +2299,7 @@ const updateStatus = async (statusId, statusData) => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                        {setting.created_at ? new Date(setting.created_at).toLocaleDateString() : '-'}
+                                        {setting.created_at ? new Date(setting.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                         {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
@@ -2494,7 +2498,7 @@ const updateStatus = async (statusId, statusData) => {
                                         {question.display_order || '-'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                        {question.created_at ? new Date(question.created_at).toLocaleDateString() : '-'}
+                                        {question.created_at ? new Date(question.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                         {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
@@ -2593,7 +2597,7 @@ const updateStatus = async (statusId, statusData) => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                            {type.created_at ? new Date(type.created_at).toLocaleDateString() : '-'}
+                                            {type.created_at ? new Date(type.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                             {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
@@ -2689,7 +2693,7 @@ const updateStatus = async (statusId, statusData) => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                            {action.created_at ? new Date(action.created_at).toLocaleDateString() : '-'}
+                                            {action.created_at ? new Date(action.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                             {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
@@ -2787,7 +2791,7 @@ const updateStatus = async (statusId, statusData) => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                        {type.created_at ? new Date(type.created_at).toLocaleDateString() : '-'}
+                                        {type.created_at ? new Date(type.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                         {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
@@ -2913,8 +2917,6 @@ const updateStatus = async (statusId, statusData) => {
                 return <AttendanceSettingsTab userId={user_id} />;
             case 'importantQuestions':
                 return renderImportantQuestionsTable();
-            case 'warningData':
-                return renderWarningDataTables();
             default:
                 return null;
         }
@@ -2996,138 +2998,268 @@ const updateStatus = async (statusId, statusData) => {
         </div>
     );
 
-    const renderAttachmentTypesTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-black flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <h3 className="text-xl font-bold text-white">Attachment Types</h3>
-                    {/* Target Type Filter Dropdown */}
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm text-white">Filter by:</label>
-                        <select
-                            value={attachmentTypeFilter}
-                            onChange={(e) => setAttachmentTypeFilter(e.target.value)}
-                            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                            <option value="">All Target Types</option>
-                            <option value="employees">Employees</option>
-                            <option value="leads">Leads</option>
-                        </select>
-                    </div>
-                </div>
-                {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                    <button
-                        onClick={() => handleAdd('attachmentTypes')}
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-blue-600 hover:to-blue-700 transition-all"
-                    >
-                        <Plus size={16} />
-                        Add New Attachment Type
-                    </button>
-                )}
-            </div>
+    const renderAttachmentTypesTable = () => {
+        const filtered = getFilteredAttachmentTypes()
+            .slice()
+            .sort((a, b) => (a.sort_number || 0) - (b.sort_number || 0));
 
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-black">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Target Type</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Sort Order</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Description</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Created</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {getFilteredAttachmentTypes().length === 0 ? (
-                            <tr>
-                                <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                                    {attachmentTypeFilter 
-                                        ? `No attachment types found for ${attachmentTypeFilter === 'employees' ? 'Employees' : 'Leads'}.`
-                                        : 'No attachment types found. Click "Add New Attachment Type" to create one.'
-                                    }
-                                </td>
-                            </tr>
-                        ) : (
-                            getFilteredAttachmentTypes().map((item) => (
-                                <tr key={item._id || item.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                                        {item.name}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            item.target_type === 'employees' 
-                                                ? 'bg-blue-100 text-blue-800' 
-                                                : 'bg-green-100 text-green-800'
-                                        }`}>
-                                            {item.target_type === 'employees' ? 'Employees' : 'Leads'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-800 rounded-full text-sm font-medium">
-                                            {item.sort_number || '-'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-gray-700 max-w-xs truncate">
-                                        {item.description || '-'}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            item.is_active 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {item.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
-                                            <button
-                                                onClick={() => {
-                                                    setEditingItem(item);
-                                                    setFormData({
-                                                        name: item.name,
-                                                        target_type: item.target_type,
-                                                        sort_number: item.sort_number,
-                                                        description: item.description,
-                                                        is_active: item.is_active
-                                                    });
-                                                    setModalType('edit');
-                                                    setShowModal(true);
-                                                }}
-                                                className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
-                                            >
-                                                <Edit size={14} />
-                                                Edit
-                                            </button>
-                                        )}
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
-                                            <button
-                                                onClick={() => handleDelete(item._id || item.id, 'attachmentTypes')}
-                                                disabled={deletingItems.has(item._id || item.id)}
-                                                className={`inline-flex items-center gap-1 ${
-                                                    deletingItems.has(item._id || item.id)
-                                                        ? 'text-gray-400 cursor-not-allowed'
-                                                        : 'text-red-600 hover:text-red-900'
+        // Inline name save
+        const handleInlineSave = async (item) => {
+            if (!atInlineEditing || atInlineEditing.id !== (item._id || item.id)) return;
+            const val = atInlineEditing.value.trim().toUpperCase();
+            if (!val) { setAtInlineEditing(null); return; }
+            try {
+                await hrmsService.updateAttachmentType(item._id || item.id, {
+                    name: val, target_type: item.target_type,
+                    sort_number: item.sort_number, description: item.description,
+                    is_active: item.is_active
+                });
+                setAtInlineEditing(null);
+                loadAttachmentTypes();
+            } catch (e) { console.error(e); }
+        };
+
+        // Quick toggle (status / target)
+        const handleQuickToggle = async (item, field, value) => {
+            try {
+                await hrmsService.updateAttachmentType(item._id || item.id, {
+                    name: item.name, target_type: field === 'target_type' ? value : item.target_type,
+                    sort_number: item.sort_number, description: item.description,
+                    is_active: field === 'is_active' ? value : item.is_active
+                });
+                loadAttachmentTypes();
+            } catch (e) { console.error(e); }
+        };
+
+        // Drag drop reorder → bulk sort_number update
+        const handleDrop = async (targetIdx) => {
+            if (atDragIdx === null || atDragIdx === targetIdx) {
+                setAtDragIdx(null); setAtDragOverIdx(null); return;
+            }
+            const reordered = [...filtered];
+            const [moved] = reordered.splice(atDragIdx, 1);
+            reordered.splice(targetIdx, 0, moved);
+            const updates = reordered.map((item, i) => ({ ...item, sort_number: i + 1 }));
+            // Optimistic local update
+            setAttachmentTypes(prev =>
+                prev.map(t => {
+                    const upd = updates.find(u => (u._id || u.id) === (t._id || t.id));
+                    return upd ? { ...t, sort_number: upd.sort_number } : t;
+                })
+            );
+            setAtDragIdx(null); setAtDragOverIdx(null);
+            // Persist to backend
+            updates.forEach(upd =>
+                hrmsService.updateAttachmentType(upd._id || upd.id, {
+                    name: upd.name, target_type: upd.target_type,
+                    sort_number: upd.sort_number, description: upd.description,
+                    is_active: upd.is_active
+                }).catch(console.error)
+            );
+        };
+
+        // Quick add
+        const handleQuickAdd = async () => {
+            const val = atQuickAddName.trim().toUpperCase();
+            if (!val) return;
+            const maxSort = filtered.length > 0 ? Math.max(...filtered.map(t => t.sort_number || 0)) : 0;
+            try {
+                await hrmsService.createAttachmentType({
+                    name: val, target_type: atQuickAddTarget,
+                    sort_number: maxSort + 1, description: '', is_active: true
+                });
+                setAtQuickAddName('');
+                loadAttachmentTypes();
+            } catch (e) { console.error(e); }
+        };
+
+        return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* ── Header ── */}
+                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-black text-gray-800 uppercase tracking-tight">Attachment Types</h3>
+                        {/* Filter tabs */}
+                        <div className="flex rounded overflow-hidden border border-gray-200 shadow-sm">
+                            {[['', 'All'], ['leads', 'Leads'], ['employees', 'Employees']].map(([val, label]) => (
+                                <button
+                                    key={val}
+                                    onClick={() => setAttachmentTypeFilter(val)}
+                                    className={`px-2.5 py-1 text-[10px] font-bold transition ${
+                                        attachmentTypeFilter === val
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >{label}</button>
+                            ))}
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                        <button
+                            onClick={() => handleAdd('attachmentTypes')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm flex items-center gap-1 transition uppercase"
+                        >
+                            <Plus size={12} /> Add New
+                        </button>
+                    )}
+                </div>
+
+                {/* ── Body ── */}
+                <div className="p-3 bg-gray-50/30">
+                    {filtered.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+                            No attachment types found. Click "Add New" to create one.
+                        </div>
+                    ) : (
+                        <div className="space-y-1.5">
+                            {filtered.map((item, idx) => {
+                                const id = item._id || item.id;
+                                const isDragOver = atDragOverIdx === idx;
+                                const isBeingDragged = atDragIdx === idx;
+                                const isInlineEdit = atInlineEditing?.id === id;
+                                return (
+                                    <div
+                                        key={id}
+                                        draggable
+                                        onDragStart={() => setAtDragIdx(idx)}
+                                        onDragOver={e => { e.preventDefault(); setAtDragOverIdx(idx); }}
+                                        onDragEnd={() => { setAtDragIdx(null); setAtDragOverIdx(null); }}
+                                        onDrop={e => { e.preventDefault(); handleDrop(idx); }}
+                                        className={`flex items-center justify-between px-2.5 py-2 bg-white border rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-grab active:cursor-grabbing hover:border-blue-300 group/sdoc transition
+                                            ${isDragOver ? 'border-t-2 border-t-blue-500 border-blue-200' : 'border-gray-200'}
+                                            ${isBeingDragged ? 'opacity-40' : ''}`}
+                                    >
+                                        {/* Left: grip + sort badge + name */}
+                                        <div className="flex items-center gap-2 flex-1 min-w-0 pr-3">
+                                            <GripVertical size={14} className="text-gray-300 shrink-0" />
+                                            <span className="text-[9px] font-black w-5 h-5 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0">
+                                                {item.sort_number || idx + 1}
+                                            </span>
+                                            {isInlineEdit ? (
+                                                <input
+                                                    autoFocus
+                                                    value={atInlineEditing.value}
+                                                    onChange={e => setAtInlineEditing(prev => ({ ...prev, value: e.target.value }))}
+                                                    onBlur={() => handleInlineSave(item)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') handleInlineSave(item);
+                                                        if (e.key === 'Escape') setAtInlineEditing(null);
+                                                    }}
+                                                    className="text-xs font-bold text-gray-700 bg-white border border-blue-400 rounded px-1.5 py-0.5 outline-none w-full uppercase shadow-sm focus:ring-1 focus:ring-blue-300"
+                                                />
+                                            ) : (
+                                                <span
+                                                    className="text-xs font-bold text-gray-800 truncate uppercase flex-1 cursor-pointer hover:text-blue-600 transition"
+                                                    onDoubleClick={() => setAtInlineEditing({ id, value: item.name })}
+                                                    title="Double-click to rename"
+                                                >
+                                                    {item.name}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Right: controls */}
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            {/* Target badge */}
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                                item.target_type === 'employees'
+                                                    ? 'bg-blue-100 text-blue-700'
+                                                    : 'bg-green-100 text-green-700'
+                                            }`}>
+                                                {item.target_type === 'employees' ? 'EMP' : 'LEAD'}
+                                            </span>
+
+                                            {/* Status dropdown */}
+                                            <select
+                                                value={item.is_active ? 'active' : 'inactive'}
+                                                onChange={e => handleQuickToggle(item, 'is_active', e.target.value === 'active')}
+                                                className={`text-[9px] font-bold px-1.5 py-1 rounded border outline-none cursor-pointer transition ${
+                                                    item.is_active
+                                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                        : 'bg-gray-100 text-gray-600 border-gray-200'
                                                 }`}
                                             >
-                                                <Trash2 size={14} />
-                                                {deletingItems.has(item._id || item.id) ? 'Deleting...' : 'Delete'}
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                                                <option value="active">ACTIVE (DEFAULT)</option>
+                                                <option value="inactive">INACTIVE</option>
+                                            </select>
+
+                                            {/* Edit */}
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingItem(item);
+                                                        setFormData({
+                                                            name: item.name,
+                                                            target_type: item.target_type,
+                                                            sort_number: item.sort_number,
+                                                            description: item.description,
+                                                            is_active: item.is_active
+                                                        });
+                                                        setModalType('edit');
+                                                        setShowModal(true);
+                                                    }}
+                                                    className="text-gray-400 hover:text-blue-600 w-6 h-6 flex items-center justify-center rounded hover:bg-blue-50 transition"
+                                                    title="Edit details"
+                                                >
+                                                    <Edit size={12} />
+                                                </button>
+                                            )}
+
+                                            {/* Delete */}
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
+                                                <button
+                                                    onClick={() => handleDelete(id, 'attachmentTypes')}
+                                                    disabled={deletingItems.has(id)}
+                                                    className={`w-6 h-6 flex items-center justify-center rounded transition ${
+                                                        deletingItems.has(id)
+                                                            ? 'text-gray-300 cursor-not-allowed'
+                                                            : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                                                    }`}
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* ── Quick add row ── */}
+                    {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-dashed border-gray-300">
+                            <input
+                                type="text"
+                                value={atQuickAddName}
+                                onChange={e => setAtQuickAddName(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(); }}
+                                placeholder="NEW ATTACHMENT TYPE NAME..."
+                                className="flex-1 text-[10px] font-bold px-2.5 py-1.5 rounded border border-gray-300 outline-none uppercase focus:border-blue-400 focus:ring-1 focus:ring-blue-200 shadow-inner bg-white text-gray-800 placeholder-gray-400"
+                            />
+                            <select
+                                value={atQuickAddTarget}
+                                onChange={e => setAtQuickAddTarget(e.target.value)}
+                                className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none bg-white text-gray-800 focus:border-blue-400"
+                            >
+                                <option value="leads">Leads</option>
+                                <option value="employees">Employees</option>
+                            </select>
+                            <button
+                                onClick={handleQuickAdd}
+                                disabled={!atQuickAddName.trim()}
+                                className="bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold shadow-sm uppercase shrink-0 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                Add
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const renderCompanyDataTable = () => {
         const totalPages = Math.ceil(totalCompanies / itemsPerPage);
@@ -4831,7 +4963,7 @@ const updateStatus = async (statusId, statusData) => {
         <div className="min-h-screen bg-black text-white">
             {/* Header */}
             <div className="bg-black shadow-sm border-b border-black">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center">
                             <Settings className="h-8 w-8 text-white mr-3" />
@@ -4842,7 +4974,7 @@ const updateStatus = async (statusId, statusData) => {
             </div>
 
             {/* Tabs */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
                 
                 {/* Tab Management Dropdown and Tab Buttons */}
                 <div className="flex flex-wrap gap-2 mb-6">

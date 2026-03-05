@@ -3,6 +3,7 @@ from typing import Dict, List, Any, Optional
 from bson import ObjectId
 from datetime import datetime
 from app.database import db
+from app.utils.timezone import get_ist_now
 from app.database.Departments import DepartmentsDB
 from app.database.Roles import RolesDB
 from app.database.Users import UsersDB
@@ -98,6 +99,8 @@ async def get_department_hierarchy(
                     "type": "user"
                 }
                 for user in users_in_dept
+                # ✅ FILTER: Only show active employees in org charts
+                if user.get("employee_status", "active") != "inactive" and user.get("is_active", True) != False
             ]
         
         # Calculate totals recursively for parent departments
@@ -128,7 +131,7 @@ async def get_department_hierarchy(
             },
             "metadata": {
                 "hierarchy": "Department → Sub-Department",
-                "last_updated": datetime.now().isoformat()
+                "last_updated": get_ist_now().isoformat()
             }
         }
         
@@ -184,6 +187,10 @@ async def get_role_hierarchy(
         all_users = await users_db.list_users()
         
         for user in all_users:
+            # ✅ FILTER: Skip inactive employees from role hierarchy chart
+            if user.get("employee_status", "active") == "inactive" or user.get("is_active", True) == False:
+                continue
+            
             user_role_id = user.get("role_id")
             if user_role_id and user_role_id in roles_map:
                 user_dict = convert_object_id(user)
@@ -223,7 +230,7 @@ async def get_role_hierarchy(
             "metadata": {
                 "hierarchy": "Role → Sub-Role → Users",
                 "include_users": include_users,
-                "last_updated": datetime.now().isoformat()
+                "last_updated": get_ist_now().isoformat()
             }
         }
         
@@ -370,6 +377,10 @@ async def get_organization_structure(
         users_count_by_role = {}
         
         for user in all_users:
+            # ✅ FILTER: Skip inactive employees from org structure chart
+            if user.get("employee_status", "active") == "inactive" or user.get("is_active", True) == False:
+                continue
+            
             user_dict = convert_object_id(user)
             user_dict["type"] = "user"
             user_dict["name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or user.get("username", "")
@@ -446,7 +457,7 @@ async def get_organization_structure(
             "metadata": {
                 "hierarchy": "Department → Sub-Department → Role → Sub-Role → Users",
                 "description": "Complete organizational hierarchy with all levels",
-                "last_updated": datetime.now().isoformat()
+                "last_updated": get_ist_now().isoformat()
             }
         }
         
@@ -513,6 +524,8 @@ async def get_users_by_department(
             "created_at": user.get("created_at", "").isoformat() if user.get("created_at") else None
         } 
         for user in all_users
+        # ✅ FILTER: Only show active employees in department users list
+        if user.get("employee_status", "active") != "inactive" and user.get("is_active", True) != False
     ]
     
     return {

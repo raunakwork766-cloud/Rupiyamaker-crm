@@ -223,7 +223,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         const modalData = getRandomMessage(modalType);
         setSuccessModal({
           ...modalData,
-          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+          time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
         });
       }
     } catch (err) {
@@ -237,7 +237,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const isCheckedOut = currentStatus?.checked_out;
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto', padding: 16, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+    <div style={{ width: '100%', padding: 16, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
       <style>{`
         @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -249,10 +249,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       {/* Clock */}
       <div style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)', color: 'white', borderRadius: 16, padding: '22px 20px', textAlign: 'center', marginBottom: 20 }}>
         <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: 3 }}>
-          {currentTime.toLocaleTimeString('en-IN', { hour12: false })}
+          {currentTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false })}
         </div>
         <div style={{ fontSize: 14, opacity: 0.75, marginTop: 4 }}>
-          {currentTime.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+          {currentTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
         </div>
       </div>
 

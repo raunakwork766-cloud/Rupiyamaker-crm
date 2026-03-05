@@ -550,8 +550,13 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         // The API returns an array of users directly
         const users = Array.isArray(data) ? data : [];
         
+        // ✅ FILTER: Only show active employees in assignment dropdowns
+        const activeUsers = users.filter(user => 
+          user.employee_status !== 'inactive' && user.is_active !== false
+        );
+        
         // Format users to include name and designation
-        const formattedUsers = users.map(user => ({
+        const formattedUsers = activeUsers.map(user => ({
           id: user._id || user.id,
           _id: user._id || user.id,
           name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Unknown User',

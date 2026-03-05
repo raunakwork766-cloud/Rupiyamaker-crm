@@ -4,6 +4,7 @@ from app.utils.permission_helpers import is_super_admin_permission
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class TicketsDB:
     """Database operations for Tickets collection"""
@@ -38,7 +39,7 @@ class TicketsDB:
         
     async def create_ticket(self, ticket_data: dict) -> str:
         """Create a new ticket with timestamps"""
-        ticket_data["created_at"] = datetime.now()
+        ticket_data["created_at"] = get_ist_now()
         ticket_data["updated_at"] = ticket_data["created_at"]
         
         # Ensure default values
@@ -107,14 +108,14 @@ class TicketsDB:
             "action": action,
             "details": details,
             "user_name": user_name,
-            "timestamp": datetime.now()
+            "timestamp": get_ist_now()
         }
         
         result = await self.collection.update_one(
             {"_id": ObjectId(ticket_id)},
             {
                 "$push": {"history": history_entry},
-                "$set": {"updated_at": datetime.now()}
+                "$set": {"updated_at": get_ist_now()}
             }
         )
         return result.modified_count == 1
@@ -132,7 +133,7 @@ class TicketsDB:
         old_status = current_ticket.get("status", "").lower()
         new_status = update_fields.get("status", "").lower() if "status" in update_fields else old_status
         
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
             {"_id": ObjectId(ticket_id)},
             {"$set": update_fields}
@@ -172,14 +173,14 @@ class TicketsDB:
         if not ObjectId.is_valid(ticket_id):
             return False
             
-        comment_data["created_at"] = datetime.now()
+        comment_data["created_at"] = get_ist_now()
         comment_data["comment_id"] = str(ObjectId())
         
         result = await self.collection.update_one(
             {"_id": ObjectId(ticket_id)},
             {
                 "$push": {"comments": comment_data},
-                "$set": {"updated_at": datetime.now()}
+                "$set": {"updated_at": get_ist_now()}
             }
         )
         
@@ -197,14 +198,14 @@ class TicketsDB:
         if not ObjectId.is_valid(ticket_id):
             return False
             
-        attachment_data["uploaded_at"] = datetime.now()
+        attachment_data["uploaded_at"] = get_ist_now()
         attachment_data["attachment_id"] = str(ObjectId())
         
         result = await self.collection.update_one(
             {"_id": ObjectId(ticket_id)},
             {
                 "$push": {"attachments": attachment_data},
-                "$set": {"updated_at": datetime.now()}
+                "$set": {"updated_at": get_ist_now()}
             }
         )
         return result.modified_count == 1
@@ -219,7 +220,7 @@ class TicketsDB:
             {
                 "$set": {
                     "assigned_users": user_ids,
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 }
             }
         )
@@ -324,9 +325,9 @@ class TicketsDB:
             
         update_data = {
             "status": "closed",
-            "closed_at": datetime.now(),
+            "closed_at": get_ist_now(),
             "closed_by": closed_by,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         if reason:
@@ -356,7 +357,7 @@ class TicketsDB:
             {
                 "$set": {
                     "status": "open",
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 },
                 "$unset": {
                     "closed_at": "",

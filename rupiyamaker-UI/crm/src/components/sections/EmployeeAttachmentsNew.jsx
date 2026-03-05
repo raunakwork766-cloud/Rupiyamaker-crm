@@ -6,6 +6,7 @@ import { Search, Info } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import './attachments.css';
+import { getISTDateYMD } from '../../utils/dateUtils';
 
 const EmployeeAttachmentsNew = ({ employee }) => {
   const BASE_URL = '/api';
@@ -552,7 +553,7 @@ const EmployeeAttachmentsNew = ({ employee }) => {
       // Generate and download the ZIP
       const content = await zip.generateAsync({ type: 'blob' });
       const employeeName = employee?.first_name || employee?.name || employee?._id || 'Employee';
-      const filename = `${employeeName}_Attachments_${new Date().toISOString().split('T')[0]}.zip`;
+      const filename = `${employeeName}_Attachments_${getISTDateYMD()}.zip`;
       
       saveAs(content, filename);
       showNotification(`Downloaded ${uploadedDocuments.length} files as ${filename}`, 'success');
@@ -615,7 +616,7 @@ const EmployeeAttachmentsNew = ({ employee }) => {
 
   if (loadingTypes) {
     return (
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
           <h1 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style={{borderColor: "#3b82f640"}}>Employee Attachments</h1>
           <div className="flex items-center justify-center p-8">
@@ -645,7 +646,7 @@ const EmployeeAttachmentsNew = ({ employee }) => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="w-full">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <h1 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style={{borderColor: "#3b82f640"}}>Attachments</h1>
         

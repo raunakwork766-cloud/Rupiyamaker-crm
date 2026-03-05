@@ -406,8 +406,14 @@ const NotificationManagementPage = () => {
         console.log('👥 Users API response data:', data);
         // Handle both array response or object with users array
         const userList = Array.isArray(data) ? data : (data.users || []);
-        console.log('👥 Processed users list:', userList);
-        setEmployees(userList);
+        // Filter out inactive employees
+        const activeUsers = userList.filter(user => 
+          user.employee_status === 'active' || 
+          user.is_active === true || 
+          user.employee_status === undefined
+        );
+        console.log('👥 Processed users list (active only):', activeUsers);
+        setEmployees(activeUsers);
       } else {
         console.error("Failed to fetch employees:", response.statusText);
         const errorText = await response.text();
@@ -606,6 +612,7 @@ const NotificationManagementPage = () => {
     // Format current date and time
     const now = new Date();
     const options = { 
+      timeZone: 'Asia/Kolkata',
       day: '2-digit', 
       month: 'long', 
       year: 'numeric', 
@@ -613,7 +620,7 @@ const NotificationManagementPage = () => {
       minute: '2-digit',
       hour12: true 
     };
-    const timestamp = 'Sent: ' + now.toLocaleDateString('en-GB', options).replace(',', '');
+    const timestamp = 'Sent: ' + now.toLocaleDateString('en-IN', options).replace(',', '');
     
     const announcementPayload = {
       ...data,
@@ -1059,7 +1066,7 @@ const NotificationManagementPage = () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="w-full p-6">
         {/* Header */}
         <div className="mb-8 bg-black">
           <div className="flex items-center justify-between mb-6">

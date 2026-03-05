@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { interviewsAPI } from '../services/api';
+import { getISTTimestamp } from '../utils/dateUtils';
 import { toast } from 'react-toastify';
 
 const InterviewComments = ({ interviewId, isOpen, onClose, inline = false }) => {
@@ -104,8 +105,8 @@ const InterviewComments = ({ interviewId, isOpen, onClose, inline = false }) => 
         comment: newComment.trim(), // Keep both for compatibility
         created_by: commentData.created_by || 'Current User',
         created_by_name: commentData.created_by_name || 'Current User',
-        created_at: commentData.created_at || new Date().toISOString(),
-        updated_at: commentData.updated_at || new Date().toISOString(),
+        created_at: commentData.created_at || getISTTimestamp(),
+        updated_at: commentData.updated_at || getISTTimestamp(),
         ...commentData
       };
       

@@ -25,6 +25,11 @@ async def _resolve_user_name(user_id: str) -> str:
         if users_db:
             user = await users_db.get_user(user_id)
             if user:
+                fn = user.get("first_name", "")
+                ln = user.get("last_name", "")
+                full = f"{fn} {ln}".strip()
+                if full:
+                    return full
                 return (
                     user.get("name") or user.get("full_name") or
                     user.get("username") or user.get("email") or "Unknown"
@@ -34,6 +39,24 @@ async def _resolve_user_name(user_id: str) -> str:
     return "Unknown"
 
 
+async def _resolve_user_details(user_id: str) -> dict:
+    """Look up name + employee_id for a user_id."""
+    try:
+        users_db = get_users_db_instance()
+        if users_db:
+            user = await users_db.get_user(user_id)
+            if user:
+                fn = user.get("first_name", "")
+                ln = user.get("last_name", "")
+                full = f"{fn} {ln}".strip()
+                name = full or user.get("name") or user.get("username") or "Unknown"
+                emp_id = user.get("employee_id") or user.get("emp_id") or user.get("code") or ""
+                return {"name": name, "employee_id": emp_id}
+    except Exception:
+        pass
+    return {"name": "Unknown", "employee_id": ""}
+
+
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
 class ToggleRequest(BaseModel):
@@ -41,6 +64,7 @@ class ToggleRequest(BaseModel):
     agent_name: str
     action: str      # "on" or "off"
     user_id: str
+    remarks: Optional[str] = None   # action taken / reason for warning
 
 
 class UploadSaveRequest(BaseModel):
@@ -63,22 +87,31 @@ class UploadUpdateRequest(BaseModel):
 
 @router.post("/toggle")
 async def add_toggle_event(body: ToggleRequest):
-    """Record a warning toggle ON/OFF event. user_id sent from frontend."""
+    """Record a warning toggle ON event or remove warning (OFF)."""
     db = get_dialer_db()
     if not db:
         raise HTTPException(status_code=503, detail="Dialer DB not available")
-    if body.action not in ("on", "off"):
-        raise HTTPException(status_code=400, detail="action must be 'on' or 'off'")
+    if body.action not in ("on", "off", "justified"):
+        raise HTTPException(status_code=400, detail="action must be 'on', 'off', or 'justified'")
 
-    user_name = await _resolve_user_name(body.user_id)
+    user_details = await _resolve_user_details(body.user_id)
+
+    if body.action == "off":
+        # Clearing status: delete ALL toggle records for this ext so history is clean
+        await db.delete_toggle_events(ext=body.ext)
+        return {"success": True, "action": "off", "toggled_by_name": user_details["name"]}
+    
+    # action == "on": store warning with remarks
     event = await db.add_toggle_event(
         ext=body.ext,
         agent_name=body.agent_name,
         action=body.action,
         user_id=body.user_id,
-        user_name=user_name,
+        user_name=user_details["name"],
+        employee_id=user_details["employee_id"],
+        remarks=body.remarks or "",
     )
-    return {"success": True, "event": event, "toggled_by_name": user_name}
+    return {"success": True, "event": event, "toggled_by_name": user_details["name"]}
 
 
 @router.get("/toggle/history")
@@ -179,4 +212,276 @@ async def delete_upload(upload_id: str):
     ok = await db.delete_upload(upload_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Upload not found")
+    return {"success": True}
+
+
+# ── Remarks / Justification Endpoints ──────────────────────────────────────────
+
+class RemarkRequest(BaseModel):
+    ext: str
+    agent_name: str
+    date: str           # "YYYY-MM-DD" date of the dialer entry
+    remark_type: str    # e.g. "Training", "Disposal Call", "Meeting", "Other"
+    remark_text: str    # free text detail
+    time_minutes: int   # time in minutes this remark accounts for
+    user_id: str        # CRM user who is adding the remark
+
+
+@router.post("/remarks")
+async def add_remark(body: RemarkRequest):
+    """Add a waste-time justification remark for an agent on a date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    remark = await db.add_remark(
+        ext=body.ext,
+        agent_name=body.agent_name,
+        date=body.date,
+        remark_type=body.remark_type,
+        remark_text=body.remark_text,
+        time_minutes=body.time_minutes,
+        user_id=body.user_id,
+        user_name=user_details["name"],
+        employee_id=user_details["employee_id"],
+    )
+    return {"success": True, "remark": remark}
+
+
+@router.get("/remarks")
+async def get_remarks(ext: Optional[str] = None, date: Optional[str] = None):
+    """Get justification remarks, optionally filtered by ext and/or date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    remarks = await db.get_remarks(ext=ext, date=date)
+    return {"success": True, "remarks": remarks}
+
+
+@router.delete("/remarks/{remark_id}")
+async def delete_remark(remark_id: str):
+    """Delete a single justification remark."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    ok = await db.delete_remark(remark_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Remark not found")
+    return {"success": True}
+
+
+class JustifyRemarkRequest(BaseModel):
+    justify_remark: str   # review / approval remark text
+    user_id: str          # CRM user who is approving
+
+
+@router.patch("/remarks/{remark_id}/justify")
+async def justify_remark(remark_id: str, body: JustifyRemarkRequest):
+    """Mark an existing remark as justified (approved) with a review note."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    ok = await db.justify_remark(
+        remark_id=remark_id,
+        justify_remark=body.justify_remark,
+        user_id=body.user_id,
+        user_name=user_details["name"],
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Remark not found")
+    return {"success": True}
+
+
+@router.patch("/remarks/{remark_id}/unjustify")
+async def unjustify_remark(remark_id: str):
+    """Remove justified status from a remark."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    ok = await db.unjustify_remark(remark_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Remark not found")
+    return {"success": True}
+
+
+# ── Agent Mapping Endpoints ────────────────────────────────────────────────────
+
+class AgentMappingRequest(BaseModel):
+    ext: str
+    dialer_name: str = ""
+    mapped_name: str = ""
+    designation: str = ""
+    team: str = ""
+    user_id: str
+
+
+class BulkAgentMappingRequest(BaseModel):
+    mappings: List[Dict[str, Any]]
+    user_id: str
+
+
+@router.post("/agent-mapping")
+async def upsert_agent_mapping(body: AgentMappingRequest):
+    """Create or update an agent ext→name/designation/team mapping."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    mapping = await db.upsert_agent_mapping(
+        ext=body.ext,
+        dialer_name=body.dialer_name,
+        mapped_name=body.mapped_name,
+        designation=body.designation,
+        team=body.team,
+        user_id=body.user_id,
+        user_name=user_details["name"],
+    )
+    return {"success": True, "mapping": mapping}
+
+
+@router.post("/agent-mapping/bulk")
+async def bulk_upsert_agent_mappings(body: BulkAgentMappingRequest):
+    """Bulk create/update agent mappings."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    count = await db.bulk_upsert_agent_mappings(
+        mappings=body.mappings,
+        user_id=body.user_id,
+        user_name=user_details["name"],
+    )
+    return {"success": True, "count": count}
+
+
+@router.get("/agent-mapping")
+async def get_agent_mappings():
+    """Get all agent mappings."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    mappings = await db.get_all_agent_mappings()
+    return {"success": True, "mappings": mappings}
+
+
+@router.get("/agent-mapping/{ext}")
+async def get_agent_mapping(ext: str):
+    """Get a single agent mapping by ext."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    mapping = await db.get_agent_mapping(ext)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    return {"success": True, "mapping": mapping}
+
+
+@router.delete("/agent-mapping/{ext}")
+async def delete_agent_mapping(ext: str):
+    """Delete an agent mapping by ext."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    ok = await db.delete_agent_mapping(ext)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    return {"success": True}
+
+
+# ── Login Entry Endpoints ──────────────────────────────────────────────────────
+
+class LoginEntryRequest(BaseModel):
+    ext: str
+    agent_name: str
+    date: str           # "YYYY-MM-DD"
+    entry_type: str     # e.g. "On Time", "Late Login", "Early Logout", etc.
+    entry_text: str     # free text detail
+    user_id: str
+
+
+@router.post("/login-entries")
+async def add_login_entry(body: LoginEntryRequest):
+    """Add a login entry for an agent on a date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    entry = await db.add_login_entry(
+        ext=body.ext, agent_name=body.agent_name, date=body.date,
+        entry_type=body.entry_type, entry_text=body.entry_text,
+        user_id=body.user_id, user_name=user_details["name"],
+        employee_id=user_details["employee_id"],
+    )
+    return {"success": True, "entry": entry}
+
+
+@router.get("/login-entries")
+async def get_login_entries(ext: Optional[str] = None, date: Optional[str] = None):
+    """Get login entries, optionally filtered by ext and/or date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    entries = await db.get_login_entries(ext=ext, date=date)
+    return {"success": True, "entries": entries}
+
+
+@router.delete("/login-entries/{entry_id}")
+async def delete_login_entry(entry_id: str):
+    """Delete a single login entry."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    ok = await db.delete_login_entry(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"success": True}
+
+
+# ── Lead CRM Entry Endpoints ──────────────────────────────────────────────────
+
+class LeadEntryRequest(BaseModel):
+    ext: str
+    agent_name: str
+    date: str           # "YYYY-MM-DD"
+    lead_type: str      # e.g. "New Lead", "Follow Up", "Callback", etc.
+    lead_text: str      # free text detail
+    user_id: str
+
+
+@router.post("/lead-entries")
+async def add_lead_entry(body: LeadEntryRequest):
+    """Add a lead CRM entry for an agent on a date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    entry = await db.add_lead_entry(
+        ext=body.ext, agent_name=body.agent_name, date=body.date,
+        lead_type=body.lead_type, lead_text=body.lead_text,
+        user_id=body.user_id, user_name=user_details["name"],
+        employee_id=user_details["employee_id"],
+    )
+    return {"success": True, "entry": entry}
+
+
+@router.get("/lead-entries")
+async def get_lead_entries(ext: Optional[str] = None, date: Optional[str] = None):
+    """Get lead CRM entries, optionally filtered by ext and/or date."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    entries = await db.get_lead_entries(ext=ext, date=date)
+    return {"success": True, "entries": entries}
+
+
+@router.delete("/lead-entries/{entry_id}")
+async def delete_lead_entry(entry_id: str):
+    """Delete a single lead CRM entry."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    ok = await db.delete_lead_entry(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entry not found")
     return {"success": True}

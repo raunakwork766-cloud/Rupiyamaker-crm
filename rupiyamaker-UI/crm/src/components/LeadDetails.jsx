@@ -6,6 +6,7 @@ import {
     Plus, Edit3, Trash2, Save, X, Eye, Download, Copy, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
+import { getISTTimestamp } from '../utils/dateUtils';
 
 // Import section components from sections/ folder (updated from lead-details/)
 import AboutSection from './sections/AboutSection';
@@ -45,7 +46,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
             
             if (response.ok) {
                 const data = await response.json();
-                setAssignableUsers(data);
+                // ✅ FILTER: Only show active employees in reassignment dropdown
+                const activeUsers = (Array.isArray(data) ? data : []).filter(user =>
+                    user.employee_status !== 'inactive' && user.is_active !== false
+                );
+                setAssignableUsers(activeUsers);
             }
         } catch (error) {
             console.error('Error fetching assignable users:', error);
@@ -158,7 +163,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
             // Add metadata
             sanitizedPayload.updated_by = userId;
-            sanitizedPayload.updated_at = new Date().toISOString();
+            sanitizedPayload.updated_at = getISTTimestamp();
 
             console.log('📡 Making API call to update lead:', {
                 leadId: leadData._id,
@@ -407,7 +412,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
             month: '2-digit',
             year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            timeZone: 'Asia/Kolkata'
         });
     };
 
@@ -417,7 +423,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
     return (
         <div className="min-h-screen bg-black text-white p-6">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
                 {/* Header */}
                 <div className=" rounded-lg p-6 mb-6">
                     <div className="flex items-center justify-between">

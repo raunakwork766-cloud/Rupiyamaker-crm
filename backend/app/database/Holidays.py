@@ -1,5 +1,6 @@
 from bson import ObjectId
 from datetime import datetime, date
+from app.utils.timezone import get_ist_now
 from typing import List, Dict, Any, Optional
 import os
 from app.config import Config
@@ -35,8 +36,8 @@ class HolidaysDB:
         """Add a new holiday"""
         try:
             # Add timestamps
-            holiday_data["created_at"] = datetime.now()
-            holiday_data["updated_at"] = datetime.now()
+            holiday_data["created_at"] = get_ist_now()
+            holiday_data["updated_at"] = get_ist_now()
             
             # Insert the holiday
             result = await self.collection.insert_one(holiday_data)
@@ -127,7 +128,7 @@ class HolidaysDB:
         """Update a holiday"""
         try:
             # Add updated timestamp
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             
             result = await self.collection.update_one(
                 {"_id": ObjectId(holiday_id)},
@@ -173,8 +174,8 @@ class HolidaysDB:
         try:
             # Add timestamps to all holidays
             for holiday in holidays_data:
-                holiday["created_at"] = datetime.now()
-                holiday["updated_at"] = datetime.now()
+                holiday["created_at"] = get_ist_now()
+                holiday["updated_at"] = get_ist_now()
             
             result = self.collection.insert_many(holidays_data)
             return [str(id) for id in result.inserted_ids]

@@ -2,6 +2,7 @@ from bson import ObjectId
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.config import Config
+from app.utils.timezone import get_ist_now
 import pymongo
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -31,8 +32,8 @@ class EmployeeActivityDB:
 
     async def log_activity(self, activity_data: Dict[str, Any]) -> str:
         """Log an activity for an employee"""
-        activity_data["created_at"] = datetime.now()
-        activity_data["updated_at"] = datetime.now()
+        activity_data["created_at"] = get_ist_now()
+        activity_data["updated_at"] = get_ist_now()
         
         result = await self.activity_collection.insert_one(activity_data)
         return str(result.inserted_id)
@@ -98,7 +99,7 @@ class EmployeeActivityDB:
     async def update_activity(self, activity_id: str, update_data: Dict[str, Any]) -> bool:
         """Update an activity"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             result = await self.activity_collection.update_one(
                 {"_id": ObjectId(activity_id)},
                 {"$set": update_data}
@@ -139,7 +140,7 @@ class EmployeeActivityDB:
             },
             "created_by": created_by,
             "performed_by": created_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -223,7 +224,7 @@ class EmployeeActivityDB:
             },
             "created_by": updated_by,
             "performed_by": updated_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -243,7 +244,7 @@ class EmployeeActivityDB:
             },
             "created_by": updated_by,
             "performed_by": updated_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -265,7 +266,7 @@ class EmployeeActivityDB:
             },
             "created_by": uploaded_by,
             "performed_by": uploaded_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -285,7 +286,7 @@ class EmployeeActivityDB:
             },
             "created_by": deleted_by,
             "performed_by": deleted_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -304,7 +305,7 @@ class EmployeeActivityDB:
             },
             "created_by": added_by,
             "performed_by": added_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -320,7 +321,7 @@ class EmployeeActivityDB:
             },
             "created_by": changed_by,
             "performed_by": changed_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -339,7 +340,7 @@ class EmployeeActivityDB:
             },
             "created_by": changed_by,
             "performed_by": changed_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)
 
@@ -358,6 +359,6 @@ class EmployeeActivityDB:
             },
             "created_by": uploaded_by,
             "performed_by": uploaded_by,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_ist_now().isoformat()
         }
         return self.log_activity(activity_data)

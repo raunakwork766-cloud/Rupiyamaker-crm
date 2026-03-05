@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status as http_status, Query
 from typing import Dict, Optional, Any, List
 from datetime import datetime, timedelta
+from app.utils.timezone import get_ist_now
 from bson import ObjectId
 
 from app.database.Leads import LeadsDB
@@ -104,7 +105,7 @@ async def get_public_lead_form(
         )
     
     # Check if link is expired
-    if share_link.get("expires_at", datetime.min) < datetime.now():
+    if share_link.get("expires_at", datetime.min) < get_ist_now():
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="This share link has expired"
@@ -158,7 +159,7 @@ async def update_public_lead_form(
         )
     
     # Check if link is expired
-    if share_link.get("expires_at", datetime.min) < datetime.now():
+    if share_link.get("expires_at", datetime.min) < get_ist_now():
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="This share link has expired"
@@ -245,7 +246,7 @@ async def update_public_lead_form(
         update_data["form_share"] = False
     
     update_data["last_updated_via"] = "public_form"
-    update_data["last_updated_at"] = datetime.now()
+    update_data["last_updated_at"] = get_ist_now()
     
     # Update lead data using the update_lead_public method (doesn't require user_id)
     result = await leads_db.update_lead_public(lead_id, update_data)

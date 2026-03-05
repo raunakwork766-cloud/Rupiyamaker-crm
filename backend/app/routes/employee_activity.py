@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 from app.database.EmployeeActivity import EmployeeActivityDB
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
@@ -336,8 +337,8 @@ async def log_employee_activity(
             "details": activity_data.details or {},
             "created_by": activity_data.created_by or user_id,
             "performed_by": activity_data.performed_by or user_id,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now()
         }
         
         # Add timestamp if provided
@@ -347,9 +348,9 @@ async def log_employee_activity(
                 activity_record["timestamp"] = activity_data.timestamp
             except:
                 # If timestamp parsing fails, use current time
-                activity_record["timestamp"] = datetime.utcnow().isoformat()
+                activity_record["timestamp"] = get_ist_now().isoformat()
         else:
-            activity_record["timestamp"] = datetime.utcnow().isoformat()
+            activity_record["timestamp"] = get_ist_now().isoformat()
         
         # Log the activity
         activity_id = await activity_db.log_activity(activity_record)

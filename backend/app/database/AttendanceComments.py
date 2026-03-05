@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class AttendanceCommentsDB:
     def __init__(self, db=None):
@@ -53,8 +54,8 @@ class AttendanceCommentsDB:
                 "content": content.strip(),
                 "created_by": ObjectId(created_by) if ObjectId.is_valid(created_by) else created_by,
                 "created_by_name": created_by_name,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
             }
             
             result = await self.collection.insert_one(comment_data)
@@ -154,7 +155,7 @@ class AttendanceCommentsDB:
                 {
                     "$set": {
                         "content": content.strip(),
-                        "updated_at": datetime.now(),
+                        "updated_at": get_ist_now(),
                         "updated_by": ObjectId(updated_by) if ObjectId.is_valid(updated_by) else updated_by
                     }
                 }
@@ -183,7 +184,7 @@ class AttendanceCommentsDB:
                 {
                     "$set": {
                         "deleted": True,
-                        "deleted_at": datetime.now(),
+                        "deleted_at": get_ist_now(),
                         "deleted_by": ObjectId(deleted_by) if ObjectId.is_valid(deleted_by) else deleted_by
                     }
                 }

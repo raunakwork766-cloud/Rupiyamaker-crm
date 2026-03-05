@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff } from "lucide-react";
+import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
@@ -211,6 +211,9 @@ const CameraModal = ({
   retakePhoto,
   confirmPhoto,
   attendanceLoading,
+  cameraAvailable,
+  fileInputRef,
+  handleFileUpload,
 }) => {
   if (!showCamera) return null;
 
@@ -229,6 +232,23 @@ const CameraModal = ({
           </button>
         </div>
         <div className="space-y-3 sm:space-y-4">
+          {/* Camera not available message */}
+          {!cameraAvailable && !capturedPhoto && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 sm:p-4">
+              <p className="text-yellow-800 text-xs sm:text-sm">
+                📷 Camera unavailable. This may be because:
+              </p>
+              <ul className="text-yellow-700 text-xs ml-4 mt-2 space-y-1">
+                <li>• Browser doesn't support camera</li>
+                <li>• Camera permissions blocked</li>
+                <li>• HTTPS required (accessing via HTTP)</li>
+              </ul>
+              <p className="text-yellow-800 text-xs sm:text-sm mt-2 font-semibold">
+                ⬆️ Please upload a photo instead:
+              </p>
+            </div>
+          )}
+          
           <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '4/3', maxHeight: '250px' }}>
             <video
               ref={videoRef}
@@ -252,14 +272,37 @@ const CameraModal = ({
                 >
                   Cancel
                 </button>
+                
+                {/* Show camera capture button only if camera is available */}
+                {cameraAvailable && (
+                  <button
+                    onClick={capturePhoto}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span className="hidden sm:inline">📷 Capture Photo</span>
+                    <span className="sm:hidden">Capture</span>
+                  </button>
+                )}
+                
+                {/* Show file upload button when camera not available or as alternative */}
                 <button
-                  onClick={capturePhoto}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
                 >
-                  <Camera className="w-4 h-4" />
-                  <span className="hidden sm:inline">📷 Capture Photo</span>
-                  <span className="sm:hidden">Capture</span>
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">📁 Upload Photo</span>
+                  <span className="sm:hidden">Upload</span>
                 </button>
+                
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
               </>
             ) : (
               <>
@@ -306,6 +349,8 @@ export default function TopNavbar({
   const [cameraStream, setCameraStream] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [successModal, setSuccessModal] = useState(null); // null | { type, title, message }
+  const [cameraAvailable, setCameraAvailable] = useState(true);
+  const fileInputRef = useRef(null);
   const [userProfilePhoto, setUserProfilePhoto] = useState(null);
   const [profilePhotoError, setProfilePhotoError] = useState(false);
   const [currentUserData, setCurrentUserData] = useState(null);
@@ -1029,10 +1074,21 @@ export default function TopNavbar({
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera not supported by this browser');
       }
+      
+      // Check if we're on HTTPS or localhost
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure) {
+        throw new Error('Camera requires HTTPS connection');
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' },
       });
       setCameraStream(stream);
+      setCameraAvailable(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
@@ -1041,8 +1097,8 @@ export default function TopNavbar({
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert(`Unable to access camera: ${error.message}. Please check permissions and try again.`);
-      closeCameraModal();
+      setCameraAvailable(false);
+      // Don't close modal - let user upload file instead
     }
   };
 
@@ -1084,6 +1140,7 @@ export default function TopNavbar({
     setCapturedPhoto(null);
     setPendingAction(null);
     setAttendanceLoading(false);
+    setCameraAvailable(true);
     document.body.style.overflow = 'unset';
     const modalContainer = document.getElementById('camera-modal-container');
     if (modalContainer) {
@@ -1091,6 +1148,19 @@ export default function TopNavbar({
       if (!modalContainer.hasChildNodes()) {
         document.body.removeChild(modalContainer);
       }
+    }
+  };
+  
+  const handleFileUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCapturedPhoto(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert('Please select a valid image file');
     }
   };
 
@@ -1241,6 +1311,7 @@ export default function TopNavbar({
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'Asia/Kolkata',
   });
   const parts = timeFormatter.formatToParts(time);
   let numericTime = '';
@@ -1626,11 +1697,18 @@ export default function TopNavbar({
         retakePhoto={retakePhoto}
         confirmPhoto={confirmPhoto}
         attendanceLoading={attendanceLoading}
+        cameraAvailable={cameraAvailable}
+        fileInputRef={fileInputRef}
+        handleFileUpload={handleFileUpload}
       />
 
       <SuccessModal
         successInfo={successModal}
-        onClose={() => setSuccessModal(null)}
+        onClose={() => {
+          setSuccessModal(null);
+          // Reload page to refresh attendance calendar
+          window.location.reload();
+        }}
       />
 
       {/* Change Password Modal */}

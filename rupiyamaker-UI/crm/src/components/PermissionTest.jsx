@@ -77,7 +77,7 @@ const PermissionTest = () => {
   }, []);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-white shadow-lg rounded-lg">
+    <div className="p-6 w-full bg-white shadow-lg rounded-lg">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Permission System Test</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

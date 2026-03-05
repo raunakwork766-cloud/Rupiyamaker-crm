@@ -8,6 +8,7 @@ import pandas as pd
 from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import threading
 import os
 
@@ -122,7 +123,7 @@ class CompanyDataSQLite:
         """Create new record - FAST"""
         with sqlite3.connect(self.db_path) as conn:
             new_id = str(uuid.uuid4())
-            now = datetime.now().isoformat()
+            now = get_ist_now().isoformat()
             
             company_name = record_data.get('company_name', '')
             
@@ -212,7 +213,7 @@ class CompanyDataSQLite:
             
             # Always update the updated_at timestamp
             update_fields.append('updated_at')
-            update_values.append(datetime.now().isoformat())
+            update_values.append(get_ist_now().isoformat())
             
             if not update_fields:
                 # No fields to update, return existing record
@@ -262,7 +263,7 @@ class CompanyDataSQLite:
                     UPDATE companies 
                     SET is_active = 0, updated_at = ?
                     WHERE (_id = ? OR id = ?) AND is_active = 1
-                """, (datetime.now().isoformat(), record_id, record_id))
+                """, (get_ist_now().isoformat(), record_id, record_id))
                 
                 # Remove from FTS index
                 conn.execute("DELETE FROM companies_fts WHERE id = ?", (record_id,))
@@ -453,7 +454,7 @@ class CompanyDataSQLite:
                     'website': '',  # Not in your Excel
                     'contact_person': '',  # Not in your Excel
                     'is_active': True,
-                    'updated_at': datetime.now().isoformat()
+                    'updated_at': get_ist_now().isoformat()
                 }
                 records.append(record)
                 
@@ -492,7 +493,7 @@ class CompanyDataSQLite:
                     else:
                         # Create
                         new_id = str(uuid.uuid4())
-                        now = datetime.now().isoformat()
+                        now = get_ist_now().isoformat()
                         
                         conn.execute("""
                             INSERT INTO companies (
@@ -599,7 +600,7 @@ class CompanyDataSQLite:
                         bank = ? OR 
                         bank_names LIKE '%"' || ? || '"%'
                     )
-                """, (datetime.now().isoformat(), bank_name, bank_name))
+                """, (get_ist_now().isoformat(), bank_name, bank_name))
                 
                 # Remove from FTS index
                 for company_id in company_ids:

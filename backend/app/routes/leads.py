@@ -45,6 +45,7 @@ from app.utils.performance_cache import (
 
 from app.utils.common_utils import ObjectIdStr, convert_object_id, convert_object_ids_in_list
 from app.utils.lead_utils import save_upload_file, get_file_type, get_relative_media_url
+from app.utils.timezone import get_ist_now
 from app.utils.permissions import (
     check_permission, check_any_permission, get_user_capabilities, 
     is_admin, check_lead_view_permission, permission_manager,
@@ -353,7 +354,7 @@ async def check_phone_number(
         }
     
     # Check lead conditions for reassignment
-    current_time = datetime.now()
+    current_time = get_ist_now()
     lead_results = []
     
     for lead in matching_leads:
@@ -479,7 +480,7 @@ async def reassign_lead(
     update_data = {
         "assigned_to": user_id,
         "status": "active",
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     
     success = await leads_db.update_lead(lead_id, update_data, user_id)
@@ -1398,6 +1399,12 @@ async def get_assignment_options(
             else:
                 # For assignment: show TL users (Team Leaders) in the department
                 assignees = await leads_db.get_tl_users_in_department(department_id, exclude_user_id)
+            
+            # ✅ FILTER: Only include active employees in assignment options
+            assignees = [
+                user for user in assignees 
+                if user.get("employee_status", "active") != "inactive" and user.get("is_active", True) != False
+            ]
                 
             for user in assignees:
                 user_dict = convert_object_id(user)
@@ -2566,7 +2573,7 @@ async def update_note(
     # Update note
     update_dict = {k: v for k, v in note_update.dict().items() if v is not None}
     update_dict["updated_by"] = user_id
-    update_dict["updated_at"] = datetime.now()
+    update_dict["updated_at"] = get_ist_now()
     
     success = await leads_db.update_comment(note_id, update_dict)
     
@@ -2886,7 +2893,7 @@ async def upload_lead_attachment(
             "status": "received",
             "uploaded_by": user_id,
             "size": file_data["size"],
-            "created_at": datetime.now()
+            "created_at": get_ist_now()
         }
         
         # Add document to database
@@ -3235,7 +3242,7 @@ async def list_statuses(
             status_dict['id'] = status_dict['_id']
         
         # Add default timestamps if not present
-        now = datetime.now()
+        now = get_ist_now()
         if 'created_at' not in status_dict:
             status_dict['created_at'] = now.isoformat()
         elif isinstance(status_dict['created_at'], datetime):
@@ -3318,7 +3325,7 @@ async def create_status(
     
     # Add timestamps to status data
     status_dict = status_data.dict()
-    now = datetime.now()
+    now = get_ist_now()
     status_dict['created_at'] = now
     status_dict['updated_at'] = now
     
@@ -3362,7 +3369,7 @@ async def update_status(
     # Update status
     update_dict = {k: v for k, v in status_update.dict().items() if v is not None}
     
-    update_dict['updated_at'] = datetime.now()
+    update_dict['updated_at'] = get_ist_now()
     print(update_dict)
     success = await leads_db.update_status(status_id, update_dict)
     
@@ -3805,10 +3812,10 @@ async def generate_public_form_link(
     share_token = ''.join(secrets.choice(alphabet) for _ in range(20))
     
     # Calculate expiration date if provided
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     expires_at = None
     if share_data.expires_in_days:
-        expires_at = datetime.now() + timedelta(days=share_data.expires_in_days)
+        expires_at = get_ist_now() + timedelta(days=share_data.expires_in_days)
     
     # Create share link - only for public forms
     share_link_data = {
@@ -3862,7 +3869,7 @@ async def get_public_lead_form(
             detail="This link is no longer active"
         )
     
-    if share_link.get("expires_at") and share_link.get("expires_at") < datetime.now():
+    if share_link.get("expires_at") and share_link.get("expires_at") < get_ist_now():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This link has expired"
@@ -3872,7 +3879,7 @@ async def get_public_lead_form(
         {"_id": ObjectId(share_link["_id"])},
         {
             "$inc": {"access_count": 1},
-            "$set": {"last_accessed_at": datetime.now()}
+            "$set": {"last_accessed_at": get_ist_now()}
         }
     )
     
@@ -3939,7 +3946,7 @@ async def update_lead_via_public_form(
             detail="This link is no longer active"
         )
     
-    if share_link.get("expires_at") and share_link.get("expires_at") < datetime.now():
+    if share_link.get("expires_at") and share_link.get("expires_at") < get_ist_now():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This link has expired"
@@ -3970,7 +3977,7 @@ async def update_lead_via_public_form(
     
     # Mark that this was updated via public form
     form_data["last_updated_via"] = "public_form"
-    form_data["last_updated_at"] = datetime.now()
+    form_data["last_updated_at"] = get_ist_now()
     
     # Only set form_share to False when this is a final submission, not just a save
     if is_final_submission:
@@ -4024,7 +4031,7 @@ async def update_lead_via_public_login_form(
     # Handle both applicant and co-applicant forms
     update_data = {
         "last_updated_via": "public_form",
-        "last_updated_at": datetime.now()
+        "last_updated_at": get_ist_now()
     }
     
     # Update dynamic_fields
@@ -4153,7 +4160,7 @@ async def create_lead_via_public_form(
         
         # Mark as updated via public form
         lead_data["last_updated_via"] = "public_form"
-        lead_data["last_updated_at"] = datetime.now()
+        lead_data["last_updated_at"] = get_ist_now()
         
         # Set form_share to False when form is saved to prevent further access
         lead_data["form_share"] = False
@@ -4178,7 +4185,7 @@ async def create_lead_via_public_form(
         return convert_object_id(updated_lead)
     
     # Create a new lead
-    lead_data["created_at"] = datetime.now()
+    lead_data["created_at"] = get_ist_now()
     lead_data["status"] = "New Lead"
     lead_data["created_via"] = "public_form"
     
@@ -4425,7 +4432,7 @@ async def update_lead_obligations(
     # Update the lead with the merged dynamic_fields
     update_data = {
         "dynamic_fields": dynamic_fields,
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     
     print(f"🔵 [OBLIGATIONS] About to save to database:")
@@ -4542,9 +4549,9 @@ async def recover_lead_obligations(
         # Update the lead
         update_data = {
             "dynamic_fields": dynamic_fields,
-            "updated_at": datetime.now(),
+            "updated_at": get_ist_now(),
             "data_recovered": True,
-            "data_recovery_date": datetime.now(),
+            "data_recovery_date": get_ist_now(),
             "data_recovery_sources": recovery_sources
         }
         
@@ -4690,9 +4697,9 @@ async def recover_batch_lead_obligations(
                 # Update the lead
                 update_data = {
                     "dynamic_fields": dynamic_fields,
-                    "updated_at": datetime.now(),
+                    "updated_at": get_ist_now(),
                     "data_recovered": True,
-                    "data_recovery_date": datetime.now(),
+                    "data_recovery_date": get_ist_now(),
                     "data_recovery_sources": recovery_sources
                 }
                 
@@ -4741,10 +4748,10 @@ async def request_lead_reassignment(
     update_data = {
         "pending_reassignment": True,
         "reassignment_requested_by": user_id,
-        "reassignment_requested_at": datetime.now(),
+        "reassignment_requested_at": get_ist_now(),
         "reassignment_target_user": target_user_id,
         "reassignment_reason": reason,
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     
     success = await leads_db.update_lead(lead_id, update_data, user_id)
@@ -4810,9 +4817,9 @@ async def approve_lead_reassignment(
         "assigned_to": target_user_id,
         "pending_reassignment": False,
         "reassignment_approved_by": user_id,
-        "reassignment_approved_at": datetime.now(),
+        "reassignment_approved_at": get_ist_now(),
         "status": "active",  # Set status to active after reassignment
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     
     success = await leads_db.update_lead(lead_id, update_data, user_id)
@@ -4940,16 +4947,16 @@ async def copy_lead(
         # Update metadata with current user (default behavior)
         new_lead["created_by"] = user_id
         new_lead["created_by_name"] = user_name.strip()
-        new_lead["created_at"] = datetime.now()
-        new_lead["updated_at"] = datetime.now()
+        new_lead["created_at"] = get_ist_now()
+        new_lead["updated_at"] = get_ist_now()
     else:
         # Preserve original metadata but update timestamp
-        new_lead["updated_at"] = datetime.now()
+        new_lead["updated_at"] = get_ist_now()
         # Keep original created_by, created_by_name, created_at if preserve_all_fields or preserve_created_by
         if not (preserve_all_fields or preserve_created_by):
             new_lead["created_by"] = user_id
             new_lead["created_by_name"] = user_name.strip()
-            new_lead["created_at"] = datetime.now()
+            new_lead["created_at"] = get_ist_now()
     
     # Handle assigned_to preservation
     if not (preserve_all_fields or preserve_assigned_to):
@@ -5035,7 +5042,7 @@ async def copy_lead_activities(source_lead_id: str, new_lead_id: str, user_id: s
         for activity in activities:
             new_activity = {k: v for k, v in activity.items() if k != "_id"}
             new_activity["lead_id"] = new_lead_id
-            new_activity["created_at"] = datetime.now()
+            new_activity["created_at"] = get_ist_now()
             new_activity["created_by"] = user_id
             
             # Add the activity directly to the collection
@@ -5057,7 +5064,7 @@ async def copy_lead_attachments(source_lead_id: str, new_lead_id: str, user_id: 
         for attachment in attachments:
             new_attachment = {k: v for k, v in attachment.items() if k != "_id"}
             new_attachment["lead_id"] = new_lead_id
-            new_attachment["uploaded_at"] = datetime.now()
+            new_attachment["uploaded_at"] = get_ist_now()
             new_attachment["uploaded_by"] = user_id
             
             # Add the attachment directly to the collection
@@ -5082,7 +5089,7 @@ async def copy_lead_tasks(source_lead_id: str, new_lead_id: str, user_id: str, l
             for task in source_lead['tasks']:
                 new_task = {k: v for k, v in task.items() if k != "_id"}
                 new_task["lead_id"] = new_lead_id
-                new_task["created_at"] = datetime.now()
+                new_task["created_at"] = get_ist_now()
                 new_task["created_by"] = user_id
                 # Reset task status to pending/new for the copied lead
                 new_task["status"] = "pending"
@@ -5118,7 +5125,7 @@ async def copy_lead_remarks(source_lead_id: str, new_lead_id: str, user_id: str,
             for remark in source_lead['remarks']:
                 new_remark = {k: v for k, v in remark.items() if k != "_id"}
                 new_remark["lead_id"] = new_lead_id
-                new_remark["created_at"] = datetime.now()
+                new_remark["created_at"] = get_ist_now()
                 new_remark["created_by"] = user_id
                 new_remarks.append(new_remark)
             
@@ -5136,7 +5143,7 @@ async def copy_lead_remarks(source_lead_id: str, new_lead_id: str, user_id: str,
         for note in notes:
             new_note = {k: v for k, v in note.items() if k != "_id"}
             new_note["lead_id"] = new_lead_id
-            new_note["created_at"] = datetime.now()
+            new_note["created_at"] = get_ist_now()
             new_note["created_by"] = user_id
             
             # Add the note to the collection
@@ -5162,7 +5169,7 @@ async def add_lead_copy_activity(new_lead_id: str, user_id: str, user_name: str,
                 "copied_by": user_name.strip(),
                 "copied_by_id": user_id
             },
-            "created_at": datetime.now()
+            "created_at": get_ist_now()
         }
         
         # Add the activity directly to the collection

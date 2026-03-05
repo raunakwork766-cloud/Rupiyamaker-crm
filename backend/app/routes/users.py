@@ -23,6 +23,7 @@ from app.schemas.otp_schemas import UserLoginWithOTP
 from app.database.OTP import OTPDB
 from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission, get_user_capabilities
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(
     prefix="/users",
@@ -518,14 +519,14 @@ async def login(
             {"_id": user["_id"]},
             {
                 "$unset": {"session_invalidated_at": ""},
-                "$set": {"last_login": datetime.now(), "active_session_token": new_session_token}
+                "$set": {"last_login": get_ist_now(), "active_session_token": new_session_token}
             }
         )
     else:
         # Update last login time and set new session token
         await users_db.collection.update_one(
             {"_id": user["_id"]},
-            {"$set": {"last_login": datetime.now(), "active_session_token": new_session_token}}
+            {"$set": {"last_login": get_ist_now(), "active_session_token": new_session_token}}
         )
 
     # Get role and permissions
@@ -1420,6 +1421,7 @@ async def update_user_with_photo(
     blood_group: Optional[str] = Form(None),
     pan_number: Optional[str] = Form(None),
     aadhaar_number: Optional[str] = Form(None),
+    current_city: Optional[str] = Form(None),
     highest_qualification: Optional[str] = Form(None),
     experience_level: Optional[str] = Form(None),
     employee_id: Optional[str] = Form(None),
@@ -1660,7 +1662,7 @@ async def update_user_with_photo(
                 )
     
     # Add updated timestamp
-    update_data["updated_at"] = datetime.now()
+    update_data["updated_at"] = get_ist_now()
     
     # Update the user
     success = await users_db.update_user(user_id, update_data)
@@ -1784,6 +1786,7 @@ async def upload_user_profile_photo(
 async def bulk_update_user_status(
     target_status: bool = Query(..., description="Target status value (true for active, false for inactive)"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update user status (is_active) for all users except super admins"""
@@ -1800,19 +1803,25 @@ async def bulk_update_user_status(
         update_data = {
             "is_active": target_status,
             "employee_status": "active" if target_status else "inactive",
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # If setting status to inactive (false), also disable login and OTP
         if not target_status:
             update_data["login_enabled"] = False
             update_data["otp_required"] = False
+
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
         
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": update_data
             }
@@ -1835,6 +1844,7 @@ async def bulk_update_user_status(
 async def bulk_update_login_access(
     target_login_enabled: bool = Query(..., description="Target login_enabled value"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update login access (login_enabled) for all users except super admins"""
@@ -1849,26 +1859,32 @@ async def bulk_update_login_access(
         # Prepare update data
         update_data = {
             "login_enabled": target_login_enabled,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # 🔒 CRITICAL: ALWAYS set session_invalidated_at timestamp
         # This ensures ALL users must re-login whether we're enabling or disabling
         # When disabling: Forces logout for offline users
         # When enabling: Forces logout for ALL users (including those already logged in)
-        update_data["session_invalidated_at"] = datetime.now()
+        update_data["session_invalidated_at"] = get_ist_now()
         
         if target_login_enabled:
-            print(f"🔒 BULK RE-ENABLE: Setting session_invalidated_at at {datetime.now()} - All users must re-login")
+            print(f"🔒 BULK RE-ENABLE: Setting session_invalidated_at at {get_ist_now()} - All users must re-login")
         else:
-            print(f"🔒 BULK DISABLE: Setting session_invalidated_at at {datetime.now()} - All users logged out")
+            print(f"🔒 BULK DISABLE: Setting session_invalidated_at at {get_ist_now()} - All users logged out")
         
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
+
         # Update query: exclude users with super admin role_id
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": update_data
             }
@@ -1892,6 +1908,7 @@ async def bulk_update_login_access(
 async def bulk_update_otp_requirement(
     target_otp_required: bool = Query(..., description="Target otp_required value"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update OTP requirement (otp_required) for all users except super admins"""
@@ -1902,17 +1919,23 @@ async def bulk_update_otp_requirement(
     try:
         # Get all users except super admins
         users_collection = users_db.collection
+
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
         
         # Update query: exclude users with super admin role_id
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": {
                     "otp_required": target_otp_required,
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 }
             }
         )

@@ -8,7 +8,7 @@ import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
-import { formatDate as formatDateUtil, formatDateTime, calculateAge } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, calculateAge, getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
 
 // API base URL - Use proxy in development
@@ -574,8 +574,9 @@ const InterviewPanel = () => {
         // Fallback: Try to get users from API if no interviews exist yet
         const response = await API.get('/users');
         if (response.data) {
-          // Filter users with role 'hr_manager' or 'super admin'
+          // Filter users with role 'hr_manager' or 'super admin' AND active status
           const filteredUsers = response.data.filter(user => 
+            (user.employee_status === 'active' || user.is_active === true || user.employee_status === undefined) &&
             user.role && (
               user.role.toLowerCase().includes('hr_manager') || 
               user.role.toLowerCase().includes('super admin') ||
@@ -2652,7 +2653,8 @@ const InterviewPanel = () => {
                                       month: 'short',
                                       year: 'numeric',
                                       hour: '2-digit',
-                                      minute: '2-digit'
+                                      minute: '2-digit',
+                                      timeZone: 'Asia/Kolkata'
                                     })}
                                   </div>
                                 )}
@@ -2679,7 +2681,8 @@ const InterviewPanel = () => {
                                   month: 'short',
                                   year: 'numeric',
                                   hour: '2-digit',
-                                  minute: '2-digit'
+                                  minute: '2-digit',
+                                  timeZone: 'Asia/Kolkata'
                                 }) : 'Unknown'}
                               </div>
                             </td>
@@ -3203,7 +3206,7 @@ const InterviewTable = ({
                 {interview.monthly_salary_offered || "-"}
               </td>
               <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.interview_date ? new Date(interview.interview_date).toLocaleDateString() : "-"}
+                {interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : "-"}
               </td>
               <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                 {interview.interview_time || "-"}
@@ -3320,7 +3323,7 @@ const SearchableSelect = ({
 const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, interviewTypeOptions, statusOptions, statusOptionsWithSubs = [], sourcePortalOptions = [], existingInterviews = [] }) => {
   // Get current date and time in the required format for datetime-local input
   const getCurrentDateTime = () => {
-    const now = new Date();
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -3606,7 +3609,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         banking_experience: formData.banking_experience || '',
         
         // Interview scheduling
-        interview_date: new Date(formData.date_time).toISOString().split('T')[0],
+        interview_date: toISTDateYMD(formData.date_time),
         interview_time: formData.date_time.split('T')[1] || '10:00',
         date_time: formData.date_time,
         
@@ -3617,8 +3620,8 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         // System fields
         created_by: userName,
         user_id: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: getISTTimestamp(),
+        updated_at: getISTTimestamp()
       };
 
       // Remove null values for optional numeric fields to avoid backend issues

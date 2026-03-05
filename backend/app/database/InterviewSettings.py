@@ -1,6 +1,7 @@
 from bson import ObjectId
 from datetime import datetime
 import logging
+from app.utils.timezone import get_ist_now
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ async def create_job_opening(job_opening_data):
         job_openings_collection = collections["job_openings"]
         
         # Add timestamps
-        current_time = datetime.now()
+        current_time = get_ist_now()
         job_opening_data.update({
             "created_at": current_time,
             "updated_at": current_time
@@ -141,7 +142,7 @@ async def update_job_opening(job_opening_id, user_id, job_opening_data):
         job_openings_collection = collections["job_openings"]
         
         # Add update timestamp
-        job_opening_data["updated_at"] = datetime.now()
+        job_opening_data["updated_at"] = get_ist_now()
         
         result = await job_openings_collection.update_one(
             {"_id": ObjectId(job_opening_id), "user_id": user_id},
@@ -216,7 +217,7 @@ async def create_interview_type(interview_type_data):
         interview_types_collection = collections["interview_types"]
         
         # Add timestamps
-        current_time = datetime.now()
+        current_time = get_ist_now()
         interview_type_data.update({
             "created_at": current_time,
             "updated_at": current_time
@@ -293,7 +294,7 @@ async def update_interview_type(interview_type_id, user_id, interview_type_data)
         interview_types_collection = collections["interview_types"]
         
         # Add update timestamp
-        interview_type_data["updated_at"] = datetime.now()
+        interview_type_data["updated_at"] = get_ist_now()
         
         result = await interview_types_collection.update_one(
             {"_id": ObjectId(interview_type_id), "user_id": user_id},
@@ -405,7 +406,7 @@ async def create_source_portal(source_portal_data):
         source_portals_collection = collections["source_portals"]
         
         # Add timestamps
-        current_time = datetime.now()
+        current_time = get_ist_now()
         source_portal_data.update({
             "created_at": current_time,
             "updated_at": current_time
@@ -464,7 +465,7 @@ async def update_source_portal(source_portal_id, user_id, update_data):
         source_portals_collection = collections["source_portals"]
         
         # Add updated timestamp
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         
         # Check if another source/portal with the same name exists
         existing = await source_portals_collection.find_one({
@@ -552,7 +553,7 @@ async def create_sub_status(sub_status_data):
         sub_statuses_collection = collections["sub_statuses"]
         
         # Add timestamps
-        current_time = datetime.now()
+        current_time = get_ist_now()
         sub_status_data.update({
             "created_at": current_time,
             "updated_at": current_time
@@ -629,7 +630,7 @@ async def update_sub_status(sub_status_id, update_data):
         sub_statuses_collection = collections["sub_statuses"]
         
         # Add updated timestamp
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         
         result = await sub_statuses_collection.update_one(
             {"_id": ObjectId(sub_status_id)},

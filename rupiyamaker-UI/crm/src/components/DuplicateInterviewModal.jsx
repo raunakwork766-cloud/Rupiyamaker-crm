@@ -67,7 +67,8 @@ const DuplicateInterviewModal = ({
             return new Date(dateString).toLocaleDateString('en-IN', {
                 day: '2-digit',
                 month: 'short',
-                year: 'numeric'
+                year: 'numeric',
+                timeZone: 'Asia/Kolkata'
             });
         } catch {
             return 'Invalid date';

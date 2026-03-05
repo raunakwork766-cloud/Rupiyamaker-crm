@@ -5,6 +5,7 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 import secrets
 import string
+from app.utils.timezone import get_ist_now
 
 class AppShareLinksDB:
     def __init__(self, db=None):
@@ -64,15 +65,15 @@ class AppShareLinksDB:
         share_token = self.generate_share_token()
         
         # Calculate expiry date
-        expires_at = datetime.now() + timedelta(days=expires_in_days)
+        expires_at = get_ist_now() + timedelta(days=expires_in_days)
         
         # Create link document
         share_link = {
             "app_id": ObjectId(app_id),
             "share_token": share_token,
             "created_by": ObjectId(created_by),
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now(),
             "expires_at": expires_at,
             "is_active": True,
             "access_count": 0,
@@ -146,7 +147,7 @@ class AppShareLinksDB:
             return False
         
         # Check expiration
-        if "expires_at" in share_link and share_link["expires_at"] < datetime.now():
+        if "expires_at" in share_link and share_link["expires_at"] < get_ist_now():
             return False
         
         # Check access count
@@ -203,8 +204,8 @@ class AppShareLinksDB:
             {
                 "$inc": {"access_count": 1},
                 "$set": {
-                    "last_accessed_at": datetime.now(),
-                    "updated_at": datetime.now()
+                    "last_accessed_at": get_ist_now(),
+                    "updated_at": get_ist_now()
                 }
             }
         )
@@ -224,12 +225,12 @@ class AppShareLinksDB:
         """
         update_data = {
             "is_active": False,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         if deactivated_by:
             update_data["deactivated_by"] = ObjectId(deactivated_by)
-            update_data["deactivated_at"] = datetime.now()
+            update_data["deactivated_at"] = get_ist_now()
         
         result = await self.collection.update_one(
             {"share_token": share_token},
@@ -253,7 +254,7 @@ class AppShareLinksDB:
             {
                 "$set": {
                     "is_active": True,
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 },
                 "$unset": {
                     "deactivated_by": "",
@@ -288,7 +289,7 @@ class AppShareLinksDB:
         Returns:
             Number of links removed
         """
-        threshold_date = datetime.now() - timedelta(days=days_threshold)
+        threshold_date = get_ist_now() - timedelta(days=days_threshold)
         
         result = await self.collection.delete_many({
             "expires_at": {"$lt": threshold_date}
@@ -319,7 +320,7 @@ class AppShareLinksDB:
                     "expired_links": {
                         "$sum": {
                             "$cond": [
-                                {"$lt": ["$expires_at", datetime.now()]},
+                                {"$lt": ["$expires_at", get_ist_now()]},
                                 1,
                                 0
                             ]

@@ -4,6 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import logging
+from app.utils.timezone import get_ist_now
 import os
 from pathlib import Path
 import shutil
@@ -332,7 +333,7 @@ async def update_app(
             raise HTTPException(status_code=403, detail="Access denied")
         
         # Build update document
-        update_data = {"updated_at": datetime.now()}
+        update_data = {"updated_at": get_ist_now()}
         
         if app_data.title is not None:
             update_data["title"] = app_data.title

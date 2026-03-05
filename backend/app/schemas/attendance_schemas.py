@@ -42,6 +42,7 @@ class AttendanceEditRequest(BaseModel):
     status: Optional[float] = Field(None, description="Attendance status")
     comments: Optional[str] = Field(None, description="Comments")
     admin_comments: Optional[str] = Field(None, description="Admin comments for edit reason")
+    reason: Optional[str] = Field(None, description="Reason for editing attendance")
 
 class AttendanceDetailResponse(BaseModel):
     id: str = Field(..., description="Attendance record ID")
@@ -128,6 +129,8 @@ class AttendanceSettingsUpdate(BaseModel):
     grace_usage_limit: Optional[int] = Field(None, description="Grace usage limit per month")
     auto_grace_enabled: Optional[bool] = Field(None, description="Enable threshold-based auto grace")
     auto_grace_monthly_limit: Optional[int] = Field(None, description="Max graces per month")
+    default_earned_leave_monthly: Optional[float] = Field(None, description="Default EL (Earned Leave) allotted per month to each employee")
+    default_paid_leave_monthly: Optional[float] = Field(None, description="Default PL (Paid Leave) allotted per month to each employee")
     auto_grace_threshold_1: Optional[int] = Field(None, description="Days present to unlock 1st grace")
     auto_grace_threshold_2: Optional[int] = Field(None, description="Days present to unlock 2nd grace")
     auto_grace_threshold_3: Optional[int] = Field(None, description="Days present to unlock 3rd grace")
@@ -161,6 +164,7 @@ class AttendanceCreate(BaseModel):
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     status: float = Field(..., description="Attendance status: 1 = Full Day, 0.5 = Half Day, 0 = Leave, -1 = Absent")
     comments: Optional[str] = Field("", description="Optional comments")
+    reason: Optional[str] = Field(None, description="Reason for marking/editing attendance")
     check_in_time: Optional[str] = Field(None, description="Check-in time")
     check_out_time: Optional[str] = Field(None, description="Check-out time")
     check_in_photo_path: Optional[str] = Field(None, description="Check-in photo path")
@@ -308,6 +312,7 @@ class AttendanceCalendarDay(BaseModel):
 
 class EmployeeAttendanceCalendar(BaseModel):
     employee_id: str = Field(..., description="Employee ID (_id)")
+    user_mongo_id: Optional[str] = Field(None, description="MongoDB _id for history lookups")
     employee_name: str = Field(..., description="Employee name")
     employee_photo: Optional[str] = Field(None, description="Employee photo URL")
     department_name: str = Field(default="Unknown Department", description="Department name")

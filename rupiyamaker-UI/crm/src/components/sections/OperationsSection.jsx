@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { message } from "antd";
 import axios from 'axios';
 import { hasPermission, getUserPermissions } from '../../utils/permissions';
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../../utils/dateUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -201,7 +202,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
 
   // State for form data (operations fields)
   const [formData, setFormData] = useState({
-    login_sent_date: safetyLead.login_sent_date || new Date().toISOString().split('T')[0],
+    login_sent_date: safetyLead.login_sent_date || getISTDateYMD(),
     login_person: safetyLead.login_person || [], // Changed to array for multiple persons
     channel_name: safetyLead.channel_name || '',
     los_number: safetyLead.los_number || '',
@@ -281,9 +282,9 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
   const formatDateDisplay = (dateString) => {
     if (!dateString) return '';
     
-    const date = new Date(dateString);
+    const date = new Date(new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     const day = date.getDate();
-    const month = date.toLocaleString('en', { month: 'short' });
+    const month = date.toLocaleString('en', { month: 'short', timeZone: 'Asia/Kolkata' });
     const year = date.getFullYear();
     
     // Add ordinal suffix
@@ -305,9 +306,9 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
   const formatDateTimeDisplay = (dateString) => {
     if (!dateString) return '';
     
-    const date = new Date(dateString);
+    const date = new Date(new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     const day = date.getDate();
-    const month = date.toLocaleString('en', { month: 'short' });
+    const month = date.toLocaleString('en', { month: 'short', timeZone: 'Asia/Kolkata' });
     const year = date.getFullYear();
     
     // Format time in 12-hour format
@@ -1068,7 +1069,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
               <div className="relative">
                 <input
                   type="date"
-                  value={formData[key] ? new Date(formData[key]).toISOString().split('T')[0] : ''}
+                  value={formData[key] ? toISTDateYMD(formData[key]) : ''}
                   onChange={(e) => isFieldReadOnly ? null : handleInputChange(key, e.target.value)}
                   onBlur={(e) => isFieldReadOnly ? null : handleInputBlur(key, e.target.value)}
                   readOnly={isFieldReadOnly}

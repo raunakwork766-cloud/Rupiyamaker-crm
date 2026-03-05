@@ -1,0 +1,910 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Warning Management System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .slide-down {
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.2s ease-in forwards;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .custom-ring:focus-within {
+      box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
+      border-color: #0891b2;
+    }
+
+    .custom-dropdown-content {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body class="h-screen w-full flex flex-col text-slate-800 overflow-hidden">
+
+  <!-- Top Navigation -->
+  <header class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 shrink-0 z-10">
+    <div class="flex items-center gap-4">
+      <div class="bg-cyan-600 text-white p-2 rounded-lg shadow-sm">
+        <i data-lucide="shield-alert" class="w-5 h-5"></i>
+      </div>
+      <h1 class="text-xl font-bold text-slate-800 tracking-tight">Warnings & Compliance</h1>
+    </div>
+    <div class="flex items-center gap-4">
+      <span class="text-sm font-medium text-slate-600 border-r border-slate-200 pr-4">Admin Access</span>
+      <span class="text-sm font-bold text-slate-800">Raunak Kumar</span>
+      <div
+        class="w-9 h-9 rounded-full bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-700 font-bold text-sm shadow-sm cursor-pointer hover:bg-cyan-100 transition-colors">
+        RK</div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 overflow-hidden flex flex-col p-6 max-w-[1400px] mx-auto w-full gap-5">
+
+    <!-- Tab Navigation & Header Actions -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 shrink-0">
+      <!-- Tabs -->
+      <div class="flex p-1 bg-slate-200/60 rounded-lg w-fit">
+        <button onclick="switchTab('warnings-view', this)"
+          class="tab-btn px-5 py-2.5 bg-white shadow-sm rounded-md text-sm font-bold text-cyan-700 transition-all">
+          Warnings Log
+        </button>
+        <button onclick="switchTab('mistakes-view', this)"
+          class="tab-btn px-5 py-2.5 text-slate-600 hover:text-slate-800 text-sm font-medium rounded-md transition-all">
+          Mistakes Directory
+        </button>
+      </div>
+
+      <!-- Contextual Action Buttons -->
+      <div id="warnings-actions">
+        <button onclick="openModal('warning-modal')"
+          class="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm shadow-cyan-500/30 transition-all flex items-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i> Issue New Warning
+        </button>
+      </div>
+      <div id="mistakes-actions" class="hidden">
+        <button onclick="openModal('create-mistake-modal')"
+          class="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <i data-lucide="folder-plus" class="w-4 h-4"></i> Create Mistake Category
+        </button>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- TAB 1: WARNINGS LOG (Table)  -->
+    <!-- ============================== -->
+    <div id="warnings-view"
+      class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col fade-in">
+      <div class="p-4 border-b border-slate-100 bg-slate-50 flex gap-4 items-center">
+        <div class="relative flex-1 max-w-md">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+          <input type="text" placeholder="Search employee or mistake..."
+            class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-cyan-500">
+        </div>
+        <div class="flex gap-2">
+          <span class="text-xs text-slate-500 font-medium self-center mr-2">Quick Demo:</span>
+          <button onclick="openModal('employee-modal')"
+            class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Employee App View
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto flex-1 h-full">
+        <table class="min-w-full w-full text-left text-sm whitespace-nowrap">
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10 shadow-sm">
+            <tr>
+              <th class="py-3 px-4 w-12 text-center">#</th>
+              <th class="py-3 px-4">Date</th>
+              <th class="py-3 px-4">Employee</th>
+              <th class="py-3 px-4">Issued By</th>
+              <th class="py-3 px-4">Mistake Type</th>
+              <th class="py-3 px-4">Penalty</th>
+              <th class="py-3 px-4 min-w-[200px]">Employee Remark</th>
+              <th class="py-3 px-4 text-center">Status</th>
+              <th class="py-3 px-4 text-center">Admin Actions</th>
+            </tr>
+          </thead>
+          <tbody id="warnings-table-body" class="divide-y divide-slate-100">
+            <!-- Rows injected via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- TAB 2: MISTAKES DIRECTORY      -->
+    <!-- ============================== -->
+    <div id="mistakes-view"
+      class="hidden bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex-1 flex-col fade-in p-6">
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Master Mistakes Directory</h2>
+          <p class="text-sm text-slate-500">Manage all standardized mistake categories used for issuing warnings.</p>
+        </div>
+        <div class="relative w-80">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+          <input type="text" onkeyup="filterDirectory(event)" placeholder="Search directory..."
+            class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-slate-400">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto pr-2" id="mistakes-grid">
+        <!-- Mistake Cards (Cleaned up, removed tags) -->
+        <div
+          class="mistake-card border border-slate-200 rounded-lg p-4 hover:border-cyan-300 hover:shadow-md transition-all group">
+          <h3 class="font-bold text-slate-800 text-base mb-2">Late Arrival</h3>
+          <p class="text-sm text-slate-600 line-clamp-2">Used when an employee logs in or arrives at the desk after the
+            designated shift start time without prior approval.</p>
+          <div
+            class="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="text-xs font-medium text-cyan-600 hover:underline">Edit</button>
+          </div>
+        </div>
+
+        <div
+          class="mistake-card border border-slate-200 rounded-lg p-4 hover:border-cyan-300 hover:shadow-md transition-all group">
+          <h3 class="font-bold text-slate-800 text-base mb-2">Uninformed Leave</h3>
+          <p class="text-sm text-slate-600 line-clamp-2">Taking a day off without informing the manager or HR through
+            the proper official channels beforehand.</p>
+          <div
+            class="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="text-xs font-medium text-cyan-600 hover:underline">Edit</button>
+          </div>
+        </div>
+
+        <div
+          class="mistake-card border border-slate-200 rounded-lg p-4 hover:border-cyan-300 hover:shadow-md transition-all group">
+          <h3 class="font-bold text-slate-800 text-base mb-2">Unprofessional Behavior</h3>
+          <p class="text-sm text-slate-600 line-clamp-2">Inappropriate language, insubordination, or actions that
+            violate the company's code of conduct and ethics policy.</p>
+          <div
+            class="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="text-xs font-medium text-cyan-600 hover:underline">Edit</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ============================================== -->
+  <!-- MODALS SECTION -->
+  <!-- ============================================== -->
+
+  <!-- CREATE MISTAKE MODAL -->
+  <div id="create-mistake-modal"
+    class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
+        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="folder-plus" class="w-5 h-5 text-slate-600"></i> Create Mistake Category
+        </h2>
+        <button onclick="closeModal('create-mistake-modal')"
+          class="text-slate-400 hover:text-slate-700 p-2 rounded-full">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Short Title <span class="text-red-500">*</span></label>
+          <input type="text" placeholder="e.g., Dress Code Violation"
+            class="w-full text-sm outline-none px-3 py-2.5 bg-white border border-slate-300 rounded-lg custom-ring">
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Detailed Description <span
+              class="text-red-500">*</span></label>
+          <textarea rows="4" placeholder="Explain precisely when this mistake type should be used by managers..."
+            class="w-full text-sm outline-none p-3 resize-none bg-white border border-slate-300 rounded-lg custom-ring"></textarea>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+        <button onclick="closeModal('create-mistake-modal')"
+          class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+        <button onclick="showToast('New Mistake Category Created!'); closeModal('create-mistake-modal');"
+          class="px-5 py-2 text-sm font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-sm">Save
+          Mistake</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ISSUE WARNING MODAL (Manager View) -->
+  <div id="warning-modal"
+    class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4 sm:p-6 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden relative">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-red-50 text-red-600 rounded-lg border border-red-100">
+            <i data-lucide="alert-octagon" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Issue Warning</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Record mistake and send warning to employee</p>
+          </div>
+        </div>
+        <button onclick="closeModal('warning-modal')"
+          class="text-slate-400 hover:text-slate-700 hover:bg-slate-200 p-2 rounded-full transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="overflow-y-auto flex-1 p-6 space-y-6">
+        <!-- Row 1: Issue Date & Issued By -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="space-y-1.5">
+            <label class="text-sm font-semibold text-slate-700">Issue Date <span class="text-red-500">*</span></label>
+            <div class="relative custom-ring border border-slate-300 rounded-lg bg-slate-50 flex items-center">
+              <i data-lucide="calendar" class="w-4 h-4 text-slate-400 absolute left-3"></i>
+              <input type="text" value="28 Feb 2026" readonly
+                class="w-full text-sm text-slate-600 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed">
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-sm font-semibold text-slate-700">Issued By <span class="text-red-500">*</span></label>
+            <div class="relative custom-ring border border-slate-300 rounded-lg bg-slate-50 flex items-center">
+              <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3"></i>
+              <input type="text" value="Raunak Kumar" readonly
+                class="w-full text-sm text-slate-600 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed">
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Employee Selection -->
+        <div class="bg-cyan-50/40 border border-cyan-100 p-4 rounded-xl space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="space-y-1.5">
+              <label class="text-sm font-semibold text-slate-700">Department <span class="text-red-500">*</span></label>
+              <div class="relative custom-ring border border-slate-300 rounded-lg bg-white">
+                <select
+                  class="w-full text-sm text-slate-700 outline-none appearance-none py-2.5 pl-3 pr-10 bg-transparent cursor-pointer">
+                  <option value="sales" selected>Sales & Marketing</option>
+                  <option value="tech">Technology / IT</option>
+                </select>
+                <i data-lucide="chevron-down"
+                  class="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none"></i>
+              </div>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-sm font-semibold text-slate-700">Issued To <span class="text-red-500">*</span></label>
+              <div
+                class="relative custom-ring border border-slate-300 rounded-lg bg-white flex items-center p-1.5 min-h-[42px] flex-wrap gap-1.5 cursor-text">
+                <div
+                  class="bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium">
+                  Rahul Verma
+                  <i data-lucide="x" class="w-3 h-3 cursor-pointer hover:text-red-500 transition-colors"></i>
+                </div>
+                <input type="text" placeholder="Add more..."
+                  class="flex-1 min-w-[100px] text-sm outline-none bg-transparent px-1">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Mistake Type (Searchable) -->
+        <div class="space-y-1.5 relative">
+          <label class="text-sm font-semibold text-slate-700 flex justify-between items-center">
+            <span>Mistake Type / Category <span class="text-red-500">*</span></span>
+          </label>
+
+          <div class="relative">
+            <input type="hidden" id="mistake-select-value" value="">
+            <div onclick="toggleDropdown('mistake-dropdown-options')"
+              class="relative custom-ring border border-slate-300 rounded-lg bg-white p-3 cursor-pointer flex justify-between items-center hover:border-cyan-400 transition-colors">
+              <span id="mistake-selected-text" class="text-sm text-slate-500 font-medium">Search and select the specific
+                mistake...</span>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+            </div>
+
+            <!-- Dropdown Menu -->
+            <div id="mistake-dropdown-options"
+              class="hidden absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden">
+              <div class="p-2 border-b border-slate-100 bg-slate-50 sticky top-0">
+                <div class="relative flex items-center">
+                  <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3"></i>
+                  <input type="text" onkeyup="filterMistakesDropdown(event)" placeholder="Search directory..."
+                    class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md outline-none focus:border-cyan-500">
+                </div>
+              </div>
+              <div class="custom-dropdown-content divide-y divide-slate-50">
+                <div class="dropdown-option p-3 hover:bg-cyan-50 cursor-pointer"
+                  onclick="selectMistake('Late Arrival', 'late')">
+                  <h4 class="text-sm font-bold text-slate-800">Late Arrival</h4>
+                  <p class="text-xs text-slate-500 mt-0.5">Used when an employee logs in or arrives at the desk after
+                    the designated shift start time without prior approval.</p>
+                </div>
+                <div class="dropdown-option p-3 hover:bg-cyan-50 cursor-pointer"
+                  onclick="selectMistake('Uninformed Leave', 'absent')">
+                  <h4 class="text-sm font-bold text-slate-800">Uninformed Leave</h4>
+                  <p class="text-xs text-slate-500 mt-0.5">Taking a day off without informing the manager or HR through
+                    the proper official channels beforehand.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🚨 FIXED SMART INSIGHTS PANEL (Timeline description simplified) 🚨 -->
+        <div id="detailed-history-panel"
+          class="hidden bg-red-50/40 border border-red-200 rounded-xl p-5 slide-down shadow-sm">
+          <div
+            class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-red-100 pb-3 gap-2">
+            <div class="flex items-center gap-2.5 text-red-700">
+              <div class="p-1.5 bg-red-100 rounded-md">
+                <i data-lucide="alert-triangle" class="w-5 h-5 animate-pulse text-red-600"></i>
+              </div>
+              <h3 class="font-bold text-base">Same Mistake Repeated</h3>
+            </div>
+            <span
+              class="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">3rd
+              Time Offense</span>
+          </div>
+
+          <div class="flex items-center gap-4 mb-6 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
+            <div class="flex-1 text-center border-r border-slate-100">
+              <p class="text-[11px] text-slate-500 font-bold uppercase tracking-wide">Total Penalty Given</p>
+              <p class="text-xl font-black text-red-600">₹1000</p>
+            </div>
+            <div class="flex-1 text-center">
+              <p class="text-[11px] text-slate-500 font-bold uppercase tracking-wide">Total Waived Off</p>
+              <p class="text-xl font-black text-green-600">₹500</p>
+            </div>
+          </div>
+
+          <!-- Clean Vertical Timeline -->
+          <div
+            class="space-y-6 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-200">
+
+            <!-- History Item: Warning 2 -->
+            <div class="relative flex gap-4 items-start">
+              <div
+                class="w-8 h-8 rounded-full bg-white border border-red-200 flex items-center justify-center shrink-0 z-10 text-red-600 shadow-sm">
+                <span class="text-xs font-bold">2</span>
+              </div>
+              <div
+                class="flex-1 bg-white border border-slate-200 rounded-lg shadow-sm p-5 hover:border-red-200 transition-all">
+                <div
+                  class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 border-b border-slate-100 pb-3">
+                  <h4 class="font-bold text-slate-800 text-base flex items-center gap-2">Late Arrival <span
+                      class="text-slate-400 font-medium text-xs ml-2">10 Feb 2026</span></h4>
+                  <span
+                    class="bg-slate-50 text-slate-600 text-[11px] px-3 py-1 rounded-md font-bold border border-slate-200 mt-2 sm:mt-0">Penalty:
+                    ₹500</span>
+                </div>
+                <!-- Removed Mistake Context as requested -->
+                <div class="mb-4">
+                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Issued by
+                    Ankita Sharma (HR):</span>
+                  <p
+                    class="text-sm text-slate-800 bg-slate-50 p-3.5 rounded-lg border border-slate-100 font-medium leading-relaxed">
+                    "You have been arriving 2 hours late consistently for the past 3 days. This behavior is unacceptable
+                    and impacts team productivity."</p>
+                </div>
+                <div class="bg-green-50/80 p-3.5 rounded-lg border border-green-200/60">
+                  <span
+                    class="font-bold text-[10px] uppercase tracking-widest block mb-1.5 text-green-700 flex items-center gap-1.5"><i
+                      data-lucide="check-circle" class="w-3.5 h-3.5"></i> Employee Remark (Accepted):</span>
+                  <p class="italic text-sm text-green-900">"Bike broke down continuously. Won't happen again."</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- History Item: Warning 1 -->
+            <div class="relative flex gap-4 items-start">
+              <div
+                class="w-8 h-8 rounded-full bg-white border border-orange-200 flex items-center justify-center shrink-0 z-10 text-orange-600 shadow-sm">
+                <span class="text-xs font-bold">1</span>
+              </div>
+              <div
+                class="flex-1 bg-white border border-slate-200 rounded-lg shadow-sm p-5 hover:border-orange-200 transition-all">
+                <div
+                  class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 border-b border-slate-100 pb-3">
+                  <h4 class="font-bold text-slate-800 text-base flex items-center gap-2">Late Arrival <span
+                      class="text-slate-400 font-medium text-xs ml-2">02 Jan 2026</span></h4>
+                  <span
+                    class="bg-slate-50 text-slate-600 text-[11px] px-3 py-1 rounded-md font-bold border border-slate-200 mt-2 sm:mt-0">Penalty:
+                    ₹0</span>
+                </div>
+                <div class="mb-4">
+                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Issued by Ravi
+                    Singh (Team Lead):</span>
+                  <p
+                    class="text-sm text-slate-800 bg-slate-50 p-3.5 rounded-lg border border-slate-100 font-medium leading-relaxed">
+                    "Verbally warned today regarding punctuality. Ensure you arrive on time moving forward."</p>
+                </div>
+                <div
+                  class="bg-green-50/80 p-3.5 rounded-lg border border-green-200/60 text-green-700 text-sm font-medium flex items-center gap-1.5">
+                  <i data-lucide="check" class="w-4 h-4"></i> Employee acknowledged without specific remark.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Row 4: Penalty Amount -->
+        <div class="w-full md:w-1/2 md:pr-2.5">
+          <div class="space-y-1.5">
+            <label class="text-sm font-semibold text-slate-700">Penalty Amount (₹)</label>
+            <div
+              class="relative custom-ring border border-slate-300 rounded-lg bg-white flex items-center overflow-hidden">
+              <span class="px-3 py-3 text-slate-500 bg-slate-50 border-r border-slate-200 font-medium">₹</span>
+              <input type="number" placeholder="0"
+                class="w-full text-sm text-slate-700 outline-none px-3 py-3 bg-transparent font-medium">
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 5: Details -->
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Warning Details & Expected Change <span
+              class="text-red-500">*</span></label>
+          <textarea rows="4" placeholder="Explain the exact incident and what improvement you expect..."
+            class="w-full text-sm text-slate-700 outline-none p-3 resize-none bg-white border border-slate-300 rounded-lg custom-ring leading-relaxed"></textarea>
+        </div>
+      </div>
+
+      <div
+        class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3 shrink-0 rounded-b-2xl">
+        <button onclick="closeModal('warning-modal')"
+          class="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+        <button onclick="submitWarning()"
+          class="px-6 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <i data-lucide="send" class="w-4 h-4"></i> Send Warning
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 💡 ADMIN VIEW MODAL (Fix for viewing a specific record from table) 💡 -->
+  <div id="admin-view-modal"
+    class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-[60] p-4 sm:p-6 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="file-text" class="w-5 h-5 text-cyan-600"></i> Warning Record Details
+        </h2>
+        <button onclick="closeModal('admin-view-modal')"
+          class="text-slate-400 hover:text-slate-700 hover:bg-slate-200 p-2 rounded-full transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Data populated dynamically via JS -->
+        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+          <div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Employee Name</p>
+            <p class="text-sm font-bold text-slate-800" id="view-emp-name">--</p>
+          </div>
+          <div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Issued By</p>
+            <p class="text-sm font-bold text-slate-800" id="view-issuer">--</p>
+          </div>
+          <div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Mistake Category</p>
+            <p class="text-sm font-bold text-red-600" id="view-mistake">--</p>
+          </div>
+          <div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Penalty Amount</p>
+            <p class="text-sm font-bold text-slate-800" id="view-penalty">--</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Manager's Remark</p>
+          <p class="text-sm text-slate-700 bg-white border border-slate-200 p-4 rounded-lg leading-relaxed">
+            "Detailed context regarding the mistake will be shown here based on what the manager wrote during issuance."
+          </p>
+        </div>
+
+        <div>
+          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Employee's Remark</p>
+          <div class="bg-green-50 border border-green-200 p-4 rounded-lg">
+            <p class="text-sm text-green-900 italic" id="view-emp-remark">--</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- 💡 WORLD CLASS EMPLOYEE VIEW MODAL (Enhanced with bold Mistake Number) 💡 -->
+  <div id="employee-modal"
+    class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm hidden items-center justify-center z-[70] p-4 sm:p-6 transition-opacity">
+    <div
+      class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative transform transition-all border border-slate-100">
+      <!-- Header -->
+      <div class="bg-red-50 border-b border-red-100 px-6 py-5 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+          <i data-lucide="bell-ring" class="w-5 h-5 text-red-600"></i>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-red-900 tracking-tight">Official Warning Notice</h2>
+          <p class="text-sm text-red-600 font-medium mt-0.5">Action Required: Please review and acknowledge.</p>
+        </div>
+        <button onclick="closeModal('employee-modal')"
+          class="ml-auto text-red-400 hover:text-red-700 hover:bg-red-200 p-2 rounded-full transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-6">
+        <!-- BOLD REPEATED MISTAKE ALERT -->
+        <div class="bg-red-600 rounded-xl p-4 flex items-center justify-between shadow-md">
+          <div class="flex items-center gap-3">
+            <div class="bg-white/20 p-2 rounded-full">
+              <i data-lucide="alert-triangle" class="w-6 h-6 text-white"></i>
+            </div>
+            <h3 class="text-white text-lg font-black uppercase tracking-wide">
+              ⚠️ This is your 3rd Mistake
+            </h3>
+          </div>
+          <span class="bg-white text-red-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Repeated
+            Offense</span>
+        </div>
+
+        <!-- Details Box -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+            <div>
+              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mistake Category</p>
+              <p class="font-bold text-slate-800 text-base">Late Arrival</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Issue Date</p>
+              <span class="font-bold text-slate-700 text-sm">26 Feb 2026</span>
+            </div>
+          </div>
+          <div class="p-5 space-y-5">
+            <div>
+              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Message from Raunak Kumar
+                (Manager):</p>
+              <p
+                class="text-sm text-slate-700 leading-relaxed font-medium bg-slate-50 p-4 rounded-lg border border-slate-100">
+                "You have been arriving 2 hours late consistently for the past 3 days. This behavior is unacceptable and
+                impacts team productivity."</p>
+            </div>
+            <div class="flex items-center justify-between p-4 bg-red-50/50 rounded-lg border border-red-100">
+              <span class="text-sm font-bold text-red-800">Financial Penalty Imposed:</span>
+              <span class="text-xl font-black text-red-600">₹500</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="space-y-2">
+          <label class="text-sm font-bold text-slate-800">Your Acknowledgement & Remark <span
+              class="text-red-500">*</span></label>
+          <textarea rows="3" placeholder="I understand the concern. Moving forward, I will ensure..."
+            class="w-full text-sm outline-none p-4 resize-none bg-white border border-slate-300 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 transition-all shadow-sm"></textarea>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+        <button onclick="closeModal('employee-modal')"
+          class="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Close</button>
+        <button onclick="showToast('Warning Acknowledged by Employee!'); closeModal('employee-modal');"
+          class="px-6 py-2.5 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-md transition-all flex items-center gap-2">
+          <i data-lucide="check-circle" class="w-4 h-4"></i> Accept & Submit
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast"
+    class="fixed bottom-5 right-5 bg-slate-800 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-3 transition-all transform translate-y-20 opacity-0 z-50">
+    <i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i>
+    <span class="text-sm font-bold" id="toast-msg">Action Successful!</span>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    // ----------------------------------------------------
+    // TABS LOGIC
+    // ----------------------------------------------------
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.className = 'tab-btn px-5 py-2.5 text-slate-600 hover:text-slate-800 text-sm font-medium rounded-md transition-all';
+      });
+      btn.className = 'tab-btn px-5 py-2.5 bg-white shadow-sm rounded-md text-sm font-bold text-cyan-700 transition-all';
+
+      document.getElementById('warnings-view').classList.add('hidden');
+      document.getElementById('mistakes-view').classList.add('hidden');
+      document.getElementById(tabId).classList.remove('hidden');
+
+      document.getElementById('warnings-actions').classList.add('hidden');
+      document.getElementById('mistakes-actions').classList.add('hidden');
+      if (tabId === 'warnings-view') document.getElementById('warnings-actions').classList.remove('hidden');
+      if (tabId === 'mistakes-view') document.getElementById('mistakes-actions').classList.remove('hidden');
+    }
+
+    // ----------------------------------------------------
+    // MODAL & UI LOGIC
+    // ----------------------------------------------------
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      if (id === 'warning-modal') {
+        document.getElementById('mistake-selected-text').innerText = "Search and select the specific mistake...";
+        document.getElementById('mistake-select-value').value = "";
+        document.getElementById('detailed-history-panel').classList.add('hidden');
+      }
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => { toast.classList.add('translate-y-20', 'opacity-0'); }, 3000);
+    }
+
+    function toggleDropdown(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    function filterMistakesDropdown(e) {
+      const term = e.target.value.toLowerCase();
+      document.querySelectorAll('.dropdown-option').forEach(item => {
+        item.style.display = item.innerText.toLowerCase().includes(term) ? 'block' : 'none';
+      });
+    }
+
+    function filterDirectory(e) {
+      const term = e.target.value.toLowerCase();
+      document.querySelectorAll('.mistake-card').forEach(item => {
+        item.style.display = item.innerText.toLowerCase().includes(term) ? 'block' : 'none';
+      });
+    }
+
+    function selectMistake(title, value) {
+      const textEl = document.getElementById('mistake-selected-text');
+      textEl.innerText = title;
+      textEl.classList.replace('text-slate-500', 'text-slate-800');
+      textEl.classList.add('font-bold');
+
+      document.getElementById('mistake-select-value').value = value;
+      toggleDropdown('mistake-dropdown-options');
+
+      const historyPanel = document.getElementById('detailed-history-panel');
+      if (value === 'late') {
+        historyPanel.classList.remove('hidden');
+        setTimeout(() => { historyPanel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 150);
+      } else {
+        historyPanel.classList.add('hidden');
+      }
+    }
+
+    function submitWarning() {
+      closeModal('warning-modal');
+      showToast('Warning sent to employee successfully!');
+    }
+
+    // ----------------------------------------------------
+    // ADMIN PENALTY WAIVER LOGIC
+    // ----------------------------------------------------
+    function waivePenalty(btnElement) {
+      if (confirm("Admin Action: Are you sure you want to completely waive off this penalty?")) {
+        const penaltyCell = btnElement.closest('td');
+        const row = penaltyCell.closest('tr');
+
+        // Find the text value which is the amount
+        const amountElement = penaltyCell.querySelector('span.font-bold, span.font-medium, span.text-slate-700');
+        const amountText = amountElement ? amountElement.innerText.trim() : row.dataset.originalPenalty;
+
+        // Save original penalty if not already saved
+        if (!row.dataset.originalPenalty) {
+          row.dataset.originalPenalty = amountText;
+        }
+
+        // Waived off HTML with reinstate button inline
+        penaltyCell.innerHTML = `
+                    <div class="flex items-center gap-2">
+                      <div class="flex flex-col">
+                          <span class="text-slate-400 line-through text-xs">${amountText}</span>
+                          <span class="text-green-600 font-bold text-xs mt-0.5"><i data-lucide="shield-check" class="w-3 h-3 inline"></i> Waived Off</span>
+                      </div>
+                      <button onclick="reinstatePenalty(this)" class="text-amber-600 hover:text-white hover:bg-amber-600 border border-amber-200 p-1 rounded-md text-[10px] font-bold transition-colors shrink-0 ml-1" title="Reinstate Penalty"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                `;
+
+        lucide.createIcons();
+        showToast("Penalty successfully waived off!");
+      }
+    }
+
+    // ----------------------------------------------------
+    // ADMIN REINSTATE PENALTY LOGIC
+    // ----------------------------------------------------
+    function reinstatePenalty(btnElement) {
+      if (confirm("Admin Action: Are you sure you want to reinstate this penalty?")) {
+        const penaltyCell = btnElement.closest('td');
+        const row = penaltyCell.closest('tr');
+        const amountText = row.dataset.originalPenalty;
+
+        penaltyCell.innerHTML = `
+                    <div class="flex items-center justify-between gap-2 group/penalty">
+                      <span class="font-bold text-red-600">${amountText}</span>
+                      <button onclick="waivePenalty(this)" class="text-purple-600 hover:text-white hover:bg-purple-600 border border-purple-200 p-1 rounded-md text-[10px] font-bold transition-colors shrink-0" title="Waive Penalty"><i data-lucide="wand-2" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                `;
+
+        lucide.createIcons();
+        showToast("Penalty successfully reinstated!");
+      }
+    }
+
+    // ----------------------------------------------------
+    // OPEN ADMIN VIEW MODAL
+    // ----------------------------------------------------
+    function openAdminView(index) {
+      const data = mockData[index];
+      document.getElementById('view-emp-name').innerText = data.emp;
+      document.getElementById('view-issuer').innerText = data.issuer;
+      document.getElementById('view-mistake').innerText = data.mistake;
+      document.getElementById('view-penalty').innerText = data.isWaived ? "Waived Off" : data.penalty;
+      document.getElementById('view-emp-remark').innerText = data.status === "Pending" ? "Awaiting employee response..." : `"${data.remark}"`;
+
+      openModal('admin-view-modal');
+    }
+
+
+    // ----------------------------------------------------
+    // MOCK DATA GENERATION (20 High-Density Entries)
+    // ----------------------------------------------------
+    const mockData = [
+      { emp: "Rahul Verma", issuer: "Raunak Kumar", mistake: "Late Arrival", penalty: "₹500", remark: "Waiting for employee response...", status: "Pending", canWaive: true },
+      { emp: "Aamir Khan", issuer: "Ankita Sharma", mistake: "Uninformed Leave", penalty: "₹1000", remark: "I had a severe medical emergency.", status: "Accepted", canWaive: false, isWaived: true },
+      { emp: "Priya Sharma", issuer: "Ravi Singh", mistake: "Unprofessional Behavior", penalty: "-", remark: "I apologize for my tone.", status: "Accepted", canWaive: false },
+      { emp: "Amit Patel", issuer: "Raunak Kumar", mistake: "Policy Violation", penalty: "₹200", remark: "Will adhere to dress code.", status: "Accepted", canWaive: true },
+      { emp: "Sonia Gupta", issuer: "Neha Mehta", mistake: "Late Arrival", penalty: "-", remark: "Traffic jam on NH-8.", status: "Accepted", canWaive: false },
+      { emp: "Vikram Singh", issuer: "Ankita Sharma", mistake: "Security Breach", penalty: "₹5000", remark: "It was an accidental screen share.", status: "Pending", canWaive: true },
+      { emp: "Neha Jain", issuer: "Ravi Singh", mistake: "Late Arrival", penalty: "₹300", remark: "Not feeling well.", status: "Accepted", canWaive: true },
+      { emp: "Arjun Reddy", issuer: "Raunak Kumar", mistake: "Uninformed Leave", penalty: "-", remark: "Phone was dead.", status: "Accepted", canWaive: false },
+      { emp: "Karan Johar", issuer: "Neha Mehta", mistake: "Unprofessional Behavior", penalty: "₹2000", remark: "Misunderstanding with client.", status: "Pending", canWaive: true },
+      { emp: "Pooja Hegde", issuer: "Ankita Sharma", mistake: "Late Arrival", penalty: "₹500", remark: "Bike broke down.", status: "Accepted", canWaive: false, isWaived: true },
+      { emp: "Rishabh Pant", issuer: "Ravi Singh", mistake: "Policy Violation", penalty: "-", remark: "Won't repeat.", status: "Accepted", canWaive: false },
+      { emp: "Smriti Mandhana", issuer: "Raunak Kumar", mistake: "Late Arrival", penalty: "₹200", remark: "Delayed train.", status: "Accepted", canWaive: true },
+      { emp: "Virat Kohli", issuer: "Neha Mehta", mistake: "Unprofessional Behavior", penalty: "₹10000", remark: "Aggressive behavior in meeting.", status: "Pending", canWaive: true },
+      { emp: "Rohit Sharma", issuer: "Ankita Sharma", mistake: "Uninformed Leave", penalty: "₹500", remark: "Forgot to email.", status: "Accepted", canWaive: true },
+      { emp: "MS Dhoni", issuer: "Ravi Singh", mistake: "Late Arrival", penalty: "-", remark: "Flight delayed.", status: "Accepted", canWaive: false },
+      { emp: "KL Rahul", issuer: "Raunak Kumar", mistake: "Policy Violation", penalty: "₹1500", remark: "Used personal USB.", status: "Accepted", canWaive: true },
+      { emp: "Hardik Pandya", issuer: "Neha Mehta", mistake: "Unprofessional Behavior", penalty: "₹1000", remark: "Inappropriate joke.", status: "Pending", canWaive: true },
+      { emp: "Jasprit Bumrah", issuer: "Ankita Sharma", mistake: "Late Arrival", penalty: "-", remark: "Stuck in elevator.", status: "Accepted", canWaive: false },
+      { emp: "Shreyas Iyer", issuer: "Ravi Singh", mistake: "Uninformed Leave", penalty: "₹2000", remark: "Medical emergency.", status: "Accepted", canWaive: false, isWaived: true },
+      { emp: "Shubman Gill", issuer: "Raunak Kumar", mistake: "Late Arrival", penalty: "₹500", remark: "Overslept.", status: "Pending", canWaive: true }
+    ];
+
+    const tbody = document.getElementById('warnings-table-body');
+    mockData.forEach((row, index) => {
+      const isPending = row.status === "Pending";
+
+      // Clean Status Badge (Just view, not clickable)
+      const statusHtml = isPending
+        ? `<span class="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-200">Pending</span>`
+        : `<span class="bg-green-100 text-green-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-200">Accepted</span>`;
+
+      let penaltyHtml = `<span class="font-medium text-slate-700">${row.penalty}</span>`;
+      if (row.isWaived) {
+        penaltyHtml = `
+                    <div class="flex items-center gap-2">
+                      <div class="flex flex-col">
+                          <span class="text-slate-400 line-through text-xs">${row.penalty}</span>
+                          <span class="text-green-600 font-bold text-xs mt-0.5"><i data-lucide="shield-check" class="w-3 h-3 inline"></i> Waived Off</span>
+                      </div>
+                      ${row.canWaive === false ? `<button onclick="reinstatePenalty(this)" class="text-amber-600 hover:text-white hover:bg-amber-600 border border-amber-200 p-1 rounded-md text-[10px] font-bold transition-colors shrink-0 ml-1" title="Reinstate Penalty"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i></button>` : `<span class="w-6 h-6 inline-block"></span>`}
+                    </div>`;
+      } else if (row.penalty !== "-") {
+        penaltyHtml = `
+                    <div class="flex items-center justify-between gap-2 group/penalty">
+                      <span class="font-bold text-red-600">${row.penalty}</span>
+                      ${row.canWaive ? `<button onclick="waivePenalty(this)" class="text-purple-600 hover:text-white hover:bg-purple-600 border border-purple-200 p-1 rounded-md text-[10px] font-bold transition-colors shrink-0" title="Waive Penalty"><i data-lucide="wand-2" class="w-3.5 h-3.5"></i></button>` : `<span class="w-6 h-6 inline-block opacity-0"></span>`}
+                    </div>`;
+      }
+
+      // New Admin Actions Group (Just View now)
+      const actionHtml = `<div class="flex items-center justify-center gap-2">
+        <button onclick="openAdminView(${index})" class="text-cyan-600 hover:text-white hover:bg-cyan-600 border border-cyan-200 p-1.5 rounded-md text-xs font-bold transition-colors flex items-center justify-center" title="View Details"><i data-lucide="eye" class="w-4 h-4"></i></button>
+      </div>`;
+
+      const tr = document.createElement('tr');
+      // Store original penalty data on the row for easy retrieval
+      tr.dataset.originalPenalty = row.penalty;
+
+      tr.className = "hover:bg-slate-50 transition-colors group";
+      tr.innerHTML = `
+                <td class="py-3 px-4 text-center text-slate-500 font-medium text-xs">${index + 1}</td>
+                <td class="py-3 px-4 text-slate-600 text-xs">26 Feb 2026</td>
+                <td class="py-3 px-4 font-bold text-slate-800">${row.emp}</td>
+                <td class="py-3 px-4 text-slate-600 text-xs flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600">${row.issuer.charAt(0)}</div> ${row.issuer}</td>
+                <td class="py-3 px-4 text-slate-700 font-medium">${row.mistake}</td>
+                <td class="py-3 px-4">${penaltyHtml}</td>
+                <td class="py-3 px-4 text-slate-500 text-xs max-w-[200px] truncate" title="${row.remark}">${isPending ? `<span class="italic text-slate-400">${row.remark}</span>` : row.remark}</td>
+                <td class="py-3 px-4 text-center">${statusHtml}</td>
+                <td class="py-3 px-4 text-center align-middle">${actionHtml}</td>
+            `;
+      tbody.appendChild(tr);
+    });
+
+    // Re-init icons for dynamic content
+    lucide.createIcons();
+  </script>
+</body>
+
+</html>

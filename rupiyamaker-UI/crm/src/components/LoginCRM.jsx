@@ -149,7 +149,7 @@ import {
     Clock,
     RefreshCw
 } from 'lucide-react';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, getISTTimestamp } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 import { leadsService } from '../services/leadsService';
 
@@ -2931,7 +2931,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: `Lead assigned to ${userIds.length} user(s)`,
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString()
+                created_at: getISTTimestamp()
             };
 
             const response = await fetch(`${API_BASE_URL}/lead-login/assign-multiple-users/${leadId}?user_id=${userId}`, {
@@ -2968,7 +2968,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: 'Lead operations data updated',
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 details: {
                     fields_updated: Object.keys(operationsData)
                 }
@@ -3011,7 +3011,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: 'Important questions validated',
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 details: {
                     questions_validated: Object.keys(responses).length,
                     question_ids: Object.keys(responses)
@@ -3062,7 +3062,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: `Leads assigned to ${userIds.length} user(s) in bulk operation`,
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString()
+                created_at: getISTTimestamp()
             };
 
             const promises = selectedLeads.map(leadId =>

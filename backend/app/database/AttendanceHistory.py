@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class AttendanceHistoryDB:
     def __init__(self, db=None):
@@ -32,7 +33,7 @@ class AttendanceHistoryDB:
         
     async def add_history_entry(self, attendance_id: str, user_id: str, date: str, action_type: str, 
                          action_description: str, created_by: str, created_by_name: str, 
-                         old_value: Any = None, new_value: Any = None, details: Dict = None) -> Optional[str]:
+                         old_value: Any = None, new_value: Any = None, details: Dict = None, reason: str = None) -> Optional[str]:
         """
         Add a history entry for attendance record
         
@@ -47,6 +48,7 @@ class AttendanceHistoryDB:
             old_value: Previous value (for updates)
             new_value: New value (for updates)
             details: Additional details about the action (optional)
+            reason: Reason for the change (optional)
             
         Returns:
             str: History entry ID if successful, None if failed
@@ -63,10 +65,11 @@ class AttendanceHistoryDB:
                 "description": action_description,  # For compatibility
                 "created_by": ObjectId(created_by) if ObjectId.is_valid(created_by) else created_by,
                 "created_by_name": created_by_name,
-                "created_at": datetime.now(),
+                "created_at": get_ist_now(),
                 "old_value": old_value,
                 "new_value": new_value,
-                "details": details or {}
+                "details": details or {},
+                "reason": reason  # Add reason to history
             }
             
             print(f"[ATTENDANCE_HISTORY] Inserting data: {history_data}")
@@ -197,6 +200,53 @@ class AttendanceHistoryDB:
         except Exception as e:
             print(f"Error getting user attendance history: {e}")
             return []
+
+    async def get_edit_counts_by_month(self, user_ids: List[str], start_date: str, end_date: str) -> Dict[str, int]:
+        """
+        Get attendance edit counts per user for a date range.
+        Only counts 'attendance_edited' entries (one per edit session, not per field).
+
+        Returns: { user_id_str: count }
+        """
+        try:
+            if not user_ids:
+                return {}
+
+            oid_list = [ObjectId(uid) for uid in user_ids if ObjectId.is_valid(uid)]
+            str_list = [uid for uid in user_ids if not ObjectId.is_valid(uid)]
+
+            or_clauses = []
+            if oid_list:
+                or_clauses.append({"user_id": {"$in": oid_list}})
+            if str_list:
+                or_clauses.append({"user_id": {"$in": str_list}})
+
+            if not or_clauses:
+                return {}
+
+            query = {
+                "$or": or_clauses,
+                "date": {"$gte": start_date, "$lte": end_date},
+                "action_type": {"$in": ["attendance_edited", "attendance_created"]}
+            }
+
+            pipeline = [
+                {"$match": query},
+                {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+            ]
+
+            cursor = self.collection.aggregate(pipeline)
+            results = await cursor.to_list(None)
+
+            counts = {}
+            for r in results:
+                uid = str(r["_id"])
+                counts[uid] = r["count"]
+            return counts
+
+        except Exception as e:
+            print(f"Error getting edit counts by month: {e}")
+            return {}
 
 # Dependency function for FastAPI
 async def get_attendance_history_db():

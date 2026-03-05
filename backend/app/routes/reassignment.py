@@ -15,6 +15,7 @@ from app.database.Notifications import NotificationsDB
 from app.utils.permissions import permission_manager
 from app.utils.common_utils import convert_object_id
 from app.schemas.lead_schemas import LeadInDB
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(prefix="/reassignment", tags=["reassignment"])
 
@@ -419,16 +420,16 @@ async def create_reassignment_request(
             "pending_reassignment": False,
             "reassignment_status": "approved",
             "reassignment_approved_by": user_id,
-            "reassignment_approved_at": datetime.now(),
+            "reassignment_approved_at": get_ist_now(),
             "reassignment_requested_by": user_id,
             "reassignment_target_user": target_user_id,
             "reassignment_reason": reason,
-            "reassignment_requested_at": datetime.now(),
+            "reassignment_requested_at": get_ist_now(),
             # Record eligibility info for auditing purposes
             "reassignment_eligibility": eligibility,
             # Update ownership to requesting user
             "created_by": user_id,
-            "created_at": datetime.now(),
+            "created_at": get_ist_now(),
             # Set status directly without lookup
             "status": "ACTIVE LEADS",
             "sub_status": "NEW LEAD"
@@ -547,7 +548,7 @@ async def create_reassignment_request(
             try:
                 activity_data = {
                     "lead_id": ObjectId(lead_id),
-                    "created_at": datetime.now(),
+                    "created_at": get_ist_now(),
                     "created_by": user_id,
                     "type": "reassignment",
                     "action": "approved_direct",
@@ -559,7 +560,7 @@ async def create_reassignment_request(
                         "data_code_changed": data_code if data_code else None,
                         "campaign_name_changed": campaign_name if campaign_name else None,
                         "reassignment_status": "approved",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": get_ist_now().isoformat()
                     }
                 }
                 await leads_db.activity_collection.insert_one(activity_data)
@@ -581,7 +582,7 @@ async def create_reassignment_request(
             "reassignment_requested_by": user_id,
             "reassignment_target_user": target_user_id,
             "reassignment_reason": reason,
-            "reassignment_requested_at": datetime.now()
+            "reassignment_requested_at": get_ist_now()
         }
         
         # Add data_code and campaign_name changes if provided
@@ -655,12 +656,12 @@ async def approve_reassignment(
         "pending_reassignment": False,
         "reassignment_status": "approved",
         "reassignment_approved_by": user_id,
-        "reassignment_approved_at": datetime.now(),
+        "reassignment_approved_at": get_ist_now(),
         # Record eligibility info for auditing purposes
         "reassignment_eligibility": reassignment_eligibility,
         # Update ownership to requesting user (from the original request)
         "created_by": requesting_user_id,
-        "created_at": datetime.now(),
+        "created_at": get_ist_now(),
         # Set status directly without lookup
         "status": "ACTIVE LEADS",
         "sub_status": "NEW LEAD"
@@ -881,7 +882,7 @@ async def reject_reassignment(
         "pending_reassignment": False,
         "reassignment_status": "rejected",
         "reassignment_rejected_by": user_id,
-        "reassignment_rejected_at": datetime.now(),
+        "reassignment_rejected_at": get_ist_now(),
         "reassignment_rejection_reason": rejection_reason
     }
     
@@ -974,7 +975,7 @@ async def update_lead_fields(
                 updated_fields.append(field)
         
         # Add update metadata
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         update_data["updated_by"] = user_id
         
         # Update the lead in database
@@ -992,7 +993,7 @@ async def update_lead_fields(
         # Log field update activity
         activity_data = {
             "lead_id": lead_object_id,
-            "created_at": datetime.now(),
+            "created_at": get_ist_now(),
             "created_by": user_id,
             "type": "field_update",
             "action": "updated",
@@ -1001,7 +1002,7 @@ async def update_lead_fields(
             "details": {
                 "fields_updated": updated_fields,
                 "updates": updates,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": get_ist_now().isoformat()
             }
         }
         await leads_db.activity_collection.insert_one(activity_data)
@@ -1059,7 +1060,7 @@ async def add_lead_activity(
         # Prepare activity record
         activity_record = {
             "lead_id": lead_object_id,
-            "created_at": datetime.now(),
+            "created_at": get_ist_now(),
             "created_by": user_id,
             "type": activity_data.get("activity_type", "general"),
             "action": "logged",
@@ -1067,7 +1068,7 @@ async def add_lead_activity(
             "activity_title": activity_data.get("activity_title", "Activity"),
             "activity_description": activity_data.get("activity_description", ""),
             "details": activity_data.get("details", {}),
-            "timestamp": datetime.now()
+            "timestamp": get_ist_now()
         }
         
         # Insert activity record

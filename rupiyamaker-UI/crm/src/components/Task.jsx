@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
-import { formatDate as formatDateUtil, formatDateTime } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
 // Lazy load heavy components for faster initial loading
 const CreateTask = lazy(() => import("./CreateTask"));
@@ -604,7 +604,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           typeTask: task.task_type,
           leadLogin: task.lead_info?.lead_login || 'N/A',
           customerName: task.lead_info?.customer_name || 'N/A',
-          date: task.due_date || new Date().toISOString().split('T')[0],
+          date: task.due_date || getISTDateYMD(),
           time: task.due_time || '00:00',
           assign: task.assigned_users?.map(u => u.name).join(', ') || 'Unassigned',
           priority: task.priority || 'Medium',
@@ -1013,14 +1013,14 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         url: fileUrl,
         size: attachment.size || attachment.file_size || 0,
         type: mimeType,
-        created_at: attachment.created_at || new Date().toISOString(),
+        created_at: attachment.created_at || getISTTimestamp(),
         // Add any missing properties that the editor might expect
         downloadUrl: `${API_BASE_URL}/tasks/${taskId}/attachments/${attachmentId}/download?user_id=${currentUserId}`,
         isNew: false,
         isFromBackend: true,
         isImage: isImage,
         contentType: mimeType,
-        uploadedAt: attachment.created_at || new Date().toISOString()
+        uploadedAt: attachment.created_at || getISTTimestamp()
       };
     });
   };
@@ -1109,7 +1109,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         message: task.message || '',
         typeTask: task.typeTask || 'To-Do',
         status: task.status || 'Pending',
-        date: task.date || new Date().toISOString().split('T')[0],
+        date: task.date || getISTDateYMD(),
         time: task.time || '00:00',
         assign: task.assign || 'Unassigned',
         priority: task.priority || 'Medium',
@@ -1173,7 +1173,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             message: fullTaskData.task_details,
             typeTask: fullTaskData.task_type,
             status: fullTaskData.status,
-            date: fullTaskData.due_date || new Date().toISOString().split('T')[0],
+            date: fullTaskData.due_date || getISTDateYMD(),
             time: fullTaskData.due_time || '00:00',
             assign: fullTaskData.assigned_users?.map(u => u.name).join(', ') || 'Unassigned',
             priority: fullTaskData.priority || 'Medium',
@@ -1320,7 +1320,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           taskStatus: taskDetails.newStatus,
           previousTaskStatus: taskDetails.oldStatus,
           shouldAutoSwitch: true,
-          timestamp: new Date().toISOString()
+          timestamp: getISTTimestamp()
         }
       });
       
@@ -1383,7 +1383,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || task.typeTask,
               is_urgent: updatedTask.is_urgent || task.is_urgent,
               notes: updatedTask.notes || task.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
               // Add a unique render key to force re-render
               renderKey: Date.now(),
             };
@@ -1410,7 +1410,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || prevEditTask.typeTask,
               is_urgent: updatedTask.is_urgent || prevEditTask.is_urgent,
               notes: updatedTask.notes || prevEditTask.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
             return updatedEditTask;
           }
@@ -1431,7 +1431,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             previousTaskStatus: oldStatus,
             shouldAutoSwitch: true,
             immediate: true,
-            timestamp: new Date().toISOString()
+            timestamp: getISTTimestamp()
           }
         });
         
@@ -1479,7 +1479,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || task.typeTask,
               is_urgent: updatedTask.is_urgent || task.is_urgent,
               notes: updatedTask.notes || task.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
           }
           return task;
@@ -1626,7 +1626,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               ...task,
               attachments: processedAttachments,
               // Ensure we preserve our immediate updates by not overriding them
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
           }
           return task;
@@ -1720,7 +1720,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           task_type: data.get('task_type') || 'To-Do',
           status: 'Pending',
           priority: data.get('priority') || 'Medium',
-          due_date: data.get('due_date') || new Date().toISOString().split('T')[0],
+          due_date: data.get('due_date') || getISTDateYMD(),
           due_time: data.get('due_time') || '09:00:00',
           is_urgent: data.get('is_urgent') === 'true' || false,
           notes: data.get('notes') || '',
@@ -2449,7 +2449,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
@@ -2465,7 +2465,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   if (error && !isInitialized) {
     return (
       <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <p className="text-lg text-red-400 mb-4">{error}</p>

@@ -20,6 +20,7 @@ from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission, get_user_capabilities
 from app.utils.password_encryption import password_encryptor
 from app.database import get_database_instances
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(
     prefix="/hrms",
@@ -165,8 +166,8 @@ async def create_employee_with_photo(
         "login_enabled": login_enabled,
         "is_employee": True,
         "is_active": True,
-        "created_at": datetime.now(),
-        "updated_at": datetime.now()
+        "created_at": get_ist_now(),
+        "updated_at": get_ist_now()
     }
     
     # Handle date_of_joining if provided
@@ -450,7 +451,7 @@ async def update_employee_status(
     update_data = {
         "employee_status": status_update.status,
         "status_remark": status_update.remark,
-        "status_updated_at": datetime.now()
+        "status_updated_at": get_ist_now()
     }
     
     updated = await users_db.update_employee(employee_id, update_data)
@@ -489,7 +490,7 @@ async def update_onboarding_status(
     update_data = {
         "onboarding_status": onboarding_update.status,
         "onboarding_remark": onboarding_update.remark,
-        "onboarding_updated_at": datetime.now()
+        "onboarding_updated_at": get_ist_now()
     }
     
     updated = await users_db.update_employee(employee_id, update_data)
@@ -553,6 +554,19 @@ async def update_login_enabled(
             detail=f"Employee with ID {employee_id} not found"
         )
     
+    # 🔒 Super Admin Protection: Check if employee has Super Admin role BEFORE update
+    employee_role_id = employee.get('role_id')
+    if employee_role_id and not login_update.enabled:
+        role = await roles_db.get_role(employee_role_id)
+        if role and any(
+            p.get('page') == '*' and p.get('actions') == '*' 
+            for p in (role.get('permissions') or [])
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot disable login for Super Admin users. Super Admin access is always enabled."
+            )
+    
     # Update login enabled status
     updated = await users_db.update_login_status(employee_id, login_update.enabled)
     if not updated:
@@ -586,6 +600,20 @@ async def update_login_status(
     
     # Update login status
     update_data = {"is_active": login_update.enabled}
+    
+    # 🔒 Super Admin Protection: Check if employee has Super Admin role
+    employee_role_id = employee.get('role_id')
+    if employee_role_id:
+        role = await roles_db.get_role(employee_role_id)
+        if role and any(
+            p.get('page') == '*' and p.get('actions') == '*' 
+            for p in (role.get('permissions') or [])
+        ):
+            if not login_update.enabled:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot deactivate Super Admin users. Super Admin status is always active."
+                )
     
     updated = await users_db.update_employee(employee_id, update_data)
     if not updated:
@@ -752,8 +780,8 @@ async def create_employee_with_all_details(
         # System fields
         "is_employee": True,
         "is_active": True,
-        "created_at": datetime.now(),
-        "updated_at": datetime.now()
+        "created_at": get_ist_now(),
+        "updated_at": get_ist_now()
     }
     
     # Handle date fields
@@ -855,7 +883,7 @@ async def update_comprehensive_employee(
     
     # Get update data
     update_data = employee_update.dict(exclude_unset=True)
-    update_data["updated_at"] = datetime.now()
+    update_data["updated_at"] = get_ist_now()
     
     # If email is being updated, check for duplicates
     if "email" in update_data:
@@ -1116,7 +1144,7 @@ async def log_employee_activity(
         "activity_type": "toggle_change",
         "action": activity_data.get("action", ""),
         "description": activity_data.get("description", ""),
-        "timestamp": activity_data.get("timestamp", datetime.now().isoformat()),
+        "timestamp": activity_data.get("timestamp", get_ist_now().isoformat()),
         "performed_by": activity_data.get("performed_by", user_id),
         "employee_name": f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip()
     }
@@ -1158,7 +1186,7 @@ async def update_employee_dict(
         pass
     
     # Add update timestamp
-    update_data['updated_at'] = datetime.now()
+    update_data['updated_at'] = get_ist_now()
     
     # Remove None values
     update_data = {k: v for k, v in update_data.items() if v is not None}

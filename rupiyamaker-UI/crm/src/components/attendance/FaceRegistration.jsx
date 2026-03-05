@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import * as faceapi from '@vladmandic/face-api';
+import { getISTTimestamp } from '../../utils/dateUtils';
 
 const FaceRegistration = () => {
   const [user, setUser] = useState(null);
@@ -171,7 +172,7 @@ const FaceRegistration = () => {
         descriptor,
         detection_score: detectionScore,
         photoData,
-        timestamp: new Date().toISOString()
+        timestamp: getISTTimestamp()
       };
 
       setCapturedSamples(prev => {

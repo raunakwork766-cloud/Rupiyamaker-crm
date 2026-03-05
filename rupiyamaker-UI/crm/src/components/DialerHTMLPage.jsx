@@ -1,7 +1,7 @@
 export default function DialerHTMLPage() {
     return (
         <iframe
-            src="/dialer.html"
+            src={`/dialer.html?v=${Date.now()}`}
             title="Dialer Report"
             style={{
                 width: '100%',

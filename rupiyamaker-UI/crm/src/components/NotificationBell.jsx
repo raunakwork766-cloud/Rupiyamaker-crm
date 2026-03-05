@@ -14,6 +14,8 @@ import {
   UserPlus
 } from "lucide-react";
 
+import { getISTTimestamp } from '../utils/dateUtils';
+
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
@@ -141,7 +143,7 @@ const NotificationBell = () => {
     try {
       if (!userId) return;
       const existing = getDeletedNotifications();
-      const updated = [...existing, { ...notification, deletedAt: new Date().toISOString() }];
+      const updated = [...existing, { ...notification, deletedAt: getISTTimestamp() }];
       localStorage.setItem(`deletedNotificationsData_${userId}`, JSON.stringify(updated));
     } catch (error) {
       // Silent error handling

@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from app.config import Config
 import pymongo
+from app.utils.timezone import get_ist_now
 
 class LoanTypesDB:
     def __init__(self, db=None):
@@ -34,8 +35,8 @@ class LoanTypesDB:
     
     async def create_loan_type(self, loan_type_data: Dict) -> str:
         """Create a new loan type and return its ID"""
-        loan_type_data['created_at'] = datetime.now()
-        loan_type_data['updated_at'] = datetime.now()
+        loan_type_data['created_at'] = get_ist_now()
+        loan_type_data['updated_at'] = get_ist_now()
         result = await self.loan_types_collection.insert_one(loan_type_data)
         return str(result.inserted_id)
     
@@ -73,7 +74,7 @@ class LoanTypesDB:
         if not ObjectId.is_valid(loan_type_id):
             return False
         
-        update_data['updated_at'] = datetime.now()
+        update_data['updated_at'] = get_ist_now()
         result = await self.loan_types_collection.update_one(
             {"_id": ObjectId(loan_type_id)},
             {"$set": update_data}

@@ -35,6 +35,7 @@ from app.schemas.leave_schemas import (
 )
 from app.utils.permissions import PermissionManager
 from app.utils.common_utils import get_current_user_id
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(prefix="/leaves", tags=["leaves"])
 security = HTTPBearer()
@@ -179,6 +180,18 @@ async def enrich_leave_data(leave: Dict[str, Any], users_db: UsersDB) -> Dict[st
         rejector_details = await get_user_details(leave["rejected_by"], users_db)
         leave["rejected_by_name"] = rejector_details.get("name")
     
+    # Enrich individual approvers in the approvers array (refresh names + roles)
+    if leave.get("approvers"):
+        for ap in leave["approvers"]:
+            if ap.get("approver_id"):
+                ap_user = await users_db.get_user(ap["approver_id"])
+                if ap_user:
+                    first = ap_user.get("first_name", "")
+                    last = ap_user.get("last_name", "")
+                    full_name = f"{first} {last}".strip() if (first or last) else ap_user.get("name", ap_user.get("username", "Unknown"))
+                    ap["name"] = full_name
+                    ap["role"] = ap_user.get("role_name", ap_user.get("designation", ap.get("role", "")))
+    
     return leave
 
 @router.post("/", response_model=LeaveResponseSchema)
@@ -202,6 +215,25 @@ async def create_leave(
         # Convert dates to datetime objects for storage
         leave_dict["from_date"] = datetime.combine(leave_data.from_date, datetime.min.time())
         leave_dict["to_date"] = datetime.combine(leave_data.to_date, datetime.min.time())
+        
+        # Build approvers array with individual statuses
+        approver_ids = leave_dict.pop("approver_ids", [])
+        approvers_list = []
+        for aid in approver_ids:
+            approver_user = await users_db.get_user(aid)
+            if approver_user:
+                first = approver_user.get("first_name", "")
+                last = approver_user.get("last_name", "")
+                full_name = f"{first} {last}".strip() if (first or last) else approver_user.get("name", approver_user.get("username", "Unknown"))
+                approvers_list.append({
+                    "approver_id": aid,
+                    "name": full_name,
+                    "role": approver_user.get("role_name", approver_user.get("designation", "")),
+                    "status": "pending",
+                    "action_at": None,
+                    "comments": None,
+                })
+        leave_dict["approvers"] = approvers_list
         
         # Create the leave
         leave_id = await leaves_db.create_leave(leave_dict)
@@ -549,7 +581,8 @@ async def update_leave(
     leave_id: str,
     leave_data: LeaveUpdateSchema,
     current_user_id: str = Depends(get_current_user_id),
-    leaves_db: LeavesDB = Depends(get_leaves_db)
+    leaves_db: LeavesDB = Depends(get_leaves_db),
+    users_db: UsersDB = Depends(get_users_db)
 ):
     """
     Update a leave application
@@ -598,7 +631,7 @@ async def update_leave(
         
         # Get updated leave
         updated_leave = await leaves_db.get_leave(leave_id)
-        updated_leave = await enrich_leave_data(updated_leave)
+        updated_leave = await enrich_leave_data(updated_leave, users_db)
         
         # Normalize the response
         updated_leave["id"] = updated_leave["_id"]
@@ -612,7 +645,7 @@ async def update_leave(
             detail=f"Failed to update leave application: {str(e)}"
         )
 
-@router.post("/{leave_id}/approve", response_model=LeaveResponseSchema)
+@router.post("/{leave_id}/approve")
 async def approve_reject_leave(
     leave_id: str,
     approval_data: LeaveApprovalSchema,
@@ -624,104 +657,137 @@ async def approve_reject_leave(
     notifications_db: NotificationsDB = Depends(get_notifications_db)
 ):
     """
-    Approve or reject a leave application using hierarchical permissions
+    Approve or reject a leave application — Multi-Approval System.
     
-    Permission Levels:
-    - superadmin: Can approve/reject any leave
-    - all: Can approve/reject any leave
-    - junior: Can approve/reject subordinate leaves (but not own)
-    - own: Cannot approve/reject (read-only)
+    Each configured approver acts independently on the leave.
+    - Creator of the leave CANNOT approve/reject their own leave.
+    - Only approvers listed in the leave's 'approvers' array can act.
+    - Leave stays PENDING until ALL approvers approve (→ Approved) or ALL reject (→ Rejected).
+    - Mixed results keep it PENDING.
     """
     try:
-        print(f"🔍 Backend approve_reject_leave: User {current_user_id} trying to {approval_data.status} leave {leave_id}")
+        print(f"🔍 approve_reject_leave: User {current_user_id} → {approval_data.status} leave {leave_id}")
         
-        # Get the leave first to check ownership
+        # Get the leave
         leave = await leaves_db.get_leave(leave_id)
         if not leave:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Leave application not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave application not found")
         
         leave_employee_id = leave.get("employee_id")
-        print(f"🔍 Backend approve_reject_leave: Leave belongs to employee {leave_employee_id}")
         
-        # Use hierarchical permissions instead of complex permission checks
-        permissions = await get_hierarchical_permissions(current_user_id, "leaves")
-        perm_level = permissions.get("permission_level", "own")
-        is_super_admin = permissions.get("is_super_admin", False)
-        
-        print(f"🔍 Backend approve_reject_leave: User permission level: {perm_level}, Super admin: {is_super_admin}")
-        
-        # Check if user can approve/reject based on hierarchical permissions
-        can_approve = False
-        
-        if is_super_admin or perm_level == "all":
-            # Super admin or "all" permission - can approve/reject any leave
-            print(f"🔍 Backend approve_reject_leave: User has 'all' access - allowing approval")
-            can_approve = True
-        elif perm_level == "junior":
-            # Junior permission - can approve/reject subordinate leaves but not own
-            print(f"🔍 Backend approve_reject_leave: User has 'junior' access - checking subordinates and own leave")
-            
-            if leave_employee_id == current_user_id:
-                # Junior users cannot approve their own leaves
-                print(f"🔍 Backend approve_reject_leave: Junior user cannot approve own leave")
-                can_approve = False
-            else:
-                # Check if it's a subordinate's leave
-                subordinate_user_ids = await PermissionManager.get_subordinate_users(
-                    current_user_id, users_db, roles_db
-                )
-                if leave_employee_id in subordinate_user_ids:
-                    can_approve = True
-                    print(f"🔍 Backend approve_reject_leave: Leave belongs to subordinate - allowing approval")
-                else:
-                    print(f"🔍 Backend approve_reject_leave: Leave employee not a subordinate: {subordinate_user_ids}")
-        else:
-            # "own" permission - cannot approve/reject any leaves
-            print(f"🔍 Backend approve_reject_leave: User has 'own' access - no approval permissions")
-            can_approve = False
-        
-        if not can_approve:
-            print(f"🔍 Backend approve_reject_leave: Access denied - insufficient permissions")
+        # ── RULE 1: Creator CANNOT approve/reject their own leave ──
+        if leave_employee_id == current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to approve/reject leave applications"
+                detail="You cannot approve/reject your own leave application"
             )
         
-        # Check if leave is still pending
-        if leave.get("status") != "pending":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Leave has already been processed"
-            )
+        # ── RULE 2: Only configured approvers can act ──
+        approvers = leave.get("approvers", [])
         
-        # Update leave status with comments
-        success = await leaves_db.update_leave_status(
-            leave_id, 
-            approval_data.status, 
-            approved_by=current_user_id,
-            rejection_reason=approval_data.rejection_reason,
-            comments=approval_data.comments
-        )
+        if approvers:
+            # Multi-approval: check if current user is in the approvers list
+            approver_entry = None
+            for ap in approvers:
+                if ap.get("approver_id") == current_user_id:
+                    approver_entry = ap
+                    break
+            
+            if not approver_entry:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not a configured approver for this leave application"
+                )
+            
+            if approver_entry.get("status") != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You have already acted on this leave application"
+                )
+            
+            # Check if overall leave is still pending
+            if leave.get("status") != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Leave has already been processed"
+                )
+            
+            # Update this approver's status in the approvers array
+            now = get_ist_now()
+            for ap in approvers:
+                if ap.get("approver_id") == current_user_id:
+                    ap["status"] = approval_data.status
+                    ap["action_at"] = now
+                    ap["comments"] = approval_data.comments or approval_data.rejection_reason or None
+                    break
+            
+            # Recalculate overall leave status
+            all_statuses = [ap.get("status") for ap in approvers]
+            if all(s == "approved" for s in all_statuses):
+                new_overall_status = "approved"
+            elif all(s == "rejected" for s in all_statuses):
+                new_overall_status = "rejected"
+            else:
+                new_overall_status = "pending"
+            
+            # Build update data
+            update_data = {
+                "approvers": approvers,
+                "status": new_overall_status,
+                "updated_at": now,
+            }
+            
+            if new_overall_status == "approved":
+                update_data["approved_by"] = current_user_id
+                update_data["approved_at"] = now
+                if approval_data.comments:
+                    update_data["approval_comments"] = approval_data.comments
+            elif new_overall_status == "rejected":
+                update_data["rejected_by"] = current_user_id
+                update_data["rejected_at"] = now
+                if approval_data.rejection_reason:
+                    update_data["rejection_reason"] = approval_data.rejection_reason
+            
+            success = await leaves_db.update_leave(leave_id, update_data)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to update leave status")
         
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update leave status"
+        else:
+            # Legacy: no approvers array — fall back to old single-approval logic
+            permissions = await get_hierarchical_permissions(current_user_id, "leaves")
+            perm_level = permissions.get("permission_level", "own")
+            is_super_admin = permissions.get("is_super_admin", False)
+            
+            can_approve = False
+            if is_super_admin or perm_level == "all":
+                can_approve = True
+            elif perm_level == "junior":
+                subordinate_user_ids = await PermissionManager.get_subordinate_users(current_user_id, users_db, roles_db)
+                if leave_employee_id in subordinate_user_ids:
+                    can_approve = True
+            
+            if not can_approve:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to approve/reject leave applications")
+            
+            if leave.get("status") != "pending":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Leave has already been processed")
+            
+            success = await leaves_db.update_leave_status(
+                leave_id, approval_data.status,
+                approved_by=current_user_id,
+                rejection_reason=approval_data.rejection_reason,
+                comments=approval_data.comments
             )
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to update leave status")
         
         # Get updated leave
         updated_leave = await leaves_db.get_leave(leave_id)
         
-        # Send notification to the employee who requested the leave
+        # Send notification to the employee
         employee_id = leave.get("employee_id")
-        print(f"🔍 Backend approve_reject_leave: Attempting to send notification to employee {employee_id}")
-        
         if employee_id:
             try:
-                # Get the name of the person who approved/rejected
                 approver = await users_db.get_user(current_user_id)
                 approver_name = "Manager"
                 if approver:
@@ -730,33 +796,13 @@ async def approve_reject_leave(
                     if first_name or last_name:
                         approver_name = f"{first_name} {last_name}".strip()
                 
-                print(f"🔍 Backend approve_reject_leave: Approver name: {approver_name}")
-                print(f"🔍 Backend approve_reject_leave: Creating notification with data:")
-                print(f"  - Employee ID: {employee_id}")
-                print(f"  - Leave status: {approval_data.status}")
-                print(f"  - Approver ID: {current_user_id}")
-                print(f"  - Approver name: {approver_name}")
-                
-                # Create notification using the notification database
-                notification_result = await notifications_db.create_leave_status_notification(
-                    employee_id, 
-                    updated_leave, 
-                    current_user_id, 
-                    approver_name
+                await notifications_db.create_leave_status_notification(
+                    employee_id, updated_leave, current_user_id, approver_name
                 )
-                
-                print(f"🔍 Backend approve_reject_leave: Notification creation result: {notification_result}")
-                
             except Exception as e:
-                print(f"❌ Backend approve_reject_leave: Failed to create leave status notification: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"❌ Backend approve_reject_leave: No employee_id found in leave data")
+                print(f"❌ Failed to create leave status notification: {e}")
         
-        updated_leave = await enrich_leave_data(updated_leave)
-        
-        # Normalize the response
+        updated_leave = await enrich_leave_data(updated_leave, users_db)
         updated_leave["id"] = updated_leave["_id"]
         return updated_leave
         
@@ -819,7 +865,7 @@ async def upload_attachment(
         if isinstance(from_date, datetime):
             leave_date_str = from_date.strftime("%Y-%m-%d")
         else:
-            leave_date_str = datetime.now().strftime("%Y-%m-%d")
+            leave_date_str = get_ist_now().strftime("%Y-%m-%d")
         
         # Generate organized filename: {leave_date}_{original_filename}
         file_extension = file.filename.rsplit('.', 1)[1].lower()
@@ -842,7 +888,7 @@ async def upload_attachment(
             "mime_type": file.content_type,
             "employee_id": current_user_id,
             "leave_date": leave_date_str,
-            "uploaded_at": datetime.now()
+            "uploaded_at": get_ist_now()
         }
         
         # Update leave with new attachment

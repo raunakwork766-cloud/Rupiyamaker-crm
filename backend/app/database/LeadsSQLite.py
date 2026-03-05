@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Union, Tuple
 from pathlib import Path
 import logging
+from app.utils.timezone import get_ist_now
 
 logger = logging.getLogger(__name__)
 
@@ -440,7 +441,7 @@ class LeadsSQLiteDB:
         try:
             lead_id = self._generate_id()
             custom_lead_id = self._get_next_lead_id()
-            current_time = datetime.now().isoformat()
+            current_time = get_ist_now().isoformat()
             
             # Prepare data with MongoDB-style structure
             data = {
@@ -692,7 +693,7 @@ class LeadsSQLiteDB:
         try:
             # Prepare update data
             data = update_data.copy()
-            data['updated_at'] = datetime.now().isoformat()
+            data['updated_at'] = get_ist_now().isoformat()
             
             # Convert complex fields to JSON strings
             json_fields = ['assigned_to', 'assign_report_to', 'dynamic_fields', 'custom_fields', 'address', 'processing_bank']
@@ -770,7 +771,7 @@ class LeadsSQLiteDB:
                 UPDATE leads 
                 SET is_deleted = 1, deleted_at = ?, updated_at = ?
                 WHERE id = ?
-            ''', (datetime.now().isoformat(), datetime.now().isoformat(), lead_id))
+            ''', (get_ist_now().isoformat(), get_ist_now().isoformat(), lead_id))
             
             if cursor.rowcount > 0:
                 # Log activity
@@ -882,7 +883,7 @@ class LeadsSQLiteDB:
         try:
             update_data = {
                 'assigned_to': user_id,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': get_ist_now().isoformat()
             }
             
             # Build UPDATE query
@@ -933,7 +934,7 @@ class LeadsSQLiteDB:
                 
                 # Update the lead
                 cursor.execute('UPDATE leads SET assign_report_to = ?, updated_at = ? WHERE id = ?', 
-                             (json.dumps(current_reporters), datetime.now().isoformat(), lead_id))
+                             (json.dumps(current_reporters), get_ist_now().isoformat(), lead_id))
                 
                 # Log activity
                 self._log_activity(cursor, lead_id, 'reporter_added', f"Reporter {user_id} added", added_by)
@@ -970,7 +971,7 @@ class LeadsSQLiteDB:
                 
                 # Update the lead
                 cursor.execute('UPDATE leads SET assign_report_to = ?, updated_at = ? WHERE id = ?', 
-                             (json.dumps(current_reporters), datetime.now().isoformat(), lead_id))
+                             (json.dumps(current_reporters), get_ist_now().isoformat(), lead_id))
                 
                 # Log activity
                 self._log_activity(cursor, lead_id, 'reporter_removed', f"Reporter {user_id} removed", removed_by)
@@ -1005,7 +1006,7 @@ class LeadsSQLiteDB:
             update_data = {
                 'assigned_to': to_user_id,
                 'department_id': to_department_id,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': get_ist_now().isoformat()
             }
             
             # Handle reporting option
@@ -1148,7 +1149,7 @@ class LeadsSQLiteDB:
             'to_department_id': to_department_id,
             'transferred_by': transferred_by,
             'notes': notes or '',
-            'transferred_at': datetime.now().isoformat()
+            'transferred_at': get_ist_now().isoformat()
         }
         
         columns = list(transfer_data.keys())
@@ -1175,7 +1176,7 @@ class LeadsSQLiteDB:
             # Parse created_at
             try:
                 created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                days_old = (datetime.now() - created_date).days
+                days_old = (get_ist_now() - created_date).days
             except:
                 days_old = 0
             
@@ -1219,8 +1220,8 @@ class LeadsSQLiteDB:
             # Prepare document data
             data = document_data.copy()
             data['id'] = document_id
-            data['created_at'] = datetime.now().isoformat()
-            data['updated_at'] = datetime.now().isoformat()
+            data['created_at'] = get_ist_now().isoformat()
+            data['updated_at'] = get_ist_now().isoformat()
             
             # Sanitize data
             for key, value in data.items():
@@ -1295,7 +1296,7 @@ class LeadsSQLiteDB:
         try:
             # Prepare update data
             data = update_data.copy()
-            data['updated_at'] = datetime.now().isoformat()
+            data['updated_at'] = get_ist_now().isoformat()
             
             # Sanitize data
             for key, value in data.items():
@@ -1365,7 +1366,7 @@ class LeadsSQLiteDB:
         cursor = conn.cursor()
         
         try:
-            current_time = datetime.now().isoformat()
+            current_time = get_ist_now().isoformat()
             
             # Update the lead with pending reassignment
             lead_update = {
@@ -1438,7 +1439,7 @@ class LeadsSQLiteDB:
         cursor = conn.cursor()
         
         try:
-            current_time = datetime.now().isoformat()
+            current_time = get_ist_now().isoformat()
             
             # Get current lead data
             cursor.execute('SELECT assigned_to, reassignment_target_user, reassignment_new_data_code, reassignment_new_campaign_name FROM leads WHERE id = ? AND is_deleted = 0', (lead_id,))
@@ -1523,7 +1524,7 @@ class LeadsSQLiteDB:
         cursor = conn.cursor()
         
         try:
-            current_time = datetime.now().isoformat()
+            current_time = get_ist_now().isoformat()
             
             # Update lead with rejection
             lead_update = {
@@ -1578,7 +1579,7 @@ class LeadsSQLiteDB:
         cursor = conn.cursor()
         
         try:
-            current_time = datetime.now().isoformat()
+            current_time = get_ist_now().isoformat()
             
             # Get current lead state for field history tracking
             cursor.execute('SELECT assigned_to, data_code, campaign_name, reassignment_status FROM leads WHERE id = ? AND is_deleted = 0', (lead_id,))
@@ -1776,7 +1777,7 @@ class LeadsSQLiteDB:
             'new_value': change_data['new_value'],
             'changed_by': change_data['changed_by'],
             'changed_by_name': change_data.get('changed_by_name', ''),
-            'changed_at': datetime.now().isoformat(),
+            'changed_at': get_ist_now().isoformat(),
             'reason': change_data.get('reason', ''),
             'metadata': json.dumps(change_data.get('metadata', {}))
         }
@@ -1844,7 +1845,7 @@ class LeadsSQLiteDB:
             # Parse created_at
             try:
                 created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                days_old = (datetime.now() - created_date).days
+                days_old = (get_ist_now() - created_date).days
             except:
                 days_old = 0
             

@@ -10,6 +10,7 @@ import time
 import uuid
 import asyncio
 from datetime import datetime, timedelta
+from app.utils.timezone import get_ist_now
 from app.database import get_database_instances
 from app.database.Settings import SettingsDB
 from app.database.Users import UsersDB
@@ -55,7 +56,7 @@ class SettingsCache:
         """Check if cache entry is still valid"""
         if key not in self._cache_timestamps:
             return False
-        return (datetime.now() - self._cache_timestamps[key]).total_seconds() < self._cache_ttl
+        return (get_ist_now() - self._cache_timestamps[key]).total_seconds() < self._cache_ttl
     
     def get(self, key: str):
         """Get cached value if valid"""
@@ -66,7 +67,7 @@ class SettingsCache:
     def set(self, key: str, value):
         """Set cached value with timestamp"""
         self._cache[key] = value
-        self._cache_timestamps[key] = datetime.now()
+        self._cache_timestamps[key] = get_ist_now()
     
     def should_background_refresh(self) -> bool:
         """Check if background refresh is needed"""
@@ -550,7 +551,7 @@ async def process_excel_background(
             "status": "processing",
             "progress_percent": 0,
             "message": "Starting processing...",
-            "start_time": datetime.now().isoformat(),
+            "start_time": get_ist_now().isoformat(),
             "filename": filename,
             "file_size_mb": file_size_mb
         }
@@ -578,7 +579,7 @@ async def process_excel_background(
                 "progress_percent": 100,
                 "message": "Processing completed successfully!",
                 "result": processed_result,
-                "end_time": datetime.now().isoformat()
+                "end_time": get_ist_now().isoformat()
             }
         else:
             process_excel_background.progress_cache[upload_id] = {
@@ -586,7 +587,7 @@ async def process_excel_background(
                 "progress_percent": 0,
                 "message": processed_result.get('message', 'Processing failed'),
                 "error": processed_result.get('message'),
-                "end_time": datetime.now().isoformat()
+                "end_time": get_ist_now().isoformat()
             }
             
     except Exception as e:
@@ -596,7 +597,7 @@ async def process_excel_background(
             "progress_percent": 0,
             "message": f"Processing failed: {str(e)}",
             "error": str(e),
-            "end_time": datetime.now().isoformat()
+            "end_time": get_ist_now().isoformat()
         }
     finally:
         # Cleanup temp file
@@ -1478,7 +1479,7 @@ async def reset_attendance_settings(
             "office_latitude": None,
             "office_longitude": None,
             "geofence_radius": 100.0,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         success = await settings_db.update_attendance_settings(default_settings)
@@ -1926,12 +1927,12 @@ async def get_employee_leave_balance(
                 "employee_name": employee.get("name", ""),
                 "employee_code": employee.get("employee_code"),
                 "department": employee.get("department"),
-                "paid_leaves_total": 12,
+                "paid_leaves_total": 1,
                 "paid_leaves_used": 0,
-                "paid_leaves_remaining": 12,
-                "earned_leaves_total": 15,
+                "paid_leaves_remaining": 1,
+                "earned_leaves_total": 0,
                 "earned_leaves_used": 0,
-                "earned_leaves_remaining": 15,
+                "earned_leaves_remaining": 0,
                 "sick_leaves_total": 7,
                 "sick_leaves_used": 0,
                 "sick_leaves_remaining": 7,
@@ -1956,6 +1957,43 @@ async def get_employee_leave_balance(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching leave balance: {str(e)}"
         )
+
+
+@router.post("/leave-balance/reset-defaults", response_model=Dict[str, Any])
+async def reset_leave_balance_defaults(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Reset EL to 0 and PL to 1 for ALL employees who still have old defaults"""
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    try:
+        db = settings_db.db
+        # Reset earned leaves: set total & remaining to 0 (keep used as-is)
+        el_result = await db.leave_balances.update_many(
+            {},
+            [{"$set": {
+                "earned_leaves_total": 0,
+                "earned_leaves_remaining": {"$max": [0, {"$subtract": [0, {"$ifNull": ["$earned_leaves_used", 0]}]}]},
+            }}]
+        )
+        # Reset paid leaves: set total & remaining to 1 (keep used as-is)
+        pl_result = await db.leave_balances.update_many(
+            {},
+            [{"$set": {
+                "paid_leaves_total": 1,
+                "paid_leaves_remaining": {"$max": [0, {"$subtract": [1, {"$ifNull": ["$paid_leaves_used", 0]}]}]},
+            }}]
+        )
+        return {
+            "success": True,
+            "el_updated": el_result.modified_count,
+            "pl_updated": pl_result.modified_count,
+            "message": "All employees reset to EL=0, PL=1"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
 
 
 @router.post("/leave-balance/allocate", response_model=Dict[str, str])
@@ -2014,7 +2052,7 @@ async def allocate_leave_to_employee(
         update_data = {
             field_total: new_total,
             field_remaining: new_remaining,
-            "last_updated": datetime.utcnow()
+            "last_updated": get_ist_now()
         }
         
         success = await settings_db.update_leave_balance(employee_id, update_data)
@@ -2033,7 +2071,7 @@ async def allocate_leave_to_employee(
                 "reason": reason,
                 "performed_by": user_id,
                 "performed_by_name": admin_name,
-                "timestamp": datetime.utcnow(),
+                "timestamp": get_ist_now(),
                 "balance_before": old_remaining,
                 "balance_after": new_remaining
             }
@@ -2108,7 +2146,7 @@ async def deduct_leave_from_employee(
         update_data = {
             field_remaining: new_remaining,
             f"{leave_type}_leaves_used": balance.get(f"{leave_type}_leaves_used", 0) + quantity,
-            "last_updated": datetime.utcnow()
+            "last_updated": get_ist_now()
         }
         
         success = await settings_db.update_leave_balance(employee_id, update_data)
@@ -2127,7 +2165,7 @@ async def deduct_leave_from_employee(
                 "reason": reason,
                 "performed_by": user_id,
                 "performed_by_name": admin_name,
-                "timestamp": datetime.utcnow(),
+                "timestamp": get_ist_now(),
                 "balance_before": old_remaining,
                 "balance_after": new_remaining
             }
@@ -2224,3 +2262,140 @@ async def bulk_allocate_leaves(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error in bulk allocation: {str(e)}"        )
+
+
+# ==================== LEAVE APPROVAL ROUTING ENDPOINTS ====================
+
+@router.get("/leave-approval-routes", response_model=Dict[str, Any])
+async def get_leave_approval_routes(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get all leave approval routing rules"""
+    try:
+        routes = await settings_db.get_leave_approval_routes()
+        return {"success": True, "data": routes}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching leave approval routes: {str(e)}"
+        )
+
+
+@router.get("/leave-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def get_leave_approval_route_by_role(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get approval route for a specific role"""
+    try:
+        route = await settings_db.get_leave_approval_route_by_role(role_id)
+        return {"success": True, "data": route}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching leave approval route: {str(e)}"
+        )
+
+
+@router.post("/leave-approval-routes", response_model=Dict[str, Any])
+async def upsert_leave_approval_route(
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Create or update leave approval routing for a role.
+    Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
+    """
+    try:
+        role_id = body.get("role_id")
+        role_name = body.get("role_name", "")
+        approver_ids = body.get("approver_ids", [])
+        approver_names = body.get("approver_names", [])
+
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+        if not approver_ids:
+            raise HTTPException(status_code=400, detail="At least one approver is required")
+
+        saved = await settings_db.upsert_leave_approval_route(
+            role_id=role_id,
+            role_name=role_name,
+            approver_ids=approver_ids,
+            approver_names=approver_names,
+        )
+        return {"success": True, "message": "Approval route saved", "data": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving leave approval route: {str(e)}"
+        )
+
+
+@router.delete("/leave-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def delete_leave_approval_route(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Delete approval route for a role"""
+    try:
+        deleted = await settings_db.delete_leave_approval_route(role_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Route not found for this role")
+        return {"success": True, "message": "Approval route deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting leave approval route: {str(e)}"
+        )
+
+
+@router.get("/leave-approvers-for-me", response_model=Dict[str, Any])
+async def get_leave_approvers_for_me(
+    user_id: str = Query(..., description="The current employee's user ID"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+):
+    """Get the list of approver employees for the current user based on their role"""
+    try:
+        # Get current user to find their role
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        role_id = user.get("role_id") or user.get("role")
+        if not role_id:
+            return {"success": True, "data": []}
+
+        approver_ids = await settings_db.get_approvers_for_employee(str(role_id))
+        if not approver_ids:
+            return {"success": True, "data": []}
+
+        # Fetch approver details
+        approvers = []
+        for aid in approver_ids:
+            emp = await users_db.get_user(aid)
+            if emp:
+                # Build name from first_name + last_name since users don't have a "name" field
+                first = emp.get("first_name", "")
+                last = emp.get("last_name", "")
+                full_name = f"{first} {last}".strip() if (first or last) else emp.get("name", emp.get("username", "Unknown"))
+                approvers.append({
+                    "id": str(emp.get("_id", aid)),
+                    "name": full_name,
+                    "role": emp.get("role_name", emp.get("designation", "")),
+                })
+        return {"success": True, "data": approvers}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching approvers: {str(e)}"
+        )

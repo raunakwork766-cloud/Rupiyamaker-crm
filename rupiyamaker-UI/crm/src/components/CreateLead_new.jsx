@@ -10,6 +10,7 @@ import {
   saveObligationData
 } from "../utils/leadDataHelper";
 import { leadEvents } from "../utils/auth";
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
 // API base URL
 const API_BASE_URL = '/api';
@@ -826,7 +827,7 @@ function useCreateLeadLogic() {
 
   // State
   const [currentDateTime, setCurrentDateTime] = useState(
-    new Date().toISOString().replace("T", " ").slice(0, 19)
+    getISTTimestamp().replace("T", " ")
   );
   const [productType, setProductType] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
@@ -1749,13 +1750,13 @@ const handleMobileNumberChange = (e) => {
           // If manager permission is required, set status as pending
           requestBody.reassignment_status = 'pending';
           requestBody.requires_manager_approval = true;
-          requestBody.requested_at = new Date().toISOString();
+          requestBody.requested_at = getISTTimestamp();
           requestBody.requested_by = userId;
           requestBody.activity_type = 'lead_reassignment_request';
         } else {
           // If no manager permission required, set status as approved for direct reassignment
           requestBody.reassignment_status = 'approved';
-          requestBody.approved_at = new Date().toISOString();
+          requestBody.approved_at = getISTTimestamp();
           requestBody.approved_by = userId;
           requestBody.activity_type = 'lead_reassigned';
         }
@@ -1848,7 +1849,7 @@ const handleMobileNumberChange = (e) => {
           } else {
             // If no manager permission required, direct reassignment
             apiUrl += `&reassignment_status=approved`;
-            apiUrl += `&approved_at=${encodeURIComponent(new Date().toISOString())}`;
+            apiUrl += `&approved_at=${encodeURIComponent(getISTTimestamp())}`;
             apiUrl += `&approved_by=${userId}`;
             requestBody.activity_description = `Lead directly reassigned to user ${userId}. Reason: ${requestBody.reason}`;
           }
@@ -1988,7 +1989,7 @@ const handleMobileNumberChange = (e) => {
                 previous_owner: existingLeadData.created_by_name || existingLeadData.assigned_to_name || 'Unknown',
                 new_owner: userId,
                 reassignment_status: 'approved',
-                timestamp: new Date().toISOString()
+                timestamp: getISTTimestamp()
               }
             };
             
@@ -2136,7 +2137,7 @@ const handleMobileNumberChange = (e) => {
               data_code: existingLeadData.data_code || existingLeadData.dataCode || '',
               product_type: existingLeadData.product_type || existingLeadData.productType || '',
               status: existingLeadData.status || 'not_a_lead',
-              lastUpdated: new Date().toISOString()
+              lastUpdated: getISTTimestamp()
             }
           };
           
@@ -2358,7 +2359,7 @@ const handleMobileNumberChange = (e) => {
       console.log('✅ Lead created successfully:', data.name || data.customer_name);
       
       // ⚡ Emit event to notify LeadCRM component for instant update
-      console.log('🚨🚨🚨 EMITTING EVENT AT:', new Date().toLocaleTimeString());
+      console.log('🚨🚨🚨 EMITTING EVENT AT:', new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }));
       console.log('📡 Event system available:', typeof leadEvents);
       console.log('📡 Lead data being sent:', data._id);
       
@@ -4024,7 +4025,7 @@ function ReassignmentTable({
               ? {...req, 
                  reassignment_status: 'approved',
                  status: 'approved',
-                 action_date: new Date().toISOString(),
+                 action_date: getISTTimestamp(),
                  action_by: "Current User"} 
               : req
           )
@@ -4117,7 +4118,7 @@ function ReassignmentTable({
               ? {...req, 
                  reassignment_status: 'rejected',
                  status: 'rejected', 
-                 action_date: new Date().toISOString(),
+                 action_date: getISTTimestamp(),
                  action_by: "Current User",
                  rejection_reason: reason} 
               : req
@@ -4163,7 +4164,8 @@ function ReassignmentTable({
         month: 'short',
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
       });
     } catch (error) {
 
@@ -5064,7 +5066,8 @@ function CreateLead() {
                                     month: 'short',
                                     year: 'numeric',
                                     hour: '2-digit',
-                                    minute: '2-digit'
+                                    minute: '2-digit',
+                                    timeZone: 'Asia/Kolkata'
                                   })}
                                 </p>
                               </div>
@@ -5089,7 +5092,8 @@ function CreateLead() {
                                 return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', {
                                   day: '2-digit',
                                   month: 'long',
-                                  year: 'numeric'
+                                  year: 'numeric',
+                                  timeZone: 'Asia/Kolkata'
                                 }) : 'Unknown Date';
                               })()}
                             </p>
@@ -5139,7 +5143,8 @@ function CreateLead() {
                                   month: 'long',
                                   year: 'numeric',
                                   hour: '2-digit',
-                                  minute: '2-digit'
+                                  minute: '2-digit',
+                                  timeZone: 'Asia/Kolkata'
                                 })}
                               </span>
                             </div>
@@ -5240,7 +5245,8 @@ function CreateLead() {
                                           return baseDate.toLocaleDateString('en-GB', {
                                             day: '2-digit',
                                             month: 'long',
-                                            year: 'numeric'
+                                            year: 'numeric',
+                                            timeZone: 'Asia/Kolkata'
                                           });
                                         })()}
                                       </span>
@@ -5739,7 +5745,8 @@ function CreateLead() {
                               return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', {
                                 day: '2-digit',
                                 month: 'long',
-                                year: 'numeric'
+                                year: 'numeric',
+                                timeZone: 'Asia/Kolkata'
                               }) : 'Unknown Date';
                             })()}
                           </p>
@@ -5872,7 +5879,8 @@ function CreateLead() {
                                         return baseDate.toLocaleDateString('en-GB', {
                                           day: '2-digit',
                                           month: 'long',
-                                          year: 'numeric'
+                                          year: 'numeric',
+                                          timeZone: 'Asia/Kolkata'
                                         });
                                       })()}
                                     </span>
