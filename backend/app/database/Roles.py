@@ -108,6 +108,7 @@ class RolesDB:
             {"page": "hrms", "actions": ["own", "junior", "all"]},
             {"page": "tasks", "actions": ["own", "junior", "all"]},
             {"page": "calculators", "actions": ["show", "use"]},  # Special case - no hierarchy needed
+            {"page": "dialer_report", "actions": ["show"]},
             {"page": "settings", "actions": ["show", "create", "edit", "delete"]},  # Admin-only
             {"page": "departments", "actions": ["show", "add", "edit", "delete"]},  # Admin-only
             {"page": "teams", "actions": ["show", "add", "edit", "delete"]},  # Admin-only
