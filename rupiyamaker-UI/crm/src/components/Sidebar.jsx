@@ -144,14 +144,21 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
   const currentSelectedLabel = useMemo(() => localStorage.getItem('selectedLabel'), [selectedLabel]);
   const isCurrentlySelected = currentSelectedLabel === label;
 
+  const activeStyle = (isSelected || isCurrentlySelected) ? {
+    boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
+    border: '1px solid rgba(255,235,0,0.45)',
+    transform: 'translateY(-1px)'
+  } : {};
+
   return (
     <button
       className={cn(
-        "flex items-center w-full p-2 sm:p-3 mb-1 rounded-lg transition-all text-sm sm:text-[15px] font-extrabold shadow animate-pop min-h-[44px]",
+        "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all text-sm sm:text-[15px] font-semibold animate-pop min-h-[44px]",
         (isSelected || isCurrentlySelected)
-          ? "bg-[#FFFF00] border border-[#03B0F5] text-[#03B0F5]" 
-          : "hover:bg-white text-[#03B0F5]"
+          ? "bg-[#ffeb00] text-black"
+          : "hover:bg-[#121212] text-[#00d2ff]"
       )}
+      style={activeStyle}
       onClick={handleClick}
     >
       {isOpen ? (
@@ -228,14 +235,20 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
     onSelect(label, isLoanType, loanTypeId);
   }, [label, onSelect, isLoanType, loanTypeId]);
 
+  const subActiveStyle = isSelected ? {
+    boxShadow: '0 0 12px rgba(255,235,0,0.2), inset 0 0 6px rgba(255,235,0,0.05)',
+    border: '1px solid rgba(255,235,0,0.4)'
+  } : {};
+
   return (
     <button
       className={cn(
-        "flex items-center w-full p-2 sm:p-2 text-left mb-1 rounded-md transition-all text-xs sm:text-[14px] font-semibold ml-1 sm:ml-2 animate-pop min-h-[40px]",
+        "flex items-center w-full p-2 text-left mb-0.5 rounded-lg transition-all duration-200 text-xs sm:text-[13px] font-medium animate-pop min-h-[38px]",
         isSelected
-          ? "bg-[#FFFF00] border border-[#03B0F5] text-[#03B0F5]" 
-          : "hover:bg-white text-[#03B0F5]"
+          ? "bg-[#ffeb00] text-black translate-x-1.5"
+          : "hover:bg-[#111] text-[#00d2ff] hover:translate-x-1.5"
       )}
+      style={subActiveStyle}
       onClick={handleClick}
     >
       {isOpen ? (
@@ -370,17 +383,28 @@ const DropdownHeader = React.memo(({
       <button
         onClick={handleToggle}
         className={cn(
-          "flex items-center w-full p-2 sm:p-3 mb-1 rounded-lg transition-all font-extrabold text-sm sm:text-[15px] shadow animate-pop min-h-[44px]",
-          hasActiveSubItem 
-            ? "bg-[#FFFF00] border border-[#03B0F5] text-[#03B0F5]" 
-            : "hover:bg-white text-[#03B0F5]"
+          "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all font-semibold text-sm sm:text-[15px] animate-pop min-h-[44px]",
+          hasActiveSubItem
+            ? "bg-[#ffeb00] text-black"
+            : "hover:bg-[#121212] text-[#00d2ff]"
         )}
+        style={hasActiveSubItem ? {
+          boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
+          border: '1px solid rgba(255,235,0,0.45)',
+          transform: 'translateY(-1px)'
+        } : {}}
       >
         {isOpen ? (
           <>
             <span className="mr-2 flex-shrink-0">{icon}</span>
             <span className="flex-1 text-left truncate">{label}</span>
-            <span className="ml-1 text-xs">{isExpanded ? "▲" : "▼"}</span>
+            <svg
+              className="ml-1 w-3.5 h-3.5 shrink-0 transition-transform duration-300"
+              style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            >
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </>
         ) : (
           <span className="flex items-center justify-center w-full">
@@ -389,23 +413,34 @@ const DropdownHeader = React.memo(({
         )}
       </button>
 
-      {isExpanded && isOpen && (
-        <ul className="pl-3 sm:pl-6 pr-1 sm:pr-2 mt-1 space-y-1 backdrop-blur-md bg-white/10 rounded-lg max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-transparent">
-          {items.map((item) => (
-            <li key={`${label}-${item.label}-${item.id || 'static'}`}>
-              <SubItem 
-                label={item.label} 
-                icon={item.icon} 
-                isOpen={isOpen}
-                selectedLabel={selectedLabel}
-                onSelect={onItemSelect}
-                isLoanType={item.isLoanType}
-                loanTypeId={item.id}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      <div
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+        style={{
+          maxHeight: isExpanded && isOpen ? '500px' : '0px',
+          opacity: isExpanded && isOpen ? 1 : 0,
+          transition: 'max-height 0.35s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease'
+        }}
+      >
+        <div className="relative pl-9 pr-1 pt-1 pb-2">
+          {/* Yellow left border hierarchy indicator */}
+          <div className="absolute left-5 top-2 bottom-2 w-[3px] bg-[#ffeb00] rounded-full opacity-50"></div>
+          <ul className="flex flex-col gap-0.5">
+            {items.map((item) => (
+              <li key={`${label}-${item.label}-${item.id || 'static'}`}>
+                <SubItem
+                  label={item.label}
+                  icon={item.icon}
+                  isOpen={isOpen}
+                  selectedLabel={selectedLabel}
+                  onSelect={onItemSelect}
+                  isLoanType={item.isLoanType}
+                  loanTypeId={item.id}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 });
@@ -1544,8 +1579,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
 
       // Dialer Report
       canShowDialerReport: checkPermission('dialer_report', 'show') ||
-                           checkPermission('dialer', 'show') ||
-                           checkPermission('hrms', 'show') ||
                            isSuperAdmin(userPermissions),
       
       // Apps
@@ -1624,8 +1657,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
 
   if (!permissionsLoaded || !menuDataLoaded) {
     return (
-      <div className="h-screen w-20 bg-black flex items-center justify-center">
-        <div className="text-[#03B0F5] text-sm">Loading...</div>
+      <div className="h-screen w-[72px] bg-black border-r border-[#1f1f1f] flex items-center justify-center">
+        <div className="text-[#00d2ff] text-sm">Loading...</div>
       </div>
     );
   }
@@ -1633,43 +1666,51 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   return (
     <div
       className={cn(
-        "h-screen relative shadow-6xl bg-gradient-to-br from-white/1 to-yellow-100/1 transition-all duration-300 z-10",
+        "h-screen relative transition-all duration-300 z-10 bg-black border-r border-[#1f1f1f] shadow-2xl",
         // Desktop width behavior
-        isOpen 
-          ? "w-64" 
-          : "w-20"
+        isOpen
+          ? "w-[260px]"
+          : "w-[72px]"
       )}
       onMouseEnter={() => !isPinnedOpen && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      
-      <div className="flex flex-col h-full relative z-50 bg-gradient-to-br from-white/1 to-yellow-100/1">
+      <style>{`
+        #sidebar-nav::-webkit-scrollbar { width: 4px; }
+        #sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+        #sidebar-nav::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+        #sidebar-nav::-webkit-scrollbar-thumb:hover { background: #444; }
+      `}</style>
+      <div className="flex flex-col h-full relative z-50">
         {/* Header */}
-        <div className="flex items-center flex-shrink-0 h-12 sm:h-16 p-2 sm:p-4">
+        <div className="flex items-center flex-shrink-0 h-14 px-3 border-b border-[#1f1f1f] gap-3 shrink-0">
           <button
             onClick={() => {
               const newState = !isPinnedOpen;
               setIsPinnedOpen(newState);
               localStorage.setItem('sidebarPinned', newState.toString());
             }}
-            className="p-2 rounded-lg shadow-md hover:bg-gradient-to-r from-purple-400 to-pink-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
+            className="group text-[#00d2ff] hover:text-white transition-all p-2 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95 focus:outline-none flex items-center justify-center"
           >
-            <span className="text-lg">☰</span>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            </svg>
           </button>
           {isOpen && (
-            <div className="flex items-center ml-2 sm:ml-3 text-sm sm:text-[16px] font-extrabold text-[#03B0F5]">
-              RupiyaMaker
-              <span className="ml-1 rounded-full p-0.5 flex items-center justify-center">
-                <span className="text-xs">₹</span>
-              </span>
+            <div className="flex items-center gap-1 font-extrabold text-[17px] tracking-wide whitespace-nowrap overflow-hidden">
+              <span className="text-[#00d2ff]">RupiyaMaker</span>
+              <span
+                className="font-serif italic text-[#ffeb00]"
+                style={{ textShadow: '0 0 8px rgba(255,235,0,0.45)' }}
+              >₹</span>
             </div>
           )}
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 px-1 sm:px-2 py-2 overflow-y-auto font-bold scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-transparent touch-pan-y"
+        <div id="sidebar-nav" className="flex-1 px-2 py-3 overflow-y-auto overflow-x-hidden touch-pan-y"
              style={{ WebkitOverflowScrolling: 'touch' }}>
-          <nav className="space-y-1 touch-manipulation"
+          <nav className="flex flex-col gap-1 touch-manipulation"
                style={{ touchAction: 'pan-y' }}>
             {/* Feed */}
             <MenuItem 

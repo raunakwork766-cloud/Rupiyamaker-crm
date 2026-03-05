@@ -56,6 +56,7 @@ const LazyPermissionTest = createLazyComponent(() => import('../components/Permi
 const LazyLeadsReport = createLazyComponent(() => import('../components/reports/ComprehensiveReportDark.jsx'), 'ComprehensiveReportDark');
 const LazyNotificationsPage = createLazyComponent(() => import('../components/NotificationsPage.jsx'), 'NotificationsPage');
 const LazyNotificationManagementPage = createLazyComponent(() => import('../pages/NotificationManagementPage.jsx'), 'NotificationManagementPage');
+const LazyRoleCompare = createLazyComponent(() => import('../components/settings/RoleCompare.jsx'), 'RoleCompare');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
@@ -410,6 +411,23 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
               user={user}
             />
           </ProtectedRoute>
+        }
+      />
+      <Route 
+        path="/role-compare"
+        element={
+          <ProtectedRoute 
+            requiredPage="settings" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'Settings', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyRoleCompare} 
+              routeName="Role Compare"
+            />
+          </ProtectedRoute>
         } 
       />
       <Route 
@@ -533,11 +551,6 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
           <ProtectedRoute 
             requiredPage="dialer_report" 
             requiredAction="show"
-            alternativeChecks={[
-              { page: 'dialer', action: 'show' },
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
-            ]}
           >
             <RouteWithSuspense 
               component={LazyDialerReport} 

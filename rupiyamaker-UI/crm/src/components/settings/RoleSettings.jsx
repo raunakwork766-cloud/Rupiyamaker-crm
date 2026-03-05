@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { Edit, Trash2, ChevronDown, Users, Plus, Shield, Download } from 'lucide-react';
 import { updateRoleWithImmediateRefresh, setupPermissionRefreshListeners } from '../../utils/immediatePermissionRefresh.js';
+const RoleCompare = lazy(() => import('./RoleCompare.jsx'));
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
 const RoleSettings = () => {
+    const navigate = useNavigate();
+    const [activeRoleTab, setActiveRoleTab] = useState('roles');
     const [roles, setRoles] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -78,6 +82,7 @@ const RoleSettings = () => {
         'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
         'leaves': ['show', 'own', 'junior', 'all', 'delete'],
         'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
+        'dialer_report': ['show'],
         'apps': ['show', 'manage'],
         "notification":['show', 'delete', 'send'],
         'reports': ['show'],
@@ -100,6 +105,7 @@ const RoleSettings = () => {
             'employees': { show:'Sidebar', password:'Change Password', junior:'Junior Employees', all:'All Employees', role:'Role Field Config', delete:'Delete' },
             'leaves': { show:'Sidebar', own:'Own Leaves', junior:'Junior Leaves', all:'All Leaves', delete:'Delete' },
             'attendance': { show:'Sidebar', own:'Own Attendance', junior:'Junior Attendance', all:'All Attendance', update:'Update Attendance', delete:'Delete' },
+            'dialer_report': { show:'View Dialer Report' },
             'apps': { show:'Sidebar', manage:'Manage Apps' },
             'notification': { show:'View', delete:'Delete', send:'Send Notification' },
             'reports': { show:'Access Reports' },
@@ -1552,9 +1558,10 @@ const RoleSettings = () => {
             });
             headerRow2 += '</tr>';
             
-            // Build data rows
+            // Build data rows with editable permissions
             let dataRows = '';
             reportRoles.forEach(role => {
+                const roleId = role._id || role.id;
                 const isSuperAdmin = role.permissions && role.permissions.some(p => p.page === '*');
                 const dept = reportDepartments.find(d => (d.id || d._id) === role.department_id);
                 const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
@@ -1568,40 +1575,29 @@ const RoleSettings = () => {
                 console.log(`Processing role: ${role.name}`);
                 console.log('Role permissions:', role.permissions);
                 
-                dataRows += '<tr class="data-row">';
+                dataRows += `<tr class="data-row" data-role-id="${roleId}">`;
                 dataRows += `<td class="sticky-col role-name" data-role="${role.name.toLowerCase()}">${role.name}</td>`;
                 dataRows += `<td class="dept-cell">${dept?.name || '-'}</td>`;
                 dataRows += `<td class="reports-cell">${reportingRoles.length > 0 ? reportingRoles.join(', ') : 'Top Level'}</td>`;
-                dataRows += `<td class="sticky-col perm-cell">${permCount}</td>`;
+                dataRows += `<td class="sticky-col perm-cell perm-count-${roleId}">${permCount}</td>`;
                 
-                // Check each permission
+                // Check each permission - make clickable
                 permissionModules.forEach((mod, modIdx) => {
                     mod.actions.forEach((action, actIdx) => {
                         const isFirstAction = actIdx === 0 && modIdx > 0;
                         let hasPermission = false;
+                        let pageKey = mod.module;
                         
                         if (isSuperAdmin) {
                             hasPermission = true;
                         } else if (role.permissions && Array.isArray(role.permissions)) {
                             if (mod.isNested) {
                                 // For nested modules (Leads CRM sections), check specific section
-                                // Database stores as "leads.create_lead" but we display as "Leads CRM - Create LEAD"
-                                // Need to convert display format to database format
                                 const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
                                 const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
-                                const pageKey = `${dbModule}.${dbSection}`;
+                                pageKey = `${dbModule}.${dbSection}`;
                                 
                                 const modulePerm = role.permissions.find(p => p.page === pageKey);
-                                
-                                // Debug logging for Leads CRM
-                                if (mod.originalModule === 'Leads CRM' && actIdx === 0) {
-                                    console.log(`  Checking ${role.name} for ${mod.module}`);
-                                    console.log('  Display format:', `${mod.originalModule}.${mod.section}`);
-                                    console.log('  Database format (looking for):', pageKey);
-                                    console.log('  Available pages in permissions:', role.permissions.map(p => p.page));
-                                    console.log('  Found permission:', modulePerm);
-                                }
-                                
                                 if (modulePerm && modulePerm.actions && modulePerm.actions.includes(action)) {
                                     hasPermission = true;
                                 }
@@ -1616,7 +1612,16 @@ const RoleSettings = () => {
                         
                         const checkMark = hasPermission ? '<span class="check-yes">✓</span>' : '<span class="check-no">-</span>';
                         const partitionClass = isFirstAction ? 'cell-partition' : '';
-                        dataRows += `<td class="check-cell ${partitionClass}">${checkMark}</td>`;
+                        // Make cell clickable with data attributes
+                        dataRows += `<td class="check-cell ${partitionClass} editable-cell" 
+                            data-role-id="${roleId}" 
+                            data-module="${pageKey}" 
+                            data-action="${action}" 
+                            data-has-perm="${hasPermission}"
+                            onclick="togglePermission(this)"
+                            style="cursor: pointer;"
+                            title="Click to toggle ${action} for ${role.name}"
+                        >${checkMark}</td>`;
                     });
                 });
                 
@@ -1863,6 +1868,15 @@ const RoleSettings = () => {
                             background: #fff;
                             min-width: 50px;
                         }
+                        .editable-cell:hover {
+                            background: #e3f2fd !important;
+                            transform: scale(1.05);
+                            transition: all 0.2s;
+                        }
+                        .cell-changed {
+                            background: #fff9c4 !important;
+                            box-shadow: 0 0 0 2px #ffd700 inset;
+                        }
                         .cell-partition {
                             border-left: 5px solid #ffd700 !important;
                         }
@@ -1881,6 +1895,34 @@ const RoleSettings = () => {
                         .data-row.hidden {
                             display: none;
                         }
+                        .save-button {
+                            display: none;
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #00c851;
+                            color: #fff;
+                            border: none;
+                            padding: 12px 24px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            font-weight: bold;
+                            cursor: pointer;
+                            box-shadow: 0 4px 12px rgba(0,200,81,0.4);
+                            z-index: 1000;
+                            transition: all 0.2s;
+                        }
+                        .save-button.visible {
+                            display: block;
+                        }
+                        .save-button:hover {
+                            background: #00a844;
+                            transform: scale(1.05);
+                        }
+                        .save-button:disabled {
+                            background: #666;
+                            cursor: not-allowed;
+                        }
                         @media print {
                             body { background: #fff; padding: 0; }
                             .container { box-shadow: none; }
@@ -1893,6 +1935,162 @@ const RoleSettings = () => {
                         let sortDeptAscending = true;
                         let sortReportsAscending = true;
                         let selectedRoles = [];
+                        
+                        // Track permission changes
+                        const permissionChanges = {};
+                        
+                        function togglePermission(cell) {
+                            const roleId = cell.getAttribute('data-role-id');
+                            const module = cell.getAttribute('data-module');
+                            const action = cell.getAttribute('data-action');
+                            const currentState = cell.getAttribute('data-has-perm') === 'true';
+                            const newState = !currentState;
+                            
+                            // Update cell display
+                            cell.setAttribute('data-has-perm', newState);
+                            cell.innerHTML = newState 
+                                ? '<span class="check-yes">✓</span>' 
+                                : '<span class="check-no">-</span>';
+                            cell.classList.add('cell-changed');
+                            
+                            // Track change
+                            if (!permissionChanges[roleId]) {
+                                permissionChanges[roleId] = {};
+                            }
+                            if (!permissionChanges[roleId][module]) {
+                                permissionChanges[roleId][module] = {};
+                            }
+                            permissionChanges[roleId][module][action] = newState;
+                            
+                            // Update permission count for the role
+                            updatePermissionCount(roleId);
+                            
+                            // Show save button
+                            document.getElementById('saveButton').classList.add('visible');
+                        }
+                        
+                        function updatePermissionCount(roleId) {
+                            const row = document.querySelector(\`tr[data-role-id="\${roleId}"]\`);
+                            const cells = row.querySelectorAll('.editable-cell');
+                            let count = 0;
+                            cells.forEach(cell => {
+                                if (cell.getAttribute('data-has-perm') === 'true') {
+                                    count++;
+                                }
+                            });
+                            const countCell = row.querySelector('.perm-count-' + roleId);
+                            if (countCell) {
+                                countCell.textContent = count;
+                            }
+                        }
+                        
+                        async function saveChanges() {
+                            const saveBtn = document.getElementById('saveButton');
+                            if (Object.keys(permissionChanges).length === 0) {
+                                alert('No changes to save');
+                                return;
+                            }
+                            
+                            saveBtn.disabled = true;
+                            saveBtn.textContent = '💾 Saving...';
+                            
+                            try {
+                                // Get token from localStorage (opener window)
+                                const token = window.opener?.localStorage.getItem('token');
+                                if (!token) {
+                                    alert('Authentication token not found. Please keep the main window open.');
+                                    saveBtn.disabled = false;
+                                    saveBtn.textContent = '💾 SAVE CHANGES';
+                                    return;
+                                }
+                                
+                                // Convert changes to API format
+                                for (const roleId in permissionChanges) {
+                                    const roleChanges = permissionChanges[roleId];
+                                    
+                                    // Build permissions array
+                                    const permissions = {};
+                                    for (const module in roleChanges) {
+                                        for (const action in roleChanges[module]) {
+                                            if (!permissions[module]) {
+                                                permissions[module] = [];
+                                            }
+                                            if (roleChanges[module][action]) {
+                                                permissions[module].push(action);
+                                            } else {
+                                                // Remove action if unchecked
+                                                const idx = permissions[module].indexOf(action);
+                                                if (idx > -1) {
+                                                    permissions[module].splice(idx, 1);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Get all current permissions from cells
+                                    const row = document.querySelector(\`tr[data-role-id="\${roleId}"]\`);
+                                    const cells = row.querySelectorAll('.editable-cell');
+                                    const fullPermissions = {};
+                                    
+                                    cells.forEach(cell => {
+                                        const mod = cell.getAttribute('data-module');
+                                        const act = cell.getAttribute('data-action');
+                                        const hasPerm = cell.getAttribute('data-has-perm') === 'true';
+                                        
+                                        if (hasPerm) {
+                                            if (!fullPermissions[mod]) {
+                                                fullPermissions[mod] = [];
+                                            }
+                                            fullPermissions[mod].push(act);
+                                        }
+                                    });
+                                    
+                                    // Convert to array format for API
+                                    const permissionsArray = Object.entries(fullPermissions).map(([page, actions]) => ({
+                                        page,
+                                        actions
+                                    }));
+                                    
+                                    // Call API to update role
+                                    const response = await fetch(\`/api/roles/\${roleId}\`, {
+                                        method: 'PUT',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': \`Bearer \${token}\`
+                                        },
+                                        body: JSON.stringify({
+                                            permissions: permissionsArray
+                                        })
+                                    });
+                                    
+                                    if (!response.ok) {
+                                        throw new Error(\`Failed to update role \${roleId}\`);
+                                    }
+                                }
+                                
+                                // Clear changes and hide save button
+                                Object.keys(permissionChanges).forEach(key => delete permissionChanges[key]);
+                                document.querySelectorAll('.cell-changed').forEach(cell => {
+                                    cell.classList.remove('cell-changed');
+                                });
+                                saveBtn.classList.remove('visible');
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = '💾 SAVE CHANGES';
+                                
+                                alert('✓ Changes saved successfully! The main page will reload.');
+                                
+                                // Trigger reload in parent window
+                                if (window.opener && !window.opener.closed) {
+                                    window.opener.location.reload();
+                                }
+                                
+                            } catch (error) {
+                                console.error('Error saving changes:', error);
+                                alert('Error saving changes: ' + error.message);
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = '💾 SAVE CHANGES';
+                            }
+                        }
 
                         function sortTable() {
                             const table = document.querySelector('tbody');
@@ -2009,10 +2207,16 @@ const RoleSettings = () => {
                     </script>
                 </head>
                 <body>
+                    <!-- Save Button -->
+                    <button id="saveButton" class="save-button" onclick="saveChanges()">
+                        💾 SAVE CHANGES
+                    </button>
+                    
                     <div class="container">
                         <div class="header">
                             <h1>📊 ROLES & PERMISSIONS REPORT</h1>
-                            <div class="timestamp">Generated: ${new Date().toLocaleDateString('en-US', { 
+                            <div class="timestamp">Generated: ${new Date().toLocaleDateString('en-IN', { 
+                                timeZone: 'Asia/Kolkata',
                                 weekday: 'long',
                                 year: 'numeric', 
                                 month: 'long', 
@@ -2243,7 +2447,7 @@ const RoleSettings = () => {
                         </tbody>
                     </table>
                     <div class="generated-date">
-                        Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+                        Generated on: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
                     </div>
                 </body>
                 </html>
@@ -3354,7 +3558,7 @@ const RoleSettings = () => {
         });
     };
 
-    const treeData = buildTree(roles);
+    const treeData = React.useMemo(() => buildTree(roles), [roles]);
 
     const totalPermissions = Object.values(allPermissions).flat().length;
     const selectedPermissions = Object.values(formData.permissions).flat().length;
@@ -3363,8 +3567,7 @@ const RoleSettings = () => {
 
     return (
         <div style={{
-            maxWidth: '1400px',
-            margin: '0 auto',
+            width: '100%',
             background: '#000000',
             border: '1px solid #333333',
             borderRadius: '12px',
@@ -3373,172 +3576,93 @@ const RoleSettings = () => {
             color: '#ffffff',
             fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
         }}>
-            {/* Header */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                marginBottom: '2rem'
-            }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1rem'
-                }}>
-                    {/* Export Button */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <button 
-                            onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                console.log('Download Report button clicked!');
-                                try {
-                                    await exportToHTML();
-                                } catch (err) {
-                                    console.error('Button click error:', err);
-                                    message.error('Error: ' + err.message);
-                                }
-                            }}
-                            style={{
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                color: '#ffffff',
-                                fontWeight: '700',
-                                padding: '0.75rem 1.5rem',
-                                borderRadius: '0.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                border: 'none',
-                                cursor: 'pointer',
-                                transition: 'all 0.3s',
-                                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
-                            }}
-                            title="Download comprehensive interactive HTML report - Opens in new tab with all permissions and fixed columns"
-                            type="button"
-                        >
-                            <Download className="h-5 w-5" />
-                            <span>📊 Download Report</span>
-                        </button>
-                    </div>
-                    
-                    {/* Compare Roles Button + Dropdown */}
-                    <div style={{position:'relative'}}>
-                        {!compareMode ? (
-                            <button
-                                onClick={() => setShowCompareOptions(v => !v)}
-                                style={{background:'transparent',color:'#fff',fontWeight:'600',padding:'0.625rem 1.25rem',borderRadius:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem',border:'2px solid #555',cursor:'pointer',transition:'all 0.2s'}}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-                                Compare Roles
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
-                        ) : (
-                            <div style={{display:'flex',gap:'8px'}}>
-                                <button
-                                    onClick={() => { setCompareMode(false); setCompareSelected([]); setShowCompareModal(false); setShowCompareOptions(false); }}
-                                    style={{background:'#ffd700',color:'#000',fontWeight:'700',padding:'0.625rem 1.25rem',borderRadius:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem',border:'none',cursor:'pointer'}}
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                    Cancel ({compareSelected.length} selected)
-                                </button>
-                                {compareSelected.length >= 2 && (
-                                    <button
-                                        onClick={() => setShowCompareModal(true)}
-                                        style={{background:'#00c851',color:'#000',fontWeight:'700',padding:'0.625rem 1.25rem',borderRadius:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem',border:'none',cursor:'pointer'}}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                                        View Comparison
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                        {showCompareOptions && !compareMode && (
-                            <>
-                            <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowCompareOptions(false)}/>
-                            <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,background:'#111',border:'2px solid #ffd700',borderRadius:'10px',zIndex:100,minWidth:'220px',overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,0.8)'}}>
-                                <div style={{padding:'10px 16px',borderBottom:'1px solid #333',color:'#ffd700',fontWeight:'800',fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'1px'}}>Compare Options</div>
-                                {/* Compare All */}
-                                <button
-                                    onClick={() => {
-                                        setCompareSelected(roles.map(r => r._id || r.id));
-                                        setShowCompareOptions(false);
-                                        setShowCompareModal(true);
-                                    }}
-                                    style={{width:'100%',padding:'14px 16px',background:'transparent',border:'none',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',transition:'background 0.15s'}}
-                                    onMouseEnter={e=>e.currentTarget.style.background='rgba(255,215,0,0.1)'}
-                                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-                                >
-                                    <div style={{width:'36px',height:'36px',borderRadius:'8px',background:'rgba(255,215,0,0.15)',border:'1px solid #ffd700',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffd700" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                                    </div>
-                                    <div>
-                                        <div style={{fontWeight:'700',fontSize:'0.875rem',color:'#fff'}}>Compare All Roles</div>
-                                        <div style={{fontSize:'0.72rem',color:'#888',marginTop:'2px'}}>{roles.length} roles side by side</div>
-                                    </div>
-                                </button>
-                                {/* Custom Compare */}
-                                <button
-                                    onClick={() => {
-                                        setCompareMode(true);
-                                        setCompareSelected([]);
-                                        setShowCompareOptions(false);
-                                    }}
-                                    style={{width:'100%',padding:'14px 16px',background:'transparent',border:'none',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',borderTop:'1px solid #222',transition:'background 0.15s'}}
-                                    onMouseEnter={e=>e.currentTarget.style.background='rgba(0,200,81,0.1)'}
-                                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-                                >
-                                    <div style={{width:'36px',height:'36px',borderRadius:'8px',background:'rgba(0,200,81,0.15)',border:'1px solid #00c851',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00c851" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                                    </div>
-                                    <div>
-                                        <div style={{fontWeight:'700',fontSize:'0.875rem',color:'#fff'}}>Custom Compare</div>
-                                        <div style={{fontSize:'0.72rem',color:'#888',marginTop:'2px'}}>Select specific roles to compare</div>
-                                    </div>
-                                </button>
-                            </div>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Add Role Button */}
-                    <button 
+            {/* Tabs */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid #333' }}>
+                <button
+                    onClick={() => setActiveRoleTab('roles')}
+                    style={{
+                        padding: '0.75rem 1.5rem',
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        border: 'none',
+                        borderBottom: activeRoleTab === 'roles' ? '3px solid #3b82f6' : '3px solid transparent',
+                        background: activeRoleTab === 'roles' ? '#111' : 'transparent',
+                        color: activeRoleTab === 'roles' ? '#3b82f6' : '#888',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        letterSpacing: '0.5px'
+                    }}
+                    onMouseEnter={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#bbb'; }}
+                    onMouseLeave={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#888'; }}
+                >
+                    <Users className="h-4 w-4" />
+                    Roles
+                </button>
+                <button
+                    onClick={() => setActiveRoleTab('permissions')}
+                    style={{
+                        padding: '0.75rem 1.5rem',
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        border: 'none',
+                        borderBottom: activeRoleTab === 'permissions' ? '3px solid #a855f7' : '3px solid transparent',
+                        background: activeRoleTab === 'permissions' ? '#111' : 'transparent',
+                        color: activeRoleTab === 'permissions' ? '#a855f7' : '#888',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        letterSpacing: '0.5px'
+                    }}
+                    onMouseEnter={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#bbb'; }}
+                    onMouseLeave={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#888'; }}
+                >
+                    <Shield className="h-4 w-4" />
+                    All Permissions
+                </button>
+                {/* Spacer + Add Role button (only on Roles tab) */}
+                <div style={{ flex: 1 }} />
+                {activeRoleTab === 'roles' && (
+                    <button
                         onClick={() => openModal()}
                         style={{
                             background: '#ffffff',
                             color: '#000000',
                             fontWeight: '600',
-                            padding: '0.625rem 1.5rem',
+                            padding: '0.5rem 1.25rem',
                             borderRadius: '0.5rem',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.5rem',
                             border: 'none',
                             cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            transition: 'all 0.2s',
+                            marginBottom: '4px'
                         }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                            e.currentTarget.style.background = '#f0f0f0';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.background = '#ffffff';
-                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.background = '#f0f0f0'; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#ffffff'; }}
                     >
                         <Plus className="h-5 w-5" />
                         <span>Add New Role</span>
                     </button>
-                </div>
+                )}
             </div>
 
+            {/* === ALL PERMISSIONS TAB === */}
+            {activeRoleTab === 'permissions' && (
+                <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>}>
+                    <div style={{ margin: '-1rem -2rem -2rem', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                        <RoleCompare embedded />
+                    </div>
+                </Suspense>
+            )}
+
+            {/* === ROLES TAB === */}
+            {activeRoleTab === 'roles' && (<>
             {/* Info Cards */}
             <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-xl p-4">
@@ -4450,7 +4574,7 @@ const RoleSettings = () => {
                                                                 <td key={mod.label+action} style={{padding:'8px',textAlign:'center',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',background:isChecked?'rgba(0,200,81,0.12)':'#000',minWidth:'60px',verticalAlign:'middle'}}>
                                                                     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px'}}>
                                                                         <span onClick={()=>handlePermissionChange('employees','role',!isChecked)} style={{fontSize:'22px',fontWeight:'900',cursor:'pointer',color:isChecked?'#00c851':'#333',lineHeight:1}}>{isChecked?'✓':'—'}</span>
-                                                                        {isChecked&&<button type="button" onClick={()=>setRoleFieldModal(true)} style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:'#4f46e5',color:'#fff',border:'none',cursor:'pointer',whiteSpace:'nowrap'}}>⚙️ {selRoleIds.length}</button>}
+                                                                        {isChecked&&<button type="button" onClick={()=>setRoleFieldModal(true)} style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:selRoleIds.length>0?'#92400e':'#333',color:selRoleIds.length>0?'#fbbf24':'#aaa',border:`1px solid ${selRoleIds.length>0?'#f59e0b':'#555'}`,cursor:'pointer',whiteSpace:'nowrap',fontWeight:700}}>🔒 {selRoleIds.length}</button>}
                                                                     </div>
                                                                 </td>
                                                             );
@@ -4476,36 +4600,58 @@ const RoleSettings = () => {
                                 )}
 
                                 {roleFieldModal && (
-                                    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
-                                        <div style={{background:'#1e1b4b',border:'1px solid #4f46e5',borderRadius:'12px',width:'100%',maxWidth:'480px',maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-                                            <div style={{padding:'16px 20px',borderBottom:'1px solid #312e81',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(to right,#312e81,#1e1b4b)'}}>
-                                                <div>
-                                                    <h3 style={{color:'white',margin:0,fontSize:'16px',fontWeight:700}}>⚙️ Configure Role Field Access</h3>
-                                                    <p style={{color:'#a5b4fc',margin:'4px 0 0',fontSize:'12px'}}>Select which roles this employee's "Role" dropdown will show</p>
+                                    <div style={{position:'fixed',inset:0,background:'#000c',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}
+                                        onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}}>
+                                        <div style={{background:'#111',border:'2px solid #f59e0b',borderRadius:'14px',width:'100%',maxWidth:'460px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 16px 64px #000e'}}
+                                            onClick={e=>e.stopPropagation()}>
+
+                                            {/* Header */}
+                                            <div style={{padding:'18px 22px 12px',borderBottom:'1px solid #222'}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
+                                                    <span style={{fontSize:'22px'}}>🔒</span>
+                                                    <div style={{flex:1}}>
+                                                        <h3 style={{color:'#f59e0b',margin:0,fontSize:'1rem',fontWeight:800}}>Lock Roles</h3>
+                                                        <p style={{color:'#666',margin:0,fontSize:'11px'}}>for <strong style={{color:'#ccc'}}>{formData.name}</strong></p>
+                                                    </div>
+                                                    <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'transparent',border:'none',color:'#555',fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
                                                 </div>
-                                                <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'none',border:'none',color:'#a5b4fc',cursor:'pointer',fontSize:'18px',lineHeight:1}}>✕</button>
+                                                <p style={{color:'#666',fontSize:'11px',margin:'4px 0 10px',lineHeight:'1.5'}}>Selected roles will be <strong style={{color:'#f59e0b'}}>hidden</strong> from the Role dropdown in Employee forms, and employees with those roles <strong style={{color:'#f59e0b'}}>won't be visible</strong> to users of this role.</p>
+                                                <input type="text" placeholder="Search roles to lock…" value={roleFieldSearch} onChange={e=>setRoleFieldSearch(e.target.value)} autoFocus
+                                                    style={{width:'100%',background:'#000',border:'1px solid #333',color:'#fff',padding:'6px 12px',borderRadius:'7px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
                                             </div>
-                                            <div style={{padding:'12px 16px',borderBottom:'1px solid #312e81'}}>
-                                                <input type="text" placeholder="🔍 Search roles..." value={roleFieldSearch} onChange={e=>setRoleFieldSearch(e.target.value)} style={{width:'100%',padding:'8px 12px',background:'#0f0a3c',border:'1px solid #4f46e5',borderRadius:'8px',color:'white',outline:'none',fontSize:'14px',boxSizing:'border-box'}}/>
-                                            </div>
-                                            <div style={{flex:1,overflowY:'auto',padding:'8px'}}>
+
+                                            {/* Role list */}
+                                            <div style={{flex:1,overflowY:'auto',padding:'6px 0'}}>
                                                 {roles.filter(r=>r.name?.toLowerCase().includes(roleFieldSearch.toLowerCase())).map(r=>{
                                                     const rid=r._id||r.id;
-                                                    const selected=(formData.permissions['employees.role_field_roles']||[]).includes(rid);
+                                                    const locked=(formData.permissions['employees.role_field_roles']||[]).includes(rid);
                                                     return(
-                                                        <div key={rid} onClick={()=>handleRoleFieldRoleToggle(rid)} style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 14px',borderRadius:'8px',cursor:'pointer',marginBottom:'4px',background:selected?'rgba(99,102,241,0.25)':'rgba(255,255,255,0.03)',border:selected?'1px solid #6366f1':'1px solid transparent',transition:'all 0.15s'}}>
-                                                            <div style={{width:'20px',height:'20px',borderRadius:'4px',flexShrink:0,background:selected?'#6366f1':'#312e81',border:'2px solid '+(selected?'#818cf8':'#4f46e5'),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px'}}>{selected?'✓':''}</div>
-                                                            <div style={{color:selected?'#e0e7ff':'#c7d2fe',fontSize:'14px',fontWeight:selected?600:400}}>👤 {r.name}</div>
+                                                        <div key={rid} onClick={()=>handleRoleFieldRoleToggle(rid)}
+                                                            style={{display:'flex',alignItems:'center',gap:'12px',padding:'9px 20px',cursor:'pointer',background:locked?'#200d00':'transparent',borderLeft:locked?'3px solid #f59e0b':'3px solid transparent',transition:'background 0.15s'}}
+                                                            onMouseEnter={e=>{if(!locked)e.currentTarget.style.background='#1a1a1a';}}
+                                                            onMouseLeave={e=>{if(!locked)e.currentTarget.style.background='transparent';}}>
+                                                            <div style={{width:'17px',height:'17px',border:`2px solid ${locked?'#f59e0b':'#444'}`,borderRadius:'4px',background:locked?'#f59e0b':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                                                {locked&&<span style={{color:'#000',fontSize:'11px',fontWeight:900}}>✓</span>}
+                                                            </div>
+                                                            <span style={{color:locked?'#fff':'#bbb',fontSize:'13px',fontWeight:locked?700:400}}>{r.name}</span>
+                                                            {r.permissions?.some(p=>p.page==='*')&&<span style={{background:'#ffd700',color:'#000',fontSize:'8px',fontWeight:800,padding:'1px 5px',borderRadius:'3px'}}>SA</span>}
+                                                            {locked&&<span style={{marginLeft:'auto',fontSize:'13px'}}>🔒</span>}
                                                         </div>
                                                     );
                                                 })}
                                             </div>
-                                            <div style={{padding:'12px 16px',borderTop:'1px solid #312e81',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                                <span style={{color:'#a5b4fc',fontSize:'13px'}}>{(formData.permissions['employees.role_field_roles']||[]).length} role(s) selected</span>
-                                                <div style={{display:'flex',gap:'8px'}}>
-                                                    <button type="button" onClick={()=>setFormData({...formData,permissions:{...formData.permissions,'employees.role_field_roles':[]}})} style={{padding:'7px 14px',background:'#7f1d1d',border:'none',borderRadius:'6px',color:'#fca5a5',fontSize:'12px',cursor:'pointer'}}>Clear All</button>
-                                                    <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{padding:'7px 16px',background:'#4f46e5',border:'none',borderRadius:'6px',color:'white',fontSize:'13px',fontWeight:600,cursor:'pointer'}}>✓ Done</button>
-                                                </div>
+
+                                            {/* Footer */}
+                                            <div style={{padding:'14px 22px',borderTop:'1px solid #222',display:'flex',alignItems:'center',gap:'10px'}}>
+                                                <span style={{color:'#666',fontSize:'12px',flex:1}}>
+                                                    {(formData.permissions['employees.role_field_roles']||[]).length>0
+                                                        ?<><strong style={{color:'#f59e0b'}}>{(formData.permissions['employees.role_field_roles']||[]).length}</strong> role(s) locked</>
+                                                        :'No roles locked'}
+                                                </span>
+                                                <button type="button" onClick={()=>setFormData({...formData,permissions:{...formData.permissions,'employees.role_field_roles':[]}})} style={{background:'transparent',border:'1px solid #4b1414',color:'#f87171',padding:'7px 14px',borderRadius:'7px',cursor:'pointer',fontSize:'12px',fontWeight:600}}>Clear All</button>
+                                                <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'#f59e0b',border:'2px solid #f59e0b',color:'#000',padding:'7px 20px',borderRadius:'7px',cursor:'pointer',fontWeight:800,fontSize:'12px'}}
+                                                    onMouseEnter={e=>{e.currentTarget.style.background='#d97706';e.currentTarget.style.borderColor='#d97706';}}
+                                                    onMouseLeave={e=>{e.currentTarget.style.background='#f59e0b';e.currentTarget.style.borderColor='#f59e0b';}}>🔒 Save</button>
                                             </div>
                                         </div>
                                     </div>
@@ -4540,6 +4686,7 @@ const RoleSettings = () => {
                     </div>
                 </div>
             )}
+            </>)}{/* end Roles tab */}
         </div>
     );
 };
