@@ -44,6 +44,7 @@ from app.utils.permissions import (
     get_lead_user_capabilities
 )
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(
@@ -690,7 +691,7 @@ async def check_phone_number(
     
     # Process matching leads
     lead_results = []
-    current_time = datetime.now()
+    current_time = get_ist_now()
     
     for lead in matching_leads:
         lead_age_days = 0

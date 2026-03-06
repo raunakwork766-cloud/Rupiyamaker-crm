@@ -1,635 +1,365 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  Button,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Typography,
-  Box,
-  Grid,
-  Paper,
-  Chip,
-  Avatar,
-  Alert,
-  Snackbar,
-  CircularProgress,
-  IconButton,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-} from '@mui/material';
-import {
-  Camera as CameraIcon,
-  CheckCircle as CheckInIcon,
-  ExitToApp as CheckOutIcon,
-  LocationOn as LocationIcon,
-  AccessTime as TimeIcon,
-  PhotoCamera as PhotoIcon,
-  Refresh as RefreshIcon,
-  Person as PersonIcon,
-  Close as CloseIcon,
-  Edit as EditIcon,
-  Visibility as ViewIcon,
-} from '@mui/icons-material';
 import axios from 'axios';
 
-// API base URL - Use proxy in development
-const API_BASE_URL = '/api'; // Always use API proxy
+const API_BASE = '/api';
+
+// ─── Status Message Config ────────────────────────────────────────
+const STATUS_MESSAGES = {
+  full_day: {
+    emoji: '🎉',
+    title: 'Perfect Attendance!',
+    color: '#16a34a',
+    bg: '#f0fdf4',
+    border: '#bbf7d0',
+    messages: [
+      "Fantastic! You're here for the full day! Keep up the great work! 🌟",
+      "Full day present! Your dedication is truly inspiring! 💪",
+      "Amazing! A complete day of productivity ahead! 🚀",
+    ]
+  },
+  half_day: {
+    emoji: '🌤️',
+    title: 'Half Day',
+    color: '#d97706',
+    bg: '#fffbeb',
+    border: '#fde68a',
+    messages: [
+      "Half day noted. Every bit of effort counts! 💛",
+      "You're here for half the day – make it count! ⚡",
+      "Half day logged. Rest well and come back stronger! 🌙",
+    ]
+  },
+  late: {
+    emoji: '⏰',
+    title: 'Late Arrival',
+    color: '#ea580c',
+    bg: '#fff7ed',
+    border: '#fed7aa',
+    messages: [
+      "Better late than never! Let's make the most of today! 😊",
+      "A little late, but you made it! Focus and hustle now! 🏃",
+      "Noted late arrival. Tomorrow's a fresh start! 🌅",
+    ]
+  },
+  checked_out: {
+    emoji: '👋',
+    title: 'See You Tomorrow!',
+    color: '#7c3aed',
+    bg: '#faf5ff',
+    border: '#ddd6fe',
+    messages: [
+      "Great work today! Rest well and come back refreshed! 🌙",
+      "You've checked out! Enjoy your time off! 🎈",
+      "Another day done! You were awesome today! ⭐",
+    ]
+  }
+};
+
+const getRandomMessage = (type) => {
+  const cfg = STATUS_MESSAGES[type];
+  if (!cfg) return null;
+  const msg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
+  return { ...cfg, message: msg };
+};
+
+// ─── Success Modal ─────────────────────────────────────────────────
+const SuccessModal = ({ data, onClose }) => {
+  if (!data) return null;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+    }}>
+      <div style={{
+        background: data.bg, border: `2px solid ${data.border}`,
+        borderRadius: 24, padding: '40px 32px', maxWidth: 400, width: '90%',
+        textAlign: 'center', boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
+        animation: 'popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)'
+      }}>
+        <div style={{ fontSize: 80, marginBottom: 10, lineHeight: 1 }}>{data.emoji}</div>
+        <h2 style={{ color: data.color, fontSize: 26, fontWeight: 800, margin: '0 0 12px' }}>
+          {data.title}
+        </h2>
+        <p style={{ color: '#374151', fontSize: 16, lineHeight: 1.7, margin: '0 0 20px' }}>
+          {data.message}
+        </p>
+        {data.time && (
+          <div style={{
+            background: 'white', borderRadius: 12, padding: '10px 16px',
+            marginBottom: 24, fontSize: 14, color: '#6b7280', fontWeight: 600
+          }}>
+            🕐 Marked at {data.time}
+          </div>
+        )}
+        <button onClick={onClose} style={{
+          background: data.color, color: 'white', border: 'none',
+          borderRadius: 12, padding: '14px 32px', fontSize: 16,
+          fontWeight: 700, cursor: 'pointer', width: '100%',
+          transition: 'opacity 0.2s'
+        }}>
+          Continue 👍
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const AttendanceCheckInOut = ({ userId, userInfo }) => {
-  // States
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [currentStatus, setCurrentStatus] = useState(null);
-  const [todayAttendance, setTodayAttendance] = useState(null);
-  const [showCamera, setShowCamera] = useState(false);
-  const [photoData, setPhotoData] = useState(null);
-  const [geolocation, setGeolocation] = useState(null);
-  const [comments, setComments] = useState('');
-  const [attendanceType, setAttendanceType] = useState(null); // 'check-in' or 'check-out'
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [attendanceDetail, setAttendanceDetail] = useState(null);
-  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [attendanceType, setAttendanceType] = useState(null);
 
-  // Refs
+  const [showDialog, setShowDialog] = useState(false);
+  const [photoData, setPhotoData] = useState(null);
+  const [comments, setComments] = useState('');
+  const [successModal, setSuccessModal] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
-  const API_BASE_URL = '/api'; // Always use proxy
-
-  // Update current time every second
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(timer);
+    const t = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(t);
   }, []);
 
-  // Load current status on component mount
   useEffect(() => {
-    if (userId) {
-      loadCurrentStatus();
-      loadTodayAttendance();
-    }
+    if (userId) loadCurrentStatus();
   }, [userId]);
 
   const loadCurrentStatus = async () => {
     try {
-      const response = await axios.get(`${BASE_URL}/attendance/status/current/${userId}`);
-      if (response.data.success) {
-        setCurrentStatus(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading current status:', error);
-    }
-  };
-
-  const loadTodayAttendance = async () => {
-    try {
-      const response = await axios.get(`${BASE_URL}/attendance/today/${userId}`, {
-        params: { requester_id: userId }
-      });
-      if (response.data.success) {
-        setTodayAttendance(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading today attendance:', error);
-    }
-  };
-
-  const getCurrentLocation = () => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not supported by this browser'));
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            address: `Lat: ${position.coords.latitude.toFixed(6)}, Lng: ${position.coords.longitude.toFixed(6)}`
-          });
-        },
-        (error) => {
-          reject(new Error(`Location error: ${error.message}`));
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 60000
-        }
-      );
-    });
+      const r = await axios.get(`${API_BASE}/attendance/status/current/${userId}`);
+      if (r.data.success) setCurrentStatus(r.data);
+    } catch (e) { console.error(e); }
   };
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'user',
-          width: 640,
-          height: 480 
-        } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 }
       });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-      }
-      setShowCamera(true);
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      setError('Failed to access camera. Please allow camera permissions.');
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      streamRef.current = stream;
+    } catch (e) {
+      setErrorMsg('Camera access denied. Please allow camera permissions and use HTTPS.');
     }
   };
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-    setShowCamera(false);
+  };
+
+  const openDialog = (type) => {
+    setAttendanceType(type);
     setPhotoData(null);
+    setComments('');
+    setErrorMsg('');
+    setShowDialog(true);
+    setTimeout(() => startCamera(), 300);
+  };
+
+  const closeDialog = () => {
+    stopCamera();
+    setShowDialog(false);
+    setAttendanceType(null);
+    setPhotoData(null);
+    setLoading(false);
+    setErrorMsg('');
   };
 
   const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const video = videoRef.current;
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      const context = canvas.getContext('2d');
-      context.drawImage(video, 0, 0);
-      
-      const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-      setPhotoData(base64Data);
-      stopCamera();
-    }
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const fullBase64 = canvas.toDataURL('image/jpeg', 0.8);
+    const base64Only = fullBase64.split(',')[1];
+    setPhotoData(base64Only);
+    stopCamera();
   };
 
-  const handleCheckIn = async () => {
-    if (!photoData) {
-      setError('Photo is required for check-in');
-      return;
-    }
-
+  const markAttendance = async () => {
+    if (!photoData) return;
     setLoading(true);
-    setError(null);
-
+    setErrorMsg('');
     try {
-      // Get current location
-      const location = await getCurrentLocation();
-      setGeolocation(location);
+      let location = null;
+      try {
+        location = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }),
+            e => rej(e), { timeout: 8000 }
+          )
+        );
+      } catch (_) { }
 
-      const checkInData = {
-        photo_data: photoData,
-        geolocation: location,
-        comments: comments
-      };
+      const endpoint = attendanceType === 'check-in' ? 'check-in' : 'check-out';
+      const r = await axios.post(
+        `${API_BASE}/attendance/${endpoint}`,
+        { photo_data: photoData, geolocation: location, comments, face_descriptor: null },
+        { params: { user_id: userId } }
+      );
 
-      const response = await axios.post(`${BASE_URL}/attendance/check-in`, checkInData, {
-        params: { user_id: userId }
-      });
-
-      if (response.data.success) {
-        setSuccess(response.data.message);
-        setPhotoData(null);
-        setComments('');
+      if (r.data.success) {
+        closeDialog();
         await loadCurrentStatus();
-        await loadTodayAttendance();
+
+        let modalType = 'checked_out';
+        if (attendanceType === 'check-in') {
+          const st = (r.data.attendance_status || r.data.status || '').toLowerCase();
+          const isLate = r.data.is_late || false;
+          if (isLate || st.includes('late')) modalType = 'late';
+          else if (st.includes('half')) modalType = 'half_day';
+          else modalType = 'full_day';
+        }
+        const modalData = getRandomMessage(modalType);
+        setSuccessModal({
+          ...modalData,
+          time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
+        });
       }
-    } catch (error) {
-      console.error('Error checking in:', error);
-      setError(error.response?.data?.detail || 'Failed to check in');
+    } catch (err) {
+      setErrorMsg(err.response?.data?.detail || 'Failed to mark attendance. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCheckOut = async () => {
-    if (!photoData) {
-      setError('Photo is required for check-out');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Get current location
-      const location = await getCurrentLocation();
-      setGeolocation(location);
-
-      const checkOutData = {
-        photo_data: photoData,
-        geolocation: location,
-        comments: comments
-      };
-
-      const response = await axios.post(`${BASE_URL}/attendance/check-out`, checkOutData, {
-        params: { user_id: userId }
-      });
-
-      if (response.data.success) {
-        setSuccess(response.data.message);
-        setPhotoData(null);
-        setComments('');
-        await loadCurrentStatus();
-        await loadTodayAttendance();
-      }
-    } catch (error) {
-      console.error('Error checking out:', error);
-      setError(error.response?.data?.detail || 'Failed to check out');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const viewAttendanceDetail = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await axios.get(`${BASE_URL}/attendance/detail/${userId}/${today}`, {
-        params: { requester_id: userId }
-      });
-      
-      if (response.data) {
-        setAttendanceDetail(response.data);
-        setShowDetailDialog(true);
-      }
-    } catch (error) {
-      console.error('Error loading attendance detail:', error);
-      setError('Failed to load attendance details');
-    }
-  };
-
-  const formatTime = (dateTime) => {
-    if (!dateTime) return '';
-    return new Date(dateTime).toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Full Day': return 'success';
-      case 'Half Day': return 'warning';
-      case 'Leave': return 'info';
-      case 'Absent': return 'error';
-      default: return 'default';
-    }
-  };
+  const isCheckedIn = currentStatus?.checked_in;
+  const isCheckedOut = currentStatus?.checked_out;
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', p: 2 }}>
-      {/* Current Time Display */}
-      <Paper elevation={2} sx={{ p: 2, mb: 3, textAlign: 'center', bgcolor: 'primary.dark', color: 'white' }}>
-        <Typography variant="h4" component="div">
-          {currentTime.toLocaleTimeString('en-IN', { hour12: false })}
-        </Typography>
-        <Typography variant="body1">
-          {currentTime.toLocaleDateString('en-IN', { 
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          })}
-        </Typography>
-      </Paper>
+    <div style={{ width: '100%', padding: 16, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+      <style>{`
+        @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .att-btn { transition: all 0.2s; cursor: pointer; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; padding: 14px 20px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .att-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+        .att-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+      `}</style>
 
-      {/* Current Status Card */}
+      {/* Clock */}
+      <div style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)', color: 'white', borderRadius: 16, padding: '22px 20px', textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: 3 }}>
+          {currentTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false })}
+        </div>
+        <div style={{ fontSize: 14, opacity: 0.75, marginTop: 4 }}>
+          {currentTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+        </div>
+      </div>
+
+      {/* Status */}
       {currentStatus && (
-        <Card elevation={2} sx={{ mb: 3 }}>
-          <CardHeader
-            avatar={<PersonIcon />}
-            title={`${userInfo?.first_name || 'User'}'s Attendance Status`}
-            subheader="Today's attendance information"
-            action={
-              <Button
-                startIcon={<RefreshIcon />}
-                onClick={() => {
-                  loadCurrentStatus();
-                  loadTodayAttendance();
-                }}
-                size="small"
-              >
-                Refresh
-              </Button>
-            }
-          />
-          <CardContent>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <CheckInIcon color={currentStatus.checked_in ? 'success' : 'disabled'} />
-                  <Typography variant="body2">
-                    Check-in: {currentStatus.check_in_time_formatted || 'Not checked in'}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <CheckOutIcon color={currentStatus.checked_out ? 'success' : 'disabled'} />
-                  <Typography variant="body2">
-                    Check-out: {currentStatus.check_out_time_formatted || 'Not checked out'}
-                  </Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <TimeIcon />
-                  <Typography variant="body2">
-                    Working Hours: {currentStatus.total_working_hours_formatted || '0 hours'}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={currentStatus.current_status}
-                  color={getStatusColor(currentStatus.status)}
-                  size="small"
-                />
-                {currentStatus.is_late && (
-                  <Chip
-                    label="Late Arrival"
-                    color="warning"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                )}
-                {currentStatus.is_early_departure && (
-                  <Chip
-                    label="Early Departure"
-                    color="warning"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                )}
-              </Grid>
-            </Grid>
-            
-            {todayAttendance?.has_attendance && (
-              <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Button
-                  startIcon={<ViewIcon />}
-                  onClick={viewAttendanceDetail}
-                  variant="outlined"
-                  size="small"
-                >
-                  View Details
-                </Button>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
+        <div style={{ background: 'white', borderRadius: 16, padding: '16px 20px', marginBottom: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>👤 Today's Attendance</span>
+            <button onClick={loadCurrentStatus} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: '#6b7280' }}>
+              🔄 Refresh
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, textTransform: 'uppercase', fontWeight: 600 }}>Check In</div>
+              <div style={{ fontWeight: 700, color: isCheckedIn ? '#16a34a' : '#9ca3af', fontSize: 14 }}>
+                {isCheckedIn ? `✅ ${currentStatus.check_in_time_formatted || 'Done'}` : '⚪ Not yet'}
+              </div>
+            </div>
+            <div style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, textTransform: 'uppercase', fontWeight: 600 }}>Check Out</div>
+              <div style={{ fontWeight: 700, color: isCheckedOut ? '#7c3aed' : '#9ca3af', fontSize: 14 }}>
+                {isCheckedOut ? `✅ ${currentStatus.check_out_time_formatted || 'Done'}` : '⚪ Not yet'}
+              </div>
+            </div>
+          </div>
+          {currentStatus.current_status && (
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ background: '#f0fdf4', color: '#16a34a', borderRadius: 20, padding: '4px 14px', fontSize: 13, fontWeight: 600 }}>
+                {currentStatus.current_status}
+              </span>
+              {currentStatus.is_late && (
+                <span style={{ background: '#fff7ed', color: '#ea580c', borderRadius: 20, padding: '4px 14px', fontSize: 13, fontWeight: 600 }}>⏰ Late Arrival</span>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Action Buttons */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6}>
-          <Button
-            variant="contained"
-            color="primary"
-            fullWidth
-            size="large"
-            startIcon={<CheckInIcon />}
-            onClick={() => {
-              setAttendanceType('check-in');
-              startCamera();
-            }}
-            disabled={loading || (currentStatus && currentStatus.checked_in)}
-            sx={{ py: 2 }}
-          >
-            {loading && attendanceType === 'check-in' ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              'Check In'
-            )}
-          </Button>
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <Button
-            variant="contained"
-            color="secondary"
-            fullWidth
-            size="large"
-            startIcon={<CheckOutIcon />}
-            onClick={() => {
-              setAttendanceType('check-out');
-              startCamera();
-            }}
-            disabled={loading || !currentStatus?.checked_in || currentStatus?.checked_out}
-            sx={{ py: 2 }}
-          >
-            {loading && attendanceType === 'check-out' ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              'Check Out'
-            )}
-          </Button>
-        </Grid>
-      </Grid>
+      {/* Buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <button className="att-btn" style={{ background: isCheckedIn ? '#dcfce7' : 'linear-gradient(135deg, #22c55e, #16a34a)', color: isCheckedIn ? '#16a34a' : 'white', width: '100%' }}
+          onClick={() => openDialog('check-in')} disabled={loading || isCheckedIn}>
+          ✅ {isCheckedIn ? 'Checked In' : 'Check In'}
+        </button>
+        <button className="att-btn" style={{ background: (!isCheckedIn || isCheckedOut) ? '#f3f4f6' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: (!isCheckedIn || isCheckedOut) ? '#9ca3af' : 'white', width: '100%' }}
+          onClick={() => openDialog('check-out')} disabled={loading || !isCheckedIn || isCheckedOut}>
+          👋 {isCheckedOut ? 'Checked Out' : 'Check Out'}
+        </button>
+      </div>
 
-      {/* Camera Dialog */}
-      <Dialog
-        open={showCamera || photoData}
-        onClose={() => {
-          stopCamera();
-          setPhotoData(null);
-          setAttendanceType(null);
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {attendanceType === 'check-in' ? 'Check-In' : 'Check-Out'} - Capture Photo
-          <IconButton
-            onClick={() => {
-              stopCamera();
-              setPhotoData(null);
-              setAttendanceType(null);
-            }}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {showCamera && !photoData && (
-            <Box sx={{ textAlign: 'center' }}>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                style={{ width: '100%', maxWidth: 400, borderRadius: 8 }}
-              />
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="contained"
-                  startIcon={<PhotoIcon />}
-                  onClick={capturePhoto}
-                  size="large"
-                >
-                  Capture Photo
-                </Button>
-              </Box>
-            </Box>
-          )}
-          
-          {photoData && (
-            <Box sx={{ textAlign: 'center' }}>
-              <img
-                src={`data:image/jpeg;base64,${photoData}`}
-                alt="Captured"
-                style={{ width: '100%', maxWidth: 400, borderRadius: 8 }}
-              />
-              <TextField
-                label="Comments (Optional)"
-                multiline
-                rows={3}
-                value={comments}
-                onChange={(e) => setComments(e.target.value)}
-                fullWidth
-                sx={{ mt: 2 }}
-              />
-            </Box>
-          )}
-          
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-        </DialogContent>
-        <DialogActions>
-          {photoData && (
-            <>
-              <Button
-                onClick={() => {
-                  setPhotoData(null);
-                  startCamera();
-                }}
-              >
-                Retake Photo
-              </Button>
-              <Button
-                variant="contained"
-                onClick={attendanceType === 'check-in' ? handleCheckIn : handleCheckOut}
-                disabled={loading}
-              >
-                {loading ? 'Processing...' : (attendanceType === 'check-in' ? 'Check In' : 'Check Out')}
-              </Button>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
+      {/* ── Dialog ── */}
+      {showDialog && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 460, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>
+                {attendanceType === 'check-in' ? '✅ Check In' : '👋 Check Out'} — Take Photo
+              </span>
+              <button onClick={closeDialog} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
 
-      {/* Attendance Detail Dialog */}
-      <Dialog
-        open={showDetailDialog}
-        onClose={() => setShowDetailDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Attendance Details - {attendanceDetail?.date_formatted}
-          <IconButton
-            onClick={() => setShowDetailDialog(false)}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {attendanceDetail && (
-            <List>
-              <ListItem>
-                <ListItemIcon><CheckInIcon /></ListItemIcon>
-                <ListItemText
-                  primary="Check-in Time"
-                  secondary={attendanceDetail.check_in_time_formatted || 'Not checked in'}
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemIcon><CheckOutIcon /></ListItemIcon>
-                <ListItemText
-                  primary="Check-out Time"
-                  secondary={attendanceDetail.check_out_time_formatted || 'Not checked out'}
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemIcon><TimeIcon /></ListItemIcon>
-                <ListItemText
-                  primary="Total Working Hours"
-                  secondary={attendanceDetail.total_working_hours_formatted}
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Status"
-                  secondary={
-                    <Chip
-                      label={attendanceDetail.status_text}
-                      color={getStatusColor(attendanceDetail.status_text)}
-                      size="small"
-                    />
-                  }
-                />
-              </ListItem>
-              {attendanceDetail.check_in_geolocation && (
-                <ListItem>
-                  <ListItemIcon><LocationIcon /></ListItemIcon>
-                  <ListItemText
-                    primary="Check-in Location"
-                    secondary={attendanceDetail.check_in_geolocation.address || 'Location captured'}
-                  />
-                </ListItem>
+            <div style={{ padding: 20 }}>
+              {/* Camera — shown when no photo yet */}
+              {!photoData && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ borderRadius: 12, overflow: 'hidden', border: '3px solid #e5e7eb', marginBottom: 16 }}>
+                    <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', display: 'block', background: '#111', minHeight: 200 }} />
+                  </div>
+                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  {errorMsg && <div style={{ color: '#dc2626', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
+                  <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }} onClick={capturePhoto}>
+                    📷 Capture Photo
+                  </button>
+                </div>
               )}
-              {attendanceDetail.comments && (
-                <ListItem>
-                  <ListItemText
-                    primary="Comments"
-                    secondary={attendanceDetail.comments}
-                  />
-                </ListItem>
+
+              {/* Captured — shown after photo taken */}
+              {photoData && (
+                <div style={{ textAlign: 'center' }}>
+                  <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 12, border: '3px solid #bbf7d0' }} />
+                  <textarea placeholder="Comments (optional)..." value={comments} onChange={e => setComments(e.target.value)} rows={2}
+                    style={{ width: '100%', borderRadius: 10, border: '1px solid #e5e7eb', padding: '10px 12px', fontSize: 14, resize: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
+                  {errorMsg && <div style={{ background: '#fef2f2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button className="att-btn" style={{ background: '#f3f4f6', color: '#374151', flex: 1 }}
+                      onClick={() => { setPhotoData(null); setErrorMsg(''); startCamera(); }}>
+                      🔄 Retake
+                    </button>
+                    <button className="att-btn" style={{ background: loading ? '#9ca3af' : 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white', flex: 2 }}
+                      onClick={markAttendance} disabled={loading}>
+                      {loading
+                        ? <><div style={{ width: 18, height: 18, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Processing...</>
+                        : (attendanceType === 'check-in' ? '✅ Mark Check In' : '👋 Mark Check Out')
+                      }
+                    </button>
+                  </div>
+                </div>
               )}
-            </List>
-          )}
-        </DialogContent>
-      </Dialog>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Success/Error Messages */}
-      <Snackbar
-        open={!!success}
-        autoHideDuration={6000}
-        onClose={() => setSuccess(null)}
-      >
-        <Alert onClose={() => setSuccess(null)} severity="success">
-          {success}
-        </Alert>
-      </Snackbar>
-
-      <Snackbar
-        open={!!error}
-        autoHideDuration={6000}
-        onClose={() => setError(null)}
-      >
-        <Alert onClose={() => setError(null)} severity="error">
-          {error}
-        </Alert>
-      </Snackbar>
-    </Box>
+      {/* Success Modal */}
+      <SuccessModal data={successModal} onClose={() => setSuccessModal(null)} />
+    </div>
   );
 };
 

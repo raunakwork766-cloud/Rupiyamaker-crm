@@ -1,0 +1,325 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const BASE_URL = '/api';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const getUid = () => {
+  try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.user_id || u?._id || ''; }
+  catch { return ''; }
+};
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch { return d; }
+};
+
+const PaidLeaveManagement = () => {
+  const now = new Date();
+  const [selMonth, setSelMonth] = useState(now.getMonth()); // 0-indexed
+  const [selYear, setSelYear] = useState(now.getFullYear());
+
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [search, setSearch] = useState('');
+
+  // modal
+  const [modal, setModal] = useState(null);
+  const [leaveType, setLeaveType] = useState('earned');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // history
+  const [historyEmp, setHistoryEmp] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+
+  useEffect(() => { loadAll(); }, [selMonth, selYear]);
+
+  const loadAll = async () => {
+    setLoading(true); setError(null);
+    const userId = getUid();
+    try {
+      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${userId}`);
+      const empList = Array.isArray(empRes.data) ? empRes.data : (empRes.data.users || empRes.data.data || []);
+      const employees = empList.filter(e => e.is_employee !== false);
+      const balResults = await Promise.allSettled(
+        employees.map(emp =>
+          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${userId}`)
+            .then(r => r.data?.data || null)
+        )
+      );
+      setRows(employees.map((emp, i) => ({
+        emp,
+        bal: balResults[i].status === 'fulfilled' ? balResults[i].value : null,
+      })));
+    } catch (e) {
+      setError('Failed to load: ' + (e.response?.data?.detail || e.message));
+    } finally { setLoading(false); }
+  };
+
+  const openModal = (emp, mode) => {
+    setModal({ emp, mode });
+    setLeaveType('earned'); setQuantity(''); setReason(''); setError(null);
+  };
+
+  const handleAction = async () => {
+    if (!modal || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
+    setModalLoading(true); setError(null);
+    try {
+      const endpoint = modal.mode === 'allot' ? 'allocate' : 'deduct';
+      const res = await axios.post(`${BASE_URL}/settings/leave-balance/${endpoint}?user_id=${getUid()}`, {
+        employee_id: modal.emp._id || modal.emp.id,
+        leave_type: leaveType,
+        quantity: parseFloat(quantity),
+        reason: reason.trim(),
+      });
+      setSuccess(res.data.message || 'Done');
+      setModal(null);
+      setTimeout(() => setSuccess(null), 3000);
+      loadAll();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed');
+    } finally { setModalLoading(false); }
+  };
+
+  const openHistory = async (emp) => {
+    const id = emp._id || emp.id;
+    if (historyEmp?._id === id || historyEmp?.id === id) { setHistoryEmp(null); setHistory([]); return; }
+    setHistoryEmp(emp); setHistLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/settings/leave-balance/history/${id}?user_id=${getUid()}`);
+      // filter by selected month/year if possible
+      const all = Array.isArray(res.data) ? res.data : [];
+      setHistory(all);
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
+  };
+
+  const filtered = rows.filter(({ emp }) => {
+    const q = search.toLowerCase();
+    return `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase().includes(q)
+      || (emp.employee_code || emp.emp_id || '').toLowerCase().includes(q)
+      || (emp.department_name || emp.department || '').toLowerCase().includes(q);
+  });
+
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
+
+  return (
+    <div style={{ padding: 16, background: '#0a0a0a', minHeight: '100vh', color: '#e5e7eb', fontFamily: 'sans-serif' }}>
+
+      {/* Top bar: title left, filters right */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: '#fff' }}>🏖️ Leave Balance — {MONTHS[selMonth]} {selYear}</div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Earned Leave · Paid Leave · Grace Leave</div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="text" placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ background: '#1f2937', border: '1px solid #374151', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 12, outline: 'none', width: 180 }} />
+          <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))} style={SEL}>
+            {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+          </select>
+          <select value={selYear} onChange={e => setSelYear(Number(e.target.value))} style={SEL}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={loadAll} style={{ background: '#1d4ed8', border: 'none', color: '#fff', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>🔄</button>
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {success && <div style={ALERT_OK}>✅ {success} <span onClick={() => setSuccess(null)} style={{ cursor: 'pointer' }}>✕</span></div>}
+      {error   && <div style={ALERT_ERR}>❌ {error} <span onClick={() => setError(null)} style={{ cursor: 'pointer' }}>✕</span></div>}
+
+      {/* Table */}
+      <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid #1f2937' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#000', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={TH('#03b0f5')}>Employee</th>
+              <th style={TH('#03b0f5')}>Emp ID</th>
+              <th style={TH('#03b0f5')}>Department</th>
+              <th style={TH('#1565c0')}>EL Allotted</th>
+              <th style={TH('#1565c0')}>EL Used</th>
+              <th style={TH('#1565c0')}>EL Remaining</th>
+              <th style={TH('#1a6b2a')}>PL Allotted</th>
+              <th style={TH('#1a6b2a')}>PL Used</th>
+              <th style={TH('#1a6b2a')}>PL Remaining</th>
+              <th style={TH('#6a1b9a')}>Grace Allotted</th>
+              <th style={TH('#6a1b9a')}>Grace Used</th>
+              <th style={TH('#6a1b9a')}>Grace Remaining</th>
+              <th style={TH('#03b0f5')}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && <tr><td colSpan={13} style={{ textAlign:'center', padding:40, color:'#6b7280' }}>⏳ Loading...</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={13} style={{ textAlign:'center', padding:40, color:'#4b5563' }}>No employees found</td></tr>}
+            {filtered.map(({ emp, bal }, idx) => {
+              const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+              const code = emp.employee_code || emp.emp_id || `EMP-${(emp._id || emp.id || '').slice(-6)}`;
+              const id = emp._id || emp.id;
+              const isHistOpen = historyEmp?._id === id || historyEmp?.id === id;
+              const bg = idx % 2 === 0 ? '#080808' : '#0f0f0f';
+              return (
+                <React.Fragment key={id}>
+                  <tr style={{ background: bg }}>
+                    <td style={TD}><strong style={{ color:'#fff' }}>{name}</strong></td>
+                    <td style={{ ...TD, color:'#93c5fd', fontSize:11 }}>{code}</td>
+                    <td style={{ ...TD, color:'#9ca3af', fontSize:11 }}>{emp.department_name || emp.department || '—'}</td>
+                    {/* EL */}
+                    <td style={{ ...TD, textAlign:'center', color:'#93c5fd' }}>{bal?.earned_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.earned_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.earned_leaves_remaining, bal?.earned_leaves_total, '#60a5fa') }}>{bal?.earned_leaves_remaining ?? '—'}</td>
+                    {/* PL */}
+                    <td style={{ ...TD, textAlign:'center', color:'#86efac' }}>{bal?.paid_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.paid_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.paid_leaves_remaining, bal?.paid_leaves_total, '#4ade80') }}>{bal?.paid_leaves_remaining ?? '—'}</td>
+                    {/* Grace */}
+                    <td style={{ ...TD, textAlign:'center', color:'#d8b4fe' }}>{bal?.grace_leaves_total ?? '—'}</td>
+                    <td style={{ ...TD, textAlign:'center', color:'#fdba74' }}>{bal?.grace_leaves_used ?? 0}</td>
+                    <td style={{ ...TD, textAlign:'center', fontWeight:700, color:rc(bal?.grace_leaves_remaining, bal?.grace_leaves_total, '#c084fc') }}>{bal?.grace_leaves_remaining ?? '—'}</td>
+                    {/* Actions */}
+                    <td style={{ ...TD, textAlign:'center' }}>
+                      <div style={{ display:'flex', gap:5, justifyContent:'center' }}>
+                        <Btn bg="#15803d" onClick={() => openModal(emp, 'allot')}>➕ Allot</Btn>
+                        <Btn bg="#b91c1c" onClick={() => openModal(emp, 'deduct')}>➖ Deduct</Btn>
+                        <Btn bg={isHistOpen ? '#4338ca' : '#374151'} onClick={() => openHistory(emp)}>📋 History</Btn>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Inline history */}
+                  {isHistOpen && (
+                    <tr>
+                      <td colSpan={13} style={{ padding:0, borderTop:'2px solid #4338ca' }}>
+                        <div style={{ background:'#0d0d1a', padding:'14px 20px' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
+                            <strong style={{ color:'#a5b4fc', fontSize:13 }}>📋 Leave History — {name} ({MONTHS[selMonth]} {selYear})</strong>
+                            <span onClick={() => { setHistoryEmp(null); setHistory([]); }} style={{ cursor:'pointer', color:'#6b7280', fontSize:12 }}>✕ Close</span>
+                          </div>
+                          {histLoading
+                            ? <p style={{ color:'#6b7280', textAlign:'center', padding:16 }}>⏳ Loading...</p>
+                            : history.length === 0
+                              ? <p style={{ color:'#4b5563', textAlign:'center', padding:16 }}>No transactions found</p>
+                              : (
+                                <div style={{ overflowX:'auto' }}>
+                                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                                    <thead>
+                                      <tr style={{ background:'#1e1e2e', color:'#9ca3af' }}>
+                                        {['#','Date','Leave Type','Action','Qty','Reason','By'].map(h => (
+                                          <th key={h} style={{ padding:'6px 10px', textAlign:'left', border:'1px solid #374151' }}>{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {history.map((h, i) => {
+                                        const qty = parseFloat(h.quantity ?? h.amount ?? 0);
+                                        const isAllot = (h.action||'').toLowerCase().includes('alloc') || qty > 0;
+                                        return (
+                                          <tr key={h._id||i} style={{ background: i%2===0 ? '#0d0d0d' : '#111' }}>
+                                            <td style={HTD}>{i+1}</td>
+                                            <td style={HTD}>{fmtDate(h.created_at||h.timestamp||h.date)}</td>
+                                            <td style={HTD}><span style={{ background:'#1f2937', color:'#e5e7eb', padding:'2px 8px', borderRadius:4, textTransform:'capitalize', fontSize:11 }}>{h.leave_type||'—'}</span></td>
+                                            <td style={{ ...HTD, color: isAllot?'#4ade80':'#f87171', fontWeight:700 }}>{h.action||(isAllot?'Allocated':'Deducted')}</td>
+                                            <td style={{ ...HTD, color: isAllot?'#86efac':'#fca5a5', fontWeight:700 }}>{isAllot?'+':'-'}{Math.abs(qty)}</td>
+                                            <td style={{ ...HTD, color:'#9ca3af' }}>{h.reason||h.note||'—'}</td>
+                                            <td style={{ ...HTD, color:'#93c5fd' }}>{h.performed_by_name||h.created_by_name||'—'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ color:'#374151', fontSize:11, marginTop:6 }}>Showing {filtered.length} of {rows.length} employees · {MONTHS[selMonth]} {selYear}</p>
+
+      {/* Allot / Deduct Modal */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.82)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
+          <div style={{ background:'#111827', border:'1px solid #374151', borderRadius:14, padding:24, width:420, maxWidth:'95vw' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14 }}>
+              <strong style={{ fontSize:16, color:'#fff' }}>{modal.mode==='allot'?'➕ Allocate Leave':'➖ Deduct Leave'}</strong>
+              <span onClick={()=>{ setModal(null); setError(null); }} style={{ cursor:'pointer', color:'#6b7280', fontSize:18 }}>✕</span>
+            </div>
+            <p style={{ color:'#9ca3af', fontSize:12, marginBottom:14 }}>
+              <strong style={{ color:'#fff' }}>{modal.emp.first_name} {modal.emp.last_name}</strong>
+              {' · '}<span style={{ color:'#93c5fd' }}>{modal.emp.employee_code||modal.emp.emp_id||''}</span>
+            </p>
+            {error && <div style={ALERT_ERR}>❌ {error}</div>}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div>
+                <label style={LBL}>Leave Type</label>
+                <select value={leaveType} onChange={e=>setLeaveType(e.target.value)} style={INP}>
+                  <option value="earned">Earned Leave</option>
+                  <option value="paid">Paid Leave</option>
+                  <option value="grace">Grace Leave</option>
+                </select>
+              </div>
+              <div>
+                <label style={LBL}>Quantity (days)</label>
+                <input type="number" min="0.5" step="0.5" value={quantity} onChange={e=>setQuantity(e.target.value)} placeholder="e.g. 1 or 0.5" style={INP} />
+              </div>
+              <div>
+                <label style={LBL}>Reason <span style={{ color:'#ef4444' }}>*</span></label>
+                <textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason..." rows={3} style={{ ...INP, resize:'none' }} />
+              </div>
+              <div style={{ display:'flex', gap:10, marginTop:4 }}>
+                <button onClick={handleAction} disabled={modalLoading}
+                  style={{ flex:1, background: modal.mode==='allot'?'#15803d':'#b91c1c', color:'#fff', border:'none', padding:10, borderRadius:8, fontWeight:700, cursor:'pointer', opacity: modalLoading?0.6:1, fontSize:13 }}>
+                  {modalLoading ? '⏳ Processing...' : modal.mode==='allot' ? '➕ Allocate' : '➖ Deduct'}
+                </button>
+                <button onClick={()=>{ setModal(null); setError(null); }}
+                  style={{ flex:1, background:'#374151', color:'#fff', border:'none', padding:10, borderRadius:8, fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── style tokens ──────────────────────────────────────────────────────────────
+const TH = (bg) => ({ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#fff', border:'1px solid #374151', fontSize:12, whiteSpace:'nowrap', background: bg });
+const TD  = { padding:'8px 10px', border:'1px solid #1a1a1a', color:'#e5e7eb', fontSize:13 };
+const HTD = { padding:'6px 10px', border:'1px solid #1f2937', color:'#d1d5db' };
+const LBL = { display:'block', color:'#d1d5db', fontSize:13, fontWeight:600, marginBottom:4 };
+const INP = { width:'100%', background:'#1f2937', border:'1px solid #374151', color:'#fff', padding:'8px 12px', borderRadius:8, fontSize:13, outline:'none', boxSizing:'border-box' };
+const SEL = { background:'#1f2937', border:'1px solid #374151', color:'#fff', padding:'6px 10px', borderRadius:8, fontSize:12, outline:'none', cursor:'pointer' };
+const ALERT_OK  = { background:'#14532d', border:'1px solid #16a34a', color:'#86efac', padding:'7px 14px', borderRadius:8, marginBottom:12, fontSize:13, display:'flex', justifyContent:'space-between' };
+const ALERT_ERR = { background:'#450a0a', border:'1px solid #dc2626', color:'#fca5a5', padding:'7px 14px', borderRadius:8, marginBottom:12, fontSize:13, display:'flex', justifyContent:'space-between' };
+
+const Btn = ({ bg, onClick, children }) => (
+  <button onClick={onClick} style={{ background:bg, color:'#fff', border:'none', padding:'4px 9px', borderRadius:6, cursor:'pointer', fontSize:11, fontWeight:600, whiteSpace:'nowrap' }}>
+    {children}
+  </button>
+);
+
+const rc = (rem, tot, good) => {
+  const r = parseFloat(rem??0), t = parseFloat(tot??0);
+  if (t===0) return good;
+  const p = r/t;
+  return p>0.5 ? good : p>0.2 ? '#facc15' : '#f87171';
+};
+
+export default PaidLeaveManagement;

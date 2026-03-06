@@ -64,9 +64,12 @@ if __name__ == "__main__":
         print("⚠ SSL certificates not found - running HTTP only")
     
     if is_production:
-        # ⚡ PRODUCTION: Ultra-high performance configuration
+        # ⚡ PRODUCTION: Optimized configuration
+        # Reduced from cpu_count*2 to fixed 4 workers to save RAM
+        # 4 workers is sufficient for moderate production load (~1000 concurrent users)
+        # Each uvicorn worker uses ~200-300MB RAM
         config.update({
-            "workers": max(multiprocessing.cpu_count() * 2, 4),  # Reasonable workers for uvicorn
+            "workers": 4,  # Fixed 4 workers (~800MB total) instead of 16 (~3.2GB)
             # Note: worker_class is for gunicorn, not uvicorn
             # "max_requests": 100000,         # Not supported by uvicorn
             # "max_requests_jitter": 10000,   # Not supported by uvicorn

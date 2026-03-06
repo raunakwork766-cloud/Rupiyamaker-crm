@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Login.css';
 import { updateProfilePhotoInStorage } from '../utils/profilePhotoUtils';
 
@@ -10,9 +10,19 @@ const Login = ({ onLogin }) => {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [logoutBanner, setLogoutBanner] = useState('');
     const [otpRequired, setOtpRequired] = useState(false);
     const [otpGenerated, setOtpGenerated] = useState(false);
     const [userId, setUserId] = useState(null);
+
+    // 🔔 Show displaced-session / forced-logout message from sessionStorage
+    useEffect(() => {
+        const reason = sessionStorage.getItem('logoutReason');
+        if (reason) {
+            setLogoutBanner(reason);
+            sessionStorage.removeItem('logoutReason');
+        }
+    }, []);
 
     const handleChange = (e) => {
         setFormData({
@@ -143,6 +153,10 @@ const Login = ({ onLogin }) => {
                 localStorage.setItem('department_name', data.department?.name || 'General');
                 localStorage.setItem('designation_name', data.designation?.name || 'Employee');
                 localStorage.setItem('token', data.token || 'authenticated'); // Store token separately
+                // 🔑 Store session token for single-session enforcement
+                if (data.session_token) {
+                  localStorage.setItem('sessionToken', data.session_token);
+                }
                 localStorage.setItem('userProfilePhoto', data.user.profile_photo || ''); // Store profile photo
                 localStorage.setItem('profile_photo', data.user.profile_photo || ''); // Store for navbar compatibility
                 
@@ -293,7 +307,9 @@ const Login = ({ onLogin }) => {
                     department_id: data.department?._id || data.department?.id || data.user?.department_id || 'default_department_id',
                     designation_id: data.designation?._id || data.designation?.id || data.user?.designation_id,
                     permissions: permissions, // Store the formatted permissions here too
-                    token: data.token || 'authenticated'
+                    token: data.token || 'authenticated',
+                    is_super_admin: data.role?.name === 'Super Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b',
+                    is_admin: data.role?.name === 'Super Admin' || data.role?.name === 'Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b'
                 };
                 localStorage.setItem('userData', JSON.stringify(userData));
                 localStorage.setItem('user', JSON.stringify(userData)); // Also store as 'user' for navbar compatibility
@@ -310,6 +326,7 @@ const Login = ({ onLogin }) => {
                 }
 
                 // Call the onLogin callback to update parent component
+                setLogoutBanner(''); // Clear any displaced-session banner on success
                 onLogin(userData);
             } else if (response.status === 428) {
                 // OTP required
@@ -388,6 +405,12 @@ const Login = ({ onLogin }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="login-form">
+                    {logoutBanner && (
+                        <div className="error-message" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)', border: '1px solid #ff6b35', marginBottom: '12px' }}>
+                            <i className="error-icon">🔔</i>
+                            {logoutBanner}
+                        </div>
+                    )}
                     {error && (
                         <div className="error-message">
                             <i className="error-icon">⚠️</i>

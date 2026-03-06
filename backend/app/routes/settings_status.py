@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 from bson import ObjectId
 from fastapi.responses import JSONResponse
 
@@ -58,7 +59,7 @@ async def get_statuses(
             status_dict['id'] = status_dict['_id']
             
         # Add default timestamps if not present
-        now = datetime.now()
+        now = get_ist_now()
         if 'created_at' not in status_dict:
             status_dict['created_at'] = now
         
@@ -101,7 +102,7 @@ async def update_status_reassignment(
     update_dict = {
         "reassignment_period": reassignment_period, 
         "is_manager_permission_required": is_manager_permission_required,
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     success = await leads_db.update_status(status_id, update_dict)
     
@@ -142,7 +143,7 @@ async def update_sub_status_reassignment(
     update_dict = {
         "reassignment_period": reassignment_period, 
         "is_manager_permission_required": is_manager_permission_required,
-        "updated_at": datetime.now()
+        "updated_at": get_ist_now()
     }
     success = await leads_db.update_sub_status(sub_status_id, update_dict)
     

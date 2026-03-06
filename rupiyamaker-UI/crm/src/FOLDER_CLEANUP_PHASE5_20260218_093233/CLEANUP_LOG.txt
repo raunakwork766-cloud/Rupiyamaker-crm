@@ -1,0 +1,20 @@
+Phase 5 Cleanup Log - Wed Feb 18 09:32:34 CET 2026
+======================================
+
+=== UTILS FOLDER ===
+MOVED: rupiyamaker-UI/crm/src/utils/apiTest.js
+MOVED: rupiyamaker-UI/crm/src/utils/permissions.js.new
+MOVED: rupiyamaker-UI/crm/src/utils/profilePhotoTester.js
+MOVED: rupiyamaker-UI/crm/src/utils/testNotifications.js
+
+=== PAGES FOLDER ===
+MOVED: rupiyamaker-UI/crm/src/pages/NotificationManagementPageFixed.jsx
+MOVED: rupiyamaker-UI/crm/src/pages/NotificationManagementPageTest.jsx
+MOVED: rupiyamaker-UI/crm/src/pages/NotificationManagementPageWorking.jsx
+MOVED: rupiyamaker-UI/crm/src/pages/sample_html_popup.html
+
+=== SUMMARY ===
+Total files moved: 8
+Archive location: rupiyamaker-UI/crm/src/FOLDER_CLEANUP_PHASE5_20260218_093233
+Archive size: 184K
+Completed: Wed Feb 18 09:32:34 CET 2026

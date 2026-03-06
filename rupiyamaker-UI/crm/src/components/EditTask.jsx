@@ -42,12 +42,17 @@ function AssignPopup({ onClose, onSelect }) {
             first_name: user.first_name || '',
             last_name: user.last_name || '',
             email: user.email || '',
-            designation: user.role || user.designation || ''
+            designation: user.role || user.designation || '',
+            employee_status: user.employee_status,
+            is_active: user.is_active
           }));
         }
 
-        // Filter out entries with empty names
-        setUsers(usersList.filter(user => user.name));
+        // Filter out entries with empty names and inactive employees
+        setUsers(usersList.filter(user => 
+          user.name && 
+          (user.employee_status === 'active' || user.is_active === true || user.employee_status === undefined)
+        ));
       } catch (error) {
         console.error("Failed to fetch users from API.tasks.getUsersForAssignment():", error);
         // Use empty array as fallback
@@ -916,12 +921,14 @@ export default function EditTask({
         
         return {
           id: item.id,
-          date: item.created_at ? new Date(item.created_at).toLocaleDateString("en-GB", {
+          date: item.created_at ? new Date(item.created_at).toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata",
             day: "2-digit",
             month: "short",
             year: "numeric"
           }).toUpperCase() : "UNKNOWN DATE",
-          time: item.created_at ? new Date(item.created_at).toLocaleTimeString("en-GB", {
+          time: item.created_at ? new Date(item.created_at).toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
             hour12: true

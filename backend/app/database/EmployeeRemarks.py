@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.config import Config
 import pymongo
+from app.utils.timezone import get_ist_now
 
 class EmployeeRemarksDB:
     def __init__(self, db=None):
@@ -27,8 +28,8 @@ class EmployeeRemarksDB:
 
     async def create_remark(self, remark_data: Dict[str, Any]) -> str:
         """Create a new remark for an employee"""
-        remark_data["created_at"] = datetime.now()
-        remark_data["updated_at"] = datetime.now()
+        remark_data["created_at"] = get_ist_now()
+        remark_data["updated_at"] = get_ist_now()
         
         result = await self.remarks_collection.insert_one(remark_data)
         return str(result.inserted_id)
@@ -59,7 +60,7 @@ class EmployeeRemarksDB:
     async def update_remark(self, remark_id: str, update_data: Dict[str, Any]) -> bool:
         """Update a remark"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             result = await self.remarks_collection.update_one(
                 {"_id": ObjectId(remark_id)},
                 {"$set": update_data}

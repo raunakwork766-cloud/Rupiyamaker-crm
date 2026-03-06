@@ -37,6 +37,7 @@ from app.schemas.attendance_schemas import (
     AttendanceDetailResponse, GeolocationData, AttendanceSettings, AttendanceSettingsUpdate
 )
 from app.utils.permissions import PermissionManager
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(
     prefix="/attendance",
@@ -150,7 +151,7 @@ def save_attendance_photo(photo_data: str, user_id: str, date_str: str, photo_ty
         os.makedirs(media_dir, exist_ok=True)
         
         # Generate unique filename using user_id and photo type
-        timestamp = datetime.now().strftime("%H%M%S")
+        timestamp = get_ist_now().strftime("%H%M%S")
         photo_filename = f"{user_id}_{date_str}_{photo_type}_{timestamp}_{uuid.uuid4().hex[:8]}.jpg"
         photo_path = os.path.join(media_dir, photo_filename)
         
@@ -335,9 +336,9 @@ async def get_attendance_calendar(
     try:
         # Default to current year/month
         if not year:
-            year = datetime.now().year
+            year = get_ist_now().year
         if not month:
-            month = datetime.now().month
+            month = get_ist_now().month
         
         month_name = calendar.month_name[month]
         
@@ -368,8 +369,9 @@ async def get_attendance_calendar(
             requesting_user = None
             
         weekend_days = attendance_settings.get("weekend_days", [5, 6])
-        
-        # ⚡ STEP 2: Determine employees to show based on permissions
+        # Sunday rule settings
+        enable_sunday_rule = attendance_settings.get("enable_sunday_sandwich_rule", True)
+        min_days_for_sunday = attendance_settings.get("minimum_working_days_for_sunday", 4)
         can_view_all = permissions.get("can_view_all", False)
         can_view_junior = permissions.get("can_view_junior", False)
         
@@ -401,6 +403,19 @@ async def get_attendance_calendar(
                 month_name=month_name,
                 employees=[]
             )
+        
+        # ✅ FILTER: Separate active and inactive employees
+        # Active employees → always show
+        # Inactive employees → only show if they have attendance records for this month  
+        active_employees = []
+        inactive_employees = []
+        for emp in employees:
+            emp_status = emp.get("employee_status", "active")
+            emp_is_active = emp.get("is_active", True)
+            if emp_status == "inactive" or emp_is_active == False:
+                inactive_employees.append(emp)
+            else:
+                active_employees.append(emp)
         
         # ⚡ STEP 3: Batch fetch ALL data in parallel (the key optimization!)
         employee_ids = [str(emp.get('_id')) for emp in employees if emp.get('_id')]
@@ -495,9 +510,45 @@ async def get_attendance_calendar(
             if dept_id:
                 department_lookup[dept_id] = dept_name
         
+        # ✅ FILTER: For inactive employees, only include them if they have attendance data for this month
+        # Active employees are always included. Inactive employees are included ONLY if they have
+        # at least one attendance record for the selected month.
+        filtered_employees = list(active_employees)  # Always include all active employees
+        
+        for emp in inactive_employees:
+            emp_id = str(emp.get('_id', ''))
+            emp_attendance = attendance_lookup.get(emp_id, {})
+            emp_leaves = leave_lookup.get(emp_id, {})
+            # Include inactive employee ONLY if they have attendance or leave records this month
+            if emp_attendance or emp_leaves:
+                filtered_employees.append(emp)
+        
+        # Replace employees with filtered list
+        employees = filtered_employees
+
+        # ── Sunday Rule: Pre-fetch previous month attendance if any Sunday's week
+        #    starts in the previous month (e.g. month starts on Sun Mon Tue …)
+        days_in_month = calendar.monthrange(year, month)[1]
+        prev_month_attendance_lookup = {}
+        if enable_sunday_rule:
+            for d_check in range(1, min(8, days_in_month + 1)):
+                d_obj = date(year, month, d_check)
+                if d_obj.weekday() == 6:  # Sunday
+                    week_monday = d_obj - timedelta(days=6)  # Mon of that week
+                    if week_monday < start_date:  # Week starts in previous month
+                        prev_end = start_date - timedelta(days=1)
+                        prev_start = date(prev_end.year, prev_end.month, 1)
+                        try:
+                            prev_att = await attendance_db.get_bulk_employee_attendance(
+                                employee_ids, prev_start, prev_end
+                            )
+                            prev_month_attendance_lookup = prev_att if isinstance(prev_att, dict) else {}
+                        except Exception:
+                            prev_month_attendance_lookup = {}
+                    break  # Only need to check the first Sunday
+
         # ⚡ STEP 5: Ultra-fast calendar generation using lookups
         employee_calendars = []
-        days_in_month = calendar.monthrange(year, month)[1]
         
         for employee in employees:
             user_emp_id = str(employee.get("_id", ""))
@@ -509,6 +560,9 @@ async def get_attendance_calendar(
             # Get pre-fetched data for this employee
             employee_attendance = attendance_lookup.get(user_emp_id, {})
             employee_leaves = leave_lookup.get(user_emp_id, {})
+            # Merge prev-month attendance for cross-month Sunday week lookups
+            emp_prev_attendance = prev_month_attendance_lookup.get(user_emp_id, {})
+            all_emp_attendance = {**emp_prev_attendance, **employee_attendance}
             
             # Generate days using lookup tables
             days = []
@@ -647,8 +701,41 @@ async def get_attendance_calendar(
                     "leave_approved_by_name": leave_approved_by_name
                 }
                 days.append(day_data)
-            
-            # Calculate final attendance percentage
+
+            # ── Sunday Rule: post-process each Sunday based on its week's full days ──
+            if enable_sunday_rule:
+                for day_data in days:
+                    d_sun = date.fromisoformat(day_data["date"])
+                    if d_sun.weekday() != 6:  # Only Sundays
+                        continue
+                    week_monday = d_sun - timedelta(days=6)  # Monday of this week
+                    full_count = 0
+                    for i in range(6):  # Mon(0) … Sat(5) — all 6 days count
+                        wd = week_monday + timedelta(days=i)
+                        # Count all Mon–Sat days (including Saturday)
+                        wd_rec = all_emp_attendance.get(wd.isoformat())
+                        if wd_rec:
+                            wd_status = wd_rec.get("status")
+                            try:
+                                if float(wd_status) == 1.0:
+                                    full_count += 1
+                            except (TypeError, ValueError):
+                                if isinstance(wd_status, str) and wd_status.lower() in ("present", "full day", "full"):
+                                    full_count += 1
+                    if full_count >= min_days_for_sunday:
+                        day_data["status"] = 1
+                        day_data["status_text"] = "Sunday (Present)"
+                        day_data["is_sunday_present"] = True
+                        full_days += 1
+                        total_days += 1
+                    else:
+                        day_data["status"] = 0
+                        day_data["status_text"] = f"Sunday (Absent — {full_count}/{min_days_for_sunday} days)"
+                        day_data["is_sunday_present"] = False
+                        absent_days += 1
+                        total_days += 1
+
+            # Calculate final attendance percentage (after Sunday rule updates counts)
             attendance_percentage = 0.0
             if total_days > 0:
                 attended_days = full_days + (half_days * 0.5) + leave_days
@@ -663,6 +750,7 @@ async def get_attendance_calendar(
             
             employee_calendar = {
                 "employee_id": employee_id,
+                "user_mongo_id": user_emp_id,  # MongoDB _id — used by frontend for history lookups
                 "employee_name": employee_name,
                 "employee_photo": employee.get("profile_picture"),
                 "department_name": department_name,
@@ -837,7 +925,7 @@ async def mark_self_attendance(
             photo_path = save_attendance_photo(attendance_data.photo_data, user_id, today)
         
         # Determine status based on time (example logic)
-        now = datetime.now()
+        now = get_ist_now()
         hour = now.hour
         status = 1  # Full day default
         
@@ -854,10 +942,10 @@ async def mark_self_attendance(
             "check_in_time": attendance_data.check_in_time or now.strftime("%H:%M:%S"),
             "is_holiday": False,
             "marked_by": user_id,
-            "marked_at": datetime.now(),
+            "marked_at": get_ist_now(),
             "photo_path": photo_path,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now()
         }
         
         # Add department info if available
@@ -914,7 +1002,8 @@ async def mark_attendance(
     user_id: str = Query(..., description="User _id marking attendance"),
     attendance_db: AttendanceDB = Depends(get_attendance_db),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    attendance_history_db = Depends(get_attendance_history_db)
 ):
     """Mark attendance for an employee using their _id or employee_id"""
     try:
@@ -969,9 +1058,9 @@ async def mark_attendance(
             "check_in_time": attendance_data.check_in_time,
             "is_holiday": attendance_data.is_holiday or False,
             "marked_by": user_id,
-            "marked_at": datetime.now(),
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "marked_at": get_ist_now(),
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now()
         }
         
         # Add department info if available
@@ -980,6 +1069,23 @@ async def mark_attendance(
         
         # Mark attendance
         attendance_id = await attendance_db.mark_attendance(attendance_record)
+        
+        # Get admin info for history
+        admin = await users_db.get_user(user_id)
+        admin_name = admin.get("name") or admin.get("username", "Unknown Admin") if admin else "Unknown Admin"
+        
+        # Add history entry for new attendance record
+        await attendance_history_db.add_history_entry(
+            attendance_id=str(attendance_id),
+            user_id=target_user_id,
+            date=attendance_data.date,
+            action_type="attendance_created",
+            action_description=f"Attendance marked by {admin_name}",
+            created_by=user_id,
+            created_by_name=admin_name,
+            new_value=get_status_text(attendance_data.status),
+            reason=attendance_data.reason
+        )
         
         return {
             "success": True,
@@ -1051,9 +1157,9 @@ async def bulk_mark_attendance(
                     "comments": bulk_data.comments or "Bulk marked attendance",
                     "is_holiday": False,
                     "marked_by": user_id,
-                    "marked_at": datetime.now(),
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now(),
+                    "marked_at": get_ist_now(),
+                    "created_at": get_ist_now(),
+                    "updated_at": get_ist_now(),
                     "department_id": bulk_data.department_id
                 }
                 
@@ -1163,7 +1269,7 @@ async def get_attendance_stats(
             stats = await get_user_monthly_stats(target_user_id, year, month, attendance_db)
         else:
             # Current month stats
-            now = datetime.now()
+            now = get_ist_now()
             stats = await get_user_monthly_stats(target_user_id, now.year, now.month, attendance_db)
         
         return {
@@ -1596,7 +1702,7 @@ async def get_leave_summary_for_date(
 async def get_attendance_details_for_date(
     employee_id: str,
     date: str,
-    requester_id: str = Query(..., description="User _id making the request"),
+    user_id: str = Query(..., alias="user_id", description="User _id making the request"),
     attendance_db: AttendanceDB = Depends(get_attendance_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
@@ -1646,19 +1752,19 @@ async def get_attendance_details_for_date(
             )
         
         # Check permissions
-        permissions = await get_user_permissions(requester_id, users_db, roles_db)
+        permissions = await get_user_permissions(user_id, users_db, roles_db)
         
         # Allow access if user can view all OR it's their own record OR they can view junior
         can_view_all = permissions.get("can_view_all", False)
         can_view_junior = permissions.get("can_view_junior", False)
-        is_own_record = actual_user_id == requester_id
+        is_own_record = actual_user_id == user_id
         
         can_access = False
         if can_view_all or is_own_record:
             can_access = True
         elif can_view_junior:
             # Check if target user is a subordinate
-            subordinate_user_ids = await get_subordinate_users_for_attendance(requester_id, users_db, roles_db)
+            subordinate_user_ids = await get_subordinate_users_for_attendance(user_id, users_db, roles_db)
             if actual_user_id in subordinate_user_ids:
                 can_access = True
         
@@ -1747,35 +1853,41 @@ async def get_attendance_details_for_date(
         elif attendance_record:
             # Debug info logged via middleware
             
+            # Build attendance object with id for frontend edit flow
+            attendance_obj = {
+                "id": attendance_record.get("id") or str(attendance_record.get("_id", "")),
+                "employee_id": actual_user_id,
+                "employee_name": employee_name,
+                "date": attendance_record.get("date"),
+                "status": attendance_record.get("status"),
+                "status_text": get_status_text(attendance_record.get("status")),
+                "check_in_time": attendance_record.get("check_in_time", ""),
+                "check_out_time": attendance_record.get("check_out_time", ""),
+                "total_working_hours": attendance_record.get("total_working_hours", 0.0),
+                "comments": attendance_record.get("comments", ""),
+                "marked_by": attendance_record.get("marked_by", ""),
+                "is_holiday": attendance_record.get("is_holiday", False),
+                "photo_path": attendance_record.get("photo_path", ""),
+                "check_in_photo_path": attendance_record.get("check_in_photo_path", ""),
+                "check_out_photo_path": attendance_record.get("check_out_photo_path", ""),
+                "check_in_geolocation": attendance_record.get("check_in_geolocation", {}),
+                "check_out_geolocation": attendance_record.get("check_out_geolocation", {})
+            }
+            
             return {
                 "success": True,
                 "type": "attendance",
+                "attendance": attendance_obj,
                 "employee": {
-                    "employee_id": employee.get("employee_id", employee_id),  # Return actual employee_id field
-                    "user_id": actual_user_id,  # Include the MongoDB _id for reference
+                    "employee_id": employee.get("employee_id", employee_id),
+                    "user_id": actual_user_id,
                     "employee_name": employee_name,
                     "email": employee.get("email", ""),
                     "department_name": "Unknown Department",
                     "role_name": employee.get("role_name", "Unknown Role"),
                     "profile_picture": employee.get("profile_picture", "")
                 },
-                "attendance_details": {
-                    "id": attendance_record.get("id"),
-                    "date": attendance_record.get("date"),
-                    "status": attendance_record.get("status"),
-                    "status_text": get_status_text(attendance_record.get("status")),
-                    "check_in_time": attendance_record.get("check_in_time", ""),
-                    "check_out_time": attendance_record.get("check_out_time", ""),
-                    "total_working_hours": attendance_record.get("total_working_hours", 0.0),
-                    "comments": attendance_record.get("comments", ""),
-                    "marked_by": attendance_record.get("marked_by", ""),
-                    "is_holiday": attendance_record.get("is_holiday", False),
-                    "photo_path": attendance_record.get("photo_path", ""),
-                    "check_in_photo_path": attendance_record.get("check_in_photo_path", ""),
-                    "check_out_photo_path": attendance_record.get("check_out_photo_path", ""),
-                    "check_in_geolocation": attendance_record.get("check_in_geolocation", {}),
-                    "check_out_geolocation": attendance_record.get("check_out_geolocation", {})
-                },
+                "attendance_details": attendance_obj,
                 "date": date,
                 "status": attendance_record.get("status"),
                 "status_text": get_status_text(attendance_record.get("status"))
@@ -1873,6 +1985,68 @@ async def check_in_attendance(
                     detail="You are outside the allowed check-in area"
                 )
         
+        # ==== FACIAL VERIFICATION (if face descriptor provided) ====
+        face_verification_result = None
+        if check_in_data.face_descriptor:
+            try:
+                # Get registered face data
+                registered_face = await attendance_db.get_employee_face_data(user_id)
+                
+                if registered_face:
+                    # Verify face
+                    import numpy as np
+                    
+                    current_descriptor = check_in_data.face_descriptor.get("descriptor", [])
+                    
+                    if len(current_descriptor) == 128:
+                        # Compare with all registered samples
+                        registered_descriptors = registered_face.get("face_descriptors", [])
+                        
+                        if registered_descriptors:
+                            min_distance = float('inf')
+                            for sample in registered_descriptors:
+                                sample_desc = sample.get("descriptor", [])
+                                if len(sample_desc) == 128:
+                                    # Calculate Euclidean distance
+                                    distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
+                                    min_distance = min(min_distance, distance)
+                            
+                            threshold = 0.6
+                            verified = min_distance < threshold
+                            confidence = max(0, 1 - (min_distance / threshold))
+                            
+                            face_verification_result = {
+                                "verified": verified,
+                                "confidence": round(confidence, 3),
+                                "distance": round(min_distance, 3)
+                            }
+                            
+                            # Log verification attempt
+                            log_data = {
+                                "employee_id": user_id,
+                                "verification_result": "success" if verified else "failure",
+                                "confidence_score": confidence,
+                                "threshold_used": threshold
+                            }
+                            await attendance_db.log_face_verification_attempt(log_data)
+                            
+                            # If facial verification is enforced in settings, reject on failure
+                            if settings.get("enforce_facial_verification", False) and not verified:
+                                raise HTTPException(
+                                    status_code=status.HTTP_403_FORBIDDEN,
+                                    detail=f"Facial verification failed. Confidence: {round(confidence*100, 1)}%"
+                                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Face verification error (non-blocking): {e}")
+                # Don't block check-in if face verification fails (unless enforced)
+                if settings.get("enforce_facial_verification", False):
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Face verification system error"
+                    )
+        
         # Check if already checked in today
         today = date.today().isoformat()
         existing = await attendance_db.get_attendance_detail(user_id, today)
@@ -1894,8 +2068,7 @@ async def check_in_attendance(
             )
         
         # Prepare check-in data with IST time
-        utc_now = datetime.now()
-        ist_now = utc_now + timedelta(hours=5, minutes=30)  # Convert to IST
+        ist_now = get_ist_now()
         check_in_time = ist_now.strftime("%H:%M:%S")
         
         # Get timing settings from database
@@ -1930,7 +2103,7 @@ async def check_in_attendance(
             status_reason = "Very late check-in - Marked absent"
             
             # Mark next day as absent too if it's a working day
-            next_day = (datetime.now().date() + timedelta(days=1)).isoformat()
+            next_day = (get_ist_now().date() + timedelta(days=1)).isoformat()
             try:
                 # Check if next day is not weekend
                 next_day_obj = datetime.strptime(next_day, '%Y-%m-%d').date()
@@ -1943,10 +2116,10 @@ async def check_in_attendance(
                         "status": -2,
                         "comments": f"Auto-marked absent due to very late check-in on {date.today().isoformat()}",
                         "marked_by": "system",
-                        "marked_at": datetime.now(),
+                        "marked_at": get_ist_now(),
                         "is_holiday": False,
-                        "created_at": datetime.now(),
-                        "updated_at": datetime.now()
+                        "created_at": get_ist_now(),
+                        "updated_at": get_ist_now()
                     }
                     await attendance_db.mark_attendance(next_day_record)
             except Exception as e:
@@ -1985,7 +2158,7 @@ async def check_in_attendance(
         else:
             message = "Checked in successfully"
         
-        return {
+        response = {
             "success": True,
             "message": message,
             "attendance_id": attendance_id,
@@ -2001,6 +2174,12 @@ async def check_in_attendance(
                 "address": check_in_data.geolocation.address
             }
         }
+        
+        # Add face verification result if available
+        if face_verification_result:
+            response["face_verification"] = face_verification_result
+        
+        return response
         
     except HTTPException:
         raise
@@ -2076,8 +2255,7 @@ async def check_out_attendance(
             )
         
         # Prepare check-out data with IST time
-        utc_now = datetime.now()
-        ist_now = utc_now + timedelta(hours=5, minutes=30)  # Convert to IST
+        ist_now = get_ist_now()
         check_out_time = ist_now.strftime("%H:%M:%S")
         
         # Get timing settings from database
@@ -2202,50 +2380,6 @@ async def check_out_attendance(
             detail=f"Failed to check out: {str(e)}"
         )
 
-@router.get("/detail/{user_id}/{date_str}", response_model=AttendanceDetailResponse)
-async def get_attendance_detail(
-    user_id: str,
-    date_str: str,
-    requester_id: str = Query(..., description="ID of user requesting the detail"),
-    attendance_db: AttendanceDB = Depends(get_attendance_db),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
-):
-    """Get detailed attendance for a user on a specific date with IST formatting"""
-    try:
-        # Validate date format
-        try:
-            datetime.strptime(date_str, '%Y-%m-%d')
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid date format. Use YYYY-MM-DD"
-            )
-        
-        # Check permissions - user can view their own or admins can view all
-        if user_id != requester_id:
-            from app.utils.permissions import check_permission
-            await check_permission(requester_id, "attendance", "show", users_db, roles_db)
-        
-        # Get attendance detail
-        attendance = await attendance_db.get_attendance_detail(user_id, date_str)
-        if not attendance:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Attendance record not found for the specified date"
-            )
-        
-        return attendance
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error getting attendance detail: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get attendance detail: {str(e)}"
-        )
-
 @router.put("/edit/{attendance_id}")
 async def edit_attendance(
     attendance_id: str,
@@ -2323,6 +2457,7 @@ async def edit_attendance(
         # Add history entries for changes
         changes = []
         update_data = edit_data.dict(exclude_none=True)
+        update_reason = update_data.pop('reason', None)  # Extract reason separately
         
         for field, new_value in update_data.items():
             old_value = existing_record.get(field)
@@ -2339,11 +2474,16 @@ async def edit_attendance(
                     created_by=admin_id,
                     created_by_name=admin_name,
                     old_value=old_value,
-                    new_value=new_value
+                    new_value=new_value,
+                    reason=update_reason
                 )
         
         # Add summary history entry
         if changes:
+            history_details = {"changes": changes}
+            if update_reason:
+                history_details["reason"] = update_reason
+                
             await attendance_history_db.add_history_entry(
                 attendance_id=attendance_id,
                 user_id=str(existing_record.get("user_id")),
@@ -2352,14 +2492,15 @@ async def edit_attendance(
                 action_description=f"Attendance record edited by {admin_name}: {', '.join(changes)}",
                 created_by=admin_id,
                 created_by_name=admin_name,
-                details={"changes": changes}
+                details=history_details,
+                reason=update_reason
             )
 
         return {
             "success": True,
             "message": "Attendance updated successfully",
             "updated_by": admin_id,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": get_ist_now().isoformat(),
             "changes": changes
         }
         
@@ -2416,7 +2557,7 @@ async def check_out_attendance(
             )
         
         # Prepare check-out data
-        now = datetime.now()
+        now = get_ist_now()
         check_out_time = now.strftime("%H:%M:%S")
         
         check_out_record = {
@@ -2463,95 +2604,6 @@ async def check_out_attendance(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check out: {str(e)}"
-        )
-
-@router.get("/detail/{target_user_id}/{date}")
-async def get_attendance_detail(
-    target_user_id: str,
-    date: str,
-    user_id: str = Query(..., description="User _id making the request"),
-    attendance_db: AttendanceDB = Depends(get_attendance_db),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
-):
-    """Get detailed attendance record for a specific user and date"""
-    try:
-        # Check permissions
-        permissions = await get_user_permissions(user_id, users_db, roles_db)
-        
-        # Allow access if user can view all OR it's their own record
-        if not permissions.get("can_view_all", False) and target_user_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions to view attendance details"
-            )
-        
-        # Get user info
-        user = await users_db.get_user(target_user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # Validate date format
-        try:
-            datetime.strptime(date, '%Y-%m-%d')
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid date format. Use YYYY-MM-DD"
-            )
-        
-        # Get attendance detail
-        attendance = await attendance_db.get_attendance_detail(target_user_id, date)
-        
-        if not attendance:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No attendance record found for this date"
-            )
-        
-        # Get attendance settings for expected working hours
-        settings_db = SettingsDB()
-        settings = await settings_db.get_attendance_settings()
-        
-        # Format response
-        response_data = {
-            "id": str(attendance["_id"]),
-            "employee_id": target_user_id,
-            "employee_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
-            "date": date,
-            "status": attendance.get("status"),
-            "status_text": get_status_text(attendance.get("status", 0)),
-            "check_in_time": attendance.get("check_in_time"),
-            "check_out_time": attendance.get("check_out_time"),
-            "check_in_photo_path": attendance.get("check_in_photo_path"),
-            "check_out_photo_path": attendance.get("check_out_photo_path"),
-            "check_in_location": attendance.get("check_in_location"),
-            "check_out_location": attendance.get("check_out_location"),
-            "total_working_hours": attendance.get("total_working_hours"),
-            "expected_working_hours": settings.get("minimum_working_hours", 8.0),
-            "comments": attendance.get("comments", ""),
-            "marked_by": attendance.get("marked_by"),
-            "marked_at": attendance.get("marked_at"),
-            "is_holiday": attendance.get("is_holiday", False),
-            "created_at": attendance.get("created_at"),
-            "updated_at": attendance.get("updated_at")
-        }
-        
-        return {
-            "success": True,
-            "attendance": response_data
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error getting attendance detail: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get attendance detail: {str(e)}"
         )
 
 @router.put("/edit/{target_user_id}/{date}")
@@ -2705,7 +2757,7 @@ async def get_today_attendance(
                 "success": True,
                 "has_attendance": False,
                 "date": today,
-                "date_formatted": format_datetime_ist(datetime.now()).split(",")[0],
+                "date_formatted": format_datetime_ist(get_ist_now()).split(",")[0],
                 "can_check_in": True,
                 "can_check_out": False,
                 "message": "No attendance record for today"
@@ -2921,6 +2973,43 @@ async def get_attendance_comments(
 
 # ===== ATTENDANCE HISTORY ENDPOINTS =====
 
+@router.get("/edit-counts")
+async def get_edit_counts(
+    user_ids: str = Query(..., description="Comma-separated MongoDB user _ids"),
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    requester_id: str = Query(..., description="User _id making the request"),
+    attendance_history_db = Depends(get_attendance_history_db),
+    users_db: UsersDB = Depends(lambda: UsersDB()),
+    roles_db: RolesDB = Depends(lambda: RolesDB())
+):
+    """Get attendance edit counts per employee for a date range (from DB, survives refresh)"""
+    try:
+        permissions = await get_user_permissions(requester_id, users_db, roles_db)
+        if not permissions.get("can_view_all") and not permissions.get("can_view"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view edit counts"
+            )
+
+        uid_list = [uid.strip() for uid in user_ids.split(",") if uid.strip()]
+        counts = await attendance_history_db.get_edit_counts_by_month(uid_list, start_date, end_date)
+
+        return {
+            "success": True,
+            "counts": counts  # { mongo_user_id: count }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting edit counts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get edit counts: {str(e)}"
+        )
+
+
 @router.get("/history/{user_id}/{date}")
 async def get_attendance_history(
     user_id: str,
@@ -3065,7 +3154,7 @@ async def refresh_attendance(
 ):
     """Refresh and get current attendance status"""
     try:
-        target_date = date or datetime.now().date().isoformat()
+        target_date = date or get_ist_now().date().isoformat()
         
         # Get user info
         user = await users_db.get_user(user_id)
@@ -3079,8 +3168,7 @@ async def refresh_attendance(
         attendance_record = await attendance_db.get_attendance_detail(user_id, target_date)
         
         # Get current IST time
-        utc_now = datetime.now()
-        ist_now = utc_now + timedelta(hours=5, minutes=30)
+        ist_now = get_ist_now()
         
         response_data = {
             "user_id": user_id,
@@ -3125,7 +3213,7 @@ async def debug_attendance(
 ):
     """Debug endpoint to check attendance data"""
     try:
-        target_date = date or datetime.now().date().isoformat()
+        target_date = date or get_ist_now().date().isoformat()
         
         # Get raw attendance record
         raw_record = await attendance_db.collection.find_one({
@@ -3166,12 +3254,11 @@ async def debug_attendance(
 async def get_current_ist_time():
     """Get current IST time for frontend synchronization"""
     try:
-        utc_now = datetime.now()
-        ist_now = utc_now + timedelta(hours=5, minutes=30)
+        ist_now = get_ist_now()
         
         return {
             "success": True,
-            "utc_time": utc_now.strftime("%Y-%m-%d %H:%M:%S"),
+            "utc_time": ist_now.strftime("%Y-%m-%d %H:%M:%S"),
             "ist_time": ist_now.strftime("%Y-%m-%d %H:%M:%S"),
             "ist_time_formatted": format_datetime_ist(ist_now),
             "date": ist_now.strftime("%Y-%m-%d"),
@@ -3203,8 +3290,7 @@ async def get_user_attendance_status(
         today_attendance = await attendance_db.get_attendance_detail(user_id, today)
         
         # Get current IST time
-        utc_now = datetime.now()
-        ist_now = utc_now + timedelta(hours=5, minutes=30)
+        ist_now = get_ist_now()
         
         status_info = {
             "user_id": user_id,
@@ -3543,7 +3629,7 @@ async def check_in_attendance(
             photo_path = save_attendance_photo(check_in_data.photo_data, user_id, today, "checkin")
         
         # Current time for check-in
-        now = datetime.now()
+        now = get_ist_now()
         check_in_time = now.strftime("%H:%M:%S")
         
         # Determine if late (after 10:30 AM)
@@ -3561,9 +3647,9 @@ async def check_in_attendance(
             "status": 0.5 if is_late else 1.0,  # Half day if late, full day if on time
             "is_late": is_late,
             "marked_by": user_id,
-            "marked_at": datetime.now(),
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "marked_at": get_ist_now(),
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now()
         }
         
         # Add user details
@@ -3641,7 +3727,7 @@ async def check_out_attendance(
             photo_path = save_attendance_photo(check_out_data.photo_data, user_id, today, "checkout")
         
         # Current time for check-out
-        now = datetime.now()
+        now = get_ist_now()
         check_out_time = now.strftime("%H:%M:%S")
         
         # Calculate working hours
@@ -3673,7 +3759,7 @@ async def check_out_attendance(
             "total_working_hours": round(working_hours, 2),
             "status": final_status,
             "comments": existing.get("comments", "") + (f" | Check-out: {check_out_data.comments}" if check_out_data.comments else ""),
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         await attendance_db.collection.update_one(
@@ -3696,4 +3782,401 @@ async def check_out_attendance(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check out: {str(e)}"
+        )
+
+# ============================================================================
+# FACIAL RECOGNITION ENDPOINTS
+# ============================================================================
+
+@router.post("/face/register", response_model=Dict[str, Any])
+async def register_employee_face(
+    registration_data: Dict[str, Any],
+    admin_user_id: str = Query(..., description="Admin user ID registering the face"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """
+    Register employee's face for facial attendance
+    Requires at least 3 face samples for accuracy
+    """
+    try:
+        # Verify admin permissions
+        admin_user = await users_db.get_user(admin_user_id)
+        if not admin_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin user not found"
+            )
+        
+        # Check admin permissions (allow admin, super admin, HR, manager, team leader)
+        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
+        admin_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
+        is_self_registration = admin_user_id == employee_id
+        is_authorized = (
+            is_self_registration or
+            admin_user.get("is_super_admin") or
+            str(admin_user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
+            admin_user.get("role_name", "").lower() in admin_roles or
+            admin_user.get("role", {}).get("name", "").lower() in admin_roles
+        )
+        if not is_authorized:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins, HR, or managers can register employee faces"
+            )
+        
+        # Validate employee
+        employee_id = registration_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+        
+        employee = await users_db.get_user(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found"
+            )
+        
+        # Validate face descriptors
+        face_descriptors = registration_data.get("face_descriptors", [])
+        if len(face_descriptors) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least 3 face samples required for registration"
+            )
+        
+        # Validate each descriptor has 128 dimensions
+        for i, desc in enumerate(face_descriptors):
+            if len(desc.get("descriptor", [])) != 128:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Face descriptor {i+1} must have exactly 128 dimensions"
+                )
+        
+        # Save reference photo if provided
+        photo_data = registration_data.get("photo_data")
+        reference_photo_path = ""
+        UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "media")
+        if photo_data:
+            # Create face photos directory
+            face_photos_dir = os.path.join(UPLOAD_DIR, "face_photos")
+            os.makedirs(face_photos_dir, exist_ok=True)
+            
+            # Save photo
+            photo_filename = f"{employee_id}_reference_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            photo_path = os.path.join(face_photos_dir, photo_filename)
+            
+            try:
+                # Decode base64 and save
+                if "base64," in photo_data:
+                    photo_data = photo_data.split("base64,")[1]
+                
+                photo_bytes = base64.b64decode(photo_data)
+                with open(photo_path, "wb") as f:
+                    f.write(photo_bytes)
+                
+                reference_photo_path = photo_path
+            except Exception as e:
+                logger.warning(f"Failed to save reference photo: {e}")
+        
+        # Prepare face data for database
+        face_data = {
+            "employee_id": employee_id,
+            "employee_name": employee.get("name", ""),
+            "face_descriptors": face_descriptors,
+            "reference_photo_path": reference_photo_path,
+            "registered_by": admin_user_id
+        }
+        
+        # Register face in database
+        face_id = await attendance_db.register_employee_face(face_data)
+        
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "face_id": face_id,
+            "samples_count": len(face_descriptors),
+            "registered_at": get_ist_now().isoformat(),
+            "registered_by": admin_user_id,
+            "message": f"Face registered successfully with {len(face_descriptors)} samples"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error registering face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to register face: {str(e)}"
+        )
+
+
+@router.get("/face/{employee_id}", response_model=Dict[str, Any])
+async def get_employee_face_data(
+    employee_id: str,
+    user_id: str = Query(..., description="Requesting user ID"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get employee's face registration data"""
+    try:
+        # Verify user permissions
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Check if user is requesting their own data or is admin
+        is_own_data = user_id == employee_id
+        is_admin = user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]
+        
+        if not is_own_data and not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own face data"
+            )
+        
+        # Get face data
+        face_data = await attendance_db.get_employee_face_data(employee_id)
+        
+        if not face_data:
+            employee = await users_db.get_user(employee_id)
+            return {
+                "employee_id": employee_id,
+                "employee_name": employee.get("name", "") if employee else "",
+                "face_registered": False,
+                "samples_count": 0,
+                "registered_at": None,
+                "last_updated": None,
+                "reference_photo_url": None
+            }
+        
+        # Return face data (without descriptors for security)
+        return {
+            "employee_id": face_data["employee_id"],
+            "employee_name": face_data.get("employee_name", ""),
+            "face_registered": True,
+            "samples_count": face_data.get("samples_count", 0),
+            "registered_at": face_data.get("registered_at"),
+            "last_updated": face_data.get("last_updated"),
+            "reference_photo_url": face_data.get("reference_photo_path", "")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting face data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get face data: {str(e)}"
+        )
+
+
+@router.post("/face/verify", response_model=Dict[str, Any])
+async def verify_employee_face(
+    verification_data: Dict[str, Any],
+    attendance_db: AttendanceDB = Depends(get_attendance_db)
+):
+    """
+    Verify employee face during check-in
+    Uses Euclidean distance between face descriptors
+    """
+    try:
+        employee_id = verification_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+        
+        # Get face descriptor to verify
+        face_descriptor = verification_data.get("face_descriptor", {})
+        current_descriptor = face_descriptor.get("descriptor", [])
+        
+        if len(current_descriptor) != 128:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid face descriptor format"
+            )
+        
+        # Get registered face data
+        registered_face = await attendance_db.get_employee_face_data(employee_id)
+        
+        if not registered_face:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No face registered for this employee"
+            )
+        
+        # Compare with all registered samples
+        registered_descriptors = registered_face.get("face_descriptors", [])
+        
+        if not registered_descriptors:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No face samples found for this employee"
+            )
+        
+        # Also handle case where ALL stored descriptors are invalid (empty from old broken registration)
+        valid_descriptors = [s for s in registered_descriptors if len(s.get("descriptor", [])) == 128]
+        if not valid_descriptors:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Face data is invalid or empty — please re-register the face"
+            )
+        
+        # Calculate minimum distance across all valid samples
+        import numpy as np
+        
+        min_distance = float('inf')
+        for sample in valid_descriptors:
+            sample_desc = sample.get("descriptor", [])
+            if len(sample_desc) == 128:
+                # Calculate Euclidean distance
+                distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
+                min_distance = min(min_distance, distance)
+        
+        # Threshold for real-world webcam conditions (0.6 is LFW benchmark; 0.8 is better for webcam)
+        threshold = 0.8
+        verified = min_distance < threshold
+        # Confidence: 100% at distance 0, 0% at distance == threshold
+        confidence = max(0.0, round(1 - (min_distance / threshold), 3))
+        
+        # Log verification attempt
+        log_data = {
+            "employee_id": employee_id,
+            "verification_result": "success" if verified else "failure",
+            "confidence_score": confidence,
+            "threshold_used": threshold,
+            "photo_path": verification_data.get("photo_data", "")[:100]  # Store partial for audit
+        }
+        await attendance_db.log_face_verification_attempt(log_data)
+        
+        return {
+            "verified": verified,
+            "confidence": confidence,
+            "threshold": threshold,
+            "distance": round(min_distance, 3),
+            "employee_id": employee_id,
+            "message": "Face verified successfully" if verified else f"Face verification failed (distance: {round(min_distance, 3)}, threshold: {threshold})"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify face: {str(e)}"
+        )
+
+
+@router.delete("/face/{employee_id}")
+async def delete_employee_face(
+    employee_id: str,
+    admin_user_id: str = Query(..., description="Admin user ID deleting the face"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Delete employee's face registration"""
+    try:
+        # Verify admin permissions
+        admin_user = await users_db.get_user(admin_user_id)
+        if not admin_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin user not found"
+            )
+        
+        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
+        _is_admin = (
+            admin_user.get("is_super_admin") or
+            str(admin_user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
+            admin_user.get("role_name", "").lower() in ["admin", "super admin"]
+        )
+        if not _is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can delete employee faces"
+            )
+        
+        # Delete face data
+        success = await attendance_db.delete_employee_face(employee_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Face registration not found"
+            )
+        
+        return {
+            "success": True,
+            "message": "Face registration deleted successfully",
+            "employee_id": employee_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete face: {str(e)}"
+        )
+
+
+@router.get("/face/list/all", response_model=Dict[str, Any])
+async def list_all_registered_faces(
+    user_id: str = Query(..., description="Requesting user ID"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get list of all employees with registered faces (admin only)"""
+    try:
+        # Verify admin permissions
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        if not (user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can view all registered faces"
+            )
+        
+        # Get all registered faces
+        faces = await attendance_db.get_all_registered_faces()
+        
+        # Format response
+        face_list = []
+        for face in faces:
+            face_list.append({
+                "employee_id": face.get("employee_id"),
+                "employee_name": face.get("employee_name", ""),
+                "samples_count": face.get("samples_count", 0),
+                "registered_at": face.get("registered_at"),
+                "last_updated": face.get("last_updated")
+            })
+        
+        return {
+            "success": True,
+            "total_count": len(face_list),
+            "faces": face_list
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing faces: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list faces: {str(e)}"
         )

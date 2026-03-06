@@ -1,0 +1,615 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
+
+const BASE_URL = '/api';
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const getUid = () => {
+  try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.user_id || u?._id || ''; }
+  catch { return ''; }
+};
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch { return String(d); }
+};
+
+// ── Leave type config ──
+const LEAVE_TYPES = [
+  { key: 'earned',  label: 'Earned Leave',  short: 'EL',    color: '#3b82f6', bg: '#172554', border: '#1d4ed8', fieldPrefix: 'earned_leaves' },
+  { key: 'paid',    label: 'Paid Leave',     short: 'PL',    color: '#22c55e', bg: '#052e16', border: '#16a34a', fieldPrefix: 'paid_leaves' },
+  { key: 'grace',   label: 'Grace Leave',    short: 'Grace', color: '#a855f7', bg: '#2e1065', border: '#7c3aed', fieldPrefix: 'grace_leaves' },
+  { key: 'sick',    label: 'Sick Leave',     short: 'SL',    color: '#f59e0b', bg: '#451a03', border: '#d97706', fieldPrefix: 'sick_leaves' },
+  { key: 'casual',  label: 'Casual Leave',   short: 'CL',    color: '#06b6d4', bg: '#083344', border: '#0891b2', fieldPrefix: 'casual_leaves' },
+];
+
+const PaidLeaveManagement = () => {
+  const now = new Date();
+  const [selMonth, setSelMonth] = useState(now.getMonth());
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [rows, setRows] = useState([]);
+  const [deptMap, setDeptMap] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [search, setSearch] = useState('');
+
+  // Employee detail modal
+  const [selectedEmp, setSelectedEmp] = useState(null);
+  const [detailTab, setDetailTab] = useState('overview');
+
+  // Allot/Deduct modal
+  const [actionModal, setActionModal] = useState(null);
+  const [leaveType, setLeaveType] = useState('earned');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // History
+  const [history, setHistory] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+
+  useEffect(() => { loadDepartments(); }, []);
+  useEffect(() => { loadAll(); }, [selMonth, selYear]);
+
+  const loadDepartments = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/departments/?user_id=${getUid()}`);
+      const depts = Array.isArray(res.data) ? res.data : [];
+      const map = {};
+      depts.forEach(d => { map[d._id] = d.name; });
+      setDeptMap(map);
+    } catch (e) { console.warn('Could not load departments:', e); }
+  };
+
+  const loadAll = async () => {
+    setLoading(true); setError(null);
+    const userId = getUid();
+    try {
+      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${userId}`);
+      const empList = Array.isArray(empRes.data) ? empRes.data : (empRes.data.users || empRes.data.data || []);
+      const employees = empList.filter(e => e.is_employee !== false);
+      const balResults = await Promise.allSettled(
+        employees.map(emp =>
+          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${userId}`)
+            .then(r => r.data?.data || null)
+        )
+      );
+      setRows(employees.map((emp, i) => ({
+        emp,
+        bal: balResults[i].status === 'fulfilled' ? balResults[i].value : null,
+      })));
+    } catch (e) {
+      setError('Failed to load: ' + (e.response?.data?.detail || e.message));
+    } finally { setLoading(false); }
+  };
+
+  const loadHistory = async (empId) => {
+    setHistLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/settings/leave-balance/history/${empId}?user_id=${getUid()}`);
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
+  };
+
+  const handleAction = async () => {
+    if (!actionModal || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
+    setActionLoading(true); setError(null);
+    try {
+      const endpoint = actionModal.mode === 'allot' ? 'allocate' : 'deduct';
+      await axios.post(`${BASE_URL}/settings/leave-balance/${endpoint}?user_id=${getUid()}`, {
+        employee_id: actionModal.emp._id || actionModal.emp.id,
+        leave_type: leaveType,
+        quantity: parseFloat(quantity),
+        reason: reason.trim(),
+      });
+      setSuccess(`${actionModal.mode === 'allot' ? 'Allocated' : 'Deducted'} ${quantity} ${leaveType} leave(s)`);
+      setActionModal(null); setQuantity(''); setReason('');
+      setTimeout(() => setSuccess(null), 3000);
+      loadAll();
+      if (selectedEmp) loadHistory(selectedEmp.emp._id || selectedEmp.emp.id);
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed');
+    } finally { setActionLoading(false); }
+  };
+
+  const openEmployeeDetail = (row) => {
+    setSelectedEmp(row);
+    setDetailTab('overview');
+    loadHistory(row.emp._id || row.emp.id);
+  };
+
+  const getDeptName = (emp) => emp.department_name || emp.department || deptMap[emp.department_id] || '—';
+
+  const filtered = useMemo(() => rows.filter(({ emp }) => {
+    const q = search.toLowerCase();
+    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+    const code = (emp.employee_code || emp.employee_id || emp.emp_id || '').toLowerCase();
+    const dept = getDeptName(emp).toLowerCase();
+    return name.includes(q) || code.includes(q) || dept.includes(q);
+  }), [rows, search, deptMap]);
+
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
+
+  // ── Helper: leave value from balance ──
+  const getLeaveVal = (bal, lt, field) => parseFloat(bal?.[`${lt.fieldPrefix}_${field}`] ?? 0);
+
+  return (
+    <div style={{ padding: '0 2px', background: '#0a0a0a', minHeight: '60vh', color: '#e5e7eb', fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+
+      {/* ═══ HEADER ═══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12, padding: '14px 0 0' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f1f5f9', letterSpacing: '-0.02em' }}>Leave Management</h2>
+          <p style={{ margin: '3px 0 0', fontSize: 13, color: '#64748b' }}>
+            {MONTHS[selMonth]} {selYear} · {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <input type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)}
+              style={{ background: '#0f172a', border: '1px solid #1e293b', color: '#e2e8f0', padding: '8px 12px 8px 32px', borderRadius: 8, fontSize: 13, outline: 'none', width: 200 }} />
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#475569', pointerEvents: 'none' }}>🔍</span>
+          </div>
+          <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))} style={selStyle}>
+            {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+          </select>
+          <select value={selYear} onChange={e => setSelYear(Number(e.target.value))} style={selStyle}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={loadAll} title="Refresh"
+            style={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ ALERTS ═══ */}
+      {success && <Alert type="success" text={success} onClose={() => setSuccess(null)} />}
+      {error && !actionModal && <Alert type="error" text={error} onClose={() => setError(null)} />}
+
+      {/* ═══ LOADING ═══ */}
+      {loading && <div style={{ textAlign: 'center', padding: 60, color: '#475569' }}>Loading employees...</div>}
+
+      {/* ═══ TABLE VIEW ═══ */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ borderRadius: 12, border: '1px solid #1e293b', overflow: 'hidden', background: '#0f172a' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1050 }}>
+              <thead>
+                <tr style={{ background: '#111827' }}>
+                  <th style={thStyle}>#</th>
+                  <th style={{ ...thStyle, textAlign: 'left', minWidth: 180 }}>Employee</th>
+                  <th style={{ ...thStyle, textAlign: 'left', minWidth: 110 }}>Department</th>
+                  {LEAVE_TYPES.map(lt => (
+                    <th key={lt.key} style={{ ...thStyle, textAlign: 'center', minWidth: 100 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: lt.color, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ color: lt.color, fontWeight: 700 }}>{lt.short}</span>
+                      </span>
+                    </th>
+                  ))}
+                  <th style={{ ...thStyle, textAlign: 'center', minWidth: 240 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(({ emp, bal }, idx) => {
+                  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+                  const code = emp.employee_code || emp.employee_id || emp.emp_id || `EMP-${(emp._id || '').slice(-6)}`;
+                  const dept = getDeptName(emp);
+                  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+                  return (
+                    <tr key={emp._id || emp.id}
+                      style={{ borderTop: '1px solid #1e293b', background: idx % 2 === 0 ? '#0f172a' : '#0c1322', transition: 'background 0.15s', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#131c31'}
+                      onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#0f172a' : '#0c1322'}
+                      onClick={() => openEmployeeDetail({ emp, bal })}
+                    >
+                      {/* S.No */}
+                      <td style={{ ...tdStyle, color: '#475569', textAlign: 'center', fontWeight: 500 }}>{idx + 1}</td>
+
+                      {/* Employee */}
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{
+                            width: 34, height: 34, borderRadius: 8, background: 'linear-gradient(135deg, #1d4ed8, #7c3aed)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0
+                          }}>{initials}</div>
+                          <div>
+                            <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 13 }}>{name}</div>
+                            <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>{code}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Department */}
+                      <td style={{ ...tdStyle, color: '#94a3b8', fontSize: 12 }}>{dept}</td>
+
+                      {/* Leave columns */}
+                      {LEAVE_TYPES.map(lt => {
+                        const total = getLeaveVal(bal, lt, 'total');
+                        const used = getLeaveVal(bal, lt, 'used');
+                        const remaining = getLeaveVal(bal, lt, 'remaining');
+                        const pct = total > 0 ? (remaining / total) * 100 : 0;
+                        return (
+                          <td key={lt.key} style={{ ...tdStyle, textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+                                <span style={{ fontSize: 15, fontWeight: 700, color: lt.color }}>{remaining}</span>
+                                <span style={{ fontSize: 10, color: '#475569' }}>/ {total}</span>
+                              </div>
+                              {/* Mini progress bar */}
+                              <div style={{ width: 50, height: 3, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: lt.color, borderRadius: 2, transition: 'width 0.4s ease' }} />
+                              </div>
+                              <span style={{ fontSize: 10, color: '#475569' }}>Used: {used}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+
+                      {/* Actions */}
+                      <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'nowrap' }}>
+                          <button onClick={() => { setActionModal({ emp, mode: 'allot' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                            style={{ ...tblBtn, background: '#052e16', border: '1px solid #166534', color: '#4ade80' }}>
+                            + Allocate
+                          </button>
+                          <button onClick={() => { setActionModal({ emp, mode: 'deduct' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                            style={{ ...tblBtn, background: '#450a0a', border: '1px solid #7f1d1d', color: '#f87171' }}>
+                            − Deduct
+                          </button>
+                          <button onClick={() => { openEmployeeDetail({ emp, bal }); setDetailTab('history'); }}
+                            style={{ ...tblBtn, background: '#1e1b4b', border: '1px solid #3730a3', color: '#a5b4fc' }}>
+                            View History
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table footer summary */}
+          <div style={{ padding: '10px 16px', borderTop: '1px solid #1e293b', background: '#111827', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#475569' }}>
+              Showing {filtered.length} of {rows.length} employees
+            </span>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {LEAVE_TYPES.map(lt => {
+                const totalRemaining = filtered.reduce((sum, { bal }) => sum + getLeaveVal(bal, lt, 'remaining'), 0);
+                return (
+                  <span key={lt.key} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: lt.color, display: 'inline-block' }} />
+                    <span style={{ color: '#64748b' }}>{lt.short}:</span>
+                    <span style={{ color: lt.color, fontWeight: 600 }}>{totalRemaining}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 60, color: '#334155' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
+          <p style={{ fontSize: 14 }}>No employees found</p>
+        </div>
+      )}
+
+      {/* ═══ EMPLOYEE DETAIL MODAL ═══ */}
+      {selectedEmp && (
+        <Overlay onClose={() => setSelectedEmp(null)}>
+          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 16, width: '100%', maxWidth: 660, maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+            {/* Header */}
+            <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #1e293b', flexShrink: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{
+                    width: 46, height: 46, borderRadius: 12, background: 'linear-gradient(135deg, #1d4ed8, #7c3aed)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: '#fff'
+                  }}>
+                    {`${selectedEmp.emp.first_name || ''} ${selectedEmp.emp.last_name || ''}`.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>
+                      {`${selectedEmp.emp.first_name || ''} ${selectedEmp.emp.last_name || ''}`.trim()}
+                    </h3>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                      <Tag bg="#172554" color="#60a5fa">{selectedEmp.emp.employee_code || selectedEmp.emp.employee_id || 'N/A'}</Tag>
+                      <Tag bg="#2e1065" color="#a78bfa">{getDeptName(selectedEmp.emp)}</Tag>
+                    </div>
+                  </div>
+                </div>
+                <CloseBtn onClick={() => setSelectedEmp(null)} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 4, marginTop: 14 }}>
+                {[{ id: 'overview', label: 'Leave Balance' }, { id: 'history', label: 'Transaction History' }].map(t => (
+                  <button key={t.id} onClick={() => { setDetailTab(t.id); if (t.id === 'history') loadHistory(selectedEmp.emp._id || selectedEmp.emp.id); }}
+                    style={{
+                      padding: '8px 20px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 0.15s',
+                      background: detailTab === t.id ? '#1d4ed8' : '#1e293b',
+                      color: detailTab === t.id ? '#fff' : '#64748b'
+                    }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1 }}>
+
+              {/* ── OVERVIEW TAB ── */}
+              {detailTab === 'overview' && (
+                <>
+                  {/* Leave balance table inside modal */}
+                  <div style={{ borderRadius: 10, border: '1px solid #1e293b', overflow: 'hidden', marginBottom: 18 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#111827' }}>
+                          <th style={{ ...thStyleInner, textAlign: 'left' }}>Leave Type</th>
+                          <th style={{ ...thStyleInner, textAlign: 'center' }}>Yearly Total</th>
+                          <th style={{ ...thStyleInner, textAlign: 'center' }}>Monthly</th>
+                          <th style={{ ...thStyleInner, textAlign: 'center' }}>Used</th>
+                          <th style={{ ...thStyleInner, textAlign: 'center' }}>Remaining</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {LEAVE_TYPES.map((lt, i) => {
+                          const bal = selectedEmp.bal || {};
+                          const total = parseFloat(bal[`${lt.fieldPrefix}_total`] ?? 0);
+                          const used = parseFloat(bal[`${lt.fieldPrefix}_used`] ?? 0);
+                          const remaining = parseFloat(bal[`${lt.fieldPrefix}_remaining`] ?? 0);
+                          const monthly = (total / 12).toFixed(1);
+                          const pct = total > 0 ? (remaining / total) * 100 : 0;
+
+                          return (
+                            <tr key={lt.key} style={{ borderTop: '1px solid #1e293b', background: i % 2 === 0 ? '#0f172a' : '#0c1322' }}>
+                              <td style={{ padding: '10px 14px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: lt.color, flexShrink: 0 }} />
+                                  <div>
+                                    <span style={{ fontWeight: 600, color: lt.color }}>{lt.short}</span>
+                                    <span style={{ color: '#64748b', marginLeft: 6, fontSize: 11 }}>{lt.label}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ ...tdStyleInner, textAlign: 'center', fontWeight: 600, color: '#e2e8f0' }}>{total}</td>
+                              <td style={{ ...tdStyleInner, textAlign: 'center', color: '#64748b' }}>{monthly}/mo</td>
+                              <td style={{ ...tdStyleInner, textAlign: 'center', color: '#f87171', fontWeight: 600 }}>{used}</td>
+                              <td style={{ ...tdStyleInner, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                                  <span style={{ fontWeight: 700, color: lt.color, fontSize: 15 }}>{remaining}</span>
+                                  <div style={{ width: 50, height: 3, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
+                                    <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: lt.color, borderRadius: 2 }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => { setActionModal({ emp: selectedEmp.emp, mode: 'allot' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                      style={{ ...actionBtn, background: 'linear-gradient(135deg, #166534, #15803d)' }}>+ Allocate Leaves</button>
+                    <button onClick={() => { setActionModal({ emp: selectedEmp.emp, mode: 'deduct' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                      style={{ ...actionBtn, background: 'linear-gradient(135deg, #7f1d1d, #991b1b)' }}>− Deduct Leaves</button>
+                  </div>
+                </>
+              )}
+
+              {/* ── HISTORY TAB ── */}
+              {detailTab === 'history' && (
+                <>
+                  {histLoading ? (
+                    <p style={{ textAlign: 'center', padding: 30, color: '#475569' }}>Loading history...</p>
+                  ) : history.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#334155' }}>
+                      <p style={{ fontSize: 14 }}>No transactions found</p>
+                    </div>
+                  ) : (
+                    <div style={{ borderRadius: 10, border: '1px solid #1e293b', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#111827' }}>
+                            <th style={{ ...thStyleInner, textAlign: 'center', width: 40 }}>#</th>
+                            <th style={{ ...thStyleInner, textAlign: 'left' }}>Type</th>
+                            <th style={{ ...thStyleInner, textAlign: 'left' }}>Leave</th>
+                            <th style={{ ...thStyleInner, textAlign: 'center' }}>Qty</th>
+                            <th style={{ ...thStyleInner, textAlign: 'left' }}>Reason</th>
+                            <th style={{ ...thStyleInner, textAlign: 'left' }}>Date</th>
+                            <th style={{ ...thStyleInner, textAlign: 'left' }}>By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((h, i) => {
+                            const qty = parseFloat(h.quantity ?? h.amount ?? 0);
+                            const isAllot = (h.action || '').toLowerCase().includes('alloc') || qty > 0;
+                            const ltDef = LEAVE_TYPES.find(l => l.key === h.leave_type) || LEAVE_TYPES[0];
+                            return (
+                              <tr key={h._id || i} style={{ borderTop: '1px solid #1e293b', background: i % 2 === 0 ? '#0f172a' : '#0c1322' }}>
+                                <td style={{ ...tdStyleInner, textAlign: 'center', color: '#475569' }}>{i + 1}</td>
+                                <td style={tdStyleInner}>
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                    background: isAllot ? '#052e16' : '#450a0a',
+                                    color: isAllot ? '#4ade80' : '#f87171',
+                                    border: `1px solid ${isAllot ? '#166534' : '#7f1d1d'}`
+                                  }}>
+                                    {isAllot ? '↑ Allocated' : '↓ Deducted'}
+                                  </span>
+                                </td>
+                                <td style={tdStyleInner}>
+                                  <Tag bg={ltDef.bg} color={ltDef.color}>{ltDef.short}</Tag>
+                                </td>
+                                <td style={{ ...tdStyleInner, textAlign: 'center', fontWeight: 700, color: isAllot ? '#4ade80' : '#f87171' }}>
+                                  {isAllot ? '+' : '−'}{Math.abs(qty)}
+                                </td>
+                                <td style={{ ...tdStyleInner, color: '#94a3b8', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {h.reason || h.note || '—'}
+                                </td>
+                                <td style={{ ...tdStyleInner, color: '#475569', fontSize: 11, whiteSpace: 'nowrap' }}>
+                                  {fmtDate(h.created_at || h.timestamp || h.date)}
+                                </td>
+                                <td style={{ ...tdStyleInner, color: '#475569', fontSize: 11 }}>
+                                  {h.performed_by_name || h.created_by_name || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </Overlay>
+      )}
+
+      {/* ═══ ALLOT / DEDUCT MODAL ═══ */}
+      {actionModal && (
+        <Overlay onClose={() => { setActionModal(null); setError(null); }} zIndex={1100}>
+          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 16, padding: 22, width: 440, maxWidth: '95vw' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>
+                {actionModal.mode === 'allot' ? '+ Allocate Leave' : '− Deduct Leave'}
+              </h3>
+              <CloseBtn onClick={() => { setActionModal(null); setError(null); }} />
+            </div>
+
+            {/* Emp info */}
+            <div style={{ background: '#111827', borderRadius: 10, padding: 12, marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg, #1d4ed8, #7c3aed)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff'
+              }}>
+                {`${actionModal.emp.first_name || ''} ${actionModal.emp.last_name || ''}`.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 13 }}>{`${actionModal.emp.first_name || ''} ${actionModal.emp.last_name || ''}`.trim()}</div>
+                <div style={{ fontSize: 11, color: '#475569' }}>{actionModal.emp.employee_code || actionModal.emp.employee_id || ''} · {getDeptName(actionModal.emp)}</div>
+              </div>
+            </div>
+
+            {error && <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', color: '#fca5a5', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{error}</div>}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={lbl}>Select Leave Type</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {LEAVE_TYPES.map(lt => (
+                    <button key={lt.key} onClick={() => setLeaveType(lt.key)}
+                      style={{
+                        padding: '8px 4px', border: `1px solid ${leaveType === lt.key ? lt.border : '#1e293b'}`, borderRadius: 8,
+                        background: leaveType === lt.key ? lt.bg : '#111827',
+                        color: leaveType === lt.key ? lt.color : '#475569',
+                        cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.15s', textAlign: 'center'
+                      }}>
+                      {lt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Quantity (days)</label>
+                <input type="number" min="0.5" step="0.5" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="e.g. 1 or 0.5" style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>Reason <span style={{ color: '#ef4444' }}>*</span></label>
+                <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Enter reason for this action..." rows={3} style={{ ...inp, resize: 'none' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button onClick={handleAction} disabled={actionLoading}
+                  style={{
+                    flex: 1, padding: '12px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, color: '#fff',
+                    background: actionModal.mode === 'allot' ? 'linear-gradient(135deg, #166534, #15803d)' : 'linear-gradient(135deg, #7f1d1d, #991b1b)',
+                    opacity: actionLoading ? 0.5 : 1
+                  }}>
+                  {actionLoading ? 'Processing...' : actionModal.mode === 'allot' ? '+ Allocate Leave' : '− Deduct Leave'}
+                </button>
+                <button onClick={() => { setActionModal(null); setError(null); }}
+                  style={{ flex: 1, padding: '12px', background: '#1e293b', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600, fontSize: 14, color: '#64748b' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Overlay>
+      )}
+    </div>
+  );
+};
+
+// ═══ Shared micro-components ═══
+const Overlay = ({ children, onClose, zIndex = 1000 }) => (
+  <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex, padding: 16 }}>
+    <div onClick={e => e.stopPropagation()}>{children}</div>
+  </div>
+);
+
+const CloseBtn = ({ onClick }) => (
+  <button onClick={onClick}
+    style={{ background: '#1e293b', border: 'none', color: '#64748b', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+);
+
+const Tag = ({ bg, color, children }) => (
+  <span style={{ fontSize: 11, color, background: bg, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>{children}</span>
+);
+
+const Alert = ({ type, text, onClose }) => (
+  <div style={{
+    background: type === 'success' ? '#052e16' : '#450a0a', border: `1px solid ${type === 'success' ? '#166534' : '#7f1d1d'}`,
+    color: type === 'success' ? '#86efac' : '#fca5a5', padding: '10px 14px', borderRadius: 10, marginBottom: 12, fontSize: 13,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  }}>
+    <span>{type === 'success' ? '✓' : '✕'} {text}</span>
+    <span onClick={onClose} style={{ cursor: 'pointer', opacity: 0.6, fontSize: 14 }}>✕</span>
+  </div>
+);
+
+// ═══ Style tokens ═══
+const selStyle = {
+  background: '#0f172a', border: '1px solid #1e293b', color: '#e2e8f0', padding: '8px 28px 8px 10px', borderRadius: 8, fontSize: 13,
+  outline: 'none', cursor: 'pointer', appearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center'
+};
+
+const thStyle = {
+  padding: '12px 14px', fontWeight: 600, fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em',
+  borderBottom: '2px solid #1e293b', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#111827'
+};
+
+const tdStyle = { padding: '10px 14px', verticalAlign: 'middle' };
+
+const thStyleInner = {
+  padding: '10px 12px', fontWeight: 600, fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em',
+  borderBottom: '1px solid #1e293b', whiteSpace: 'nowrap'
+};
+
+const tdStyleInner = { padding: '9px 12px', verticalAlign: 'middle' };
+
+const tblBtn = {
+  padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s'
+};
+
+const actionBtn = { flex: 1, padding: '11px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, color: '#fff' };
+const lbl = { display: 'block', color: '#cbd5e1', fontSize: 13, fontWeight: 600, marginBottom: 6 };
+const inp = { width: '100%', background: '#111827', border: '1px solid #1e293b', color: '#f1f5f9', padding: '10px 12px', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' };
+
+export default PaidLeaveManagement;

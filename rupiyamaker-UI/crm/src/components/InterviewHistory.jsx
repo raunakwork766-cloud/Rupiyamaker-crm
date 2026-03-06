@@ -30,8 +30,8 @@ const InterviewHistory = ({ interviewId, isOpen, onClose, inline = false }) => {
       // Update history data with enhanced processing for new response format
       const processedHistory = historyArray.map((item, index) => {
         const createdAt = new Date(item.created_at);
-        const date = createdAt.toLocaleDateString();
-        const time = createdAt.toLocaleTimeString();
+        const date = createdAt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+        const time = createdAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
         
         return {
           id: item.id || item._id || index,

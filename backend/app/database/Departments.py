@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
 import asyncio
+from app.utils.timezone import get_ist_now
 
 class DepartmentsDB:
     def __init__(self, db=None):
@@ -29,7 +30,7 @@ class DepartmentsDB:
         
     async def create_department(self, department: dict) -> str:
         """Create a new department with timestamps"""
-        department["created_at"] = datetime.now()
+        department["created_at"] = get_ist_now()
         department["updated_at"] = department["created_at"]
         
         # Set parent_id to None if not provided
@@ -106,7 +107,7 @@ class DepartmentsDB:
         if not ObjectId.is_valid(dept_id):
             return False
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
             {"_id": ObjectId(dept_id)},
             {"$set": update_fields}

@@ -604,7 +604,7 @@ export default function EditInterview({
         detail: { interviewId: interview.id, type: 'reschedule', data: rescheduleData }
       }));
 
-      toast.success(`Interview rescheduled successfully to ${new Date(rescheduleDate + 'T' + rescheduleTime).toLocaleDateString()} at ${rescheduleTime}! The table has been updated.`);
+      toast.success(`Interview rescheduled successfully to ${new Date(rescheduleDate + 'T' + rescheduleTime).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} at ${rescheduleTime}! The table has been updated.`);
       
       // Keep the modal open so user can see the updated data
       // Note: The table will be refreshed in the background via the handleSaveInterview function

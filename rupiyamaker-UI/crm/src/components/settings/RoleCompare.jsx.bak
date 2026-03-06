@@ -1,0 +1,553 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+const API_BASE_URL = '/api';
+
+const allPermissions = {
+    'feeds': ['show', 'post', 'all', 'delete'],
+    'Leads CRM': {
+        'Create LEAD': ['show', 'add', 'reassignment_popup'],
+        'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'delete'],
+    },
+    'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
+    'tasks': ['show', 'own', 'junior', 'all', 'delete'],
+    'tickets': ['show', 'own', 'junior', 'all', 'delete'],
+    'warnings': ['show', 'own', 'junior', 'all', 'delete'],
+    'interview': ['show', 'junior', 'all', 'settings', 'delete'],
+    'hrms': ['show'],
+    'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
+    'leaves': ['show', 'own', 'junior', 'all', 'delete'],
+    'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
+    'apps': ['show', 'manage'],
+    'notification': ['show', 'delete', 'send'],
+    'reports': ['show'],
+    'settings': ['show'],
+};
+
+// Build flat module list
+const permissionModules = [];
+Object.entries(allPermissions).forEach(([module, actions]) => {
+    if (typeof actions === 'object' && !Array.isArray(actions)) {
+        Object.entries(actions).forEach(([section, sectionActions]) => {
+            if (Array.isArray(sectionActions)) {
+                permissionModules.push({
+                    label: `${module} - ${section}`,
+                    originalModule: module,
+                    section,
+                    actions: sectionActions,
+                    isNested: true,
+                });
+            }
+        });
+    } else if (Array.isArray(actions)) {
+        permissionModules.push({
+            label: module,
+            originalModule: module,
+            section: null,
+            actions,
+            isNested: false,
+        });
+    }
+});
+
+const checkRolePerm = (role, mod, action) => {
+    if (!role.permissions || !Array.isArray(role.permissions)) return false;
+    if (role.permissions.some(p => p.page === '*')) return true;
+    if (mod.isNested) {
+        const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
+        const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
+        const pageKey = `${dbModule}.${dbSection}`;
+        const perm = role.permissions.find(p => p.page === pageKey);
+        return !!(perm && perm.actions && perm.actions.includes(action));
+    } else {
+        const perm = role.permissions.find(p => p.page === mod.originalModule);
+        return !!(perm && perm.actions && perm.actions.includes(action));
+    }
+};
+
+const getPermissionsCount = (permissions) => {
+    if (!permissions || !Array.isArray(permissions)) return 0;
+    if (permissions.some(p => p.page === '*')) {
+        let total = 0;
+        Object.values(allPermissions).forEach(actions => {
+            if (typeof actions === 'object' && !Array.isArray(actions)) {
+                Object.values(actions).forEach(sa => { if (Array.isArray(sa)) total += sa.length; });
+            } else if (Array.isArray(actions)) {
+                total += actions.length;
+            }
+        });
+        return total;
+    }
+    return permissions.reduce((count, perm) => count + (perm.actions?.length || 0), 0);
+};
+
+export default function RoleCompare() {
+    const navigate = useNavigate();
+    const [roles, setRoles] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [sortKey, setSortKey] = useState('name');
+    const [sortAsc, setSortAsc] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const userData = localStorage.getItem('userData');
+                if (!userData) return;
+                const parsedUser = JSON.parse(userData);
+                const user_id = parsedUser.user_id || parsedUser.id || parsedUser._id;
+                const token = localStorage.getItem('token') || parsedUser.token || '';
+                const authHeaders = {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` })
+                };
+
+                // Try multiple URL formats to handle 307 redirects
+                const roleUrls = [
+                    `${API_BASE_URL}/roles?user_id=${user_id}`,
+                    `${API_BASE_URL}/roles/?user_id=${user_id}`,
+                    `${API_BASE_URL}/roles/`,
+                    `${API_BASE_URL}/roles`,
+                ];
+                let rolesData = null;
+                for (const url of roleUrls) {
+                    try {
+                        const res = await fetch(url, { headers: authHeaders });
+                        if (res.ok) { rolesData = await res.json(); break; }
+                    } catch (_) { /* try next */ }
+                }
+                if (rolesData) setRoles(rolesData);
+
+                const deptsRes = await fetch(`${API_BASE_URL}/departments/?user_id=${user_id}`, { headers: authHeaders });
+                if (deptsRes.ok) setDepartments(await deptsRes.json());
+            } catch (e) {
+                console.error('RoleCompare fetch error:', e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const getDeptName = (id) => departments.find(d => (d.id || d._id) === id)?.name || '-';
+    const getReportNames = (role) => {
+        const ids = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+        const names = ids.map(rid => roles.find(r => (r.id || r._id) === rid)?.name).filter(Boolean);
+        return names.length > 0 ? names.join(', ') : 'Top Level';
+    };
+
+    const sortedRoles = useMemo(() => {
+        let list = roles.filter(r =>
+            !search || r.name.toLowerCase().includes(search.toLowerCase())
+        );
+        list = [...list].sort((a, b) => {
+            let av = '', bv = '';
+            if (sortKey === 'name') { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
+            else if (sortKey === 'dept') { av = getDeptName(a.department_id); bv = getDeptName(b.department_id); }
+            else if (sortKey === 'report') { av = getReportNames(a); bv = getReportNames(b); }
+            else if (sortKey === 'perms') { return sortAsc ? getPermissionsCount(a.permissions) - getPermissionsCount(b.permissions) : getPermissionsCount(b.permissions) - getPermissionsCount(a.permissions); }
+            return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        return list;
+    }, [roles, departments, search, sortKey, sortAsc]);
+
+    const handleSort = (key) => {
+        if (sortKey === key) setSortAsc(p => !p);
+        else { setSortKey(key); setSortAsc(true); }
+    };
+
+    const SortIcon = ({ k }) => (
+        <span className="ml-1 text-xs opacity-60">
+            {sortKey === k ? (sortAsc ? '▲' : '▼') : '⇅'}
+        </span>
+    );
+
+    const handleDownload = () => {
+        const getDeptNameLocal = (id) => departments.find(d => (d.id || d._id) === id)?.name || '-';
+        const getReportNamesLocal = (role) => {
+            const ids = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
+            const names = ids.map(rid => roles.find(r => (r.id || r._id) === rid)?.name).filter(Boolean);
+            return names.length > 0 ? names.join(', ') : 'Top Level';
+        };
+
+        // Build action column headers
+        const actionHeaders = permissionModules.map(mod =>
+            mod.actions.map(a => `<th style="background:#111;color:#aaa;padding:6px 4px;font-size:10px;border:1px solid #222;white-space:nowrap;text-align:center;min-width:46px;">${a}</th>`).join('')
+        ).join('');
+        const moduleHeaders = permissionModules.map((mod, i) =>
+            `<th colspan="${mod.actions.length}" style="background:#0a0a0a;color:#ffd700;padding:10px 8px;font-size:10px;font-weight:700;text-transform:uppercase;${i > 0 ? 'border-left:3px solid #ffd700;' : ''}border-bottom:1px solid #222;text-align:center;white-space:nowrap;">${mod.label}</th>`
+        ).join('');
+
+        const rows = sortedRoles.map((role, ri) => {
+            const superAdmin = role.permissions?.some(p => p.page === '*');
+            const permCount = getPermissionsCount(role.permissions);
+            const cells = permissionModules.map((mod, mi) =>
+                mod.actions.map((action, ai) => {
+                    const has = checkRolePerm(role, mod, action);
+                    return `<td style="text-align:center;padding:8px 4px;${ai === 0 && mi > 0 ? 'border-left:3px solid #1a1400;' : 'border-left:1px solid #111;'}background:${has ? '#001a00' : 'transparent'};">${has ? '<span style="color:#00e676;font-size:14px;font-weight:700;">✓</span>' : '<span style="color:#222;font-size:12px;">·</span>'}</td>`;
+                }).join('')
+            ).join('');
+            return `<tr style="border-bottom:1px solid #1a1a1a;background:${ri % 2 === 0 ? '#000' : '#050505'};">
+                <td style="padding:10px 16px;border-right:2px solid #1a1a1a;background:#050505;min-width:200px;max-width:260px;">
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:${superAdmin ? '#ffd700' : '#fff'};flex-shrink:0;display:inline-block;"></span>
+                        <span style="font-weight:600;color:#fff;font-size:12px;">${role.name}</span>
+                        ${superAdmin ? '<span style="background:#ffd700;color:#000;font-size:8px;font-weight:800;padding:1px 5px;border-radius:4px;">SA</span>' : ''}
+                    </span>
+                </td>
+                <td style="padding:10px 16px;border-right:1px solid #111;white-space:nowrap;">
+                    ${role.department_id ? `<span style="background:#111;border:1px solid #333;color:#ccc;padding:2px 8px;border-radius:4px;font-size:11px;">${getDeptNameLocal(role.department_id)}</span>` : '<span style="color:#444;">-</span>'}
+                </td>
+                <td style="padding:10px 16px;border-right:1px solid #111;white-space:nowrap;color:#aaa;font-size:11px;">${getReportNamesLocal(role)}</td>
+                <td style="padding:10px 16px;border-right:1px solid #111;text-align:center;">
+                    <span style="background:${permCount > 0 ? '#1a2600' : '#111'};color:${permCount > 0 ? '#7fff00' : '#444'};font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;">${permCount}</span>
+                </td>
+                ${cells}
+            </tr>`;
+        }).join('');
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roles & Permissions - ${new Date().toLocaleDateString('en-IN')}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#000;color:#fff;padding:20px;}
+h1{font-size:1.6rem;font-weight:800;margin-bottom:4px;}
+p.sub{color:#555;font-size:0.8rem;margin-bottom:20px;}
+.wrapper{overflow-x:auto;}
+table{border-collapse:collapse;font-size:12px;min-width:max-content;width:100%;}
+thead th{position:sticky;top:0;z-index:10;}
+</style>
+</head>
+<body>
+<h1>📊 Roles &amp; Permissions</h1>
+<p class="sub">Generated on ${new Date().toLocaleString('en-IN')} · ${roles.length} roles · ${permissionModules.length} modules</p>
+<div class="wrapper">
+<table>
+<thead>
+<tr>
+<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:2px solid #333;white-space:nowrap;min-width:200px;">Role Name</th>
+<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:120px;">Department</th>
+<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:120px;">Reports To</th>
+<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:80px;">Perms</th>
+${moduleHeaders}
+</tr>
+<tr>
+<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
+<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
+<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
+<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
+${actionHeaders}
+</tr>
+</thead>
+<tbody>${rows}</tbody>
+</table>
+</div>
+</body>
+</html>`;
+
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Roles_Permissions_${new Date().toISOString().slice(0,10)}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    if (loading) {
+        return (
+            <div style={{ background: '#000', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: '#fff' }}>
+                    <div style={{ width: '40px', height: '40px', border: '3px solid #333', borderTop: '3px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+                    <p>Loading roles...</p>
+                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ background: '#000', height: '100vh', color: '#fff', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{ background: '#0a0a0a', borderBottom: '1px solid #222', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                <button
+                    onClick={() => navigate('/settings')}
+                    style={{ background: 'transparent', border: '2px solid #444', color: '#fff', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', fontSize: '0.85rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.background = '#111'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.background = 'transparent'; }}
+                >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '15px', height: '15px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                </button>
+
+                <div>
+                    <h1 style={{ fontSize: '1.25rem', fontWeight: '800', margin: 0, lineHeight: 1.2 }}>📊 Roles &amp; Permissions</h1>
+                    <p style={{ color: '#666', fontSize: '0.75rem', margin: 0 }}>{roles.length} roles · {permissionModules.length} modules</p>
+                </div>
+
+                <div style={{ flex: 1 }} />
+
+                {/* Search */}
+                <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search roles..."
+                    style={{ background: '#111', border: '1px solid #333', color: '#fff', padding: '7px 12px', borderRadius: '8px', width: '200px', fontSize: '0.83rem', outline: 'none' }}
+                />
+
+                {/* Download Button */}
+                <button
+                    onClick={handleDownload}
+                    style={{ background: '#111', border: '2px solid #ffd700', color: '#ffd700', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontWeight: '700', fontSize: '0.83rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#ffd700'; e.currentTarget.style.color = '#000'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#111'; e.currentTarget.style.color = '#ffd700'; }}
+                    title="Download comparison as HTML"
+                >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '15px', height: '15px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download HTML
+                </button>
+            </div>
+
+            {/* Table — flex:1 fills remaining height, overflow scrolls inside */}
+            <div style={{ flex: 1, overflow: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: 'max-content', width: '100%' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 50 }}>
+                        {/* Row 1: fixed cols (rowSpan=2) + module names (colSpan=n) */}
+                        <tr>
+                            <th rowSpan={2} onClick={() => handleSort('name')} style={thFixed()}>
+                                Role Name <SortIcon k="name" />
+                            </th>
+                            <th rowSpan={2} onClick={() => handleSort('dept')} style={thSticky(1)}>
+                                Department <SortIcon k="dept" />
+                            </th>
+                            <th rowSpan={2} onClick={() => handleSort('report')} style={thSticky(2)}>
+                                Reports To <SortIcon k="report" />
+                            </th>
+                            <th rowSpan={2} onClick={() => handleSort('perms')} style={thSticky(3)}>
+                                Perms <SortIcon k="perms" />
+                            </th>
+                            {permissionModules.map((mod, i) => (
+                                <th key={i} colSpan={mod.actions.length} style={{
+                                    background: '#0a0a0a',
+                                    color: '#ffd700',
+                                    padding: '8px 8px 4px',
+                                    fontWeight: '700',
+                                    fontSize: '10px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    borderLeft: i > 0 ? '3px solid #ffd700' : 'none',
+                                    borderBottom: '1px solid #333',
+                                    whiteSpace: 'nowrap',
+                                    textAlign: 'center',
+                                }}>
+                                    {mod.label}
+                                </th>
+                            ))}
+                        </tr>
+                        {/* Row 2: action names only (fixed cols have rowSpan=2) */}
+                        <tr>
+                            {permissionModules.map((mod, mi) =>
+                                mod.actions.map((action, ai) => (
+                                    <th key={`${mi}-${ai}`} style={{
+                                        background: '#111',
+                                        color: '#aaa',
+                                        padding: '4px 4px 6px',
+                                        fontWeight: '600',
+                                        fontSize: '10px',
+                                        borderLeft: ai === 0 && mi > 0 ? '3px solid #ffd700' : '1px solid #1a1a1a',
+                                        borderBottom: '2px solid #333',
+                                        whiteSpace: 'nowrap',
+                                        textAlign: 'center',
+                                        minWidth: '46px',
+                                    }}>
+                                        {action}
+                                    </th>
+                                ))
+                            )}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sortedRoles.length === 0 && (
+                            <tr>
+                                <td colSpan={4 + permissionModules.reduce((s, m) => s + m.actions.length, 0)}
+                                    style={{ textAlign: 'center', padding: '40px', color: '#555', background: '#000' }}>
+                                    {search ? 'No roles match your search.' : 'No roles found.'}
+                                </td>
+                            </tr>
+                        )}
+                        {sortedRoles.map((role, ri) => {
+                            const isSuperAdmin = role.permissions?.some(p => p.page === '*');
+                            const permCount = getPermissionsCount(role.permissions);
+
+                            return (
+                                <tr key={role._id || role.id}
+                                    style={{ borderBottom: '1px solid #1a1a1a', background: ri % 2 === 0 ? '#000' : '#050505' }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.background = '#0d0d0d';
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = '#0d0d0d');
+                                    }}
+                                    onMouseLeave={e => {
+                                        const bg = ri % 2 === 0 ? '#000' : '#050505';
+                                        e.currentTarget.style.background = bg;
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = ri % 2 === 0 ? '#050505' : '#060606');
+                                    }}
+                                >
+                                    {/* Role Name */}
+                                    <td data-sticky="true" style={{ ...tdFixed(), background: ri % 2 === 0 ? '#050505' : '#060606' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSuperAdmin ? '#ffd700' : '#fff', flexShrink: 0 }}></div>
+                                            <span style={{ fontWeight: '600', color: '#fff', fontSize: '12px' }}>{role.name}</span>
+                                            {isSuperAdmin && (
+                                                <span style={{ background: '#ffd700', color: '#000', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px' }}>SA</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    {/* Department */}
+                                    <td data-sticky="true" style={tdSticky(1, ri % 2 === 0 ? '#050505' : '#060606')}>
+                                        {role.department_id ? (
+                                            <span style={{ background: '#111', border: '1px solid #333', color: '#ccc', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                                {getDeptName(role.department_id)}
+                                            </span>
+                                        ) : <span style={{ color: '#444' }}>-</span>}
+                                    </td>
+                                    {/* Reports To */}
+                                    <td data-sticky="true" style={tdSticky(2, ri % 2 === 0 ? '#050505' : '#060606')}>
+                                        <span style={{ color: '#aaa', fontSize: '11px' }}>{getReportNames(role)}</span>
+                                    </td>
+                                    {/* Perm Count */}
+                                    <td data-sticky="true" style={{ ...tdSticky(3, ri % 2 === 0 ? '#050505' : '#060606'), textAlign: 'center' }}>
+                                        <span style={{ background: permCount > 0 ? '#1a2600' : '#111', color: permCount > 0 ? '#7fff00' : '#444', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                            {permCount}
+                                        </span>
+                                    </td>
+                                    {/* Permission cells */}
+                                    {permissionModules.map((mod, mi) =>
+                                        mod.actions.map((action, ai) => {
+                                            const has = checkRolePerm(role, mod, action);
+                                            return (
+                                                <td key={`${mi}-${ai}`} style={{
+                                                    textAlign: 'center',
+                                                    padding: '8px 4px',
+                                                    borderLeft: ai === 0 && mi > 0 ? '3px solid #1a1400' : '1px solid #111',
+                                                    background: has ? '#001a00' : 'transparent',
+                                                }}>
+                                                    {has ? (
+                                                        <span style={{ color: '#00e676', fontSize: '14px', fontWeight: '700' }}>✓</span>
+                                                    ) : (
+                                                        <span style={{ color: '#222', fontSize: '12px' }}>·</span>
+                                                    )}
+                                                </td>
+                                            );
+                                        })
+                                    )}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+
+// Column left offsets for sticky positioning
+// Col1(RoleName)=200px, Col2(Dept)=120px, Col3(ReportsTo)=120px, Col4(Perms)=80px
+const COL_OFFSETS = [0, 200, 320, 440];
+
+// Style helpers
+const thFixed = () => ({
+    position: 'sticky',
+    left: COL_OFFSETS[0],
+    zIndex: 60,
+    background: '#000',
+    color: '#fff',
+    padding: '12px 16px',
+    fontWeight: '700',
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: '2px solid #333',
+    borderRight: '2px solid #444',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+    cursor: 'pointer',
+    minWidth: '200px',
+    userSelect: 'none',
+});
+
+const thSticky = (colIndex) => ({
+    position: 'sticky',
+    left: COL_OFFSETS[colIndex],
+    zIndex: 60,
+    background: '#000',
+    color: '#fff',
+    padding: '12px 16px',
+    fontWeight: '700',
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: '2px solid #333',
+    borderRight: colIndex === 3 ? '3px solid #333' : '1px solid #222',
+    whiteSpace: 'nowrap',
+    textAlign: colIndex === 3 ? 'center' : 'left',
+    cursor: 'pointer',
+    minWidth: colIndex === 1 || colIndex === 2 ? '120px' : '80px',
+    userSelect: 'none',
+});
+
+const thBase = () => ({
+    background: '#000',
+    color: '#fff',
+    padding: '12px 16px',
+    fontWeight: '700',
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: '2px solid #333',
+    borderRight: '1px solid #222',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+    cursor: 'pointer',
+    minWidth: '120px',
+    userSelect: 'none',
+});
+
+const tdFixed = () => ({
+    position: 'sticky',
+    left: COL_OFFSETS[0],
+    zIndex: 10,
+    padding: '10px 16px',
+    borderRight: '2px solid #333',
+    background: '#050505',
+    minWidth: '200px',
+    maxWidth: '260px',
+});
+
+const tdSticky = (colIndex, rowBg) => ({
+    position: 'sticky',
+    left: COL_OFFSETS[colIndex],
+    zIndex: 10,
+    padding: '10px 16px',
+    borderRight: colIndex === 3 ? '3px solid #333' : '1px solid #222',
+    background: rowBg || '#000',
+    whiteSpace: 'nowrap',
+});
+
+const tdBase = () => ({
+    padding: '10px 16px',
+    borderRight: '1px solid #111',
+    whiteSpace: 'nowrap',
+});

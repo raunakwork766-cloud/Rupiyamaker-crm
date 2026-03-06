@@ -20,7 +20,17 @@ import {
   FileText,
   CheckSquare,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  RotateCcw,
+  FolderPlus,
+  Send,
+  BellRing,
+  Eye,
+  Smartphone,
+  CheckCircle2,
+  Clock,
+  Info
 } from 'lucide-react';
 
 // Import simplified permission system
@@ -130,8 +140,7 @@ const WarningPage = memo(() => {
     warning_type: '',
     issued_to: [], // Changed to array for multi-select
     penalty_amount: '',
-    warning_message: '',
-    warning_action: ''
+    warning_message: ''
   });
   const [selectedDepartmentForAdd, setSelectedDepartmentForAdd] = useState('');
   const [editingWarning, setEditingWarning] = useState(null);
@@ -238,6 +247,22 @@ const WarningPage = memo(() => {
   // Similar warnings state
   const [similarWarnings, setSimilarWarnings] = useState([]);
   const [showingSimilarWarnings, setShowingSimilarWarnings] = useState(false);
+
+  // Mistakes Directory state
+  const [mistakeDirectorySearch, setMistakeDirectorySearch] = useState('');
+  const [createMistakeOpen, setCreateMistakeOpen] = useState(false);
+  const [newMistakeTitle, setNewMistakeTitle] = useState('');
+  const [newMistakeDescription, setNewMistakeDescription] = useState('');
+  const [editMistakeOpen, setEditMistakeOpen] = useState(false);
+  const [editingMistakeType, setEditingMistakeType] = useState(null);
+  const [editMistakeTitle, setEditMistakeTitle] = useState('');
+  const [editMistakeDescription, setEditMistakeDescription] = useState('');
+
+  // Employee App View modal state
+  const [employeeAppViewOpen, setEmployeeAppViewOpen] = useState(false);
+
+  // Waived penalties tracking (local state - maps warning id to waived status)
+  const [waivedPenalties, setWaivedPenalties] = useState({});
 
   // Get current user ID
   const getCurrentUserId = () => {
@@ -562,16 +587,22 @@ const WarningPage = memo(() => {
         const usersList = data || [];
         
         // Map user data to employee format for dropdown
-        const employeesList = usersList.map(user => ({
-          id: user._id,
-          employee_id: user.employee_id,
-          user_id: user._id,
-          name: `${user.first_name} ${user.last_name}`.trim(),
-          email: user.email,
-          designation: user.designation,
-          department_id: user.department_id,
-          department_name: user.department_name || 'Unknown Department'
-        }));
+        const employeesList = usersList
+          .filter(user => 
+            user.employee_status === 'active' || 
+            user.is_active === true || 
+            user.employee_status === undefined
+          )
+          .map(user => ({
+            id: user._id,
+            employee_id: user.employee_id,
+            user_id: user._id,
+            name: `${user.first_name} ${user.last_name}`.trim(),
+            email: user.email,
+            designation: user.designation,
+            department_id: user.department_id,
+            department_name: user.department_name || 'Unknown Department'
+          }));
         
         setEmployees(employeesList);
       } else {
@@ -1109,16 +1140,187 @@ const WarningPage = memo(() => {
     closeAllDropdowns(); // Use the new helper function
   };
 
+  // Waive/Reinstate penalty handlers
+  const handleWaivePenalty = async (warningId) => {
+    if (!window.confirm('Admin Action: Are you sure you want to completely waive off this penalty?')) return;
+    try {
+      const userId = getCurrentUserId();
+      const response = await fetch(`${API_URL}/warnings/${warningId}/waive?user_id=${userId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        // Update local warnings state
+        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: true } : w));
+        setWaivedPenalties(prev => ({ ...prev, [warningId]: true }));
+        showNotification('Penalty successfully waived off!', 'success');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showNotification(err.detail || 'Failed to waive penalty', 'error');
+      }
+    } catch (error) {
+      console.error('Error waiving penalty:', error);
+      showNotification('Error waiving penalty', 'error');
+    }
+  };
+
+  const handleReinstatePenalty = async (warningId) => {
+    if (!window.confirm('Admin Action: Are you sure you want to reinstate this penalty?')) return;
+    try {
+      const userId = getCurrentUserId();
+      const response = await fetch(`${API_URL}/warnings/${warningId}/reinstate?user_id=${userId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        // Update local warnings state
+        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: false } : w));
+        setWaivedPenalties(prev => {
+          const updated = { ...prev };
+          delete updated[warningId];
+          return updated;
+        });
+        showNotification('Penalty successfully reinstated!', 'success');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showNotification(err.detail || 'Failed to reinstate penalty', 'error');
+      }
+    } catch (error) {
+      console.error('Error reinstating penalty:', error);
+      showNotification('Error reinstating penalty', 'error');
+    }
+  };
+
+  // Create Mistake Category
+  const handleCreateMistakeCategory = async () => {
+    if (!newMistakeTitle.trim()) {
+      showNotification('Please enter a mistake title', 'error');
+      return;
+    }
+    try {
+      const userId = getCurrentUserId();
+      const response = await fetch(`${API_URL}/warnings/mistake-types?user_id=${userId}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          value: newMistakeTitle.trim(),
+          label: newMistakeTitle.trim(),
+          description: newMistakeDescription.trim()
+        })
+      });
+      if (response.ok) {
+        showNotification('New Mistake Category Created!', 'success');
+        setCreateMistakeOpen(false);
+        setNewMistakeTitle('');
+        setNewMistakeDescription('');
+        loadMistakeTypes();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        showNotification(errData.detail || 'Error creating mistake category', 'error');
+      }
+    } catch (error) {
+      console.error('Error creating mistake category:', error);
+      showNotification('Error creating mistake category', 'error');
+    }
+  };
+
+  // Edit Mistake Category
+  const handleEditMistakeCategory = async () => {
+    if (!editMistakeTitle.trim()) {
+      showNotification('Please enter a mistake title', 'error');
+      return;
+    }
+    try {
+      const userId = getCurrentUserId();
+      const typeId = editingMistakeType?._id || editingMistakeType?.id;
+      const response = await fetch(`${API_URL}/warnings/mistake-types/${typeId}?user_id=${userId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          value: editMistakeTitle.trim(),
+          label: editMistakeTitle.trim(),
+          description: editMistakeDescription.trim()
+        })
+      });
+      if (response.ok) {
+        showNotification('Mistake Category Updated!', 'success');
+        setEditMistakeOpen(false);
+        setEditingMistakeType(null);
+        loadMistakeTypes();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        showNotification(errData.detail || 'Error updating mistake category', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating mistake category:', error);
+      showNotification('Error updating mistake category', 'error');
+    }
+  };
+
+  // Delete Mistake Category
+  const handleDeleteMistakeCategory = async (mistakeType) => {
+    const typeId = mistakeType?._id || mistakeType?.id;
+    if (!typeId) {
+      showNotification('Cannot delete this category (no ID found)', 'error');
+      return;
+    }
+    if (!window.confirm(`Delete mistake category "${mistakeType.label || mistakeType.value}"? This cannot be undone.`)) return;
+    try {
+      const userId = getCurrentUserId();
+      const response = await fetch(`${API_URL}/warnings/mistake-types/${typeId}?user_id=${userId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        showNotification('Mistake Category Deleted!', 'success');
+        loadMistakeTypes();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        showNotification(errData.detail || 'Error deleting mistake category', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting mistake category:', error);
+      showNotification('Error deleting mistake category', 'error');
+    }
+  };
+
+  // Open edit mistake modal
+  const openEditMistake = (mistakeType) => {
+    setEditingMistakeType(mistakeType);
+    setEditMistakeTitle(mistakeType.label || mistakeType.value || mistakeType);
+    setEditMistakeDescription(mistakeType.description || '');
+    setEditMistakeOpen(true);
+  };
+
+  // Get filtered mistake types for directory
+  const getFilteredMistakeDirectory = () => {
+    if (!mistakeDirectorySearch.trim()) return mistakeTypes;
+    return mistakeTypes.filter(type => {
+      const label = (type.label || type.value || '').toLowerCase();
+      const desc = (type.description || '').toLowerCase();
+      return label.includes(mistakeDirectorySearch.toLowerCase()) || desc.includes(mistakeDirectorySearch.toLowerCase());
+    });
+  };
+
+  // Get warning status display
+  const getWarningStatus = (warning) => {
+    return warning.status || warning.employee_status || 'Pending';
+  };
+
+  // Get employee remark
+  const getEmployeeRemark = (warning) => {
+    return warning.employee_remark || warning.employee_response || '';
+  };
+
   // Handle form submit
   const handleSubmit = async () => {
     try {
       
-      if (!formData.warning_type || !formData.issued_to.length || !formData.penalty_amount || !formData.warning_action) {
+      if (!formData.warning_type || !formData.issued_to.length || !formData.penalty_amount) {
         const missingFields = [];
         if (!formData.warning_type) missingFields.push('Warning Type');
         if (!formData.issued_to.length) missingFields.push('Employee(s)');
         if (!formData.penalty_amount) missingFields.push('Penalty Amount');
-        if (!formData.warning_action) missingFields.push('Warning Action');
         
         const message = `Please fill in all required fields: ${missingFields.join(', ')}`;
         showNotification(message, 'error');
@@ -1133,8 +1335,7 @@ const WarningPage = memo(() => {
           warning_type: formData.warning_type,
           issued_to: employeeId, // Individual employee ID
           penalty_amount: parseFloat(formData.penalty_amount),
-          warning_message: formData.warning_message || '',
-          warning_action: formData.warning_action
+          warning_message: formData.warning_message || ''
         };
         
         console.log('🚀 WarningPage - Creating warning for employee:', employeeId, 'Data:', warningData);
@@ -1164,8 +1365,7 @@ const WarningPage = memo(() => {
           warning_type: '',
           issued_to: [],
           penalty_amount: '',
-          warning_message: '',
-          warning_action: ''
+          warning_message: ''
         });
         setSelectedDepartmentForAdd('');
         setSelectedEmployees([]);
@@ -1217,8 +1417,7 @@ const WarningPage = memo(() => {
             warning_type: '',
             issued_to: '',
             penalty_amount: '',
-            warning_message: '',
-            warning_action: ''
+            warning_message: ''
           });
           loadWarnings();
         } else {
@@ -1400,8 +1599,7 @@ const WarningPage = memo(() => {
       warning_type: '',
       issued_to: '',
       penalty_amount: '',
-      warning_message: '',
-      warning_action: ''
+      warning_message: ''
     });
     setSelectedDepartmentForAdd('');
     setSimilarWarnings([]);
@@ -1420,8 +1618,7 @@ const WarningPage = memo(() => {
       warning_type: warning.warning_type,
       issued_to: warning.issued_to,
       penalty_amount: warning.penalty_amount.toString(),
-      warning_message: warning.warning_message || '',
-      warning_action: warning.warning_action || ''
+      warning_message: warning.warning_message || ''
     });
     setEditDialogOpen(true);
   };
@@ -1433,7 +1630,8 @@ const WarningPage = memo(() => {
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'Asia/Kolkata'
       });
     } catch (error) {
       return 'Invalid Date';
@@ -1538,152 +1736,76 @@ const WarningPage = memo(() => {
       <div className="relative z-10 flex h-screen">
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 py-8 space-y-8">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                {/* <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <AlertTriangle className="w-6 h-6" /> Warning Management
-                </h1> */}
-                {/* <p className="text-gray-300 mt-1">Manage employee warnings and track compliance</p> */}
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {permissions.can_add && (
-                  <button
-                    className="bg-[#03b0f5] hover:bg-red-700 text-white px-4 py-2 rounded flex items-center gap-2"
-                    onClick={openAddDialog}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Issue Warning
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Stats Cards - Commented Out */}
-            {/* <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-              <div className="p-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg">
-                <div className="flex justify-between items-center">
-                  <AlertTriangle className="w-6 h-6 text-white" />
-                  <span className="text-xl font-bold text-white">{stats.total_warnings || 0}</span>
-                </div>
-                <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">Total Warnings</p>
-              </div>
-              <div className="p-4 rounded-xl bg-gradient-to-r from-green-600 to-green-700 shadow-lg">
-                <div className="flex justify-between items-center">
-                  <Users className="w-6 h-6 text-white" />
-                  <span className="text-xl font-bold text-white">{stats.total_employees || 0}</span>
-                </div>
-                <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">Employees Warned</p>
-              </div>
-              <div className="p-4 rounded-xl bg-gradient-to-r from-yellow-600 to-yellow-700 shadow-lg">
-                <div className="flex justify-between items-center">
-                  <DollarSign className="w-6 h-6 text-white" />
-                  <span className="text-xl font-bold text-white">₹{Number(stats.total_penalty || 0).toLocaleString('en-IN')}</span>
-                </div>
-                <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">Total Penalty</p>
-              </div>
-              <div className="p-4 rounded-xl bg-gradient-to-r from-red-600 to-red-700 shadow-lg">
-                <div className="flex justify-between items-center">
-                  <TrendingUp className="w-6 h-6 text-white" />
-                  <span className="text-xl font-bold text-white">₹{Number(stats.avg_penalty || 0).toLocaleString('en-IN')}</span>
-                </div>
-                <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">Avg Penalty</p>
-              </div>
-            </div> */}
-
-            {/* Main Content */}
-            <div className="bg-black rounded-xl shadow-lg">
-              {/* Tab Navigation - Based on Permissions */}
-              <div className="flex flex-wrap items-center gap-3 px-7 mt-4 mb-6">
-                {/* Super Admin: Show All Warnings + Warnings Ranking */}
+            {/* Header with Tabs & Action Button */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+              {/* Tab Navigation */}
+              <div className="flex p-1 bg-gray-800/60 rounded-lg w-fit">
                 {isSuperAdmin() ? (
                   <>
                     <button
                       onClick={() => setSelectedTab(0)}
-                      className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${selectedTab === 0
-                          ? "bg-[#03b0f5] text-white"
-                          : "bg-white text-[#03b0f5] hover:bg-blue-50"}
-                      `}
-                      style={{
-                        minWidth: 144,
-                        justifyContent: "center",
-                        fontSize: "1.18rem",
-                      }}
+                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
                     >
-                      <AlertTriangle className="w-4 h-4" />
-                      All Warnings
+                      Warnings Log
                     </button>
                     <button
                       onClick={() => setSelectedTab(1)}
-                      className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${selectedTab === 1
-                          ? "bg-[#03b0f5] text-white"
-                          : "bg-white text-[#03b0f5] hover:bg-blue-50"}
-                      `}
-                      style={{
-                        minWidth: 144,
-                        justifyContent: "center",
-                        fontSize: "1.18rem",
-                      }}
+                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
                     >
-                      <BarChart3 className="w-4 h-4" />
-                      Warnings Ranking
+                      Mistakes Directory
                     </button>
+
                   </>
                 ) : isManager() ? (
-                  /* Users with junior permissions: Team Warnings + My Warnings */
                   <>
                     <button
                       onClick={() => setSelectedTab(0)}
-                      className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${selectedTab === 0
-                          ? "bg-[#03b0f5] text-white"
-                          : "bg-white text-[#03b0f5] hover:bg-blue-50"}
-                      `}
-                      style={{
-                        minWidth: 144,
-                        justifyContent: "center",
-                        fontSize: "1.18rem",
-                      }}
+                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
                     >
-                      <Users className="w-4 h-4" />
                       Team Warnings
                     </button>
                     <button
                       onClick={() => setSelectedTab(1)}
-                      className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${selectedTab === 1
-                          ? "bg-[#03b0f5] text-white"
-                          : "bg-white text-[#03b0f5] hover:bg-blue-50"}
-                      `}
-                      style={{
-                        minWidth: 144,
-                        justifyContent: "center",
-                        fontSize: "1.18rem",
-                      }}
+                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
                     >
-                      <User className="w-4 h-4" />
                       My Warnings
                     </button>
                   </>
                 ) : (
-                  /* Users with only own permission or no specific permissions: Only My Warnings */
                   <button
                     onClick={() => setSelectedTab(0)}
-                    className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow
-                      ${selectedTab === 0
-                        ? "bg-[#03b0f5] text-white"
-                        : "bg-white text-[#03b0f5]"}
-                    `}
-                    style={{
-                      minWidth: 144,
-                      justifyContent: "center",
-                      fontSize: "1.18rem",
-                    }}
+                    className="px-5 py-2.5 text-sm font-bold rounded-md bg-[#03b0f5] text-white shadow-sm"
                   >
-                    <User className="w-4 h-4" />
                     My Warnings
                   </button>
                 )}
               </div>
 
+              {/* Contextual Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                {/* Show Issue Warning button on warnings tabs */}
+                {(isSuperAdmin() ? selectedTab === 0 : true) && permissions.can_add && (
+                  <button
+                    className="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
+                    onClick={openAddDialog}
+                  >
+                    <Plus className="w-4 h-4" /> Issue New Warning
+                  </button>
+                )}
+                {/* Show Create Mistake Category button when on Mistakes Directory tab */}
+                {isSuperAdmin() && selectedTab === 1 && (
+                  <button
+                    className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
+                    onClick={() => setCreateMistakeOpen(true)}
+                  >
+                    <FolderPlus className="w-4 h-4" /> Create Mistake Category
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="bg-black rounded-xl shadow-lg border border-gray-800 overflow-hidden flex-1 flex flex-col">
               {/* Tab Content */}
               <div className="p-6">
                 {loading ? (
@@ -1698,363 +1820,233 @@ const WarningPage = memo(() => {
                     {/* Super Admin Tabs */}
                     {isSuperAdmin() ? (
                       <>
-                        {/* Tab 0: All Warnings */}
+                        {/* Tab 0: Warnings Log */}
                         {selectedTab === 0 && (
                           <div>
-                            {/* Search and Filter Row */}
-                            <div className="flex items-center justify-between gap-4 mb-6">
-                              <div className="flex items-center gap-3">
-                                {/* Select Button / Selection Controls */}
-                                {(() => {
-                                  console.log('🔍 Warnings Delete Button Check (Tab 0):', {
-                                    'permissions': permissions,
-                                    'permissions.can_delete': permissions?.can_delete,
-                                    'isSuperAdmin': isSuperAdmin(),
-                                    'showCheckboxes': showCheckboxes,
-                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
-                                  });
-                                  return null;
-                                })()}
-                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
-                                  <button
-                                    onClick={handleShowCheckboxes}
-                                    className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                                  >
-                                    Select
+                            {/* Search and Filter Bar */}
+                            <div className="p-4 border-b border-gray-800 bg-gray-900/50 rounded-t-lg flex flex-wrap gap-4 items-center mb-4">
+                              <div className="relative flex-1 max-w-md">
+                                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                                <input
+                                  type="text"
+                                  placeholder="Search employee or mistake..."
+                                  value={searchTerm}
+                                  onChange={(e) => setSearchTerm(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-800 text-gray-300 border border-gray-700 rounded-lg outline-none focus:border-[#03b0f5] transition"
+                                />
+                                {searchTerm && (
+                                  <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-gray-300">
+                                    <X className="w-4 h-4" />
                                   </button>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {/* Select/Delete Controls */}
+                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
+                                  <button onClick={handleShowCheckboxes} className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition">Select</button>
                                 ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
-                                  <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-blue-500 mr-2 cursor-pointer"
-                                        checked={selectAll}
-                                        onChange={handleSelectAll}
-                                        style={{ width: 18, height: 18 }}
-                                      />
-                                      Select All
+                                  <div className="flex items-center gap-3 bg-gray-800 rounded-lg p-2">
+                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold text-sm">
+                                      <input type="checkbox" className="accent-blue-500 mr-2" checked={selectAll} onChange={handleSelectAll} style={{ width: 16, height: 16 }} />
+                                      All
                                     </label>
-                                    <span className="text-white font-semibold">
-                                      {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                                    </span>
-                                    <button
-                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                      onClick={handleDeleteSelected}
-                                      disabled={selectedRows.length === 0}
-                                    >
-                                      Delete ({selectedRows.length})
-                                    </button>
-                                    <button
-                                      className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleCancelSelection}
-                                    >
-                                      Cancel
-                                    </button>
+                                    <span className="text-gray-300 text-sm">{selectedRows.length} selected</span>
+                                    <button className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete</button>
+                                    <button className="px-3 py-1 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700" onClick={handleCancelSelection}>Cancel</button>
                                   </div>
                                 ) : null}
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
                                 <button
-                                  className={`px-4 py-2 rounded hover:bg-gray-700 transition flex items-center gap-2 ${
-                                    Object.values(filters).some(f => f && f !== '') 
-                                      ? 'bg-[#03b0f5] text-white' 
-                                      : 'bg-gray-600 text-white'
-                                  }`}
+                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${Object.values(filters).some(f => f && f !== '') ? 'bg-[#03b0f5] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                                   onClick={() => setFilterDialogOpen(true)}
                                 >
-                                  <Filter className="w-4 h-4" />
-                                  More Filters
-                                  {Object.values(filters).some(f => f && f !== '') && (
-                                    <span className="bg-white text-[#03b0f5] px-2 py-1 rounded-full text-xs font-bold">
-                                      Active
-                                    </span>
-                                  )}
+                                  <Filter className="w-4 h-4" /> Filters
+                                  {Object.values(filters).some(f => f && f !== '') && <span className="bg-white text-[#03b0f5] px-1.5 py-0.5 rounded-full text-[10px] font-bold">On</span>}
                                 </button>
-                                
-                                <div className="relative w-[350px]">
-                                  <input
-                                    type="text"
-                                    placeholder="Search by employee, type, department..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full py-3 pl-12 pr-4 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-600 focus:outline-none focus:border-[#03b0f5] focus:ring-1 focus:ring-[#03b0f5] text-sm placeholder-gray-500"
-                                  />
-                                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <Search className="w-5 h-5 text-gray-500" />
-                                  </div>
-                                  {searchTerm && (
-                                    <button
-                                      onClick={() => setSearchTerm('')}
-                                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-300"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </div>
                               </div>
                             </div>
 
                             {/* Warnings Table */}
                             <div className="relative">
-                              {/* Horizontal scroll buttons - exactly from LeadCRM.jsx */}
                               {canScrollLeft && (
-                                <button
-                                  onClick={() => scrollMainTable('left')}
-                                  className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll left"
-                                >
-                                  <ChevronLeft className="w-9 h-9" />
+                                <button onClick={() => scrollMainTable('left')} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 text-white p-3 rounded-full shadow-lg opacity-20 hover:opacity-100 transition-all" style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}>
+                                  <ChevronLeft className="w-7 h-7" />
                                 </button>
                               )}
-                              
                               {canScrollRight && (
-                                <button
-                                  onClick={() => scrollMainTable('right')}
-                                  className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll right"
-                                >
-                                  <ChevronRight className="w-9 h-9" />
+                                <button onClick={() => scrollMainTable('right')} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 text-white p-3 rounded-full shadow-lg opacity-20 hover:opacity-100 transition-all" style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}>
+                                  <ChevronRight className="w-7 h-7" />
                                 </button>
                               )}
                               
-                              <div 
-                                ref={tableScrollRef}
-                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto px-2"
-                                onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}
-                              >
-                              <table className="min-w-[616px] w-full rounded-xl overflow-hidden">
-                                <thead className="bg-white sticky top-0 z-10 sticky-header">
-                                  <tr>
-                                    {showCheckboxes && (
-                                      <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectAll}
-                                          onChange={handleSelectAll}
-                                          className="rounded border-gray-300"
-                                        />
-                                      </th>
-                                    )}
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">#</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">DATE & TIME</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">ISSUED BY</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">DEPARTMENT</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">ISSUED TO</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">MISTAKE TYPE</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">WARNING ACTION</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">PENALTY AMOUNT</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {filteredWarnings.length === 0 ? (
+                              <div ref={tableScrollRef} className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto" onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}>
+                                <table className="min-w-full w-full text-left text-sm whitespace-nowrap">
+                                  <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
                                     <tr>
-                                      <td colSpan={showCheckboxes ? "9" : "8"} className="text-center py-10 text-gray-500">
-                                        No warnings found
-                                      </td>
+                                      {showCheckboxes && (
+                                        <th className="py-3 px-4 w-10">
+                                          <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-gray-600" />
+                                        </th>
+                                      )}
+                                      <th className="py-3 px-4 w-12 text-center font-semibold">#</th>
+                                      <th className="py-3 px-4 font-semibold">Date</th>
+                                      <th className="py-3 px-4 font-semibold">Employee</th>
+                                      <th className="py-3 px-4 font-semibold">Issued By</th>
+                                      <th className="py-3 px-4 font-semibold">Mistake Type</th>
+                                      <th className="py-3 px-4 font-semibold">Penalty</th>
+                                      <th className="py-3 px-4 font-semibold min-w-[200px]">Employee Remark</th>
+                                      <th className="py-3 px-4 text-center font-semibold">Status</th>
                                     </tr>
-                                  ) : (
-                                    filteredWarnings.map((warning, index) => (
-                                      <tr
-                                        key={warning.id}
-                                        className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"
-                                        onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}
-                                      >
-                                        {showCheckboxes && (
-                                          <td className="text-left py-3 px-3 text-md whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedRows.includes(warning.id)}
-                                              onChange={() => handleRowSelect(warning.id)}
-                                              className="rounded border-gray-300"
-                                            />
-                                          </td>
-                                        )}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white font-semibold">
-                                          {(page * rowsPerPage) + index + 1}
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-gray-300">
-                                          {new Date(warning.issued_date).toLocaleDateString('en-GB', { 
-                                            day: '2-digit', 
-                                            month: 'short', 
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            hour12: true
-                                          }).replace(',', '')}
-                                        </td>
-                                        {/* ISSUED BY */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-md">
-                                              {warning.issued_by_name?.charAt(0)?.toUpperCase() || 'U'}
-                                            </div>
-                                            <div className="text-white font-semibold">{warning.issued_by_name || 'Unknown'}</div>
-                                          </div>
-                                        </td>
-                                        {/* DEPARTMENT */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-gray-300">
-                                          {warning.department_name || 'N/A'}
-                                        </td>
-                                        {/* ISSUED TO */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-md">
-                                              {warning.issued_to_name?.charAt(0)?.toUpperCase() || 'U'}
-                                            </div>
-                                            <div className="text-white font-semibold">{warning.issued_to_name || 'N/A'}</div>
-                                          </div>
-                                        </td>
-                                        {/* MISTAKE TYPE */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <span className={`px-2 py-1 rounded text-sm font-medium text-white ${getWarningTypeBadge(warning.warning_type)}`}>
-                                            {warning.warning_type || 'N/A'}
-                                          </span>
-                                        </td>
-                                        {/* WARNING ACTION */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <span className="px-2 py-1 rounded text-sm font-medium text-white bg-blue-600">
-                                            {warning.warning_action || 'No Action'}
-                                          </span>
-                                        </td>
-                                        {/* PENALTY AMOUNT */}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-red-400 font-semibold">
-                                          <span>₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}</span>
-                                        </td>
-                                      </tr>
-                                    ))
-                                  )}
-                                </tbody>
-                              </table>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-800">
+                                    {filteredWarnings.length === 0 ? (
+                                      <tr><td colSpan={showCheckboxes ? "9" : "8"} className="text-center py-10 text-gray-500">No warnings found</td></tr>
+                                    ) : (
+                                      filteredWarnings.map((warning, index) => {
+                                        const isWaived = waivedPenalties[warning.id] || warning.is_waived;
+                                        const status = getWarningStatus(warning);
+                                        const empRemark = getEmployeeRemark(warning);
+                                        const isPending = status === 'Pending';
+                                        
+                                        return (
+                                          <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                            {showCheckboxes && (
+                                              <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                                <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
+                                              </td>
+                                            )}
+                                            <td className="py-3 px-4 text-center text-gray-500 font-medium text-xs">{(page * rowsPerPage) + index + 1}</td>
+                                            <td className="py-3 px-4 text-gray-400 text-xs">
+                                              {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+                                            </td>
+                                            <td className="py-3 px-4 font-bold text-white">{warning.issued_to_name || 'N/A'}</td>
+                                            <td className="py-3 px-4 text-gray-400 text-xs">
+                                              <div className="flex items-center gap-1.5">
+                                                <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-400">{(warning.issued_by_name || 'U').charAt(0)}</div>
+                                                {warning.issued_by_name || 'Unknown'}
+                                              </div>
+                                            </td>
+                                            <td className="py-3 px-4 text-gray-300 font-medium">{warning.warning_type || 'N/A'}</td>
+                                            <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                              {warning.penalty_amount && Number(warning.penalty_amount) > 0 ? (
+                                                isWaived ? (
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="flex flex-col">
+                                                      <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                      <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                    </div>
+                                                    {(permissions?.can_edit || isSuperAdmin()) && (
+                                                      <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
+                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-between gap-2 group/penalty">
+                                                    <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                    {(permissions?.can_edit || isSuperAdmin()) && (
+                                                      <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
+                                                        <Edit className="w-3.5 h-3.5" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                )
+                                              ) : (
+                                                <span className="font-medium text-gray-500">-</span>
+                                              )}
+                                            </td>
+                                            <td className="py-3 px-4 text-gray-400 text-xs max-w-[200px] truncate" title={empRemark || warning.warning_message || ''}>
+                                              {isPending ? (
+                                                <span className="italic text-gray-500">Waiting for response...</span>
+                                              ) : (
+                                                empRemark || warning.warning_message || '-'
+                                              )}
+                                            </td>
+                                            <td className="py-3 px-4 text-center">
+                                              {isPending ? (
+                                                <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
+                                              ) : (
+                                                <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
                               </div>
                             </div>
 
                             {/* Pagination */}
                             {totalWarnings > rowsPerPage && (
-                              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-700">
-                                <div className="text-gray-400">
-                                  Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings
-                                </div>
+                              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-800">
+                                <div className="text-gray-500 text-sm">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings}</div>
                                 <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => setPage(Math.max(0, page - 1))}
-                                    disabled={page === 0}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Previous
-                                  </button>
-                                  <span className="px-3 py-2 text-white">
-                                    Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}
-                                  </span>
-                                  <button
-                                    onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))}
-                                    disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Next
-                                  </button>
+                                  <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-600 transition">Previous</button>
+                                  <span className="px-3 py-1.5 text-gray-400 text-sm">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
+                                  <button onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-600 transition">Next</button>
                                 </div>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Tab 1: Warnings Ranking */}
+                        {/* Tab 1: Mistakes Directory */}
                         {selectedTab === 1 && (
-                          <div>
-                            <div className="flex items-center justify-between mb-6">
-                              <h2 className="text-xl font-bold text-white">Employee Rankings</h2>
-                              <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-2 rounded-lg border border-gray-600">
-                                Top {rankings.length} employees by warnings
+                          <div className="p-6">
+                            <div className="flex justify-between items-center mb-6">
+                              <div>
+                                <h2 className="text-lg font-bold text-white">Master Mistakes Directory</h2>
+                                <p className="text-sm text-gray-400">Manage all standardized mistake categories used for issuing warnings.</p>
+                              </div>
+                              <div className="relative w-80">
+                                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                                <input
+                                  type="text"
+                                  placeholder="Search directory..."
+                                  value={mistakeDirectorySearch}
+                                  onChange={(e) => setMistakeDirectorySearch(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-800 text-gray-300 border border-gray-700 rounded-lg outline-none focus:border-[#03b0f5]"
+                                />
                               </div>
                             </div>
-                            {/* Rankings Table */}
-                            <div className="relative">
-                              {/* Horizontal scroll buttons for Rankings table */}
-                              {rankingCanScrollLeft && (
-                                <button
-                                  onClick={() => scrollRankingTable('left')}
-                                  className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll left"
-                                >
-                                  <ChevronLeft className="w-9 h-9" />
-                                </button>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto max-h-[calc(100vh-300px)] pr-2">
+                              {getFilteredMistakeDirectory().length === 0 ? (
+                                <div className="col-span-3 text-center py-10 text-gray-500">No mistake categories found</div>
+                              ) : (
+                                getFilteredMistakeDirectory().map((type, index) => {
+                                  const title = type.label || type.value || type;
+                                  const description = type.description || 'No description provided for this mistake category.';
+                                  return (
+                                    <div key={type.value || index} className="border border-gray-700 rounded-lg p-4 hover:border-[#03b0f5] hover:shadow-lg transition-all group bg-gray-900/50">
+                                      <h3 className="font-bold text-white text-base mb-2">{title}</h3>
+                                      <p className="text-sm text-gray-400 line-clamp-2">{description}</p>
+                                      <div className="mt-4 pt-3 border-t border-gray-800 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          onClick={() => openEditMistake(type)}
+                                          className="text-xs font-medium text-[#03b0f5] hover:underline"
+                                        >
+                                          Edit
+                                        </button>
+                                        {(type._id || type.id) && (
+                                          <button
+                                            onClick={() => handleDeleteMistakeCategory(type)}
+                                            className="text-xs font-medium text-red-400 hover:underline"
+                                          >
+                                            Delete
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
                               )}
-                              
-                              {rankingCanScrollRight && (
-                                <button
-                                  onClick={() => scrollRankingTable('right')}
-                                  className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll right"
-                                >
-                                  <ChevronRight className="w-9 h-9" />
-                                </button>
-                              )}
-                              
-                              <div 
-                                ref={rankingTableScrollRef}
-                                className="overflow-auto max-h-[600px]"
-                                onScroll={() => updateScrollButtons(rankingTableScrollRef, setRankingCanScrollLeft, setRankingCanScrollRight)}
-                              >
-                              <table className="w-full">
-                                <thead className="bg-white sticky top-0 z-5">
-                                  <tr>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap">RANK</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap">EMPLOYEE</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap">DEPARTMENT</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap">TOTAL WARNINGS</th>
-                                    <th className="py-1 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap">TOTAL PENALTY</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rankings.map((ranking, index) => (
-                                    <tr
-                                      key={ranking.employee_id}
-                                      className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"
-                                    >
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                        <div className="flex items-center gap-2">
-                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-md ${ranking.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-600'}`}>
-                                            {ranking.rank}
-                                          </div>
-                                          {ranking.rank <= 3 && <span className="text-lg">🏆</span>}
-                                        </div>
-                                      </td>
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center text-white font-bold text-md">
-                                            {ranking.employee_name?.charAt(0)?.toUpperCase() || 'U'}
-                                          </div>
-                                          <span className="text-white">{ranking.employee_name}</span>
-                                        </div>
-                                      </td>
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white">{ranking.department_name}</td>
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                        <span className={`px-2 py-1 rounded text-sm font-medium ${ranking.total_warnings > 5 ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'}`}>
-                                          {ranking.total_warnings}
-                                        </span>
-                                      </td>
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap text-red-400 font-semibold">₹{Number(ranking.total_penalty).toLocaleString('en-IN')}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              </div>
                             </div>
                           </div>
                         )}
+
+
                       </>
                     ) : isManager() ? (
                       /* Manager/Junior Permission Tabs */
@@ -2069,16 +2061,7 @@ const WarningPage = memo(() => {
                               
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
-                                {(() => {
-                                  console.log('🔍 Warnings Delete Button Check (Junior Tab):', {
-                                    'permissions': permissions,
-                                    'permissions.can_delete': permissions?.can_delete,
-                                    'isSuperAdmin': isSuperAdmin(),
-                                    'showCheckboxes': showCheckboxes,
-                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
-                                  });
-                                  return null;
-                                })()}
+
                                 {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
@@ -2188,99 +2171,101 @@ const WarningPage = memo(() => {
                               
                               <div 
                                 ref={tableScrollRef}
-                                className="overflow-auto max-h-[600px] sticky-table-container"
+                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
                                 onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}
                               >
                               <table className="w-full">
-                                <thead className="bg-white sticky top-0 z-10 sticky-header">
+                                <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
                                   <tr>
                                     {showCheckboxes && (
-                                      <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectAll}
-                                          onChange={handleSelectAll}
-                                          className="rounded border-gray-300"
-                                        />
+                                      <th className="py-3 px-4 w-10">
+                                        <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-gray-600" />
                                       </th>
                                     )}
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">#</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">DATE & TIME</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">EMPLOYEE</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">WARNING TYPE</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">PENALTY</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-center whitespace-nowrap sticky-th">ACTIONS</th>
+                                    <th className="py-3 px-4 w-12 text-center font-semibold">#</th>
+                                    <th className="py-3 px-4 font-semibold">Date</th>
+                                    <th className="py-3 px-4 font-semibold">Employee</th>
+                                    <th className="py-3 px-4 font-semibold">Issued By</th>
+                                    <th className="py-3 px-4 font-semibold">Mistake Type</th>
+                                    <th className="py-3 px-4 font-semibold">Penalty</th>
+                                    <th className="py-3 px-4 font-semibold min-w-[200px]">Employee Remark</th>
+                                    <th className="py-3 px-4 text-center font-semibold">Status</th>
                                   </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-gray-800">
                                   {filteredWarnings.length === 0 ? (
-                                    <tr>
-                                      <td colSpan={showCheckboxes ? "7" : "6"} className="text-center py-10 text-gray-500">
-                                        No warnings found
-                                      </td>
-                                    </tr>
+                                    <tr><td colSpan={showCheckboxes ? "9" : "8"} className="text-center py-10 text-gray-500">No warnings found</td></tr>
                                   ) : (
-                                    filteredWarnings.map((warning, index) => (
-                                      <tr
-                                        key={warning.id}
-                                        className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"
-                                        onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}
-                                      >
-                                        {showCheckboxes && (
-                                          <td className="text-left py-3 px-3 text-md whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedRows.includes(warning.id)}
-                                              onChange={() => handleRowSelect(warning.id)}
-                                              className="rounded border-gray-300"
-                                            />
+                                    filteredWarnings.map((warning, index) => {
+                                      const isWaived = waivedPenalties[warning.id] || warning.is_waived;
+                                      const status = getWarningStatus(warning);
+                                      const empRemark = getEmployeeRemark(warning);
+                                      const isPending = status === 'Pending';
+                                      
+                                      return (
+                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                          {showCheckboxes && (
+                                            <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                              <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
+                                            </td>
+                                          )}
+                                          <td className="py-3 px-4 text-center text-gray-500 font-medium text-xs">{(page * rowsPerPage) + index + 1}</td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs">
+                                            {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                                           </td>
-                                        )}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white font-semibold">
-                                          {(page * rowsPerPage) + index + 1}
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-gray-300">
-                                          {new Date(warning.issued_date).toLocaleDateString('en-GB', { 
-                                            day: '2-digit', 
-                                            month: 'short', 
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            hour12: true
-                                          }).replace(',', '')}
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-md">
-                                              {warning.issued_to_name?.charAt(0)?.toUpperCase() || 'U'}
+                                          <td className="py-3 px-4 font-bold text-white">{warning.issued_to_name || 'N/A'}</td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                              <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-400">{(warning.issued_by_name || 'U').charAt(0)}</div>
+                                              {warning.issued_by_name || 'Unknown'}
                                             </div>
-                                            <div>
-                                              <div className="text-white font-semibold">{warning.issued_to_name}</div>
-                                              <div className="text-gray-400 text-sm">{warning.department_name}</div>
-                                            </div>
-                                          </div>
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <span className={`px-2 py-1 rounded text-sm font-medium text-white ${getWarningTypeBadge(warning.warning_type)}`}>
-                                            {warning.warning_type}
-                                          </span>
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-red-400 font-semibold">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</td>
-                                        <td className="text-center py-3 px-3 whitespace-nowrap">
-                                          <div className="flex items-center justify-center gap-2">
-                                           
-                                            {permissions.can_delete && (
-                                              <button
-                                                onClick={(e) => { e.stopPropagation(); setWarningToDelete(warning); setDeleteDialogOpen(true); }}
-                                                className="p-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                              </button>
+                                          </td>
+                                          <td className="py-3 px-4 text-gray-300 font-medium">{warning.warning_type || 'N/A'}</td>
+                                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                            {warning.penalty_amount && Number(warning.penalty_amount) > 0 ? (
+                                              isWaived ? (
+                                                <div className="flex items-center gap-2">
+                                                  <div className="flex flex-col">
+                                                    <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                  </div>
+                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
+                                                      <RotateCcw className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-center justify-between gap-2 group/penalty">
+                                                  <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
+                                                      <Edit className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )
+                                            ) : (
+                                              <span className="font-medium text-gray-500">-</span>
                                             )}
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    ))
+                                          </td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs max-w-[200px] truncate" title={empRemark || warning.warning_message || ''}>
+                                            {isPending ? (
+                                              <span className="italic text-gray-500">Waiting for response...</span>
+                                            ) : (
+                                              empRemark || warning.warning_message || '-'
+                                            )}
+                                          </td>
+                                          <td className="py-3 px-4 text-center">
+                                            {isPending ? (
+                                              <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
+                                            ) : (
+                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
                                   )}
                                 </tbody>
                               </table>
@@ -2327,16 +2312,7 @@ const WarningPage = memo(() => {
                               
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
-                                {(() => {
-                                  console.log('🔍 Warnings Delete Button Check (My Warnings Tab):', {
-                                    'permissions': permissions,
-                                    'permissions.can_delete': permissions?.can_delete,
-                                    'isSuperAdmin': isSuperAdmin(),
-                                    'showCheckboxes': showCheckboxes,
-                                    'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
-                                  });
-                                  return null;
-                                })()}
+
                                 {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
@@ -2429,75 +2405,99 @@ const WarningPage = memo(() => {
                               
                               <div 
                                 ref={myWarningsTableScrollRef}
-                                className="overflow-auto max-h-[600px] sticky-table-container"
+                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
                                 onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}
                               >
                               <table className="w-full">
-                                <thead className="bg-white sticky top-0 z-10 sticky-header">
+                                <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
                                   <tr>
                                     {showCheckboxes && (
-                                      <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectAll}
-                                          onChange={handleSelectAll}
-                                          className="rounded border-gray-300"
-                                        />
+                                      <th className="py-3 px-4 w-10">
+                                        <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-gray-600" />
                                       </th>
                                     )}
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">#</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">DATE & TIME</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">WARNING TYPE</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">PENALTY</th>
-                                    <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">ISSUED BY</th>
+                                    <th className="py-3 px-4 w-12 text-center font-semibold">#</th>
+                                    <th className="py-3 px-4 font-semibold">Date</th>
+                                    <th className="py-3 px-4 font-semibold">Mistake Type</th>
+                                    <th className="py-3 px-4 font-semibold">Penalty</th>
+                                    <th className="py-3 px-4 font-semibold">Issued By</th>
+                                    <th className="py-3 px-4 font-semibold min-w-[200px]">Employee Remark</th>
+                                    <th className="py-3 px-4 text-center font-semibold">Status</th>
                                   </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-gray-800">
                                   {filteredWarnings.length === 0 ? (
-                                    <tr>
-                                      <td colSpan={showCheckboxes ? "6" : "5"} className="text-center py-10 text-gray-500">
-                                        No warnings found
-                                      </td>
-                                    </tr>
+                                    <tr><td colSpan={showCheckboxes ? "8" : "7"} className="text-center py-10 text-gray-500">No warnings found</td></tr>
                                   ) : (
-                                    filteredWarnings.map((warning, index) => (
-                                      <tr
-                                        key={warning.id}
-                                        className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"
-                                        onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}
-                                      >
-                                        {showCheckboxes && (
-                                          <td className="text-left py-3 px-3 text-md whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedRows.includes(warning.id)}
-                                              onChange={() => handleRowSelect(warning.id)}
-                                              className="rounded border-gray-300"
-                                            />
+                                    filteredWarnings.map((warning, index) => {
+                                      const isWaived = waivedPenalties[warning.id] || warning.is_waived;
+                                      const status = getWarningStatus(warning);
+                                      const empRemark = getEmployeeRemark(warning);
+                                      const isPending = status === 'Pending';
+                                      
+                                      return (
+                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                          {showCheckboxes && (
+                                            <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                              <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
+                                            </td>
+                                          )}
+                                          <td className="py-3 px-4 text-center text-gray-500 font-medium text-xs">{(page * rowsPerPage) + index + 1}</td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs">
+                                            {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                                           </td>
-                                        )}
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white font-semibold">
-                                          {(page * rowsPerPage) + index + 1}
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-gray-300">
-                                          {new Date(warning.issued_date).toLocaleDateString('en-GB', { 
-                                            day: '2-digit', 
-                                            month: 'short', 
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            hour12: true
-                                          }).replace(',', '')}
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                          <span className={`px-2 py-1 rounded text-sm font-medium text-white ${getWarningTypeBadge(warning.warning_type)}`}>
-                                            {warning.warning_type}
-                                          </span>
-                                        </td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-red-400 font-semibold">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</td>
-                                        <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white">{warning.issued_by_name}</td>
-                                      </tr>
-                                    ))
+                                          <td className="py-3 px-4 text-gray-300 font-medium">{warning.warning_type || 'N/A'}</td>
+                                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                            {warning.penalty_amount && Number(warning.penalty_amount) > 0 ? (
+                                              isWaived ? (
+                                                <div className="flex items-center gap-2">
+                                                  <div className="flex flex-col">
+                                                    <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                  </div>
+                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
+                                                      <RotateCcw className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-center justify-between gap-2 group/penalty">
+                                                  <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
+                                                      <Edit className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )
+                                            ) : (
+                                              <span className="font-medium text-gray-500">-</span>
+                                            )}
+                                          </td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                              <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-400">{(warning.issued_by_name || 'U').charAt(0)}</div>
+                                              {warning.issued_by_name || 'Unknown'}
+                                            </div>
+                                          </td>
+                                          <td className="py-3 px-4 text-gray-400 text-xs max-w-[200px] truncate" title={empRemark || warning.warning_message || ''}>
+                                            {isPending ? (
+                                              <span className="italic text-gray-500">Waiting for response...</span>
+                                            ) : (
+                                              empRemark || warning.warning_message || '-'
+                                            )}
+                                          </td>
+                                          <td className="py-3 px-4 text-center">
+                                            {isPending ? (
+                                              <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
+                                            ) : (
+                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
                                   )}
                                 </tbody>
                               </table>
@@ -2544,16 +2544,7 @@ const WarningPage = memo(() => {
                           
                           <div className="flex items-center gap-3">
                             {/* Select Button / Selection Controls */}
-                            {(() => {
-                              console.log('🔍 Warnings Delete Button Check (Own Warnings Only):', {
-                                'permissions': permissions,
-                                'permissions.can_delete': permissions?.can_delete,
-                                'isSuperAdmin': isSuperAdmin(),
-                                'showCheckboxes': showCheckboxes,
-                                'should_show_button': (permissions?.can_delete || isSuperAdmin()) && !showCheckboxes
-                              });
-                              return null;
-                            })()}
+
                             {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
                               <button
                                 onClick={handleShowCheckboxes}
@@ -2646,75 +2637,99 @@ const WarningPage = memo(() => {
                           
                           <div 
                             ref={myWarningsTableScrollRef}
-                            className="overflow-auto max-h-[600px] sticky-table-container"
+                            className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
                             onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}
                           >
                           <table className="w-full">
-                            <thead className="bg-white sticky top-0 z-10 sticky-header">
+                            <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
                               <tr>
                                 {showCheckboxes && (
-                                  <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectAll}
-                                      onChange={handleSelectAll}
-                                      className="rounded border-gray-300"
-                                    />
+                                  <th className="py-3 px-4 w-10">
+                                    <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-gray-600" />
                                   </th>
                                 )}
-                                <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">#</th>
-                                <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">DATE & TIME</th>
-                                <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">WARNING TYPE</th>
-                                <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">PENALTY</th>
-                                <th className="py-3 px-3 text-lg font-extrabold text-[#03b0f5] text-left whitespace-nowrap sticky-th">ISSUED BY</th>
+                                <th className="py-3 px-4 w-12 text-center font-semibold">#</th>
+                                <th className="py-3 px-4 font-semibold">Date</th>
+                                <th className="py-3 px-4 font-semibold">Mistake Type</th>
+                                <th className="py-3 px-4 font-semibold">Penalty</th>
+                                <th className="py-3 px-4 font-semibold">Issued By</th>
+                                <th className="py-3 px-4 font-semibold min-w-[200px]">Employee Remark</th>
+                                <th className="py-3 px-4 text-center font-semibold">Status</th>
                               </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-gray-800">
                               {filteredWarnings.length === 0 ? (
-                                <tr>
-                                  <td colSpan={showCheckboxes ? "6" : "5"} className="text-center py-10 text-gray-500">
-                                    No warnings found
-                                  </td>
-                                </tr>
+                                <tr><td colSpan={showCheckboxes ? "8" : "7"} className="text-center py-10 text-gray-500">No warnings found</td></tr>
                               ) : (
-                                filteredWarnings.map((warning, index) => (
-                                  <tr
-                                    key={warning.id}
-                                    className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer"
-                                    onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}
-                                  >
-                                    {showCheckboxes && (
-                                      <td className="text-left py-3 px-3 text-md whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedRows.includes(warning.id)}
-                                          onChange={() => handleRowSelect(warning.id)}
-                                          className="rounded border-gray-300"
-                                        />
+                                filteredWarnings.map((warning, index) => {
+                                  const isWaived = waivedPenalties[warning.id] || warning.is_waived;
+                                  const status = getWarningStatus(warning);
+                                  const empRemark = getEmployeeRemark(warning);
+                                  const isPending = status === 'Pending';
+                                  
+                                  return (
+                                    <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                      {showCheckboxes && (
+                                        <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                          <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
+                                        </td>
+                                      )}
+                                      <td className="py-3 px-4 text-center text-gray-500 font-medium text-xs">{(page * rowsPerPage) + index + 1}</td>
+                                      <td className="py-3 px-4 text-gray-400 text-xs">
+                                        {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                                       </td>
-                                    )}
-                                    <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white font-semibold">
-                                      {(page * rowsPerPage) + index + 1}
-                                    </td>
-                                    <td className="text-left py-3 px-3 text-md whitespace-nowrap text-gray-300">
-                                      {new Date(warning.issued_date).toLocaleDateString('en-GB', { 
-                                        day: '2-digit', 
-                                        month: 'short', 
-                                        year: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: true
-                                      }).replace(',', '')}
-                                    </td>
-                                    <td className="text-left py-3 px-3 text-md whitespace-nowrap">
-                                      <span className={`px-2 py-1 rounded text-sm font-medium text-white ${getWarningTypeBadge(warning.warning_type)}`}>
-                                        {warning.warning_type}
-                                      </span>
-                                    </td>
-                                    <td className="text-left py-3 px-3 text-md whitespace-nowrap text-red-400 font-semibold">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</td>
-                                    <td className="text-left py-3 px-3 text-md whitespace-nowrap text-white">{warning.issued_by_name}</td>
-                                  </tr>
-                                ))
+                                      <td className="py-3 px-4 text-gray-300 font-medium">{warning.warning_type || 'N/A'}</td>
+                                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                        {warning.penalty_amount && Number(warning.penalty_amount) > 0 ? (
+                                          isWaived ? (
+                                            <div className="flex items-center gap-2">
+                                              <div className="flex flex-col">
+                                                <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                                <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                              </div>
+                                              {(permissions?.can_edit || isSuperAdmin()) && (
+                                                <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
+                                                  <RotateCcw className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-between gap-2 group/penalty">
+                                              <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
+                                              {(permissions?.can_edit || isSuperAdmin()) && (
+                                                <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
+                                                  <Edit className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          )
+                                        ) : (
+                                          <span className="font-medium text-gray-500">-</span>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 text-gray-400 text-xs">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-400">{(warning.issued_by_name || 'U').charAt(0)}</div>
+                                          {warning.issued_by_name || 'Unknown'}
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-gray-400 text-xs max-w-[200px] truncate" title={empRemark || warning.warning_message || ''}>
+                                        {isPending ? (
+                                          <span className="italic text-gray-500">Waiting for response...</span>
+                                        ) : (
+                                          empRemark || warning.warning_message || '-'
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        {isPending ? (
+                                          <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
+                                        ) : (
+                                          <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })
                               )}
                             </tbody>
                           </table>
@@ -2761,100 +2776,100 @@ const WarningPage = memo(() => {
       {/* Modals will be added here */}
       {/* Add Warning Modal - UI matching CreateTask popup */}
       {addDialogOpen && (
-        <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-4xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
-            <button
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-              onClick={() => {
-                setAddDialogOpen(false);
-                setFormData({
-                  warning_type: '',
-                  issued_to: '',
-                  penalty_amount: '',
-                  warning_message: '',
-                  warning_action: ''
-                });
-                setSelectedDepartmentForAdd('');
-                setSelectedFiles([]);
-                setSimilarWarnings([]);
-                setShowingSimilarWarnings(false);
-                resetAllSearchStates();
-              }}
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden relative border border-gray-700">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80 shrink-0">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Send className="w-5 h-5 text-red-400" /> Issue New Warning
+              </h2>
+              <button
+                onClick={() => {
+                  setAddDialogOpen(false);
+                  setFormData({
+                    warning_type: '',
+                    issued_to: '',
+                    penalty_amount: '',
+                    warning_message: ''
+                  });
+                  setSelectedDepartmentForAdd('');
+                  setSelectedFiles([]);
+                  setSimilarWarnings([]);
+                  setShowingSimilarWarnings(false);
+                  resetAllSearchStates();
+                }}
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5">
                 {/* Date & Time and Issued By Row */}
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <label className="block font-bold text-gray-700 mb-1">
-                      Date & Time
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                      value={new Date().toLocaleDateString('en-GB', { 
-                        day: '2-digit', 
-                        month: 'short', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                      }).replace(',', '')}
-                      readOnly
-                    />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300">Issue Date <span className="text-red-500">*</span></label>
+                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                      <Calendar className="w-4 h-4 text-gray-500 absolute left-3" />
+                      <input
+                        type="text"
+                        className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                        value={new Date().toLocaleDateString('en-GB', { 
+                          day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata'
+                        })}
+                        readOnly
+                      />
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <label className="block font-bold text-gray-700 mb-1">
-                      Issued By
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                      value={getCurrentUserFullName()}
-                      readOnly
-                    />
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300">Issued By <span className="text-red-500">*</span></label>
+                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                      <User className="w-4 h-4 text-gray-500 absolute left-3" />
+                      <input
+                        type="text"
+                        className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                        value={getCurrentUserFullName()}
+                        readOnly
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Department and Issued To Row */}
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="relative flex-1" ref={departmentDropdownRef}>
-                    <label className="block font-bold text-gray-700 mb-1">Department</label>
+                <div className="bg-cyan-900/10 border border-cyan-900/30 p-4 rounded-xl space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="relative" ref={departmentDropdownRef}>
+                    <label className="text-sm font-semibold text-gray-300">Department <span className="text-red-500">*</span></label>
                     <div 
-                      className="w-full px-3 py-2 border border-cyan-400 rounded bg-white cursor-pointer flex justify-between items-center"
+                      className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 cursor-pointer flex justify-between items-center hover:border-cyan-500/50 transition-colors mt-1.5"
                       onClick={() => toggleDropdown('department')}
                     >
-                      <span className={selectedDepartmentName ? 'text-black' : 'text-gray-500'}>
+                      <span className={selectedDepartmentName ? 'text-gray-200' : 'text-gray-500'}>
                         {selectedDepartmentName || 'Select Departments'}
                       </span>
-                      <svg className={`w-4 h-4 transition-transform ${showDepartmentDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform ${showDepartmentDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                     
                     {showDepartmentDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                        <div className="p-2">
-                          <div className="relative">
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
+                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg">
+                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                          <div className="relative flex items-center">
+                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
                             <input
                               type="text"
                               placeholder="Search departments..."
                               value={departmentSearchTerm}
                               onChange={(e) => setDepartmentSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-black"
+                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
                               autoFocus
                             />
                           </div>
                         </div>
                         <div className="max-h-48 overflow-y-auto">
                           <div
-                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-black"
+                            className="px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300"
                             onClick={() => {
                               setSelectedDepartmentForAdd('');
                               setSelectedDepartmentName('All Departments');
@@ -2869,7 +2884,7 @@ const WarningPage = memo(() => {
                             .map((dept) => (
                               <div
                                 key={dept.id}
-                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-black"
+                                className="px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300"
                                 onClick={() => {
                                   setSelectedDepartmentForAdd(dept.id);
                                   setSelectedDepartmentName(dept.name);
@@ -2888,12 +2903,11 @@ const WarningPage = memo(() => {
                     )}
                   </div>
 
-                  <div className="relative flex-1" ref={employeeDropdownRef}>
-                    <label className="block font-bold text-gray-700 mb-1">
-                      Issued To (Select multiple employees) <span className="text-red-500">*</span>
+                  <div className="relative" ref={employeeDropdownRef}>
+                    <label className="text-sm font-semibold text-gray-300">
+                      Issued To <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex flex-wrap items-center gap-2 border border-cyan-400 rounded-md bg-white p-1 pr-2 min-h-[42px]">
-                      {/* Display all selected employees as pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 border border-gray-600 rounded-lg bg-gray-800 p-1.5 min-h-[42px] cursor-text mt-1.5">
                       {selectedEmployeeNames.length > 0 ? (
                         selectedEmployeeNames.map((emp) => {
                           const initials = emp.name.split(' ')
@@ -2904,29 +2918,23 @@ const WarningPage = memo(() => {
                           return (
                             <div
                               key={emp.id}
-                              className="bg-blue-100 text-blue-800 py-1 px-3 rounded-md flex items-center"
+                              className="bg-gray-700 border border-gray-600 text-gray-200 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium"
                             >
-                              {/* Profile icon with initials */}
-                              <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-2 text-xs flex-shrink-0">
-                                {initials}
-                              </div>
-                              <span>{emp.name}</span>
+                              {emp.name}
                               <button
                                 type="button"
-                                className="ml-2 text-blue-500 hover:text-blue-700"
+                                className="hover:text-red-400 transition-colors"
                                 onClick={() => handleRemoveEmployee(emp.id)}
                               >
-                                ×
+                                <X className="w-3 h-3" />
                               </button>
                             </div>
                           );
                         })
-                      ) : (
-                        <span className="text-gray-500 py-1 px-2">Select the Employees</span>
-                      )}
+                      ) : null}
                       <button
                         type="button"
-                        className="text-blue-600 font-medium hover:text-blue-800 ml-auto"
+                        className="text-cyan-400 font-medium hover:text-cyan-300 text-sm ml-auto"
                         onClick={() => toggleDropdown('employee')}
                       >
                         {selectedEmployeeNames.length > 0 ? '+ Add more' : '+ Add employees'}
@@ -2934,36 +2942,30 @@ const WarningPage = memo(() => {
                     </div>
                     
                     {showEmployeeDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                        <div className="p-3 bg-white bg-opacity-90 rounded-t-md">
-                          <div className="relative">
-                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                              </svg>
-                            </div>
+                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg">
+                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                          <div className="relative flex items-center">
+                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
                             <input
                               type="text"
                               placeholder="Search employees..."
                               value={employeeSearchTerm}
                               onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-2 border border-cyan-400 rounded text-black font-bold focus:outline-none focus:border-blue-500"
+                              className="w-full pl-9 pr-8 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
                               autoFocus
                             />
                             {employeeSearchTerm && (
                               <button
-                                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                                className="absolute right-3 text-gray-400 hover:text-white"
                                 onClick={() => setEmployeeSearchTerm("")}
                                 type="button"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                </svg>
+                                <X className="w-4 h-4" />
                               </button>
                             )}
                           </div>
                         </div>
-                        <div className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white bg-opacity-90">
+                        <div className="max-h-60 overflow-y-auto divide-y divide-gray-700">
                           {getFilteredEmployees()
                             .filter(emp => 
                               emp.name && emp.name.toLowerCase().includes(employeeSearchTerm.toLowerCase())
@@ -2981,24 +2983,22 @@ const WarningPage = memo(() => {
                               return (
                                 <div
                                   key={employeeId}
-                                  className={`p-3 border-b last:border-b-0 cursor-pointer text-black transition hover:bg-gray-100 flex items-center ${
-                                    isSelected ? 'bg-blue-50' : ''
+                                  className={`p-3 cursor-pointer text-gray-300 transition hover:bg-gray-700 flex items-center ${
+                                    isSelected ? 'bg-gray-700/50' : ''
                                   }`}
                                   onClick={() => handleEmployeeSelect(emp)}
                                 >
-                                  {/* Profile icon with initials */}
-                                  <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 flex-shrink-0 text-sm font-medium">
+                                  <div className="w-8 h-8 rounded-full bg-cyan-600 text-white flex items-center justify-center mr-3 flex-shrink-0 text-xs font-medium">
                                     {initials}
                                   </div>
                                   <div className="flex flex-col flex-1">
-                                    <span className="font-medium text-sm">{displayName}</span>
-                                    <span className="text-xs text-gray-600">
+                                    <span className="font-medium text-sm text-gray-200">{displayName}</span>
+                                    <span className="text-xs text-gray-500">
                                       {emp.department_name || emp.department || 'Unknown Department'}
                                     </span>
                                   </div>
-                                  {/* Selection indicator */}
                                   <div className={`w-5 h-5 border rounded ${
-                                    isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
+                                    isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-gray-500'
                                   } flex items-center justify-center`}>
                                     {isSelected && (
                                       <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -3019,43 +3019,42 @@ const WarningPage = memo(() => {
                     )}
                   </div>
                 </div>
+                </div>
 
-                {/* Mistake Type and Warning Action Row */}
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="relative flex-1" ref={warningTypeDropdownRef}>
-                    <label className="block font-bold text-gray-700 mb-1">
-                      Mistake Type <span className="text-red-500">*</span>
+                {/* Mistake Type */}
+                <div>
+                  <div className="relative" ref={warningTypeDropdownRef}>
+                    <label className="text-sm font-semibold text-gray-300 flex justify-between items-center">
+                      <span>Mistake Type / Category <span className="text-red-500">*</span></span>
                     </label>
                     <div 
-                      className="w-full px-3 py-2 border border-cyan-400 rounded bg-white cursor-pointer flex justify-between items-center"
+                      className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 cursor-pointer flex justify-between items-center hover:border-cyan-500/50 transition-colors mt-1.5"
                       onClick={() => toggleDropdown('warningType')}
                     >
-                      <span className={selectedWarningTypeName ? 'text-black' : 'text-gray-500'}>
-                        {selectedWarningTypeName || 'Select Mistake Type'}
+                      <span className={selectedWarningTypeName ? 'text-gray-200 text-sm font-medium' : 'text-gray-500 text-sm'}>
+                        {selectedWarningTypeName || 'Search and select the specific mistake...'}
                       </span>
-                      <svg className={`w-4 h-4 transition-transform ${showWarningTypeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform ${showWarningTypeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                     
                     {showWarningTypeDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                        <div className="p-2">
-                          <div className="relative">
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
+                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden">
+                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                          <div className="relative flex items-center">
+                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
                             <input
                               type="text"
-                              placeholder="Search mistake types..."
+                              placeholder="Search directory..."
                               value={warningTypeSearchTerm}
                               onChange={(e) => setWarningTypeSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-black"
+                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
                               autoFocus
                             />
                           </div>
                         </div>
-                        <div className="max-h-48 overflow-y-auto">
+                        <div className="max-h-56 overflow-y-auto divide-y divide-gray-700/50">
                           {mistakeTypes
                             .filter(type => 
                               (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
@@ -3063,84 +3062,24 @@ const WarningPage = memo(() => {
                             .map((type) => (
                               <div
                                 key={type.value}
-                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-black"
+                                className="p-3 hover:bg-gray-700 cursor-pointer transition-colors"
                                 onClick={() => {
-                                  console.log('Selected warning type:', type.value);
                                   handleFormChange('warning_type', type.value);
                                   setSelectedWarningTypeName(type.label || type.value);
                                   setWarningTypeSearchTerm('');
                                   setShowWarningTypeDropdown(false);
                                 }}
                               >
-                                {type.label || type.value}
+                                <h4 className="text-sm font-bold text-gray-200">{type.label || type.value}</h4>
+                                {type.description && (
+                                  <p className="text-xs text-gray-500 mt-0.5">{type.description}</p>
+                                )}
                               </div>
                             ))}
                           {mistakeTypes.filter(type => 
                             (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
                           ).length === 0 && warningTypeSearchTerm && (
-                            <div className="px-4 py-2 text-gray-500">No mistake types found</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative flex-1" ref={warningActionDropdownRef}>
-                    <label className="block font-bold text-gray-700 mb-1">
-                      Warning Action <span className="text-red-500">*</span>
-                    </label>
-                    <div 
-                      className="w-full px-3 py-2 border border-cyan-400 rounded bg-white cursor-pointer flex justify-between items-center"
-                      onClick={() => toggleDropdown('warningAction')}
-                    >
-                      <span className={selectedWarningActionName ? 'text-black' : 'text-gray-500'}>
-                        {selectedWarningActionName || 'Select Warning Action'}
-                      </span>
-                      <svg className={`w-4 h-4 transition-transform ${showWarningActionDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                      </svg>
-                    </div>
-                    
-                    {showWarningActionDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                        <div className="p-2">
-                          <div className="relative">
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                            <input
-                              type="text"
-                              placeholder="Search warning actions..."
-                              value={warningActionSearchTerm}
-                              onChange={(e) => setWarningActionSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-black"
-                              autoFocus
-                            />
-                          </div>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto">
-                          {warningActions
-                            .filter(action => 
-                              (action.label || action.value || '').toLowerCase().includes(warningActionSearchTerm.toLowerCase())
-                            )
-                            .map((action) => (
-                              <div
-                                key={action.value}
-                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-black"
-                                onClick={() => {
-                                  handleFormChange('warning_action', action.value);
-                                  setSelectedWarningActionName(action.label || action.value);
-                                  setWarningActionSearchTerm('');
-                                  setShowWarningActionDropdown(false);
-                                }}
-                              >
-                                {action.label || action.value}
-                              </div>
-                            ))}
-                          {warningActions.filter(action => 
-                            (action.label || action.value || '').toLowerCase().includes(warningActionSearchTerm.toLowerCase())
-                          ).length === 0 && warningActionSearchTerm && (
-                            <div className="px-4 py-2 text-gray-500">No warning actions found</div>
+                            <div className="p-3 text-gray-500 text-center">No mistake types found</div>
                           )}
                         </div>
                       </div>
@@ -3149,27 +3088,29 @@ const WarningPage = memo(() => {
                 </div>
 
                 {/* Penalty Amount */}
-                <div className="mt-4">
-                  <label className="block font-bold text-gray-700 mb-1">Penalty Amount</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₹</span>
-                    <input
-                      type="text"
-                      value={formData.penalty_amount}
-                      onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                      placeholder="Enter penalty amount"
-                    />
+                <div className="w-full md:w-1/2 md:pr-2.5">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300">Penalty Amount (₹)</label>
+                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden mt-1.5">
+                      <span className="px-3 py-3 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
+                      <input
+                        type="text"
+                        value={formData.penalty_amount}
+                        onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
+                        className="w-full text-sm text-gray-200 outline-none px-3 py-3 bg-transparent font-medium"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Attachments Section */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Attachments</label>
+                  <label className="text-sm font-semibold text-gray-300 mb-2 block">Attachments</label>
                   <button
                     type="button"
                     onClick={() => document.getElementById('fileInput').click()}
-                    className="bg-blue-500 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-600 transition"
+                    className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 transition border border-gray-600"
                   >
                     <FileText className="w-4 h-4" />
                     Photo/PDF
@@ -3186,15 +3127,14 @@ const WarningPage = memo(() => {
                     className="hidden"
                   />
                   
-                  {/* File List */}
                   {selectedFiles.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {selectedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded border">
+                        <div key={index} className="flex items-center justify-between bg-gray-800 p-3 rounded-lg border border-gray-700">
                           <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-700">{file.name}</span>
-                            <span className="text-xs text-green-600">Ready to upload</span>
+                            <span className="text-sm font-medium text-gray-300">{file.name}</span>
+                            <span className="text-xs text-green-400">Ready</span>
                             <span className="text-xs text-gray-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
                           </div>
                           <button
@@ -3202,7 +3142,7 @@ const WarningPage = memo(() => {
                             onClick={() => {
                               setSelectedFiles(prev => prev.filter((_, i) => i !== index));
                             }}
-                            className="text-red-500 hover:text-red-700"
+                            className="text-red-400 hover:text-red-300"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -3213,212 +3153,122 @@ const WarningPage = memo(() => {
                 </div>
 
                 {/* Warning Message */}
-                <div className="mt-4">
-                  <label className="block font-bold text-gray-700 mb-1">Warning Message</label>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Warning Details & Expected Change <span className="text-red-500">*</span></label>
                   <textarea
                     value={formData.warning_message}
                     onChange={(e) => handleFormChange('warning_message', e.target.value)}
                     rows={4}
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none"
-                    placeholder="Enter warning message..."
+                    className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
+                    placeholder="Explain the exact incident and what improvement you expect..."
                   />
                 </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-4 mt-6">
-                  <button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
-                  >
-                    Issue Warning
-                  </button>
-                </div>
               </form>
+            </div>
 
-              {/* Enhanced Similar Warnings Section */}
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddDialogOpen(false);
+                  setFormData({ warning_type: '', issued_to: '', penalty_amount: '', warning_message: '' });
+                  setSelectedDepartmentForAdd('');
+                  setSelectedFiles([]);
+                  setSimilarWarnings([]);
+                  setShowingSimilarWarnings(false);
+                  resetAllSearchStates();
+                }}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-all flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" /> Send Warning
+              </button>
+            </div>
+
+              {/* Smart Insights Panel - Same Mistake Repeated */}
               {showingSimilarWarnings && similarWarnings.length > 0 && (
-                <div className="mt-8 border-t pt-6">
-                  {/* Enhanced Alert Header */}
-                  <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className="h-6 w-6 text-orange-600" />
-                      <div>
-                        <h3 className="font-bold text-gray-800">
-                          {formData.warning_type && selectedEmployees.length > 0 
-                            ? `Similar "${formData.warning_type}" Warnings Found`
-                            : 'Previous Warnings Found'
-                          }
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {formData.warning_type && selectedEmployees.length > 0 
-                            ? `Showing all employees who have received "${formData.warning_type}" warnings`
-                            : `Showing previous warnings for selected employee(s)`
-                          }
-                        </p>
+                <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-5 mt-1 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-red-700/30 pb-3 gap-2">
+                    <div className="flex items-center gap-2.5 text-red-400">
+                      <div className="p-1.5 bg-red-900/40 rounded-md">
+                        <AlertTriangle className="w-5 h-5 text-red-400" />
                       </div>
+                      <h3 className="font-bold text-base">Same Mistake Repeated</h3>
                     </div>
-                    <div className="bg-blue-100 px-3 py-1 rounded-full">
-                      <span className="text-sm font-medium text-blue-800">
-                        {similarWarnings.length} warning{similarWarnings.length !== 1 ? 's' : ''} found
-                      </span>
+                    <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
+                      {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
+                    </span>
+                  </div>
+
+                  {/* Stats Row */}
+                  <div className="flex items-center gap-4 mb-6 bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-sm">
+                    <div className="flex-1 text-center border-r border-gray-700">
+                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wide">Total Penalty Given</p>
+                      <p className="text-xl font-black text-red-400">
+                        ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <div className="flex-1 text-center">
+                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wide">Total Waived Off</p>
+                      <p className="text-xl font-black text-green-400">
+                        ₹{similarWarnings.filter(w => w.is_waived || waivedPenalties[w.id]).reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Statistics Section */}
-                  {formData.warning_type && selectedEmployees.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-orange-600">
-                          {[...new Set(similarWarnings.map(w => w.issued_to_name))].length}
+                  {/* Vertical Timeline */}
+                  <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-800/50">
+                    {similarWarnings
+                      .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
+                      .map((warning, index) => (
+                      <div key={warning.id || index} className="relative flex gap-4 items-start">
+                        <div className="w-8 h-8 rounded-full bg-gray-800 border border-red-700/50 flex items-center justify-center shrink-0 z-10 text-red-400 shadow-sm">
+                          <span className="text-xs font-bold">{similarWarnings.length - index}</span>
                         </div>
-                        <div className="text-sm text-gray-600">Affected Employees</div>
-                      </div>
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-red-600">
-                          ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
-                        </div>
-                        <div className="text-sm text-gray-600">Total Penalties</div>
-                      </div>
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-purple-600">
-                          ₹{Math.round(similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0) / similarWarnings.length).toLocaleString('en-IN')}
-                        </div>
-                        <div className="text-sm text-gray-600">Avg. Penalty</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Enhanced Warnings Table */}
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                    <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white p-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-lg">
-                          {formData.warning_type ? `"${formData.warning_type}" Warning History` : 'Warning History'}
-                        </h4>
-                        <span className="bg-white bg-opacity-20 px-2 py-1 rounded text-sm">
-                          {similarWarnings.length} record{similarWarnings.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">#</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">DATE & TIME</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">ISSUED BY</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">EMPLOYEE</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">DEPARTMENT</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">MISTAKE TYPE</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">ACTION</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">PENALTY</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-gray-600">MESSAGE</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {similarWarnings
-                            .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
-                            .map((warning, index) => (
-                            <tr 
-                              key={`${warning.id || index}`} 
-                              className={`border-b similar-warnings-row`}
-                            >
-                              <td className="px-4 py-3 text-center">
-                                <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-cyan-100 rounded-full flex items-center justify-center">
-                                  <span className="text-sm font-bold text-blue-600">{index + 1}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700">
-                                <div className="font-medium">
-                                  {new Date(warning.issued_date).toLocaleDateString('en-GB', { 
-                                    day: '2-digit', 
-                                    month: 'short', 
-                                    year: 'numeric' 
-                                  })}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {new Date(warning.issued_date).toLocaleTimeString('en-GB', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit', 
-                                    hour12: true 
-                                  })}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center">
-                                    <span className="text-xs font-bold text-white">
-                                      {(warning.issued_by_name || 'U').charAt(0).toUpperCase()}
-                                    </span>
-                                  </div>
-                                  <div className="font-medium text-gray-700">{warning.issued_by_name || 'Unknown'}</div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full flex items-center justify-center">
-                                    <span className="text-xs font-bold text-white">
-                                      {(warning.issued_to_name || 'U').charAt(0).toUpperCase()}
-                                    </span>
-                                  </div>
-                                  <div className="font-medium text-gray-700">{warning.issued_to_name || 'Unknown'}</div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-600">
-                                {warning.department_name || 'N/A'}
-                              </td>
-                              <td className="px-4 py-3 text-sm">
-                                <span className={`px-2 py-1 rounded text-xs font-medium text-white ${
-                                  warning.warning_type === 'Late Arrival' ? 'bg-yellow-500' :
-                                  warning.warning_type === 'Late Lunch' ? 'bg-blue-500' :
-                                  warning.warning_type === 'Abuse' ? 'bg-red-500' :
-                                  warning.warning_type === 'Early Leave' ? 'bg-purple-500' : 'bg-gray-500'
-                                }`}>
-                                  {warning.warning_type}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm">
-                                <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs font-medium">
-                                  {warning.warning_action || 'No Action'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm font-bold text-red-600">
-                                ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700 max-w-xs">
-                                <div className="truncate" title={warning.warning_message || 'No message provided'}>
-                                  {warning.warning_message || 'No message provided'}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    
-                    {/* Summary Footer */}
-                    <div className="bg-gray-50 px-4 py-3 border-t">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-                        <div>
-                          {formData.warning_type ? (
-                            <span>
-                              <strong>{[...new Set(similarWarnings.map(w => w.issued_to_name))].length}</strong> different employee(s) 
-                              have received <strong>"{formData.warning_type}"</strong> warnings
+                        <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg shadow-sm p-4 hover:border-red-700/50 transition-all">
+                          <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-3 border-b border-gray-700 pb-2">
+                            <h4 className="font-bold text-gray-200 text-sm flex items-center gap-2">
+                              {warning.warning_type || 'Warning'}
+                              <span className="text-gray-500 font-medium text-xs ml-2">
+                                {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+                              </span>
+                            </h4>
+                            <span className="bg-gray-700 text-gray-300 text-[11px] px-3 py-1 rounded-md font-bold border border-gray-600 mt-2 sm:mt-0">
+                              Penalty: ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
                             </span>
+                          </div>
+                          <div className="mb-3">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">
+                              Issued by {warning.issued_by_name || 'Unknown'}:
+                            </span>
+                            <p className="text-sm text-gray-300 bg-gray-900/60 p-3 rounded-lg border border-gray-700 font-medium leading-relaxed">
+                              "{warning.warning_message || 'No message provided'}"
+                            </p>
+                          </div>
+                          {(warning.employee_remark || warning.employee_response) ? (
+                            <div className="bg-green-900/20 p-3 rounded-lg border border-green-700/30">
+                              <span className="font-bold text-[10px] uppercase tracking-widest block mb-1 text-green-500 flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Employee Remark (Accepted):
+                              </span>
+                              <p className="italic text-sm text-green-300">
+                                "{warning.employee_remark || warning.employee_response}"
+                              </p>
+                            </div>
                           ) : (
-                            <span>
-                              Showing <strong>{similarWarnings.length}</strong> warning(s) 
-                              for selected employee(s)
-                            </span>
+                            <div className="bg-amber-900/20 p-3 rounded-lg border border-amber-700/30 text-amber-400 text-sm font-medium flex items-center gap-1.5">
+                              <Clock className="w-4 h-4" /> Pending employee acknowledgement
+                            </div>
                           )}
                         </div>
-                        <div>
-                          Most recent: <strong>
-                            {new Date(Math.max(...similarWarnings.map(w => new Date(w.issued_date)))).toLocaleDateString('en-GB')}
-                          </strong>
-                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -3428,130 +3278,85 @@ const WarningPage = memo(() => {
 
       {/* View Warning Modal */}
       {viewDialogOpen && selectedWarning && (
-        <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl mx-auto space-y-2 max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setViewDialogOpen(false)}
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-            <h2 className="text-xl font-bold text-blue-500 mb-4">WARNING DETAILS</h2>
-            
-            {/* Date & Time and Created By Row */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
-                  Date & Time
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.issued_date ? new Date(selectedWarning.issued_date).toLocaleDateString('en-GB', { 
-                    day: '2-digit', 
-                    month: 'short', 
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                  }).replace(',', '') : formatDate(selectedWarning.issued_date)}
-                  readOnly
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
-                  Created By
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.issued_by_name || 'Unknown'}
-                  readOnly
-                />
-              </div>
-            </div>
-
-            {/* Two Column Layout for Form Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {/* Department */}
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Department</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.department_name || 'N/A'}
-                  readOnly
-                />
-              </div>
-
-              {/* Employee */}
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Employee</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.issued_to_name || 'Unknown Employee'}
-                  readOnly
-                />
-              </div>
-
-              {/* Warning Type */}
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Mistake Type</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.warning_type || 'N/A'}
-                  readOnly
-                />
-              </div>
-
-              {/* Warning Action */}
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Warning Action</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={selectedWarning.warning_action || 'N/A'}
-                  readOnly
-                />
-              </div>
-            </div>
-
-            {/* Penalty Amount - Full Width */}
-            <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">Penalty Amount</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black font-bold">₹</span>
-                <input
-                  type="text"
-                  className="w-full pl-8 pr-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                  value={Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}
-                  readOnly
-                />
-              </div>
-            </div>
-
-            {/* Warning Message - Full Width */}
-            <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">Warning Message</label>
-              <textarea
-                value={selectedWarning.warning_message || 'No message provided'}
-                rows={4}
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100 resize-none"
-                readOnly
-              />
-            </div>
-
-            <div className="flex justify-end pt-4 border-t border-gray-200 mt-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-400" /> Warning Record Details
+              </h2>
               <button
                 onClick={() => setViewDialogOpen(false)}
-                className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition font-bold"
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
               >
-                Close
+                <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+              {/* 2x2 Grid: Employee, Issued By, Mistake Category, Penalty */}
+              <div className="grid grid-cols-2 gap-4 bg-gray-800/60 p-4 rounded-xl border border-gray-700">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Employee Name</p>
+                  <p className="text-sm font-bold text-white">{selectedWarning.issued_to_name || 'Unknown Employee'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Issued By</p>
+                  <p className="text-sm font-bold text-white">{selectedWarning.issued_by_name || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Mistake Category</p>
+                  <p className="text-sm font-bold text-red-400">{selectedWarning.warning_type || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Penalty Amount</p>
+                  <p className="text-sm font-bold text-white">
+                    {(waivedPenalties[selectedWarning.id] || selectedWarning.is_waived) ? (
+                      <span className="flex items-center gap-2">
+                        <span className="line-through text-gray-500">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
+                        <span className="text-green-400 text-xs font-bold">Waived Off</span>
+                      </span>
+                    ) : (
+                      <span className="text-red-400">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Extra Info Row */}
+              <div className="grid grid-cols-2 gap-4 bg-gray-800/40 p-4 rounded-xl border border-gray-700/50">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Date & Time</p>
+                  <p className="text-sm font-medium text-gray-300">
+                    {selectedWarning.issued_date ? new Date(selectedWarning.issued_date).toLocaleDateString('en-GB', { 
+                      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'
+                    }).replace(',', '') : formatDate(selectedWarning.issued_date)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Department</p>
+                  <p className="text-sm font-medium text-gray-300">{selectedWarning.department_name || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Manager's Remark */}
+              <div>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Manager's Remark</p>
+                <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 p-4 rounded-lg leading-relaxed">
+                  "{selectedWarning.warning_message || 'No message provided'}"
+                </p>
+              </div>
+
+              {/* Employee's Remark */}
+              <div>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Employee's Remark</p>
+                <div className="bg-green-900/30 border border-green-700/40 p-4 rounded-lg">
+                  <p className="text-sm text-green-300 italic">
+                    {getEmployeeRemark(selectedWarning) || 'Waiting for employee response...'}
+                  </p>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -3559,83 +3364,77 @@ const WarningPage = memo(() => {
 
       {/* Edit Warning Modal */}
       {editDialogOpen && (
-        <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl mx-auto space-y-2 max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setEditDialogOpen(false)}
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-            <h2 className="text-xl font-bold text-blue-500 mb-4">EDIT WARNING</h2>
-            
-            <form onSubmit={(e) => { e.preventDefault(); handleEditSubmit(); }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit className="w-5 h-5 text-cyan-400" /> Edit Warning
+              </h2>
+              <button
+                onClick={() => setEditDialogOpen(false)}
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={(e) => { e.preventDefault(); handleEditSubmit(); }} className="space-y-5">
               {/* Date & Time and Created By Row */}
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                  <label className="block font-bold text-gray-700 mb-1">
-                    Date & Time
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                    value={editingWarning ? new Date(editingWarning.issue_date).toLocaleDateString('en-GB', { 
-                      day: '2-digit', 
-                      month: 'short', 
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    }).replace(',', '') : ''}
-                    readOnly
-                  />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Date & Time</label>
+                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                    <Calendar className="w-4 h-4 text-gray-500 absolute left-3" />
+                    <input
+                      type="text"
+                      className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                      value={editingWarning ? new Date(editingWarning.issue_date).toLocaleDateString('en-GB', { 
+                        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'
+                      }).replace(',', '') : ''}
+                      readOnly
+                    />
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <label className="block font-bold text-gray-700 mb-1">
-                    Created By
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                    value={editingWarning ? editingWarning.issued_by_name || 'Unknown' : ''}
-                    readOnly
-                  />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Created By</label>
+                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                    <User className="w-4 h-4 text-gray-500 absolute left-3" />
+                    <input
+                      type="text"
+                      className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                      value={editingWarning ? editingWarning.issued_by_name || 'Unknown' : ''}
+                      readOnly
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Two Column Layout for Form Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                {/* Department Display */}
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Department</label>
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Department</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-300 text-sm font-medium cursor-not-allowed"
                     value={editingWarning ? editingWarning.department_name || 'N/A' : ''}
                     readOnly
                   />
                 </div>
-
-                {/* Employee Display */}
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Employee</label>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Employee</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-300 text-sm font-medium cursor-not-allowed"
                     value={editingWarning ? editingWarning.issued_to_name || 'Unknown Employee' : ''}
                     readOnly
                   />
                 </div>
-
-                {/* Warning Type Selection */}
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Mistake Type *</label>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Mistake Type <span className="text-red-500">*</span></label>
                   <select
                     value={formData.warning_type}
                     onChange={(e) => handleFormChange('warning_type', e.target.value)}
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
+                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 text-sm font-medium"
                     required
                   >
                     <option value="">Select Mistake Type</option>
@@ -3650,18 +3449,16 @@ const WarningPage = memo(() => {
                     })}
                   </select>
                 </div>
-
-                {/* Penalty Amount */}
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Penalty Amount *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black font-bold">₹</span>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-300">Penalty Amount <span className="text-red-500">*</span></label>
+                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden">
+                    <span className="px-3 py-2.5 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
                     <input
                       type="number"
                       value={formData.penalty_amount}
                       onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                      placeholder="Enter penalty amount"
+                      className="w-full text-sm text-gray-200 outline-none px-3 py-2.5 bg-transparent font-medium"
+                      placeholder="0"
                       required
                       min="0"
                     />
@@ -3669,75 +3466,69 @@ const WarningPage = memo(() => {
                 </div>
               </div>
 
-              {/* Warning Message - Full Width */}
-              <div className="mt-4">
-                <label className="block font-bold text-gray-700 mb-1">Warning Message</label>
+              {/* Warning Message */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-300">Warning Message</label>
                 <textarea
                   value={formData.warning_message}
                   onChange={(e) => handleFormChange('warning_message', e.target.value)}
                   rows={4}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none"
+                  className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
                   placeholder="Enter detailed warning message..."
                 />
               </div>
-
-              <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setEditDialogOpen(false)}
-                  className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition font-bold"
-                >
-                  Update Warning
-                </button>
-              </div>
             </form>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setEditDialogOpen(false)}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEditSubmit()}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+              >
+                Update Warning
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteDialogOpen && warningToDelete && (
-        <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-auto space-y-2">
-            <button
-              onClick={() => setDeleteDialogOpen(false)}
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-            <h2 className="text-xl font-bold text-red-600 mb-4">CONFIRM DELETE</h2>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-500" />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-red-400" />
+                </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Delete Warning</h3>
-                  <p className="text-gray-600">This action cannot be undone</p>
+                  <h3 className="text-lg font-bold text-white">Delete Warning</h3>
+                  <p className="text-sm text-gray-500">This action cannot be undone</p>
                 </div>
               </div>
-              <p className="text-gray-700">
-                Are you sure you want to delete the warning issued to <strong>{warningToDelete.issued_to_name}</strong> for <strong>{warningToDelete.warning_type}</strong>?
+              <p className="text-gray-300 text-sm">
+                Are you sure you want to delete the warning issued to <strong className="text-white">{warningToDelete.issued_to_name}</strong> for <strong className="text-white">{warningToDelete.warning_type}</strong>?
               </p>
             </div>
 
-            <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 mt-6">
+            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex justify-end gap-3">
               <button
                 onClick={() => setDeleteDialogOpen(false)}
-                className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition font-bold"
+                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-6 py-3 bg-red-600 text-white rounded-xl shadow hover:bg-red-700 transition font-bold"
+                className="px-6 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-all"
               >
                 Delete Warning
               </button>
@@ -4175,6 +3966,116 @@ const WarningPage = memo(() => {
                   Apply Filters
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Mistake Category Modal */}
+      {createMistakeOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-cyan-400" /> Create Mistake Category
+              </h2>
+              <button
+                onClick={() => { setCreateMistakeOpen(false); setNewMistakeTitle(''); setNewMistakeDescription(''); }}
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-300">Short Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newMistakeTitle}
+                  onChange={(e) => setNewMistakeTitle(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all"
+                  placeholder="e.g. Late Arrival, Uninformed Leave..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-300">Detailed Description</label>
+                <textarea
+                  value={newMistakeDescription}
+                  onChange={(e) => setNewMistakeDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all resize-none leading-relaxed"
+                  placeholder="Describe when this mistake type should be used..."
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex justify-end gap-3">
+              <button
+                onClick={() => { setCreateMistakeOpen(false); setNewMistakeTitle(''); setNewMistakeDescription(''); }}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateMistakeCategory}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+              >
+                Create Category
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Mistake Category Modal */}
+      {editMistakeOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit className="w-5 h-5 text-cyan-400" /> Edit Mistake Category
+              </h2>
+              <button
+                onClick={() => { setEditMistakeOpen(false); setEditingMistakeType(null); }}
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-300">Short Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={editMistakeTitle}
+                  onChange={(e) => setEditMistakeTitle(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all"
+                  placeholder="Mistake title..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-300">Detailed Description</label>
+                <textarea
+                  value={editMistakeDescription}
+                  onChange={(e) => setEditMistakeDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all resize-none leading-relaxed"
+                  placeholder="Describe when this mistake type should be used..."
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex justify-end gap-3">
+              <button
+                onClick={() => { setEditMistakeOpen(false); setEditingMistakeType(null); }}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditMistakeCategory}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>

@@ -343,36 +343,40 @@ const FeedItem = React.memo(function FeedItem({
       </div>
 
       {/* Feed content */}
-      <div className="p-3 sm:p-4">
+      <div className="px-3 sm:px-4 py-3 sm:py-4">
         <p className="text-black whitespace-pre-wrap text-sm sm:text-base">{feed.text}</p>
-        {feed.images && feed.images.length > 0 && (
-          <div className="mt-3 sm:mt-4 grid gap-1 sm:gap-2" style={{
-            gridTemplateColumns: feed.images.length === 1 ? '1fr' :
-              feed.images.length === 2 ? 'repeat(2, 1fr)' :
-              feed.images.length === 3 ? 'repeat(3, 1fr)' :
-              'repeat(2, 1fr)'
-          }}>
-            {feed.images.slice(0, 4).map((image, index) => (
-              <div key={index} className="relative">
-                <img
-                  src={image}
-                  alt={`Post image ${index + 1}`}
-                  className="w-full h-32 sm:h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => onOpenImageViewer(feed.images, index)}
-                />
-                {index === 3 && feed.images.length > 4 && (
-                  <div
-                    className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white text-sm sm:text-xl font-bold rounded-lg cursor-pointer"
-                    onClick={() => onOpenImageViewer(feed.images, index)}
-                  >
-                    +{feed.images.length - 4}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
+      
+      {/* Feed images - full width */}
+      {feed.images && feed.images.length > 0 && (
+        <div className={feed.images.length === 1 ? 'bg-black' : 'grid gap-1 sm:gap-2'} style={{
+          gridTemplateColumns: feed.images.length === 1 ? '1fr' :
+            feed.images.length === 2 ? 'repeat(2, 1fr)' :
+            feed.images.length === 3 ? 'repeat(3, 1fr)' :
+            'repeat(2, 1fr)'
+        }}>
+          {feed.images.slice(0, 4).map((image, index) => (
+            <div key={index} className={`relative ${feed.images.length === 1 ? '' : ''}`}>
+              <img
+                src={image}
+                alt={`Post image ${index + 1}`}
+                className={`w-full cursor-pointer hover:opacity-90 transition-opacity ${
+                  feed.images.length === 1 ? 'h-[500px] sm:h-[600px] object-contain' : 'h-80 sm:h-96 object-cover'
+                }`}
+                onClick={() => onOpenImageViewer(feed.images, index)}
+              />
+              {index === 3 && feed.images.length > 4 && (
+                <div
+                  className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white text-sm sm:text-xl font-bold cursor-pointer"
+                  onClick={() => onOpenImageViewer(feed.images, index)}
+                >
+                  +{feed.images.length - 4}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Feed actions */}
       <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-gray-800">
@@ -1593,10 +1597,10 @@ export default function FeedPage({ user }) {
                   <p className="text-black whitespace-pre-wrap bg-white font-bold text-lg">{feed.text}</p>
                 </div>
 
-                {/* Post Images */}
+                {/* Post Images - Full Width */}
                 {feed.images && feed.images.length > 0 && (
-                  <div className="px-4 pb-3 bg-white">
-                    <div className={`grid gap-1 ${feed.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  <div className="pb-3 bg-white">
+                    <div className={`${feed.images.length === 1 ? 'bg-black' : 'grid gap-1 grid-cols-2'}`}>
                       {feed.images.slice(0, Math.min(4, feed.images.length)).map((image, index) => (
                         <div
                           key={index}
@@ -1606,10 +1610,12 @@ export default function FeedPage({ user }) {
                           <img
                             src={image}
                             alt={`Post image ${index + 1}`}
-                            className={`w-full object-contain rounded-lg ${feed.images.length === 1 ? 'h-60' : 'h-110'}`}
+                            className={`w-full ${
+                              feed.images.length === 1 ? 'h-[500px] sm:h-[600px] object-contain' : 'h-80 sm:h-96 object-cover'
+                            }`}
                           />
                           {index === 3 && feed.images.length > 4 && (
-                            <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center rounded-lg">
+                            <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
                               <span className="text-white text-2xl font-bold">
                                 +{feed.images.length - 4}
                               </span>
@@ -1725,14 +1731,17 @@ export default function FeedPage({ user }) {
             {/* Post Content */}
             <div className="px-3 sm:px-4 py-2 sm:py-3">
               <p className="text-black whitespace-pre-wrap bg-white font-bold text-base sm:text-lg">{selectedPost.text}</p>
-              {selectedPost.images && selectedPost.images.length > 0 && (
-                <div className="mt-2 sm:mt-3 relative">
-                  <div className="relative w-full h-48 sm:h-80 overflow-hidden rounded-lg bg-gray-100">
-                    <img
-                      src={selectedPost.images[currentImageIndex]}
-                      alt={`Post image ${currentImageIndex + 1}`}
-                      className="w-full h-full object-contain rounded-lg"
-                    />
+            </div>
+            
+            {/* Post Images - Full Width */}
+            {selectedPost.images && selectedPost.images.length > 0 && (
+              <div className="relative bg-black">
+                <div className="relative w-full h-96 sm:h-[500px] overflow-hidden bg-black">
+                  <img
+                    src={selectedPost.images[currentImageIndex]}
+                    alt={`Post image ${currentImageIndex + 1}`}
+                    className="w-full h-full object-contain"
+                  />
                     {selectedPost.images.length > 1 && (
                       <>
                         <button
@@ -1762,7 +1771,7 @@ export default function FeedPage({ user }) {
                   
                   {/* Image thumbnails for navigation */}
                   {selectedPost.images.length > 1 && (
-                    <div className="flex justify-center mt-1 sm:mt-2 gap-1 sm:gap-2 overflow-x-auto py-1 sm:py-2">
+                    <div className="flex justify-center mt-1 sm:mt-2 gap-1 sm:gap-2 overflow-x-auto py-1 sm:py-2 px-2 bg-black">
                       {selectedPost.images.map((img, idx) => (
                         <button 
                           key={idx} 
@@ -1780,7 +1789,7 @@ export default function FeedPage({ user }) {
                   )}
                 </div>
               )}
-            </div>
+              
             {/* Comments Section */}
             <div id="comments-section" className="border-t border-gray-800 px-3 sm:px-4 py-2 sm:py-3 bg-white">
               <div className="font-bold text-black mb-2 text-sm sm:text-base">Comments</div>
@@ -1836,7 +1845,7 @@ export default function FeedPage({ user }) {
                 likingComments={likingComments}
               />
             </div>
-          </div>
+            </div>
           </div>
         </div>
       )}

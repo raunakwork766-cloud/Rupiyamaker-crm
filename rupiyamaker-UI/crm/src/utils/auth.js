@@ -140,84 +140,74 @@ export const setAuthData = (token, userData) => {
 
 /**
  * Verify if the current session is still valid
+ * Uses POST /users/verify-session with session_token for single-active-session enforcement.
  * @returns {Promise<Object>} - Object with { valid: boolean, shouldLogout: boolean, reason?: string }
  */
 export const verifySession = async () => {
   try {
     const userData = getCurrentUser();
-    if (!userData || !userData._id) {
+    const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || userData?._id;
+    if (!userId) {
       return { valid: false, shouldLogout: true, reason: 'No user data found' };
     }
 
-    // Use GET /users/{id} endpoint to fetch only the specific user data
-    // This is much more efficient than fetching all users
-    const response = await fetchWithAuth(`${API_BASE_URL}/users/${userData._id}?user_id=${userData._id}`, {
-      method: 'GET'
+    const sessionToken = localStorage.getItem('sessionToken');
+
+    // Use POST /users/verify-session so backend can validate the session_token.
+    // If another device logged in, their new token replaced ours in DB → 401 displaced.
+    const response = await fetchWithAuth(`${API_BASE_URL}/users/verify-session`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, session_token: sessionToken })
     });
 
     if (response.ok) {
-      const user = await response.json();
-      
-      if (!user) {
-        clearAuthData();
-        return { valid: false, shouldLogout: true, reason: 'User not found in database' };
-      }
-      
-      // Check the same conditions as verify-session would
-      // Now we can get the actual login_enabled value from the API
-      const isActive = user.is_active !== undefined ? user.is_active : true;
-      const loginEnabled = user.login_enabled !== undefined ? user.login_enabled : false;
-      
-      // If user is inactive or login is disabled, session is invalid
-      if (!isActive) {
-        clearAuthData();
-        return { valid: false, shouldLogout: true, reason: 'User account has been deactivated' };
-      }
-      
-      if (!loginEnabled) {
-        clearAuthData();
-        return { valid: false, shouldLogout: true, reason: 'Your login access has been disabled by administrator' };
-      }
-      
-      // Session is valid
       return { valid: true, shouldLogout: false };
+    } else if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({}));
+      const detail = errorData.detail || '';
+      const isDisplaced = detail === 'displaced' || detail.includes('displaced') || detail.includes('another device');
+      clearAuthData();
+      localStorage.removeItem('sessionToken');
+      return {
+        valid: false,
+        shouldLogout: true,
+        reason: isDisplaced
+          ? 'Aapki ID se kisi aur device par login hua hai. Aap logout ho gaye hain.'
+          : (detail || 'Session expired or unauthorized')
+      };
+    } else if (response.status === 403) {
+      const errorData = await response.json().catch(() => ({}));
+      const detail = errorData.detail || 'Session expired';
+      clearAuthData();
+      localStorage.removeItem('sessionToken');
+      return { valid: false, shouldLogout: true, reason: detail };
     } else if (response.status === 404) {
-      // User not found, clear auth data
       clearAuthData();
+      localStorage.removeItem('sessionToken');
       return { valid: false, shouldLogout: true, reason: 'User not found' };
-    } else if (response.status === 401 || response.status === 403) {
-      // Unauthorized or forbidden, clear auth data
-      clearAuthData();
-      return { valid: false, shouldLogout: true, reason: 'Session expired or unauthorized' };
     } else {
-      // Other HTTP errors (5xx, etc.) - don't logout, just return invalid
+      // Server errors (5xx) — don't logout, could be temporary
       return { valid: false, shouldLogout: false, reason: `Server error: ${response.status}` };
     }
   } catch (error) {
-    // Network error, timeout, or other connection issues - don't logout
+    // Network error or timeout — don't logout, could be temporary
     console.warn('Session verification failed due to network error:', error.message);
     return { valid: false, shouldLogout: false, reason: `Network error: ${error.message}` };
   }
 };
 
 /**
- * Force logout - clears all auth data and redirects to login
+ * Force logout - clears all auth data and redirects to login.
+ * Stores the reason in sessionStorage so Login page can display it.
  */
 export const forceLogout = (reason = 'Session expired') => {
   clearAuthData();
-  
-  // Show a message to the user
+  localStorage.removeItem('sessionToken');
+
   if (typeof window !== 'undefined') {
-    // Use a more prominent alert method
-    if (window.confirm) {
-      window.confirm(`${reason}. Click OK to go to login page.`);
-    } else if (window.alert) {
-      window.alert(`${reason}. Please log in again.`);
-    }
-    
-    // Force reload to login page to ensure complete logout
+    // Pass reason to Login page without blocking confirm dialog
+    sessionStorage.setItem('logoutReason', reason);
     window.location.href = '/';
-    window.location.reload();
   }
 };
 

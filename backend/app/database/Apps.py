@@ -4,6 +4,7 @@ from bson import ObjectId
 from datetime import datetime
 import logging
 from app.config import Config
+from app.utils.timezone import get_ist_now
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -32,8 +33,8 @@ class AppsDB:
     
     async def create_app(self, app_data: Dict[str, Any]) -> str:
         """Create a new app"""
-        app_data["created_at"] = datetime.now()
-        app_data["updated_at"] = datetime.now()
+        app_data["created_at"] = get_ist_now()
+        app_data["updated_at"] = get_ist_now()
         
         result = await self.collection.insert_one(app_data)
         return str(result.inserted_id)
@@ -83,7 +84,7 @@ class AppsDB:
         if not ObjectId.is_valid(app_id):
             return False
         
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         
         result = await self.collection.update_one(
             {"_id": ObjectId(app_id)},
@@ -126,7 +127,7 @@ class AppsDB:
             {"_id": ObjectId(app_id)},
             {"$set": {
                 "allowed_roles": allowed_roles,
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }}
         )
         

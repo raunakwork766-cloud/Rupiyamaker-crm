@@ -1,13 +1,9 @@
 /**
- * Date utility functions for formatting and calculations
- * Using native Date methods to avoid dependencies
- */
-
-/**
  * Format a date string or timestamp to a readable format
- * @param {string|Date} date - Date to format
- * @param {string} format - Output format (default: "DD Month YYYY")
- * @returns {string} Formatted date string
+ * Uses Intl.DateTimeFormat with Asia/Kolkata timezone for correct IST display
+ * @param {string|Date} date - Date to format  
+ * @param {string} format - Output format (default: "DD-MONTH-YYYY")
+ * @returns {string} Formatted date string in IST
  */
 export const formatDate = (date, format = 'DD-MONTH-YYYY') => {
     if (!date) return '-';
@@ -16,14 +12,18 @@ export const formatDate = (date, format = 'DD-MONTH-YYYY') => {
         const d = new Date(date);
         if (isNaN(d.getTime())) return '-';
 
-        // Convert to IST (Indian Standard Time) - UTC+5:30
-        const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
-        const istDate = new Date(d.getTime() + istOffset);
+        // Use Intl.DateTimeFormat with Asia/Kolkata timezone for correct IST
+        const formatter = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit'
+        });
 
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        const day = istDate.getUTCDate().toString().padStart(2, '0');
-        const month = months[istDate.getUTCMonth()];
-        const year = istDate.getUTCFullYear();
+        const parts = formatter.formatToParts(d);
+        const day = parts.find(p => p.type === 'day')?.value || '';
+        const month = parts.find(p => p.type === 'month')?.value || '';
+        const year = parts.find(p => p.type === 'year')?.value || '';
 
         return `${day} ${month} ${year}`;
     } catch (error) {
@@ -34,6 +34,7 @@ export const formatDate = (date, format = 'DD-MONTH-YYYY') => {
 
 /**
  * Get relative time (e.g., "2 days ago")
+ * Uses IST for current time comparison
  * @param {string|Date} date - Date to format
  * @returns {string} Relative time string
  */
@@ -44,8 +45,11 @@ export const getRelativeTime = (date) => {
         const d = new Date(date);
         if (isNaN(d.getTime())) return '-';
 
-        const now = new Date();
-        const diffMs = now - d;
+        // Use IST-aware current time for comparison
+        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const target = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+
+        const diffMs = now - target;
         const diffSec = Math.floor(diffMs / 1000);
         const diffMin = Math.floor(diffSec / 60);
         const diffHour = Math.floor(diffMin / 60);
@@ -67,8 +71,9 @@ export const getRelativeTime = (date) => {
 
 /**
  * Format a date string or timestamp with time
+ * Uses Intl.DateTimeFormat with Asia/Kolkata timezone for correct IST display
  * @param {string|Date} date - Date to format
- * @returns {string} Formatted date and time
+ * @returns {string} Formatted date and time in IST
  */
 export const formatDateTime = (date) => {
     if (!date) return '-';
@@ -77,23 +82,26 @@ export const formatDateTime = (date) => {
         const d = new Date(date);
         if (isNaN(d.getTime())) return '-';
 
-        // Convert to IST (Indian Standard Time) - UTC+5:30
-        const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
-        const istDate = new Date(d.getTime() + istOffset);
+        // Use Intl.DateTimeFormat with Asia/Kolkata timezone
+        const formatter = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
 
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        const day = istDate.getUTCDate().toString().padStart(2, '0');
-        const month = months[istDate.getUTCMonth()];
-        const year = istDate.getUTCFullYear();
-        
-        // Format time in 12-hour format with AM/PM using IST
-        let hours = istDate.getUTCHours();
-        const minutes = istDate.getUTCMinutes().toString().padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12; // the hour '0' should be '12'
+        const parts = formatter.formatToParts(d);
+        const day = parts.find(p => p.type === 'day')?.value || '';
+        const month = parts.find(p => p.type === 'month')?.value || '';
+        const year = parts.find(p => p.type === 'year')?.value || '';
+        const hour = parts.find(p => p.type === 'hour')?.value || '';
+        const minute = parts.find(p => p.type === 'minute')?.value || '';
+        const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || '';
 
-        return `${day} ${month} ${year} ${hours}:${minutes} ${ampm}`;
+        return `${day} ${month} ${year} ${hour}:${minute} ${dayPeriod.toUpperCase()}`;
     } catch (error) {
         console.error('Error formatting date time:', error);
         return '-';
@@ -198,21 +206,21 @@ const IST_LOCALE = 'en-IN';
  * @returns {string} Formatted date string in IST
  */
 export const toISTString = (date, options = {}) => {
-  if (!date) return '-';
-  
-  const defaultOptions = {
-    timeZone: IST_TIMEZONE,
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-    ...options
-  };
-  
-  return new Date(date).toLocaleString(IST_LOCALE, defaultOptions);
+    if (!date) return '-';
+
+    const defaultOptions = {
+        timeZone: IST_TIMEZONE,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        ...options
+    };
+
+    return new Date(date).toLocaleString(IST_LOCALE, defaultOptions);
 };
 
 /**
@@ -222,17 +230,17 @@ export const toISTString = (date, options = {}) => {
  * @returns {string} Formatted date string in IST
  */
 export const toISTDateString = (date, options = {}) => {
-  if (!date) return '-';
-  
-  const defaultOptions = {
-    timeZone: IST_TIMEZONE,
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    ...options
-  };
-  
-  return new Date(date).toLocaleDateString(IST_LOCALE, defaultOptions);
+    if (!date) return '-';
+
+    const defaultOptions = {
+        timeZone: IST_TIMEZONE,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        ...options
+    };
+
+    return new Date(date).toLocaleDateString(IST_LOCALE, defaultOptions);
 };
 
 /**
@@ -242,17 +250,17 @@ export const toISTDateString = (date, options = {}) => {
  * @returns {string} Formatted time string in IST
  */
 export const toISTTimeString = (date, options = {}) => {
-  if (!date) return '-';
-  
-  const defaultOptions = {
-    timeZone: IST_TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    ...options
-  };
-  
-  return new Date(date).toLocaleTimeString(IST_LOCALE, defaultOptions);
+    if (!date) return '-';
+
+    const defaultOptions = {
+        timeZone: IST_TIMEZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        ...options
+    };
+
+    return new Date(date).toLocaleTimeString(IST_LOCALE, defaultOptions);
 };
 
 /**
@@ -260,7 +268,7 @@ export const toISTTimeString = (date, options = {}) => {
  * @returns {Date} Current date in IST
  */
 export const getCurrentISTDate = () => {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
+    return new Date(new Date().toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
 };
 
 /**
@@ -269,13 +277,59 @@ export const getCurrentISTDate = () => {
  * @returns {Date} Date object converted to IST
  */
 export const toISTDate = (date) => {
-  if (!date) return null;
-  return new Date(new Date(date).toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
+    if (!date) return null;
+    return new Date(new Date(date).toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
 };
 
 // Export timezone constants
 export const TIMEZONE_IST = IST_TIMEZONE;
 export const LOCALE_IST = IST_LOCALE;
+
+/**
+ * Get current IST date as YYYY-MM-DD string
+ * Drop-in replacement for new Date().toISOString().split('T')[0]
+ * @returns {string} e.g. "2026-02-27"
+ */
+export const getISTDateYMD = () => {
+    const d = getCurrentISTDate();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+/**
+ * Convert any date/string to YYYY-MM-DD in IST
+ * Drop-in replacement for new Date(val).toISOString().split('T')[0]
+ * @param {Date|string} date
+ * @returns {string} e.g. "2026-02-27"
+ */
+export const toISTDateYMD = (date) => {
+    if (!date) return '';
+    const d = toISTDate(date);
+    if (!d || isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+/**
+ * Get current IST datetime as ISO-like string (for sending to backend)
+ * Drop-in replacement for new Date().toISOString()
+ * Returns format: "2026-02-27T14:30:00" (IST, no Z suffix)
+ * @returns {string}
+ */
+export const getISTTimestamp = () => {
+    const d = getCurrentISTDate();
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${mo}-${day}T${h}:${mi}:${s}`;
+};
 
 export default {
     formatDate,
@@ -289,6 +343,9 @@ export default {
     toISTTimeString,
     getCurrentISTDate,
     toISTDate,
+    getISTDateYMD,
+    toISTDateYMD,
+    getISTTimestamp,
     TIMEZONE_IST,
     LOCALE_IST
 };

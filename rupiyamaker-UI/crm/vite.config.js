@@ -3,13 +3,14 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Check if running in dev environment (via DEV_PORT env var)
-const isDevEnvironment = process.env.DEV_PORT === '8050';
+const isDevEnvironment = process.env.DEV_PORT === '8051';
 const devPort = isDevEnvironment ? 4522 : 4521;
-const backendTarget = isDevEnvironment ? 'http://localhost:8050' : 'https://rupiyamaker.com';
+const backendTarget = isDevEnvironment ? 'https://localhost:8051' : 'https://rupiyamaker.com';
 
 console.log('🔧 Vite Config:', {
   isDevEnvironment,
@@ -23,10 +24,14 @@ export default defineConfig({
   server: {
     port: devPort,
     host: '0.0.0.0',
+    https: isDevEnvironment ? {
+      key: fs.readFileSync(path.resolve(__dirname, 'dev-key.pem')),
+      cert: fs.readFileSync(path.resolve(__dirname, 'dev-cert.pem'))
+    } : false,
     allowedHosts: ['rupiyamaker.com', 'localhost', '156.67.111.95'],
     hmr: isDevEnvironment ? {
-      protocol: 'ws',
-      host: 'localhost',
+      protocol: 'wss',
+      host: '156.67.111.95',
       port: devPort,
       clientPort: devPort
     } : {
@@ -41,6 +46,7 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/api/, ''),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.error('❌ Proxy Error:', err.message);

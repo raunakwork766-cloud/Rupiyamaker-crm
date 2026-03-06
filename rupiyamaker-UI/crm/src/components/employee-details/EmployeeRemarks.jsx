@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { message } from 'antd';
 import { Send, User, RefreshCcw, AlertCircle } from 'lucide-react';
 import hrmsService from '../../services/hrmsService';
+import { getISTTimestamp } from '../../utils/dateUtils';
 
 const EmployeeRemarks = ({ employeeId }) => {
     const [comment, setComment] = useState('');
@@ -81,7 +82,7 @@ const EmployeeRemarks = ({ employeeId }) => {
                 id: Date.now().toString(),
                 remark: comment,
                 created_by_name: currentUser.name,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 remark_type: 'general'
             };
             setComments(prev => [localRemark, ...prev]);
@@ -96,10 +97,11 @@ const EmployeeRemarks = ({ employeeId }) => {
         new Intl.DateTimeFormat('default', {
             dateStyle: 'medium',
             timeStyle: 'short',
+            timeZone: 'Asia/Kolkata',
         }).format(new Date(time));
 
     return (
-        <div className="max-w-7xl mx-auto p-4 space-y-4">
+        <div className="w-full p-4 space-y-4">
             {/* Header with refresh button */}
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-gray-800">Remarks</h3>

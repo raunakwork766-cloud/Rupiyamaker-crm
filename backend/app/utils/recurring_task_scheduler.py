@@ -12,6 +12,7 @@ import traceback
 from app.database.Tasks import TasksDB
 from app.database.TaskHistory import TaskHistoryDB
 from app.database import get_database_instances
+from app.utils.timezone import get_ist_now
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -128,7 +129,7 @@ class RecurringTaskScheduler:
         return {
             "is_running": self.is_running,
             "check_interval": self.check_interval,
-            "last_check": datetime.now().isoformat()
+            "last_check": get_ist_now().isoformat()
         }
     
     def update_check_interval(self, interval_seconds: int):

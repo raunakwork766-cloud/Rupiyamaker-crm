@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { CheckSquare, Plus, Loader2 } from 'lucide-react';
 import { message } from "antd";
-import CreateTask from "../CreateTask";
-import EditTask from "../EditTask";
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../../utils/dateUtils';
+
+// Lazy load heavy components for better code splitting
+const CreateTask = lazy(() => import("../CreateTask"));
+const EditTask = lazy(() => import("../EditTask"));
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -67,7 +70,7 @@ export default function TaskSectionInLead({ leadData }) {
             typeTask: task.task_type || task.type || 'TO DO',
             leadLogin: leadData.lead_number || '',
             customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
-            date: new Date(task.due_date || task.created_at).toISOString().split('T')[0],
+            date: toISTDateYMD(task.due_date || task.created_at),
             time: task.due_time || '12:00 PM',
             assign: task.assigned_users && task.assigned_users.length > 0 ? 
               task.assigned_users.map(user => user.name || user.username || 'Unknown').join(', ') : 
@@ -281,7 +284,7 @@ export default function TaskSectionInLead({ leadData }) {
           typeTask: task.task_type || task.type || 'TO DO',
           leadLogin: leadData.lead_number || '',
           customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
-          date: new Date(task.due_date || task.created_at).toISOString().split('T')[0],
+          date: toISTDateYMD(task.due_date || task.created_at),
           time: task.due_time || '12:00 PM',
           assign: task.assigned_users && task.assigned_users.length > 0 ? 
             task.assigned_users.map(user => user.name || user.username || 'Unknown').join(', ') : 
@@ -685,7 +688,7 @@ const initialTaskForm = {
       leadLogin: leadData.lead_number || '',
       customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim(),
       // Use the provided due date or today's date
-      date: taskData.due_date || taskData.date || new Date().toISOString().split('T')[0],
+      date: taskData.due_date || taskData.date || getISTDateYMD(),
       time: taskData.due_time || taskData.time || '12:00 PM',
       // Use the current user ID as the assignee, API expects user IDs not names
       assigned_to: [currentUser], // Always use current user ID as the API needs IDs, not names
@@ -841,12 +844,14 @@ const initialTaskForm = {
         {editTask && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
-              <EditTask
-                taskData={editTask}
-                onClose={handleCancelEdit}
-                onSave={handleSaveTask}
-                preselectedLead={leadData} // Pass the current lead data to show as preselected
-              />
+              <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                <EditTask
+                  taskData={editTask}
+                  onClose={handleCancelEdit}
+                  onSave={handleSaveTask}
+                  preselectedLead={leadData} // Pass the current lead data to show as preselected
+                />
+              </Suspense>
             </div>
           </div>
         )}
@@ -855,11 +860,13 @@ const initialTaskForm = {
         {showCreateModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
-              <CreateTask
-                onClose={closeCreateModal}
-                onSave={handleCreateTaskSave}
-                preselectedLead={leadData} // Pass the current lead data to pre-select it
-              />
+              <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                <CreateTask
+                  onClose={closeCreateModal}
+                  onSave={handleCreateTaskSave}
+                  preselectedLead={leadData} // Pass the current lead data to pre-select it
+                />
+              </Suspense>
             </div>
           </div>
         )}

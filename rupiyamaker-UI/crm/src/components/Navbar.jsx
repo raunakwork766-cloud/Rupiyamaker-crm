@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff } from "lucide-react";
+import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
 
-// API base URL - Use proxy in development
+// v2 - attendance without face recognition
 const API_BASE_URL = '/api'; // Always use proxy
+const _BUILD = 'v20260220-2'; // cache bust
 
 // Floating Dropdown Component (for time and user menus)
 const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
@@ -64,6 +65,140 @@ const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
     document.body
   );
 };
+// Success Modal Component
+const SuccessModal = ({ successInfo, onClose }) => {
+  if (!successInfo) return null;
+  
+  const configs = {
+    full_day: {
+      emoji: '🎉',
+      color: '#16a34a',
+      bg: '#f0fdf4',
+      border: '#86efac',
+      statusLabel: 'Full Day - On Time',
+      messages: [
+        'Great start to the day! Keep it up! 💪',
+        'You\'re on time! Productive day ahead! 🚀',
+        'Attendance marked! Let\'s crush it today! ⚡',
+        'On time and ready! Amazing! 🌟',
+      ],
+    },
+    half_day: {
+      emoji: '🌤️',
+      color: '#d97706',
+      bg: '#fffbeb',
+      border: '#fcd34d',
+      statusLabel: 'Half Day',
+      messages: [
+        'Half day marked! Make the most of it! 😊',
+        'Short day today, still counts! 👍',
+        'Half day attendance recorded! 📋',
+      ],
+    },
+    late: {
+      emoji: '⏰',
+      color: '#dc2626',
+      bg: '#fef2f2',
+      border: '#fca5a5',
+      statusLabel: 'Late Check-In',
+      messages: [
+        'You\'re a bit late today. Try to be earlier tomorrow! 😅',
+        'Late check-in recorded. No worries, happens to all! 🙂',
+        'Marked late. Remember: early bird gets the worm! 🐦',
+      ],
+    },
+    absent: {
+      emoji: '❌',
+      color: '#dc2626',
+      bg: '#fef2f2',
+      border: '#fca5a5',
+      statusLabel: 'Absent',
+      messages: [
+        'Marked as absent for today.',
+      ],
+    },
+    absconding: {
+      emoji: '🚫',
+      color: '#991b1b',
+      bg: '#fef2f2',
+      border: '#f87171',
+      statusLabel: 'Absconding',
+      messages: [
+        'Marked as absconding. Please contact HR.',
+      ],
+    },
+    checked_out: {
+      emoji: '👋',
+      color: '#2563eb',
+      bg: '#eff6ff',
+      border: '#93c5fd',
+      statusLabel: 'Checked Out',
+      messages: [
+        'Great work today! See you tomorrow! 😊',
+        'Another productive day done! Rest well! 🌙',
+        'Checked out! You deserve some rest! 🏠',
+        'Day complete! Good job today! ⭐',
+      ],
+    },
+  };
+  
+  const cfg = configs[successInfo.type] || configs.full_day;
+  const randomMsg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
+  
+  // Format time display
+  const formatTime = (timeStr) => {
+    if (!timeStr) return 'N/A';
+    // If it's already in HH:MM:SS format, just return it
+    if (timeStr.match(/^\d{2}:\d{2}:\d{2}$/)) return timeStr;
+    return timeStr;
+  };
+  
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '16px' }}>
+      <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: '16px', padding: '32px 24px', maxWidth: '420px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'popIn 0.3s ease-out' }}>
+        <style>{`@keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
+        <div style={{ fontSize: '64px', marginBottom: '12px' }}>{cfg.emoji}</div>
+        <h2 style={{ color: cfg.color, fontSize: '22px', fontWeight: 700, marginBottom: '8px' }}>{successInfo.title}</h2>
+        
+        {/* Status Badge */}
+        <div style={{ display: 'inline-block', background: cfg.color, color: 'white', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+          {cfg.statusLabel}
+        </div>
+        
+        {/* Attendance Details */}
+        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
+          {successInfo.checkInTime && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-In:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkInTime)}</span>
+            </div>
+          )}
+          {successInfo.checkOutTime && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-Out:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkOutTime)}</span>
+            </div>
+          )}
+          {successInfo.workHours && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
+              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Work Hours:</span>
+              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{successInfo.workHours}</span>
+            </div>
+          )}
+        </div>
+        
+        <p style={{ color: '#374151', fontSize: '15px', marginBottom: '8px', fontWeight: 500 }}>{successInfo.message}</p>
+        <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', fontStyle: 'italic' }}>{randomMsg}</p>
+        
+        <button onClick={onClose} style={{ background: cfg.color, color: 'white', border: 'none', borderRadius: '10px', padding: '12px 32px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%', transition: 'all 0.2s' }} onMouseOver={(e) => e.target.style.opacity = '0.9'} onMouseOut={(e) => e.target.style.opacity = '1'}>
+          Done
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // Camera Modal Component
 const CameraModal = ({
   showCamera,
@@ -76,6 +211,9 @@ const CameraModal = ({
   retakePhoto,
   confirmPhoto,
   attendanceLoading,
+  cameraAvailable,
+  fileInputRef,
+  handleFileUpload,
 }) => {
   if (!showCamera) return null;
 
@@ -84,7 +222,7 @@ const CameraModal = ({
       <div className="bg-white border border-gray-300 rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-sm sm:max-w-lg relative">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-black text-base sm:text-lg font-semibold">
-            {pendingAction === 'checkin' ? 'Check In' : 'Check Out'} - Take Photo
+            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'} — Capture Photo
           </h3>
           <button
             onClick={closeCameraModal}
@@ -94,6 +232,23 @@ const CameraModal = ({
           </button>
         </div>
         <div className="space-y-3 sm:space-y-4">
+          {/* Camera not available message */}
+          {!cameraAvailable && !capturedPhoto && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 sm:p-4">
+              <p className="text-yellow-800 text-xs sm:text-sm">
+                📷 Camera unavailable. This may be because:
+              </p>
+              <ul className="text-yellow-700 text-xs ml-4 mt-2 space-y-1">
+                <li>• Browser doesn't support camera</li>
+                <li>• Camera permissions blocked</li>
+                <li>• HTTPS required (accessing via HTTP)</li>
+              </ul>
+              <p className="text-yellow-800 text-xs sm:text-sm mt-2 font-semibold">
+                ⬆️ Please upload a photo instead:
+              </p>
+            </div>
+          )}
+          
           <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '4/3', maxHeight: '250px' }}>
             <video
               ref={videoRef}
@@ -107,6 +262,7 @@ const CameraModal = ({
             )}
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
+
           <div className="flex gap-2 sm:gap-3">
             {!capturedPhoto ? (
               <>
@@ -116,35 +272,55 @@ const CameraModal = ({
                 >
                   Cancel
                 </button>
+                
+                {/* Show camera capture button only if camera is available */}
+                {cameraAvailable && (
+                  <button
+                    onClick={capturePhoto}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span className="hidden sm:inline">📷 Capture Photo</span>
+                    <span className="sm:hidden">Capture</span>
+                  </button>
+                )}
+                
+                {/* Show file upload button when camera not available or as alternative */}
                 <button
-                  onClick={capturePhoto}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
                 >
-                  <Camera className="w-4 h-4" />
-                  <span className="hidden sm:inline">Capture Photo</span>
-                  <span className="sm:hidden">Capture</span>
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">📁 Upload Photo</span>
+                  <span className="sm:hidden">Upload</span>
                 </button>
+                
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
               </>
             ) : (
               <>
                 <button
-                  onClick={closeCameraModal}
+                  onClick={retakePhoto}
                   className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={retakePhoto}
-                  className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
-                >
-                  Retake
+                  🔄 Retake
                 </button>
                 <button
                   onClick={confirmPhoto}
                   disabled={attendanceLoading}
                   className="flex-1 px-2 sm:px-4 py-2 text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {attendanceLoading ? 'Processing...' : 'Confirm'}
+                  {attendanceLoading
+                    ? '⏳ Marking...'
+                    : `✅ Mark ${pendingAction === 'checkin' ? 'Check In' : 'Check Out'}`
+                  }
                 </button>
               </>
             )}
@@ -172,6 +348,9 @@ export default function TopNavbar({
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [cameraStream, setCameraStream] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [successModal, setSuccessModal] = useState(null); // null | { type, title, message }
+  const [cameraAvailable, setCameraAvailable] = useState(true);
+  const fileInputRef = useRef(null);
   const [userProfilePhoto, setUserProfilePhoto] = useState(null);
   const [profilePhotoError, setProfilePhotoError] = useState(false);
   const [currentUserData, setCurrentUserData] = useState(null);
@@ -895,10 +1074,21 @@ export default function TopNavbar({
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera not supported by this browser');
       }
+      
+      // Check if we're on HTTPS or localhost
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure) {
+        throw new Error('Camera requires HTTPS connection');
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' },
       });
       setCameraStream(stream);
+      setCameraAvailable(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
@@ -907,8 +1097,8 @@ export default function TopNavbar({
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert(`Unable to access camera: ${error.message}. Please check permissions and try again.`);
-      closeCameraModal();
+      setCameraAvailable(false);
+      // Don't close modal - let user upload file instead
     }
   };
 
@@ -930,6 +1120,8 @@ export default function TopNavbar({
       context.drawImage(video, 0, 0);
       const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedPhoto(photoDataUrl);
+      // Stop camera stream after capture
+      stopCamera();
     } else {
       console.error('Video or canvas not available');
       alert('Error capturing photo. Please try again.');
@@ -938,6 +1130,8 @@ export default function TopNavbar({
 
   const retakePhoto = () => {
     setCapturedPhoto(null);
+    // Restart camera
+    startCamera();
   };
 
   const closeCameraModal = () => {
@@ -946,6 +1140,7 @@ export default function TopNavbar({
     setCapturedPhoto(null);
     setPendingAction(null);
     setAttendanceLoading(false);
+    setCameraAvailable(true);
     document.body.style.overflow = 'unset';
     const modalContainer = document.getElementById('camera-modal-container');
     if (modalContainer) {
@@ -953,6 +1148,19 @@ export default function TopNavbar({
       if (!modalContainer.hasChildNodes()) {
         document.body.removeChild(modalContainer);
       }
+    }
+  };
+  
+  const handleFileUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCapturedPhoto(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert('Please select a valid image file');
     }
   };
 
@@ -995,10 +1203,86 @@ export default function TopNavbar({
       });
       if (apiResponse.ok) {
         const data = await apiResponse.json();
+        console.log('📊 Attendance API Response:', data);
         setIsCheckedIn(pendingAction === 'checkin');
-        alert(data.message || `${pendingAction === 'checkin' ? 'Check-in' : 'Check-out'} successful!`);
         closeCameraModal();
         checkAttendanceStatus();
+        
+        // Extract attendance details
+        const checkInTime = data.check_in_time || data.checkInTime || data.check_in || null;
+        const checkOutTime = data.check_out_time || data.checkOutTime || data.check_out || null;
+        const workHours = data.work_hours || data.workHours || data.total_hours || null;
+        
+        // Show success modal based on response
+        if (pendingAction === 'checkout') {
+          setSuccessModal({ 
+            type: 'checked_out', 
+            title: 'Checked Out! 👋', 
+            message: data.message || 'Check-out successful!',
+            checkInTime: checkInTime,
+            checkOutTime: checkOutTime,
+            workHours: workHours
+          });
+        } else {
+          // Check-in logic - determine type based on API response
+          const statusLower = (data.status || '').toLowerCase();
+          const messageLower = (data.message || '').toLowerCase();
+          
+          console.log('🔍 Check-in status:', { 
+            status: data.status, 
+            is_late: data.is_late, 
+            message: data.message,
+            statusLower,
+            messageLower,
+            checkInTime
+          });
+          
+          // Check for absent
+          if (statusLower.includes('absent') || messageLower.includes('absent')) {
+            setSuccessModal({ 
+              type: 'absent', 
+              title: 'Absent ❌', 
+              message: data.message || 'Marked as absent for today.',
+              checkInTime: checkInTime
+            });
+          }
+          // Check for absconding
+          else if (statusLower.includes('absconding') || messageLower.includes('absconding')) {
+            setSuccessModal({ 
+              type: 'absconding', 
+              title: 'Absconding 🚫', 
+              message: data.message || 'Marked as absconding. Please contact HR.',
+              checkInTime: checkInTime
+            });
+          }
+          // Check for late attendance
+          else if (data.is_late || statusLower.includes('late') || messageLower.includes('late')) {
+            setSuccessModal({ 
+              type: 'late', 
+              title: 'Late Check In ⏰', 
+              message: data.message || 'Check-in recorded (late).',
+              checkInTime: checkInTime
+            });
+          } 
+          // Check for half day
+          else if (statusLower.includes('half') || messageLower.includes('half')) {
+            setSuccessModal({ 
+              type: 'half_day', 
+              title: 'Half Day 🌤️', 
+              message: data.message || 'Half day attendance marked!',
+              checkInTime: checkInTime
+            });
+          } 
+          // Default to full day
+          else {
+            setSuccessModal({ 
+              type: 'full_day', 
+              title: 'Checked In! 🎉', 
+              message: data.message || 'Check-in successful!',
+              checkInTime: checkInTime
+            });
+          }
+        }
       } else {
         const errorData = await apiResponse.json();
         throw new Error(errorData.detail || 'Attendance action failed');
@@ -1027,6 +1311,7 @@ export default function TopNavbar({
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'Asia/Kolkata',
   });
   const parts = timeFormatter.formatToParts(time);
   let numericTime = '';
@@ -1412,6 +1697,18 @@ export default function TopNavbar({
         retakePhoto={retakePhoto}
         confirmPhoto={confirmPhoto}
         attendanceLoading={attendanceLoading}
+        cameraAvailable={cameraAvailable}
+        fileInputRef={fileInputRef}
+        handleFileUpload={handleFileUpload}
+      />
+
+      <SuccessModal
+        successInfo={successModal}
+        onClose={() => {
+          setSuccessModal(null);
+          // Reload page to refresh attendance calendar
+          window.location.reload();
+        }}
       />
 
       {/* Change Password Modal */}

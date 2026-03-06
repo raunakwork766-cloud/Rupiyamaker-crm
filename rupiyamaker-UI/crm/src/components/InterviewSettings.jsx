@@ -929,7 +929,7 @@ const InterviewSettings = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto">
+      <div className="w-full">
         <div className="bg-[#1b2230] rounded-lg shadow-lg p-8">
           {activeTab === 'jobOpening' ? (
             <>

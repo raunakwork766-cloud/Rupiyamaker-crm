@@ -1,4 +1,5 @@
 import { api, apiCall } from './api';
+import { getISTTimestamp } from '../utils/dateUtils';
 
 // API configuration - ALWAYS use /api (nginx will proxy)
 const API_BASE_URL = '/api';
@@ -1457,15 +1458,17 @@ export const hrmsService = {
     },
 
     // Bulk update functions for master toggles
-    async bulkUpdateUserStatus(targetStatus) {
+    async bulkUpdateUserStatus(targetStatus, filterStatus = null) {
         const userId = getUserId();
         if (!userId) {
             throw new Error('User ID not found. Please log in again.');
         }
         
-        console.log(`🔄 Bulk updating user status to: ${targetStatus}`);
+        console.log(`🔄 Bulk updating user status to: ${targetStatus}, filter: ${filterStatus}`);
         try {
-            const response = await apiCall(`/users/bulk-update-status?target_status=${targetStatus}&user_id=${userId}`, {
+            let url = `/users/bulk-update-status?target_status=${targetStatus}&user_id=${userId}`;
+            if (filterStatus) url += `&filter_employee_status=${filterStatus}`;
+            const response = await apiCall(url, {
                 method: 'POST'
             });
             
@@ -1481,15 +1484,17 @@ export const hrmsService = {
         }
     },
 
-    async bulkUpdateLoginAccess(targetLoginEnabled) {
+    async bulkUpdateLoginAccess(targetLoginEnabled, filterStatus = null) {
         const userId = getUserId();
         if (!userId) {
             throw new Error('User ID not found. Please log in again.');
         }
         
-        console.log(`🔄 Bulk updating login access to: ${targetLoginEnabled}`);
+        console.log(`🔄 Bulk updating login access to: ${targetLoginEnabled}, filter: ${filterStatus}`);
         try {
-            const response = await apiCall(`/users/bulk-update-login?target_login_enabled=${targetLoginEnabled}&user_id=${userId}`, {
+            let url = `/users/bulk-update-login?target_login_enabled=${targetLoginEnabled}&user_id=${userId}`;
+            if (filterStatus) url += `&filter_employee_status=${filterStatus}`;
+            const response = await apiCall(url, {
                 method: 'POST'
             });
             
@@ -1505,15 +1510,17 @@ export const hrmsService = {
         }
     },
 
-    async bulkUpdateOTPRequirement(targetOtpRequired) {
+    async bulkUpdateOTPRequirement(targetOtpRequired, filterStatus = null) {
         const userId = getUserId();
         if (!userId) {
             throw new Error('User ID not found. Please log in again.');
         }
         
-        console.log(`🔄 Bulk updating OTP requirement to: ${targetOtpRequired}`);
+        console.log(`🔄 Bulk updating OTP requirement to: ${targetOtpRequired}, filter: ${filterStatus}`);
         try {
-            const response = await apiCall(`/users/bulk-update-otp?target_otp_required=${targetOtpRequired}&user_id=${userId}`, {
+            let url = `/users/bulk-update-otp?target_otp_required=${targetOtpRequired}&user_id=${userId}`;
+            if (filterStatus) url += `&filter_employee_status=${filterStatus}`;
+            const response = await apiCall(url, {
                 method: 'POST'
             });
             
@@ -1570,7 +1577,7 @@ export const hrmsService = {
                 activity_type: activityData.action || 'profile_updated',
                 description: activityData.description || 'Employee data updated',
                 details: activityData.details || {},
-                timestamp: activityData.timestamp || new Date().toISOString(),
+                timestamp: activityData.timestamp || getISTTimestamp(),
                 performed_by: userId,
                 created_by: userId
             };

@@ -27,6 +27,7 @@ from app.schemas.task_schemas import (
 from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission
 from app.utils.lead_utils import save_upload_file, get_file_type
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(
     prefix="/tasks",
@@ -282,7 +283,7 @@ async def list_tasks(
     
     # Handle quick filter parameter (due_today, upcoming, overdue, completed, failed)
     if filter:
-        today = datetime.now().date()
+        today = get_ist_now().date()
         
         if filter == "due_today":
             # Tasks due today
@@ -518,7 +519,7 @@ async def list_tasks_with_stats(
     
     # Handle quick filter parameter
     if filter:
-        today = datetime.now().date()
+        today = get_ist_now().date()
         
         if filter == "due_today":
             extra_filters["due_date"] = {
@@ -597,7 +598,7 @@ async def list_tasks_with_stats(
     )
     
     # Fetch stats (multiple counts in parallel)
-    today = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+    today = get_ist_now().replace(hour=23, minute=59, second=59, microsecond=999999)
     user_object_id = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
     
     stats_futures = [
@@ -791,7 +792,7 @@ async def get_task_stats(
     })
     
     # Overdue tasks (due_date < today and not completed)
-    today = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+    today = get_ist_now().replace(hour=23, minute=59, second=59, microsecond=999999)
     overdue_tasks = await tasks_db.collection.count_documents({
         **visibility_filter,
         "due_date": {"$lt": today},
@@ -845,11 +846,17 @@ async def get_users_for_assignment(
         for perm in user_permissions
     )
     
-    # Get all users
+    # Get all users — ONLY active employees (inactive employees should not appear in assignment dropdowns)
     all_users = await users_db.list_users()
     available_users = []
     
     for user_obj in all_users:
+        # ✅ FILTER: Skip inactive employees — they should not appear in assignment dropdowns
+        employee_status = user_obj.get("employee_status", "active")
+        is_active = user_obj.get("is_active", True)
+        if employee_status == "inactive" or is_active == False:
+            continue
+        
         # Get user's role
         user_role_obj = None
         if user_obj.get("role_id"):
@@ -871,7 +878,12 @@ async def get_users_for_assignment(
             "user_id": user_dict["_id"],
             "name": user_dict["full_name"],
             "email": user_dict.get("email", ""),
-            "role": user_dict["role_name"]
+            "role": user_dict["role_name"],
+            "employee_status": user_dict.get("employee_status", "active"),
+            "is_active": user_dict.get("is_active", True),
+            "first_name": user_dict.get("first_name", ""),
+            "last_name": user_dict.get("last_name", ""),
+            "designation": user_dict.get("designation", "")
         })
     
     return {"users": available_users}
@@ -1189,11 +1201,15 @@ async def get_users_for_filter(
 ):
     """Get list of users that can be assigned to tasks"""
     try:
-        # Get all users for dropdown
+        # Get all users for dropdown — ONLY active employees
         all_users = await users_db.list_users()
         
         user_options = []
         for user in all_users:
+            # ✅ FILTER: Skip inactive employees from task filter dropdown
+            if user.get("employee_status", "active") == "inactive" or user.get("is_active", True) == False:
+                continue
+            
             user_dict = convert_object_id(user)
             
             # Get user's role name
@@ -1586,7 +1602,7 @@ async def update_task(
         update_data = task_update.dict(exclude_unset=True)
         old_status = task.get("status")
         if task_update.status == TaskStatus.COMPLETED and task.get("status") != TaskStatus.COMPLETED:
-            update_data["completed_at"] = datetime.now()
+            update_data["completed_at"] = get_ist_now()
             update_data["completed_by"] = user_object_id
         
         print(f"Calling tasks_db.update_task with data: {update_data}")
@@ -2023,7 +2039,7 @@ async def bulk_update_tasks(
             
             # Handle status change to completed
             if bulk_update.update_data.status == TaskStatus.COMPLETED and task.get("status") != TaskStatus.COMPLETED:
-                update_data["completed_at"] = datetime.now()
+                update_data["completed_at"] = get_ist_now()
                 update_data["completed_by"] = user_object_id
             
             # Update task
@@ -2208,6 +2224,10 @@ async def get_filter_options(
             all_users = await users_db.list_users()
             users_list = []
             for user in all_users:
+                # ✅ FILTER: Skip inactive employees from task filter options
+                if user.get("employee_status", "active") == "inactive" or user.get("is_active", True) == False:
+                    continue
+                
                 user_role_name = "Unknown"
                 if user.get("role_id"):
                     role = await roles_db.get_role(user["role_id"])
@@ -2346,13 +2366,13 @@ async def get_filtered_tasks(
         
         # Overdue filter
         if filter_request.is_overdue:
-            today = datetime.now().date()
+            today = get_ist_now().date()
             mongo_filter["due_date"] = {"$lt": today}
             mongo_filter["status"] = {"$ne": "Completed"}
         
         # Due today filter
         if filter_request.due_today:
-            today = datetime.now().date()
+            today = get_ist_now().date()
             mongo_filter["due_date"] = today
             mongo_filter["status"] = {"$ne": "Completed"}
         
@@ -2525,7 +2545,7 @@ async def enhance_task_with_details(
             elif isinstance(due_date, datetime):
                 due_date = due_date.date()
             
-            task_dict["is_overdue"] = due_date < datetime.now().date()
+            task_dict["is_overdue"] = due_date < get_ist_now().date()
         except:
             task_dict["is_overdue"] = False
     else:
@@ -2754,7 +2774,7 @@ async def add_task_comment(
             "content": content.strip(),
             "created_by": user_id,
             "created_by_name": user_name,
-            "created_at": datetime.now().isoformat(),
+            "created_at": get_ist_now().isoformat(),
             "message": "Comment added successfully"
         }
         
@@ -3206,7 +3226,7 @@ async def get_scheduler_status(
         return {
             "scheduler_status": status_info,
             "pending_tasks_count": len(pending_tasks),
-            "last_checked": datetime.now().isoformat()
+            "last_checked": get_ist_now().isoformat()
         }
         
     except Exception as e:
@@ -3255,7 +3275,7 @@ async def close_task(
         # Update task status
         update_data = {
             "status": TaskStatus.COMPLETED,
-            "completed_at": datetime.now(),
+            "completed_at": get_ist_now(),
             "completed_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
         }
         
@@ -3296,7 +3316,7 @@ async def close_task(
             "message": "Task closed successfully",
             "task_id": task_id,
             "closed_by": user_name,
-            "closed_at": datetime.now().isoformat(),
+            "closed_at": get_ist_now().isoformat(),
             "reason": reason.strip() if reason else None
         }
         
@@ -3346,7 +3366,7 @@ async def reopen_task(
         # Update task status
         update_data = {
             "status": TaskStatus.PENDING,
-            "reopened_at": datetime.now(),
+            "reopened_at": get_ist_now(),
             "reopened_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
         }
         
@@ -3391,7 +3411,7 @@ async def reopen_task(
             "message": "Task reopened successfully",
             "task_id": task_id,
             "reopened_by": user_name,
-            "reopened_at": datetime.now().isoformat(),
+            "reopened_at": get_ist_now().isoformat(),
             "reason": reason.strip() if reason else None
         }
         

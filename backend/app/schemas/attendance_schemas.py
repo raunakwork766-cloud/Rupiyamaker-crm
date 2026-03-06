@@ -29,6 +29,7 @@ class AttendanceCheckInRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
     geolocation: GeolocationData = Field(..., description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
+    face_descriptor: Optional[Dict[str, Any]] = Field(None, description="Optional face descriptor for facial verification")
 
 class AttendanceCheckOutRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
@@ -41,6 +42,7 @@ class AttendanceEditRequest(BaseModel):
     status: Optional[float] = Field(None, description="Attendance status")
     comments: Optional[str] = Field(None, description="Comments")
     admin_comments: Optional[str] = Field(None, description="Admin comments for edit reason")
+    reason: Optional[str] = Field(None, description="Reason for editing attendance")
 
 class AttendanceDetailResponse(BaseModel):
     id: str = Field(..., description="Attendance record ID")
@@ -68,13 +70,43 @@ class AttendanceDetailResponse(BaseModel):
     can_edit: bool = Field(True, description="Whether attendance can be edited")
 
 class AttendanceSettings(BaseModel):
-    check_in_time: str = Field("09:30", description="Standard check-in time (HH:MM)")
-    check_out_time: str = Field("18:30", description="Standard check-out time (HH:MM)")
-    total_working_hours: float = Field(9.0, description="Total working hours per day")
-    late_arrival_threshold: str = Field("10:30", description="Late arrival threshold (HH:MM)")
-    early_departure_threshold: str = Field("17:30", description="Early departure threshold (HH:MM)")
-    minimum_working_hours_full_day: float = Field(8.0, description="Minimum hours for full day")
-    minimum_working_hours_half_day: float = Field(4.0, description="Minimum hours for half day")
+    # Shift Timing Settings
+    shift_start_time: str = Field("10:00", description="Shift start time (HH:MM)")
+    shift_end_time: str = Field("19:00", description="Shift end time (HH:MM)")
+    reporting_deadline: str = Field("10:15", description="Reporting deadline (HH:MM)")
+    
+    # Working Hours Settings
+    full_day_working_hours: float = Field(9.0, description="Full day working hours")
+    half_day_minimum_working_hours: float = Field(5.0, description="Minimum hours for half day")
+    
+    # Grace Period Settings
+    grace_period_minutes: int = Field(30, description="Grace period in minutes after deadline")
+    grace_usage_limit: int = Field(2, description="Maximum grace period usage per month")
+
+    # Auto Grace (Threshold-Based)
+    auto_grace_enabled: bool = Field(True, description="Enable threshold-based auto grace")
+    auto_grace_monthly_limit: int = Field(3, description="Max graces an employee can use per month")
+    auto_grace_threshold_1: int = Field(15, description="Days present to unlock 1st grace")
+    auto_grace_threshold_2: int = Field(20, description="Days present to unlock 2nd grace")
+    auto_grace_threshold_3: int = Field(24, description="Days present to unlock 3rd grace")
+    
+    # Leave Rules
+    pending_leave_auto_convert_days: int = Field(3, description="Days after which pending leave converts to absconding")
+    absconding_penalty: int = Field(-1, description="Penalty for absconding")
+    
+    # Sunday Sandwich Rule
+    enable_sunday_sandwich_rule: bool = Field(True, description="Enable Sunday sandwich rule")
+    enable_adjacent_absconding_rule: bool = Field(True, description="Saturday AB → next Sunday absent; Monday AB → prev Saturday absent")
+    minimum_working_days_for_sunday: int = Field(5, description="Minimum working days (Mon-Sat) to keep Sunday as holiday")
+    
+    # Legacy fields (for backwards compatibility)
+    check_in_time: str = Field("09:30", description="Standard check-in time (HH:MM) - legacy")
+    check_out_time: str = Field("18:30", description="Standard check-out time (HH:MM) - legacy")
+    total_working_hours: float = Field(9.0, description="Total working hours per day - legacy")
+    late_arrival_threshold: str = Field("10:30", description="Late arrival threshold (HH:MM) - legacy")
+    early_departure_threshold: str = Field("17:30", description="Early departure threshold (HH:MM) - legacy")
+    minimum_working_hours_full_day: float = Field(8.0, description="Minimum hours for full day - legacy")
+    minimum_working_hours_half_day: float = Field(4.0, description="Minimum hours for half day - legacy")
     overtime_threshold: float = Field(9.0, description="Overtime threshold in hours")
     weekend_days: List[int] = Field([5, 6], description="Weekend days (0=Monday, 6=Sunday)")
     allow_early_check_in: bool = Field(True, description="Allow early check-in before scheduled time")
@@ -87,6 +119,28 @@ class AttendanceSettings(BaseModel):
     geofence_radius: float = Field(100.0, description="Geofence radius in meters")
     
 class AttendanceSettingsUpdate(BaseModel):
+    # New fields
+    shift_start_time: Optional[str] = Field(None, description="Shift start time (HH:MM)")
+    shift_end_time: Optional[str] = Field(None, description="Shift end time (HH:MM)")
+    reporting_deadline: Optional[str] = Field(None, description="Reporting deadline (HH:MM)")
+    full_day_working_hours: Optional[float] = Field(None, description="Full day working hours")
+    half_day_minimum_working_hours: Optional[float] = Field(None, description="Minimum hours for half day")
+    grace_period_minutes: Optional[int] = Field(None, description="Grace period in minutes")
+    grace_usage_limit: Optional[int] = Field(None, description="Grace usage limit per month")
+    auto_grace_enabled: Optional[bool] = Field(None, description="Enable threshold-based auto grace")
+    auto_grace_monthly_limit: Optional[int] = Field(None, description="Max graces per month")
+    default_earned_leave_monthly: Optional[float] = Field(None, description="Default EL (Earned Leave) allotted per month to each employee")
+    default_paid_leave_monthly: Optional[float] = Field(None, description="Default PL (Paid Leave) allotted per month to each employee")
+    auto_grace_threshold_1: Optional[int] = Field(None, description="Days present to unlock 1st grace")
+    auto_grace_threshold_2: Optional[int] = Field(None, description="Days present to unlock 2nd grace")
+    auto_grace_threshold_3: Optional[int] = Field(None, description="Days present to unlock 3rd grace")
+    pending_leave_auto_convert_days: Optional[int] = Field(None, description="Pending leave auto-convert days")
+    absconding_penalty: Optional[int] = Field(None, description="Absconding penalty")
+    enable_sunday_sandwich_rule: Optional[bool] = Field(None, description="Enable Sunday sandwich rule")
+    enable_adjacent_absconding_rule: Optional[bool] = Field(None, description="Adjacent absconding rule")
+    minimum_working_days_for_sunday: Optional[int] = Field(None, description="Minimum working days for Sunday")
+    
+    # Legacy fields
     check_in_time: Optional[str] = Field(None, description="Standard check-in time (HH:MM)")
     check_out_time: Optional[str] = Field(None, description="Standard check-out time (HH:MM)")
     total_working_hours: Optional[float] = Field(None, description="Total working hours per day")
@@ -110,6 +164,7 @@ class AttendanceCreate(BaseModel):
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     status: float = Field(..., description="Attendance status: 1 = Full Day, 0.5 = Half Day, 0 = Leave, -1 = Absent")
     comments: Optional[str] = Field("", description="Optional comments")
+    reason: Optional[str] = Field(None, description="Reason for marking/editing attendance")
     check_in_time: Optional[str] = Field(None, description="Check-in time")
     check_out_time: Optional[str] = Field(None, description="Check-out time")
     check_in_photo_path: Optional[str] = Field(None, description="Check-in photo path")
@@ -257,6 +312,7 @@ class AttendanceCalendarDay(BaseModel):
 
 class EmployeeAttendanceCalendar(BaseModel):
     employee_id: str = Field(..., description="Employee ID (_id)")
+    user_mongo_id: Optional[str] = Field(None, description="MongoDB _id for history lookups")
     employee_name: str = Field(..., description="Employee name")
     employee_photo: Optional[str] = Field(None, description="Employee photo URL")
     department_name: str = Field(default="Unknown Department", description="Department name")
@@ -422,3 +478,194 @@ def format_working_hours(hours: float) -> str:
         return f"{hours_part} hours"
     else:
         return f"{hours_part} hours {minutes_part} minutes"
+
+# ============= Paid Leave Management Schemas =============
+
+class EmployeeLeaveBalance(BaseModel):
+    """Employee leave balance information"""
+    employee_id: str = Field(..., description="Employee ID")
+    employee_name: str = Field(..., description="Employee name")
+    employee_code: Optional[str] = Field(None, description="Employee code")
+    department: Optional[str] = Field(None, description="Department name")
+    
+    # Leave Balances
+    paid_leaves_total: int = Field(0, description="Total paid leaves allocated per year")
+    paid_leaves_used: int = Field(0, description="Paid leaves used")
+    paid_leaves_remaining: int = Field(0, description="Paid leaves remaining")
+    
+    earned_leaves_total: int = Field(0, description="Total earned leaves")
+    earned_leaves_used: int = Field(0, description="Earned leaves used")
+    earned_leaves_remaining: int = Field(0, description="Earned leaves remaining")
+    
+    sick_leaves_total: int = Field(0, description="Total sick leaves per year")
+    sick_leaves_used: int = Field(0, description="Sick leaves used")
+    sick_leaves_remaining: int = Field(0, description="Sick leaves remaining")
+    
+    casual_leaves_total: int = Field(0, description="Total casual leaves per year")
+    casual_leaves_used: int = Field(0, description="Casual leaves used")
+    casual_leaves_remaining: int = Field(0, description="Casual leaves remaining")
+    
+    # Leave cycle
+    leave_cycle_start: Optional[str] = Field(None, description="Leave cycle start date (YYYY-MM-DD)")
+    leave_cycle_end: Optional[str] = Field(None, description="Leave cycle end date (YYYY-MM-DD)")
+    last_updated: Optional[datetime] = Field(None, description="Last update timestamp")
+
+
+class LeaveBalanceUpdate(BaseModel):
+    """Update leave balance for an employee"""
+    employee_id: str = Field(..., description="Employee ID")
+    
+    # Optional updates for each leave type
+    paid_leaves_total: Optional[int] = Field(None, ge=0, description="Total paid leaves")
+    earned_leaves_total: Optional[int] = Field(None, ge=0, description="Total earned leaves") 
+    sick_leaves_total: Optional[int] = Field(None, ge=0, description="Total sick leaves")
+    casual_leaves_total: Optional[int] = Field(None, ge=0, description="Total casual leaves")
+    
+    # Leave cycle dates
+    leave_cycle_start: Optional[str] = Field(None, description="Leave cycle start date")
+    leave_cycle_end: Optional[str] = Field(None, description="Leave cycle end date")
+    
+    # Admin details
+    updated_by: str = Field(..., description="Admin user ID who updated")
+    update_reason: Optional[str] = Field(None, description="Reason for update")
+
+
+class LeaveAllocation(BaseModel):
+    """Allocate leaves to an employee"""
+    employee_id: str = Field(..., description="Employee ID")
+    leave_type: str = Field(..., description="Leave type: paid, earned, sick, casual")
+    quantity: int = Field(..., gt=0, description="Number of leaves to allocate")
+    reason: str = Field(..., min_length=5, description="Reason for allocation")
+    allocated_by: str = Field(..., description="Admin user ID")
+    valid_from: Optional[str] = Field(None, description="Valid from date (YYYY-MM-DD)")
+    valid_until: Optional[str] = Field(None, description="Valid until date (YYYY-MM-DD)")
+    
+    @validator('leave_type')
+    def validate_leave_type(cls, v):
+        allowed_types = ['paid', 'earned', 'sick', 'casual']
+        if v.lower() not in allowed_types:
+            raise ValueError(f'Leave type must be one of: {", ".join(allowed_types)}')
+        return v.lower()
+
+
+class LeaveDeduction(BaseModel):
+    """Deduct leaves from an employee"""
+    employee_id: str = Field(..., description="Employee ID")
+    leave_type: str = Field(..., description="Leave type: paid, earned, sick, casual")
+    quantity: int = Field(..., gt=0, description="Number of leaves to deduct")
+    reason: str = Field(..., min_length=5, description="Reason for deduction")
+    deducted_by: str = Field(..., description="Admin user ID")
+    
+    @validator('leave_type')
+    def validate_leave_type(cls, v):
+        allowed_types = ['paid', 'earned', 'sick', 'casual']
+        if v.lower() not in allowed_types:
+            raise ValueError(f'Leave type must be one of: {", ".join(allowed_types)}')
+        return v.lower()
+
+
+class LeaveHistory(BaseModel):
+    """Leave transaction history"""
+    id: str = Field(..., description="Transaction ID")
+    employee_id: str = Field(..., description="Employee ID")
+    employee_name: str = Field(..., description="Employee name")
+    leave_type: str = Field(..., description="Leave type")
+    transaction_type: str = Field(..., description="allocation or deduction")
+    quantity: int = Field(..., description="Number of leaves")
+    reason: str = Field(..., description="Reason for transaction")
+    performed_by: str = Field(..., description="Admin user ID")
+    performed_by_name: str = Field(..., description="Admin user name")
+    timestamp: datetime = Field(..., description="Transaction timestamp")
+    balance_before: int = Field(..., description="Balance before transaction")
+    balance_after: int = Field(..., description="Balance after transaction")
+
+
+class BulkLeaveAllocation(BaseModel):
+    """Bulk allocate leaves to multiple employees"""
+    employee_ids: List[str] = Field(..., min_items=1, description="List of employee IDs")
+    leave_type: str = Field(..., description="Leave type")
+    quantity: int = Field(..., gt=0, description="Number of leaves")
+    reason: str = Field(..., min_length=5, description="Reason for allocation")
+    allocated_by: str = Field(..., description="Admin user ID")
+    
+    @validator('leave_type')
+    def validate_leave_type(cls, v):
+        allowed_types = ['paid', 'earned', 'sick', 'casual']
+        if v.lower() not in allowed_types:
+            raise ValueError(f'Leave type must be one of: {", ".join(allowed_types)}')
+        return v.lower()
+
+
+class LeaveConfigDefaults(BaseModel):
+    """Default leave configuration for new employees"""
+    paid_leaves_per_year: int = Field(12, ge=0, description="Default paid leaves per year")
+    earned_leaves_per_year: int = Field(15, ge=0, description="Default earned leaves per year")
+    sick_leaves_per_year: int = Field(7, ge=0, description="Default sick leaves per year")
+    casual_leaves_per_year: int = Field(5, ge=0, description="Default casual leaves per year")
+    leave_cycle_start_month: int = Field(1, ge=1, le=12, description="Leave cycle start month (1-12)")
+    leave_cycle_start_day: int = Field(1, ge=1, le=31, description="Leave cycle start day")
+    carry_forward_enabled: bool = Field(False, description="Allow carry forward of unused leaves")
+    max_carry_forward: int = Field(5, ge=0, description="Maximum leaves that can be carried forward")
+
+
+# Face Recognition Schemas
+class FaceDescriptor(BaseModel):
+    """Face descriptor data from face-api.js"""
+    descriptor: List[float] = Field(..., min_items=128, max_items=128, description="128-dimensional face descriptor array")
+    detection_score: float = Field(..., ge=0, le=1, description="Face detection confidence score")
+    
+    @validator('descriptor')
+    def validate_descriptor_length(cls, v):
+        if len(v) != 128:
+            raise ValueError('Face descriptor must have exactly 128 dimensions')
+        return v
+
+
+class FaceRegistrationRequest(BaseModel):
+    """Request to register employee's face"""
+    employee_id: str = Field(..., description="Employee user ID")
+    face_descriptors: List[FaceDescriptor] = Field(..., min_items=1, max_items=5, description="Multiple face samples for better accuracy")
+    photo_data: str = Field(..., description="Base64 encoded reference photo")
+    
+    @validator('face_descriptors')
+    def validate_min_descriptors(cls, v):
+        if len(v) < 3:
+            raise ValueError('At least 3 face samples required for registration')
+        return v
+
+
+class FaceRegistrationResponse(BaseModel):
+    """Response after successful face registration"""
+    employee_id: str = Field(..., description="Employee user ID")
+    face_id: str = Field(..., description="Unique face registration ID") 
+    samples_count: int = Field(..., description="Number of face samples stored")
+    registered_at: datetime = Field(..., description="Registration timestamp")
+    registered_by: str = Field(..., description="Admin who registered the face")
+    message: str = Field(..., description="Success message")
+
+
+class FaceVerificationRequest(BaseModel):
+    """Request to verify face during check-in"""
+    employee_id: str = Field(..., description="Employee user ID attempting check-in")
+    face_descriptor: FaceDescriptor = Field(..., description="Face descriptor to verify")
+    photo_data: str = Field(..., description="Base64 encoded photo for audit")
+
+
+class FaceVerificationResponse(BaseModel):
+    """Response after face verification"""
+    verified: bool = Field(..., description="Whether face verification succeeded")
+    confidence: float = Field(..., ge=0, le=1, description="Match confidence score")
+    threshold: float = Field(..., description="Threshold used for verification")
+    employee_id: str = Field(..., description="Verified employee ID")
+    message: str = Field(..., description="Verification result message")
+
+
+class FaceDataResponse(BaseModel):
+    """Employee face registration data"""
+    employee_id: str = Field(..., description="Employee user ID")
+    employee_name: str = Field(..., description="Employee name")
+    face_registered: bool = Field(..., description="Whether face is registered")
+    samples_count: int = Field(0, description="Number of face samples")
+    registered_at: Optional[datetime] = Field(None, description="Registration timestamp")
+    last_updated: Optional[datetime] = Field(None, description="Last update timestamp")
+    reference_photo_url: Optional[str] = Field(None, description="URL to reference photo")

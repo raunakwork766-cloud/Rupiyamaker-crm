@@ -2,6 +2,7 @@ from bson import ObjectId
 from datetime import datetime
 import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.utils.timezone import get_ist_now
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class InterviewsDB:
     async def create_interview(self, interview_data):
         """Create a new interview record."""
         try:
-            current_time = datetime.now()
+            current_time = get_ist_now()
             interview_data.update({
                 "created_at": current_time,
                 "updated_at": current_time
@@ -115,7 +116,7 @@ class InterviewsDB:
                 logger.error(f"Invalid interview ID: {interview_id}")
                 return None
             
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             
             result = await self.collection.update_one(
                 {"_id": ObjectId(interview_id)},

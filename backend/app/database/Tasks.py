@@ -9,6 +9,7 @@ import shutil
 import uuid
 import pymongo
 from app.utils.permission_helpers import is_super_admin_permission
+from app.utils.timezone import get_ist_now
 
 class TasksDB:
     def __init__(self, db=None):
@@ -64,7 +65,7 @@ class TasksDB:
         """
         try:
             # Add timestamps
-            now = datetime.now()
+            now = get_ist_now()
             
             # Process recurring configuration
             is_recurring = task_data.get("is_recurring", False)
@@ -173,7 +174,7 @@ class TasksDB:
             datetime: Next occurrence date
         """
         if not now:
-            now = datetime.now()
+            now = get_ist_now()
             
         if pattern == "daily":
             return now + timedelta(days=interval)
@@ -220,7 +221,7 @@ class TasksDB:
             if not task:
                 return False
                 
-            now = datetime.now()
+            now = get_ist_now()
             next_occurrence = await self.calculate_next_occurrence(
                 recurring_config.get("pattern"),
                 recurring_config.get("interval", 1),
@@ -311,7 +312,7 @@ class TasksDB:
             new_task_id = await self.create_task(new_task)
             
             # Update the next occurrence date for the parent task
-            now = datetime.now()
+            now = get_ist_now()
             next_occurrence = await self.calculate_next_occurrence(
                 parent_task.get("recurring_config", {}).get("pattern"),
                 parent_task.get("recurring_config", {}).get("interval", 1),
@@ -340,7 +341,7 @@ class TasksDB:
             List of task documents
         """
         try:
-            now = datetime.now()
+            now = get_ist_now()
             
             # Find recurring tasks where next_occurrence is in the past
             filter_dict = {
@@ -401,7 +402,7 @@ class TasksDB:
         try:
             # Add update timestamp and user
             update_data.update({
-                "updated_at": datetime.now(),
+                "updated_at": get_ist_now(),
                 "updated_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
             })
             
@@ -414,7 +415,7 @@ class TasksDB:
                     next_occurrence = await self.calculate_next_occurrence(
                         recurring_config.get("pattern"),
                         recurring_config.get("interval", 1),
-                        datetime.now()
+                        get_ist_now()
                     )
                     update_data["next_occurrence"] = next_occurrence
                     
@@ -462,7 +463,7 @@ class TasksDB:
                 {"_id": ObjectId(task_id)},
                 {"$set": {
                     "is_deleted": True,
-                    "deleted_at": datetime.now(),
+                    "deleted_at": get_ist_now(),
                     "deleted_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
                 }}
             )
@@ -723,7 +724,7 @@ class TasksDB:
             attachment_id = str(ObjectId())
             
             # Add timestamps and ID
-            now = datetime.now()
+            now = get_ist_now()
             embedded_attachment = {
                 "_id": attachment_id,
                 "file_name": attachment_data.get("file_name"),
@@ -834,7 +835,7 @@ class TasksDB:
                 {"attachments._id": attachment_id},
                 {
                     "$pull": {"attachments": {"_id": attachment_id}},
-                    "$set": {"updated_at": datetime.now()}
+                    "$set": {"updated_at": get_ist_now()}
                 }
             )
             
@@ -900,7 +901,7 @@ class TasksDB:
                 return None
             
             # Create new task data from original, excluding certain fields
-            now = datetime.now()
+            now = get_ist_now()
             new_task_data = {
                 "subject": f"[REPEAT] {original_task.get('subject', '')}",
                 "task_details": original_task.get("task_details", ""),
@@ -995,7 +996,7 @@ class TasksDB:
     
     def _calculate_next_occurrence(self, recurring_config: Dict[str, Any]) -> datetime:
         """Calculate the next occurrence based on recurring configuration"""
-        now = datetime.now()
+        now = get_ist_now()
         pattern = recurring_config.get("pattern", "daily")  # daily, weekly, monthly, yearly
         interval = recurring_config.get("interval", 1)  # every N days/weeks/months
         
@@ -1014,7 +1015,7 @@ class TasksDB:
     async def get_pending_recurring_tasks(self) -> List[Dict[str, Any]]:
         """Get all recurring tasks that are due for creation"""
         try:
-            now = datetime.now()
+            now = get_ist_now()
             
             # Find recurring tasks where next_occurrence is due
             cursor = self.collection.find({
@@ -1072,7 +1073,7 @@ class TasksDB:
                     {
                         "$set": {
                             "next_occurrence": next_occurrence,
-                            "updated_at": datetime.now()
+                            "updated_at": get_ist_now()
                         }
                     }
                 )
@@ -1145,7 +1146,7 @@ class TasksDB:
                 {
                     "$set": {
                         "next_occurrence": next_occurrence,
-                        "updated_at": datetime.now()
+                        "updated_at": get_ist_now()
                     }
                 }
             )
@@ -1179,7 +1180,7 @@ class TasksDB:
                 "is_recurring": True,
                 "recurring_config": recurring_config,
                 "next_occurrence": next_occurrence,
-                "updated_at": datetime.now(),
+                "updated_at": get_ist_now(),
                 "updated_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
             }
             
@@ -1215,7 +1216,7 @@ class TasksDB:
                     "$set": {
                         "is_recurring": False,
                         "next_occurrence": None,
-                        "updated_at": datetime.now(),
+                        "updated_at": get_ist_now(),
                         "updated_by": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
                     }
                 }
@@ -1239,7 +1240,7 @@ async def get_overdue_tasks_for_user(self, user_id: str) -> List[Dict[str, Any]]
         List[Dict[str, Any]]: List of overdue tasks
     """
     try:
-        now = datetime.now().isoformat()
+        now = get_ist_now().isoformat()
         
         tasks = []
         async for doc in self.collection.find({

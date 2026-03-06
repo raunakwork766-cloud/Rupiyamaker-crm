@@ -190,6 +190,15 @@ try:
 except ImportError as e:
     logging.warning(f"⚠ Session validation middleware not available: {e}")
 
+# 🕐 Datetime UTC middleware - appends Z to naive datetime strings in JSON responses
+# Ensures browser correctly interprets timestamps as UTC and converts to IST
+try:
+    from app.middleware.datetime_utc import DatetimeUTCMiddleware
+    app.add_middleware(DatetimeUTCMiddleware)
+    logging.info("✓ Datetime UTC middleware activated - all timestamps marked as UTC")
+except ImportError as e:
+    logging.warning(f"⚠ Datetime UTC middleware not available: {e}")
+
 # 4. Performance monitoring middleware for async Motor
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -300,6 +309,14 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+try:
+    from app.routes import dialer as dialer_route
+    print("✓ Dialer router imported successfully")
+except Exception as e:
+    print(f"✗ Error importing dialer router: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Include routers
 app.include_router(users.router)
 app.include_router(roles.router)
@@ -354,6 +371,14 @@ try:
     print("✓ Warnings router registered successfully")
 except Exception as e:
     print(f"✗ Error registering warnings router: {e}")
+    import traceback
+    traceback.print_exc()
+
+try:
+    app.include_router(dialer_route.router)
+    print("✓ Dialer router registered successfully")
+except Exception as e:
+    print(f"✗ Error registering dialer router: {e}")
     import traceback
     traceback.print_exc()
 

@@ -5,6 +5,7 @@ from bson import ObjectId
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 import logging
+from app.utils.timezone import get_ist_now
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class WarningDB:
         """Create a new warning"""
         try:
             # Add timestamps
-            current_time = datetime.now()
+            current_time = get_ist_now()
             warning_data['created_at'] = current_time
             warning_data['updated_at'] = current_time
             warning_data['issued_date'] = current_time  # Set issued_date to current time
@@ -146,7 +147,7 @@ class WarningDB:
     async def update_warning(self, warning_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update warning"""
         try:
-            update_data['updated_at'] = datetime.now()
+            update_data['updated_at'] = get_ist_now()
             
             # Convert string IDs to ObjectIds where needed
             if 'issued_to' in update_data:
@@ -191,7 +192,7 @@ class WarningDB:
             
             # Check for recent warning (today)
             from datetime import datetime, timedelta
-            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = get_ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
             query["created_at"] = {"$gte": today_start}
             
             existing_warning = await self.collection.find_one(query)

@@ -6,6 +6,7 @@ import { saveObligationDataToAPIDebounced, prepareObligationData } from '../../u
 import { API_BASE_URL } from '../../config/api';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { getISTTimestamp } from '../../utils/dateUtils';
 
 // Get userId from localStorage
 const getUserId = () => {
@@ -385,7 +386,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         product: obl.product,
         id: obl.id
       })),
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
     });
   }, [obligations]);
   
@@ -1582,7 +1583,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           'loan_amount',
           'dynamic_fields.financial_details.loan_required'
         ],
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
       });
       
       const extractedCompanyName = getFieldValueEnhanced([
@@ -1857,7 +1858,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           isLoginLead,
           shouldAlwaysUpdate,
           leadId: leadData?._id,
-          timestamp: new Date().toLocaleTimeString()
+          timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
         });
       }
       
@@ -2312,7 +2313,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           savedDataSize: savedData ? Object.keys(savedData).length : 0,
           leadDataSize: leadData ? Object.keys(leadData).length : 0
         },
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
       });
     }, 100);
   }, [leadData?._id, JSON.stringify(leadData?.dynamic_fields?.obligations), bankListLoaded]); // Stringify to detect content changes
@@ -2567,7 +2568,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           setDebugState(prev => ({
             ...prev,
             recoveryCount: prev.recoveryCount + 1,
-            lastRecoveryTime: new Date().toLocaleTimeString()
+            lastRecoveryTime: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
           }));
         }
       }, 2000); // Check every 2 seconds
@@ -4706,7 +4707,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           <!-- Header -->
           <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px;">
             <h1 style="color: black; margin: 0; font-size: 28px; font-weight: bold;">Customer Obligation Report</h1>
-            <p style="margin: 10px 0; font-size: 16px;"><strong>Generated on:</strong> ${new Date().toLocaleString()}</p>
+            <p style="margin: 10px 0; font-size: 16px;"><strong>Generated on:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
             ${leadData?.name ? `<p style="margin: 5px 0; font-size: 16px;"><strong>Customer:</strong> ${leadData.name}</p>` : ''}
             ${leadData?.phone ? `<p style="margin: 5px 0; font-size: 16px;"><strong>Phone:</strong> ${leadData.phone}</p>` : ''}
           </div>
@@ -6081,7 +6082,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       rawTotal: totalObligations,
       roundedTotal: Math.round(totalObligations),
       formattedValue: formattedValue,
-      timestamp: new Date().toISOString()
+      timestamp: getISTTimestamp()
     });
     
     // Update total obligation immediately when obligations change
@@ -6320,7 +6321,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         setDebugState(prev => ({
           ...prev,
           recoveryCount: prev.recoveryCount + 1,
-          lastRecoveryTime: new Date().toLocaleTimeString()
+          lastRecoveryTime: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
         }));
         setTimeout(() => {
           if (backupObligationData?.salary) setSalary(backupObligationData.salary);
@@ -6349,7 +6350,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   return (
     <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="min-h-screen bg-black p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
 
 
 
@@ -6497,7 +6498,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                         formattedValue: formatINR(value),
                         leadId: leadData?._id,
                         file_sent_to_login: leadData?.file_sent_to_login,
-                        timestamp: new Date().toLocaleTimeString(),
+                        timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
                         stackTrace: new Error().stack.split('\n').slice(0, 5).join('\n')
                       });
                       
@@ -7207,7 +7208,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                                   roiField: row.roi,
                                   outstanding: row.outstanding,
                                   canEdit,
-                                  timestamp: new Date().toLocaleTimeString()
+                                  timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
                                 });
                                 return isHighlighted 
                                   ? 'bg-green-500 text-white border-green-600' 
@@ -7230,7 +7231,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                                   canEdit,
                                   outstanding: row.outstanding,
                                   outstandingParsed: parseINR(row.outstanding),
-                                  timestamp: new Date().toLocaleTimeString()
+                                  timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
                                 });
                                 handleCreditCardRoi(idx);
                               }}
@@ -8364,7 +8365,7 @@ function useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompan
       const leadType = isGunjanLead ? '🎯 GUNJAN SHARMA' : '🔄 LOGIN TRANSFER';
       
       console.log(`${leadType} - REAL-TIME DATA MONITORING:`, {
-        timestamp: new Date().toISOString(),
+        timestamp: getISTTimestamp(),
         leadInfo: {
           leadId: leadData?._id,
           leadName: leadData?.name || leadData?.customer_name || 'Unknown',

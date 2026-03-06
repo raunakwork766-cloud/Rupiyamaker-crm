@@ -213,6 +213,7 @@ async def list_roles(
             "reporting_ids": reporting_ids,  # Now returns array of role IDs this role reports to
             "is_active": role_dict.get("is_active", True),
             "permissions": role_dict.get("permissions", []),
+            "locked_roles": role_dict.get("locked_roles", []),  # Role IDs locked for this role
             "created_at": role_dict.get("created_at"),
             "updated_at": role_dict.get("updated_at")
         }
@@ -474,11 +475,17 @@ async def get_users_one_level_above(
     # Get all users from sales department and its children
     all_sales_users = await get_department_users_recursive(sales_department_id)
     
-    # Convert to result format
+    # Convert to result format — ONLY active employees
     result = []
     for user in all_sales_users:
         # Skip the requesting user themselves
         if str(user["_id"]) == user_id:
+            continue
+        
+        # ✅ FILTER: Skip inactive employees — they should not appear in lead assignment dropdowns
+        employee_status = user.get("employee_status", "active")
+        is_active = user.get("is_active", True)
+        if employee_status == "inactive" or is_active == False:
             continue
             
         result.append({

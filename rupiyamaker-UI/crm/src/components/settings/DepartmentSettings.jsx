@@ -509,7 +509,7 @@ const DepartmentSettings = () => {
     }, [departments]);
 
     return (
-        <div className="max-w-7xl mx-auto bg-gray-900/90 backdrop-blur-sm border border-white/10 rounded-xl shadow-2xl p-6 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="w-full bg-gray-900/90 backdrop-blur-sm border border-white/10 rounded-xl shadow-2xl p-6 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-6 px-2">
                 <h1 className="text-3xl font-bold text-white">Departments</h1>

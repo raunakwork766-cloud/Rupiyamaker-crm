@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status as http_status, Qu
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 from bson import ObjectId
+from app.utils.timezone import get_ist_now
 
 from app.database.Apps import AppsDB
 from app.database.Users import UsersDB
@@ -181,7 +182,7 @@ async def get_public_app(
         )
     
     # Check if link is expired
-    if share_link.get("expires_at", datetime.min) < datetime.now():
+    if share_link.get("expires_at", datetime.min) < get_ist_now():
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="This share link has expired"

@@ -1,5 +1,6 @@
 // Lead Data Helper - Manages temporary lead data across form sections
 // BROWSER-COMPATIBLE VERSION - Uses in-memory storage instead of localStorage
+import { getISTTimestamp } from './dateUtils';
 
 // In-memory storage for the session
 let tempLeadData = {};
@@ -22,7 +23,7 @@ export const saveLeadInfoData = (data) => {
       ...tempLeadData,
       leadInfo: {
         ...data,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: getISTTimestamp()
       }
     };
     return true;
@@ -39,7 +40,7 @@ export const saveObligationData = (data) => {
       ...tempLeadData,
       obligation: {
         ...data,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: getISTTimestamp()
       }
     };
     return true;
@@ -347,7 +348,7 @@ export const getFinalLeadData = (parseINR, hookState = null) => {
     created_by: currentUser?.user_id || currentUser?.id || '',
     department_id: currentUser?.department_id || '',
     loan_amount: loanAmount, // Use loan amount from obligation section
-    created_date: new Date().toISOString(),
+    created_date: getISTTimestamp(),
     
     // Dynamic fields structure - matching backend schema
     dynamic_fields: {

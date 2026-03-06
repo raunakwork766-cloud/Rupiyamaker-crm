@@ -140,10 +140,11 @@ export default function CommentSection({ leadData }) {
     new Intl.DateTimeFormat("default", {
       dateStyle: "medium",
       timeStyle: "short",
+      timeZone: "Asia/Kolkata",
     }).format(new Date(time));
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-4">
+    <div className="w-full p-4 space-y-4">
       {/* Header with refresh button */}
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-800">Remarks</h3>

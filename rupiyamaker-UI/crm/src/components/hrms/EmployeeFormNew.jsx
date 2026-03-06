@@ -3,7 +3,7 @@ import { message, Modal } from 'antd';
 import dayjs from 'dayjs';
 import hrmsService from '../../services/hrmsService';
 import { getMediaUrl, getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
-import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
+import { isSuperAdmin, getUserPermissions, getUserId } from '../../utils/permissions';
 import './EmployeeFormNew.css';
 
 const EmployeeForm = ({
@@ -18,7 +18,7 @@ const EmployeeForm = ({
         profile_photo: employee?.profile_photo || '',
         
         // Employee Information
-        employee_id: employee?.employee_id ? `RM${employee.employee_id}` : '',
+        employee_id: employee?.employee_id || '',
         first_name: employee?.first_name || '',
         last_name: employee?.last_name || '',
         phone: employee?.phone || '',
@@ -71,6 +71,7 @@ const EmployeeForm = ({
     const [imageFile, setImageFile] = useState(null);
     const [departments, setDepartments] = useState([]);
     const [roles, setRoles] = useState([]);
+    const [lockedRoleIds, setLockedRoleIds] = useState([]); // role IDs locked by the current user's role config
     const [designations, setDesignations] = useState([]);
     const [showPassword, setShowPassword] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -80,6 +81,31 @@ const EmployeeForm = ({
     const [validationErrors, setValidationErrors] = useState({});
     const [forceRender, setForceRender] = useState(0); // Force re-render counter
     const [phoneCheckTimeout, setPhoneCheckTimeout] = useState(null);
+    // Live permissions: init from localStorage, then refresh from API to avoid stale cache
+    const [livePermissions, setLivePermissions] = useState(() => getUserPermissions());
+
+    // Fetch fresh permissions from API on mount so role-field filtering reflects latest settings
+    // (without requiring the user to re-login after an admin changes their role's permissions)
+    useEffect(() => {
+        const fetchLivePermissions = async () => {
+            try {
+                const userId = getUserId();
+                if (!userId) return;
+                const resp = await fetch(`/api/users/permissions/${userId}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        setLivePermissions(data);
+                        // Keep localStorage in sync
+                        localStorage.setItem('userPermissions', JSON.stringify(data));
+                    }
+                }
+            } catch (e) {
+                // Silently fall back to localStorage version already in state
+            }
+        };
+        fetchLivePermissions();
+    }, []);
 
     // Update form data when employee prop changes (for editing)
     useEffect(() => {
@@ -176,7 +202,7 @@ const EmployeeForm = ({
     }, [employee, employee?._refreshKey]); // Also respond to refresh key changes
 
     const isEditing = !!employee;
-    const userPermissions = getUserPermissions();
+    const userPermissions = livePermissions;
 
     // Create refs for required fields to enable auto-focus
     const firstNameRef = useRef(null);
@@ -188,45 +214,73 @@ const EmployeeForm = ({
     const passwordRef = useRef(null);
     const isUserSuperAdmin = isSuperAdmin(userPermissions);
     
-    // Check if user has permission to view/edit employee passwords
-    const hasPasswordPermission = () => {
-        // Super admin always has access
-        if (isUserSuperAdmin) {
-            return true;
-        }
-        
-        // Check for specific "employees" "password" permission
+    // Helper: check if a specific action is granted for a page in the permissions data
+    // Handles both array format [{page, actions}] (new) and object format (legacy)
+    const hasEmployeesAction = (action) => {
         try {
-            // Check if user has employees permission with password action
-            return userPermissions?.employees?.password === true || 
-                   userPermissions?.Employees?.password === true ||
-                   userPermissions?.employees?.includes?.('password') ||
-                   userPermissions?.Employees?.includes?.('password');
-        } catch (error) {
-            console.error('Error checking password permission:', error);
+            if (Array.isArray(userPermissions)) {
+                const perm = userPermissions.find(
+                    p => p.page === 'employees' || p.page === 'Employees'
+                );
+                if (!perm) return false;
+                const actions = perm.actions;
+                if (actions === '*') return true;
+                return Array.isArray(actions) && (actions.includes(action) || actions.includes('*'));
+            }
+            // Legacy object format
+            return userPermissions?.employees?.[action] === true ||
+                   userPermissions?.Employees?.[action] === true ||
+                   userPermissions?.employees?.includes?.(action) ||
+                   userPermissions?.Employees?.includes?.(action);
+        } catch {
             return false;
         }
+    };
+
+    // Check if user has permission to view/edit employee passwords
+    const hasPasswordPermission = () => {
+        if (isUserSuperAdmin) return true;
+        return hasEmployeesAction('password');
     };
     
     // Check if user has permission to view/edit employee roles
     const hasRolePermission = () => {
-        // Super admin always has access
-        if (isUserSuperAdmin) {
-            return true;
-        }
-        
-        // Check for specific "employees" "role" permission
+        if (isUserSuperAdmin) return true;
+        return hasEmployeesAction('role');
+    };
+
+    // Get the list of BLOCKED/LOCKED role IDs configured in settings for this user's role.
+    // Returns an array of IDs to EXCLUDE from the dropdown (block-list), or [] if none.
+    const getLockedRoleFieldIds = () => {
         try {
-            // Check if user has employees permission with role action
-            return userPermissions?.employees?.role === true || 
-                   userPermissions?.Employees?.role === true ||
-                   userPermissions?.employees?.includes?.('role') ||
-                   userPermissions?.Employees?.includes?.('role');
-        } catch (error) {
-            console.error('Error checking role permission:', error);
-            return false;
+            if (isUserSuperAdmin) return []; // Super admin sees all
+            let configuredIds = null;
+            if (Array.isArray(userPermissions)) {
+                const perm = userPermissions.find(p => p.page === 'employees.role_field_roles');
+                configuredIds = perm?.actions || null;
+            } else if (userPermissions && typeof userPermissions === 'object') {
+                configuredIds =
+                    userPermissions['employees.role_field_roles'] ||
+                    userPermissions['employees_role_field_roles'] ||
+                    null;
+            }
+            return Array.isArray(configuredIds) ? configuredIds : [];
+        } catch {
+            return [];
         }
     };
+
+    // Filter roles dropdown:
+    // Combine both block-lists: roles locked via RoleSettings permission config + roles locked via RoleCompare
+    const settingsLockedIds = getLockedRoleFieldIds();
+    const allLockedIds = [...new Set([...settingsLockedIds, ...lockedRoleIds].map(id => String(id)))];
+    const filteredRoles = roles.filter(r => {
+        const rid = String(r._id || r.id || '');
+        // Always keep the currently-assigned role so the field isn't broken while editing
+        const isCurrentlyAssigned = formData.role_id && String(formData.role_id) === rid;
+        if (!isCurrentlyAssigned && allLockedIds.includes(rid)) return false;
+        return true;
+    });
     
     // Password field should be shown for users with password permission or super admins
     const shouldShowPasswordField = hasPasswordPermission();
@@ -514,7 +568,7 @@ const EmployeeForm = ({
                 
                 setFormData({
                     profile_photo: '',
-                    employee_id: `RM${nextId}`,
+                    employee_id: nextId,
                     first_name: '',
                     last_name: '',
                     phone: '',
@@ -555,10 +609,10 @@ const EmployeeForm = ({
                     password: ''
                 });
             } else {
-                // If no employees exist, start with RM001
+                // If no employees exist, start with 001
                 setFormData({
                     profile_photo: '',
-                    employee_id: 'RM001',
+                    employee_id: '001',
                     first_name: '',
                     last_name: '',
                     phone: '',
@@ -682,7 +736,24 @@ const EmployeeForm = ({
             }
 
             setDepartments(departmentsData.filter(dept => dept && dept.name));
-            setRoles(rolesData.filter(role => role && role.name));
+            const filteredRolesData = rolesData.filter(role => role && role.name);
+            setRoles(filteredRolesData);
+
+            // Derive locked roles from the current user's role config
+            try {
+                const rawUserData = localStorage.getItem('userData');
+                if (rawUserData) {
+                    const parsedUser = JSON.parse(rawUserData);
+                    const currentUserRoleId = parsedUser.role_id || parsedUser.role?._id || parsedUser.role?.id;
+                    if (currentUserRoleId && !isSuperAdmin(getUserPermissions())) {
+                        const currentUserRole = filteredRolesData.find(r => String(r._id || r.id) === String(currentUserRoleId));
+                        if (currentUserRole?.locked_roles?.length) {
+                            setLockedRoleIds(currentUserRole.locked_roles.map(id => String(id)));
+                        }
+                    }
+                }
+            } catch (_) {}
+
             setDesignations(designationsData.filter(designation => designation && designation.name));
 
         } catch (error) {
@@ -779,6 +850,15 @@ const EmployeeForm = ({
             
             setFormData(prev => {
                 const newData = { ...prev, [name]: processedValue };
+                
+                // Auto-generate username when employee_id or first_name changes
+                if ((name === 'employee_id' || name === 'first_name') && !isEditing) {
+                    const empId = name === 'employee_id' ? processedValue : prev.employee_id;
+                    const firstName = name === 'first_name' ? processedValue : prev.first_name;
+                    if (empId && firstName) {
+                        newData.username = `${empId}${firstName.toLowerCase().replace(/[^a-z]/g, '')}`;
+                    }
+                }
                 
                 // Clear previous validation errors for this field
                 setValidationErrors(prevErrors => {
@@ -1280,31 +1360,12 @@ const EmployeeForm = ({
         
         console.log('✅ PASSWORD VALIDATION PASSED');
 
-        // Validate unique fields only if they are provided (mobile, alternate mobile, PAN, Aadhar)
-        const hasUniqueFields = formData.phone || formData.alternate_phone || formData.pan_number || formData.aadhaar_number;
-        if (hasUniqueFields) {
-            console.log('🔍 Starting unique field validation...');
-            const uniqueFieldsValid = await validateUniqueFields();
-            if (!uniqueFieldsValid) {
-                console.log('❌ Unique field validation failed');
-                console.log('❌ UNIQUE FIELDS VALIDATION FAILED - Stopping submission');
-                return;
-            }
-            console.log('✅ Unique field validation passed');
-        } else {
-            console.log('✅ No unique fields provided, skipping validation');
-        }
-        
         console.log('🎉 ALL VALIDATIONS PASSED - Proceeding to API submission');
         console.log('📊 Final form data before API call:', formData);
 
         try {
-            // Strip RM prefix from employee_id for backend storage (only if employee_id exists)
-            const employeeIdForBackend = formData.employee_id 
-                ? (formData.employee_id.startsWith('RM') 
-                    ? formData.employee_id.substring(2) 
-                    : formData.employee_id)
-                : '';
+            // Use employee_id as-is (no RM prefix to strip)
+            const employeeIdForBackend = formData.employee_id || '';
 
             // Format data for the API - START WITH MINIMAL REQUIRED FIELDS ONLY
             const submissionData = {
@@ -1355,7 +1416,9 @@ const EmployeeForm = ({
                 
                 // Basic defaults for new employees
                 submissionData.is_active = true;
-                submissionData.login_enabled = false;
+                // Enable login if a password was provided so employee can login immediately
+                submissionData.login_enabled = !!(submissionData.password && submissionData.password.trim());
+                submissionData.otp_required = false;  // No OTP by default - admin can enable later
                 submissionData.is_employee = true;
                 submissionData.employee_status = 'active';
                 submissionData.onboarding_status = 'pending';
@@ -1396,7 +1459,9 @@ const EmployeeForm = ({
             let userId = currentUser.id || currentUser._id || 
                         userData.id || userData._id || 
                         userInfo.id || userInfo._id ||
-                        authUser.id || authUser._id;
+                        authUser.id || authUser._id ||
+                        getUserId() || // fallback: 'userId' key set by Login.jsx
+                        localStorage.getItem('user_id'); // fallback: 'user_id' key
                         
             console.log('🔍 Resolved userId:', userId);
             
@@ -1567,6 +1632,11 @@ const EmployeeForm = ({
                     firstName: submissionData.first_name,
                     lastName: submissionData.last_name,
                     employeeId: submissionData.employee_id,
+                    phone: submissionData.phone,
+                    department: departments.find(d => d._id === submissionData.department_id)?.name || 'N/A',
+                    role: roles.find(r => r._id === submissionData.role_id)?.name || 'N/A',
+                    designation: submissionData.designation,
+                    username: submissionData.username,
                     hasImage: !!imageFile
                 });
                 setCreatedPassword(passwordToShow);
@@ -2204,7 +2274,7 @@ const EmployeeForm = ({
                                         onChange={handleInputChange}
                                     >
                                         <option value="" disabled>Select Role</option>
-                                        {roles.map(role => (
+                                        {filteredRoles.map(role => (
                                             <option key={role._id || role.id} value={role._id || role.id}>
                                                 {role.name}
                                             </option>
@@ -2300,10 +2370,18 @@ const EmployeeForm = ({
                                     name="username"
                                     value={formData.username}
                                     onChange={handleInputChange}
-                                    placeholder="Username" 
+                                    placeholder={isEditing ? "Username" : "Auto-generated from Employee ID + First Name"}
                                     required
+                                    readOnly={!isEditing}
+                                    disabled={!isEditing}
                                     className={`form-input ${validationErrors.username ? 'required-field-error' : ''}`}
+                                    style={!isEditing ? { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } : {}}
                                 />
+                                {!isEditing && (
+                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                                        ℹ️ Auto-generated: Employee ID + First Name
+                                    </div>
+                                )}
                                 {validationErrors.username && (
                                     <div className="error-message">
                                         {validationErrors.username}
@@ -2473,32 +2551,76 @@ const EmployeeForm = ({
                     setCreatedPassword(null);
                 }}
                 centered
-                okText="OK"
+                width={600}
+                okText="Close"
                 cancelButtonProps={{ style: { display: 'none' } }}
             >
                 {successData && (
-                    <div>
-                        <p>The employee data has been {successData.isEditing ? 'updated' : 'created'} successfully.</p>
-                        <p><strong>Employee:</strong> {successData.firstName} {successData.lastName}</p>
-                        <p><strong>Employee ID:</strong> {successData.employeeId ? `RM${successData.employeeId}` : 'Will be assigned'}</p>
-                        {successData.hasImage && <p><strong>Profile picture:</strong> {successData.isEditing ? 'Updated' : 'Uploaded'}</p>}
+                    <div style={{ padding: '10px 0' }}>
+                        <div style={{ 
+                            backgroundColor: '#f0f9ff', 
+                            border: '2px solid #3b82f6', 
+                            borderRadius: '8px', 
+                            padding: '20px',
+                            marginBottom: '15px'
+                        }}>
+                            <h3 style={{ margin: '0 0 15px 0', color: '#1e40af', fontSize: '16px' }}>
+                                📋 Employee Details (Copy & Share)
+                            </h3>
+                            <div style={{ fontFamily: 'monospace', fontSize: '13px', lineHeight: '2' }}>
+                                <div style={{ display: 'grid', gap: '8px' }}>
+                                    <div><strong>Employee ID:</strong> {successData.employeeId || 'Will be assigned'}</div>
+                                    <div><strong>Employee Name:</strong> {successData.firstName} {successData.lastName}</div>
+                                    <div><strong>Phone:</strong> {successData.phone || 'N/A'}</div>
+                                    <div><strong>Department:</strong> {successData.department}</div>
+                                    <div><strong>Role:</strong> {successData.role}</div>
+                                    <div><strong>Designation:</strong> {successData.designation || 'N/A'}</div>
+                                    <div><strong>Username:</strong> {successData.username || 'N/A'}</div>
+                                    {createdPassword && (
+                                        <div style={{ 
+                                            backgroundColor: '#fef3c7', 
+                                            padding: '8px', 
+                                            borderRadius: '4px',
+                                            border: '1px solid #f59e0b'
+                                        }}>
+                                            <strong>Password:</strong> {createdPassword}
+                                        </div>
+                                    )}
+                                    <div><strong>Login URL:</strong> {window.location.origin}/login</div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const details = `Employee Details:\n\nEmployee ID: ${successData.employeeId || 'Will be assigned'}\nName: ${successData.firstName} ${successData.lastName}\nPhone: ${successData.phone || 'N/A'}\nDepartment: ${successData.department}\nRole: ${successData.role}\nDesignation: ${successData.designation || 'N/A'}\nUsername: ${successData.username || 'N/A'}${createdPassword ? `\nPassword: ${createdPassword}` : ''}\nLogin URL: ${window.location.origin}/login`;
+                                    navigator.clipboard.writeText(details);
+                                    message.success('✅ Employee details copied to clipboard!');
+                                }}
+                                style={{
+                                    marginTop: '15px',
+                                    width: '100%',
+                                    padding: '10px',
+                                    backgroundColor: '#3b82f6',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    fontSize: '14px'
+                                }}
+                            >
+                                📋 Copy All Details
+                            </button>
+                        </div>
                         {createdPassword && (
                             <div style={{ 
-                                marginTop: '15px', 
-                                padding: '10px', 
-                                backgroundColor: '#f6ffed', 
-                                border: '1px solid #b7eb8f', 
-                                borderRadius: '4px' 
+                                padding: '12px', 
+                                backgroundColor: '#fef2f2', 
+                                border: '1px solid #ef4444', 
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                color: '#991b1b'
                             }}>
-                                <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: '#52c41a' }}>
-                                    🔐 Login Credentials Created:
-                                </p>
-                                <p style={{ margin: '0', fontFamily: 'monospace' }}>
-                                    <strong>Password:</strong> <span style={{ backgroundColor: '#fff', padding: '2px 4px', border: '1px solid #d9d9d9' }}>{createdPassword}</span>
-                                </p>
-                                <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#666' }}>
-                                    ⚠️ Please save this password securely. It will not be shown again.
-                                </p>
+                                <strong>⚠️ Important:</strong> Please save the password securely. It will not be shown again.
                             </div>
                         )}
                     </div>

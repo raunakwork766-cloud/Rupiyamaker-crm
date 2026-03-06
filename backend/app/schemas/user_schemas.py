@@ -87,7 +87,7 @@ class EmployeeCreate(BaseModel):
     is_active: bool = True
     login_enabled: bool = False  # Default false for new employees
     phone: Optional[str] = None
-    otp_required: bool = True
+    otp_required: bool = False  # Default false - no OTP required for new employees
     
     # Personal Information - Enhanced
     dob: Optional[date] = None

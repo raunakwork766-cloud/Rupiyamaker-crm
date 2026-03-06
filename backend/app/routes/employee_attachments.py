@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import os
 import uuid
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import mimetypes
 import io
 import traceback
@@ -171,8 +172,8 @@ async def upload_employee_attachment(
             "is_password_protected": is_password_protected,
             "password": password if is_password_protected else None,
             "uploaded_by": user_id,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "created_at": get_ist_now(),
+            "updated_at": get_ist_now()
         }
         print(f"🔥 DEBUG: Attachment data prepared: {attachment_data}")
         

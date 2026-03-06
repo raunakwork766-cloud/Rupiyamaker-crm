@@ -10,10 +10,15 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def get_ist_now():
     """
-    Get current datetime in IST timezone
+    Get current datetime in IST timezone (timezone-aware).
+    
+    Returns an IST-aware datetime. When pymongo/Motor stores this,
+    it automatically converts to UTC (MongoDB always stores UTC).
+    The frontend receives UTC timestamps with 'Z' suffix (via middleware)
+    and converts to IST for display using timeZone: 'Asia/Kolkata'.
     
     Returns:
-        datetime: Current datetime in IST
+        datetime: Current datetime in IST (timezone-aware)
     """
     return datetime.now(IST)
 

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
-import { formatDate as formatDateUtil, formatDateTime } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
 // Lazy load heavy components for faster initial loading
 const CreateTask = lazy(() => import("./CreateTask"));
@@ -604,7 +604,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           typeTask: task.task_type,
           leadLogin: task.lead_info?.lead_login || 'N/A',
           customerName: task.lead_info?.customer_name || 'N/A',
-          date: task.due_date || new Date().toISOString().split('T')[0],
+          date: task.due_date || getISTDateYMD(),
           time: task.due_time || '00:00',
           assign: task.assigned_users?.map(u => u.name).join(', ') || 'Unassigned',
           priority: task.priority || 'Medium',
@@ -1013,14 +1013,14 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         url: fileUrl,
         size: attachment.size || attachment.file_size || 0,
         type: mimeType,
-        created_at: attachment.created_at || new Date().toISOString(),
+        created_at: attachment.created_at || getISTTimestamp(),
         // Add any missing properties that the editor might expect
         downloadUrl: `${API_BASE_URL}/tasks/${taskId}/attachments/${attachmentId}/download?user_id=${currentUserId}`,
         isNew: false,
         isFromBackend: true,
         isImage: isImage,
         contentType: mimeType,
-        uploadedAt: attachment.created_at || new Date().toISOString()
+        uploadedAt: attachment.created_at || getISTTimestamp()
       };
     });
   };
@@ -1109,7 +1109,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         message: task.message || '',
         typeTask: task.typeTask || 'To-Do',
         status: task.status || 'Pending',
-        date: task.date || new Date().toISOString().split('T')[0],
+        date: task.date || getISTDateYMD(),
         time: task.time || '00:00',
         assign: task.assign || 'Unassigned',
         priority: task.priority || 'Medium',
@@ -1173,7 +1173,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             message: fullTaskData.task_details,
             typeTask: fullTaskData.task_type,
             status: fullTaskData.status,
-            date: fullTaskData.due_date || new Date().toISOString().split('T')[0],
+            date: fullTaskData.due_date || getISTDateYMD(),
             time: fullTaskData.due_time || '00:00',
             assign: fullTaskData.assigned_users?.map(u => u.name).join(', ') || 'Unassigned',
             priority: fullTaskData.priority || 'Medium',
@@ -1320,7 +1320,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           taskStatus: taskDetails.newStatus,
           previousTaskStatus: taskDetails.oldStatus,
           shouldAutoSwitch: true,
-          timestamp: new Date().toISOString()
+          timestamp: getISTTimestamp()
         }
       });
       
@@ -1383,7 +1383,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || task.typeTask,
               is_urgent: updatedTask.is_urgent || task.is_urgent,
               notes: updatedTask.notes || task.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
               // Add a unique render key to force re-render
               renderKey: Date.now(),
             };
@@ -1410,7 +1410,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || prevEditTask.typeTask,
               is_urgent: updatedTask.is_urgent || prevEditTask.is_urgent,
               notes: updatedTask.notes || prevEditTask.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
             return updatedEditTask;
           }
@@ -1431,7 +1431,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             previousTaskStatus: oldStatus,
             shouldAutoSwitch: true,
             immediate: true,
-            timestamp: new Date().toISOString()
+            timestamp: getISTTimestamp()
           }
         });
         
@@ -1479,7 +1479,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               typeTask: updatedTask.typeTask || updatedTask.task_type || task.typeTask,
               is_urgent: updatedTask.is_urgent || task.is_urgent,
               notes: updatedTask.notes || task.notes,
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
           }
           return task;
@@ -1626,7 +1626,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               ...task,
               attachments: processedAttachments,
               // Ensure we preserve our immediate updates by not overriding them
-              updated_at: new Date().toISOString(),
+              updated_at: getISTTimestamp(),
             };
           }
           return task;
@@ -1720,7 +1720,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           task_type: data.get('task_type') || 'To-Do',
           status: 'Pending',
           priority: data.get('priority') || 'Medium',
-          due_date: data.get('due_date') || new Date().toISOString().split('T')[0],
+          due_date: data.get('due_date') || getISTDateYMD(),
           due_time: data.get('due_time') || '09:00:00',
           is_urgent: data.get('is_urgent') === 'true' || false,
           notes: data.get('notes') || '',
@@ -2041,7 +2041,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             {/* Create Task Button - Positioned on the right side */}
             {(permissions.show || isSuperAdmin(getUserPermissions())) && (
               <button
-                className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
+                className="bg-[#03B0F5] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
                 onClick={openCreateModal}
               >
                 <Plus size={24} />
@@ -2097,54 +2097,59 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             </div>
           )}
 
-          {/* Filters */}
-          <div className="flex gap-3 mb-8 flex-wrap text-xl font-bold">
+          {/* Filters — ALL items in one flat flex row, no nesting that can wrap */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            flexWrap: 'nowrap',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '24px',
+            overflowX: 'auto',
+            backgroundColor: '#000',
+          }}>
             {FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => handleFilterChange(f.key)}
-                className={`flex items-center gap-2 px-5 py-2 rounded-full font-semibold border transition-all duration-200 ${activeFilter === f.key
-                    ? "bg-[#08B8EA] text-white border-[#08B8EA] shadow-lg"
-                    : "bg-white text-[#08B8EA] border-[#232a36] hover:bg-[#1a222e] hover:text-white"
-                  }
-                `}
+                style={{ flexShrink: 0 }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm shadow transition-all duration-200 whitespace-nowrap ${
+                  activeFilter === f.key
+                    ? "bg-[#03B0F5] text-white shadow-lg"
+                    : "bg-white text-[#03B0F5] hover:bg-blue-50"
+                }`}
               >
                 <span>{f.label}</span>
-                <span
-                  className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${f.count > 0
-                      ? "bg-gray-800 text-white"
-                      : "bg-[#232a36] text-[#08B8EA]"
-                    }`}
-                >
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  f.count > 0 ? "bg-[#222] text-white" : "bg-[#eee] text-[#03B0F5]"
+                }`}>
                   {f.count}
                 </span>
               </button>
             ))}
-            
-            <div className="ml-auto flex items-center gap-4">
-              {/* Assignment Filter Dropdown - Moved to left of search */}
-              <div className="flex items-center">
-                <select
-                  value={assignmentFilter}
-                  onChange={(e) => handleAssignmentFilterChange(e.target.value)}
-                  className="px-4 py-2 rounded-full bg-white text-[#08B8EA] border border-[#08B8EA] font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-[#08B8EA]"
-                >
-                  <option value="all">All Tasks</option>
-                  <option value="assigned_to_me">Tasks Assigned To Me</option>
-                  <option value="assigned_by_me">Tasks Assigned By Me</option>
-                </select>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  className="rounded-full px-4 py-2 border border-[#08B8EA] bg-[#181e29] text-[#e4eaf5] font-medium focus:outline-none"
-                  style={{ minWidth: 220 }}
-                  placeholder="Search by name, subject, status..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <Search className="text-[#08B8EA]" size={20} />
-              </div>
+            {/* Spacer pushes dropdown+search to the right */}
+            <div style={{ flex: '1 1 auto', minWidth: '16px' }} />
+
+            <select
+              value={assignmentFilter}
+              onChange={(e) => handleAssignmentFilterChange(e.target.value)}
+              style={{ flexShrink: 0 }}
+              className="px-4 py-2 rounded-full bg-white text-[#03B0F5] border border-[#03B0F5] font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-[#03B0F5] whitespace-nowrap"
+            >
+              <option value="all">All Tasks</option>
+              <option value="assigned_to_me">Assigned To Me</option>
+              <option value="assigned_by_me">Assigned By Me</option>
+            </select>
+
+            <div style={{ flexShrink: 0 }} className="flex items-center gap-2 bg-[#181e29] border border-[#03B0F5] rounded-full px-4 py-2">
+              <Search className="text-[#03B0F5] shrink-0" size={18} />
+              <input
+                className="bg-transparent text-[#e4eaf5] font-medium focus:outline-none w-48 placeholder-gray-400 text-sm"
+                placeholder="Search by name, subject, status..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
           </div>
 
@@ -2152,8 +2157,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           {loading && tasks.length === 0 && (
             <div className="flex items-center justify-center min-h-[400px]">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#08B8EA] mx-auto mb-4"></div>
-                <p className="text-lg text-[#08B8EA]">Loading tasks...</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
+                <p className="text-lg text-[#03B0F5]">Loading tasks...</p>
               </div>
             </div>
           )}
@@ -2245,7 +2250,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
                     <tr>
                       <td
                         colSpan={(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes ? 10 : 9}
-                        className="bg-[#000] rounded-xl shadow p-8 text-center text-lg font-bold text-[#08B8EA]"
+                        className="bg-[#000] rounded-xl shadow p-8 text-center text-lg font-bold text-[#03B0F5]"
                       >
                         {loading ? 'Loading tasks...' : 'No Tasks Found'}
                       </td>
@@ -2340,7 +2345,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
                 </div>
                 <button
                   onClick={handleShowMore}
-                  className="px-6 py-3 bg-gradient-to-r from-[#08B8EA] to-[#0693C7] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#08B8EA]/50 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                  className="px-6 py-3 bg-gradient-to-r from-[#03B0F5] to-[#0693C7] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#03B0F5]/50 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -2368,8 +2373,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             >
               <Suspense fallback={
                 <div className="bg-white rounded-lg p-8 text-center min-w-[400px] shadow-2xl animate-pulse">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#08B8EA] mx-auto mb-2"></div>
-                  <p className="text-sm text-[#08B8EA]">Loading editor...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#03B0F5] mx-auto mb-2"></div>
+                  <p className="text-sm text-[#03B0F5]">Loading editor...</p>
                 </div>
               }>
                 <EditTask
@@ -2409,8 +2414,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               <div className="w-full max-w-2xl mx-auto">
                 <Suspense fallback={
                   <div className="bg-white rounded-lg p-8 text-center min-w-[400px] shadow-2xl animate-pulse">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#08B8EA] mx-auto mb-2"></div>
-                    <p className="text-sm text-[#08B8EA]">Loading creator...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#03B0F5] mx-auto mb-2"></div>
+                    <p className="text-sm text-[#03B0F5]">Loading creator...</p>
                   </div>
                 }>
                   <CreateTask
@@ -2429,7 +2434,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             onClick={() => {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className="fixed bottom-6 right-6 bg-[#08B8EA] hover:bg-[#12d8fa] text-white p-3 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 z-50"
+            className="fixed bottom-6 right-6 bg-[#03B0F5] hover:bg-[#12d8fa] text-white p-3 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 z-50"
             title="Scroll to top"
           >
             <ChevronUp size={24} />
@@ -2444,11 +2449,11 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#08B8EA] mx-auto mb-4"></div>
-              <p className="text-lg text-[#08B8EA]">Initializing...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
+              <p className="text-lg text-[#03B0F5]">Initializing...</p>
             </div>
           </div>
         </div>
@@ -2460,7 +2465,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   if (error && !isInitialized) {
     return (
       <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <p className="text-lg text-red-400 mb-4">{error}</p>
@@ -2471,7 +2476,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
                   // Re-trigger initialization
                   window.location.reload();
                 }}
-                className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white px-4 py-2 rounded-lg"
+                className="bg-[#03B0F5] hover:bg-[#12d8fa] text-white px-4 py-2 rounded-lg"
               >
                 Retry
               </button>

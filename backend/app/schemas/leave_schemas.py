@@ -32,6 +32,7 @@ class LeaveCreateSchema(BaseModel):
     to_date: date = Field(..., description="Leave end date")
     reason: str = Field(..., min_length=5, max_length=500, description="Reason for leave")
     attachments: List[str] = Field(default=[], description="List of attachment file paths")
+    approver_ids: List[str] = Field(default=[], description="List of approver user IDs from routing settings")
     
     @validator('to_date')
     def validate_to_date(cls, v, values):

@@ -84,7 +84,7 @@ const PublicAppViewer = () => {
     } else if (daysUntilExpiry <= 7) {
       return { text: `Expires in ${daysUntilExpiry} days`, color: 'text-yellow-400', urgent: false };
     } else {
-      return { text: `Expires on ${expiryDate.toLocaleDateString()}`, color: 'text-gray-400', urgent: false };
+      return { text: `Expires on ${expiryDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`, color: 'text-gray-400', urgent: false };
     }
   };
 

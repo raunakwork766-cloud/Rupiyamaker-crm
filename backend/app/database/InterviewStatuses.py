@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 from bson import ObjectId
 from app.database import db
 import logging
@@ -16,7 +17,7 @@ class InterviewStatuses:
     def __init__(self, name, user_id):
         self.name = name
         self.user_id = user_id
-        self.created_at = datetime.now()
+        self.created_at = get_ist_now()
 
     def to_dict(self):
         return {
@@ -43,7 +44,7 @@ class InterviewStatuses:
             "description": data.get("description", ""),
             "is_active": data.get("is_active", True),
             "user_id": data.get("user_id"),
-            "created_at": datetime.now()
+            "created_at": get_ist_now()
         }
         result = await collection.insert_one(interview_status_doc)
         
@@ -120,7 +121,7 @@ class InterviewStatuses:
         
         collection = async_db.interview_statuses
         
-        data["updated_at"] = datetime.now()
+        data["updated_at"] = get_ist_now()
         result = await collection.update_one(
             {"_id": ObjectId(status_id)},  # No user_id filter for global settings
             {"$set": data}
@@ -196,7 +197,7 @@ class InterviewSubStatuses:
         collection = async_db.interview_sub_statuses
         
         # Add timestamps and ID
-        data["created_at"] = datetime.now()
+        data["created_at"] = get_ist_now()
         data["updated_at"] = data["created_at"]
         
         # Ensure sub-status has an ID string for referencing
@@ -258,7 +259,7 @@ class InterviewSubStatuses:
         collection = async_db.interview_sub_statuses
         
         update_data = {k: v for k, v in data.items() if v is not None}
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = get_ist_now()
         
         result = await collection.update_one(
             {"_id": ObjectId(sub_status_id), "user_id": user_id},

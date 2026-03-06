@@ -94,12 +94,17 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
           last_name: user.last_name || '',
           email: user.email || '',
           role: user.role || '',
-          designation: user.role || user.designation || ''
+          designation: user.role || user.designation || '',
+          employee_status: user.employee_status,
+          is_active: user.is_active
         }));
       }
 
-      // Filter out entries with empty names
-      const validUsers = usersList.filter(user => user.name);
+      // Filter out entries with empty names and inactive employees
+      const validUsers = usersList.filter(user => 
+        user.name && 
+        (user.employee_status === 'active' || user.is_active === true || user.employee_status === undefined)
+      );
       console.log('Processed users for assignment in CreateTask:', validUsers);
       setUsers(validUsers);
     } catch (error) {

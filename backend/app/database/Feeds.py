@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any, Union
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import os
 import shutil
 from pathlib import Path
@@ -43,7 +44,7 @@ class FeedsDB:
         
     async def create_post(self, post_data: dict) -> str:
         """Create a new post with timestamps"""
-        post_data["created_at"] = datetime.now()
+        post_data["created_at"] = get_ist_now()
         post_data["updated_at"] = post_data["created_at"]
         
         # Initialize counters
@@ -95,7 +96,7 @@ class FeedsDB:
         if not ObjectId.is_valid(post_id):
             return False
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
             {"_id": ObjectId(post_id)},
             {"$set": update_fields}
@@ -150,7 +151,7 @@ class FeedsDB:
         like_data = {
             "feed_id": post_id,
             "user_id": user_id,
-            "created_at": datetime.now()
+            "created_at": get_ist_now()
         }
         
         await self.likes_collection.insert_one(like_data)
@@ -228,7 +229,7 @@ class FeedsDB:
             return None
             
         # Add timestamps
-        comment_data["created_at"] = datetime.now()
+        comment_data["created_at"] = get_ist_now()
         comment_data["updated_at"] = comment_data["created_at"]
         
         # Insert comment
@@ -279,7 +280,7 @@ class FeedsDB:
         if not ObjectId.is_valid(comment_id):
             return False
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.comments_collection.update_one(
             {"_id": ObjectId(comment_id)},
             {"$set": update_fields}

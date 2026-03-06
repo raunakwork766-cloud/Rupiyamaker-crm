@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from bson import ObjectId
 import logging
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 from app.database.ImportantQuestions import ImportantQuestionsDB
 from app.database.Users import UsersDB
@@ -490,8 +491,8 @@ async def validate_questions_legacy(
             "important_questions_validated": True,
             "question_responses": request_data.responses,
             "questions_validated_by": user_id,
-            "questions_validated_date": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "questions_validated_date": get_ist_now().isoformat(),
+            "updated_at": get_ist_now().isoformat()
         }
         
         # Include activity data if provided

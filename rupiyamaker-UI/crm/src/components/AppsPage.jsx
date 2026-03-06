@@ -1089,7 +1089,7 @@ const AppsPage = () => {
       <div className="min-h-screen bg-transparent">
         {/* Header with back button */}
         <div className="bg-gray-900 border-b border-gray-700 p-4">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="w-full flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
@@ -1135,7 +1135,7 @@ const AppsPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-transparent text-white py-10 px-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#08B8EA] mx-auto mb-4"></div>
@@ -1149,7 +1149,7 @@ const AppsPage = () => {
 
   return (
     <div className="min-h-screen bg-transparent text-white py-10 px-4">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
@@ -2027,10 +2027,10 @@ const AppsPage = () => {
                                   {!link.is_active ? 'Deactivated' : isExpired ? 'Expired' : isMaxedOut ? 'Max Reached' : 'Active'}
                                 </span>
                                 <span className="text-xs text-gray-400">
-                                  Created: {new Date(link.created_at).toLocaleDateString()}
+                                  Created: {new Date(link.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                                 </span>
                                 <span className="text-xs text-gray-400">
-                                  Expires: {new Date(link.expires_at).toLocaleDateString()}
+                                  Expires: {new Date(link.expires_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 bg-gray-900 p-2 rounded border border-gray-600">
@@ -2073,7 +2073,7 @@ const AppsPage = () => {
                             <div className="flex items-center gap-4 text-xs text-gray-400">
                               <span>Accesses: {link.access_count} / {link.max_access_count}</span>
                               {link.last_accessed_at && (
-                                <span>Last accessed: {new Date(link.last_accessed_at).toLocaleString()}</span>
+                                <span>Last accessed: {new Date(link.last_accessed_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                               )}
                             </div>
                             <div className="flex items-center gap-2">

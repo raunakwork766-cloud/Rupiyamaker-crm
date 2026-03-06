@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { hasPermission, getUserPermissions } from '../../utils/permissions';
+import { getISTTimestamp } from '../../utils/dateUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -136,7 +137,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                         'Important questions updated',
                     created_by: userName,
                     user_id: userId,
-                    created_at: new Date().toISOString(),
+                    created_at: getISTTimestamp(),
                     details: {
                         questions_validated: Object.keys(newResponses).length,
                         question_ids: Object.keys(newResponses),
@@ -243,7 +244,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                 if (onUpdate) {
                     onUpdate({
                         file_sent_to_login: true,
-                        login_department_sent_date: new Date().toISOString()
+                        login_department_sent_date: getISTTimestamp()
                     });
                 }
             } else {

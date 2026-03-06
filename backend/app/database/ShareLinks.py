@@ -3,6 +3,7 @@ from app.config import Config
 from typing import Dict, Optional, List, Any
 from bson import ObjectId
 from datetime import datetime, timedelta
+from app.utils.timezone import get_ist_now
 import secrets
 import string
 
@@ -54,7 +55,7 @@ class ShareLinksDB:
         share_token = self.generate_share_token()
         
         # Calculate expiry date
-        expires_at = datetime.now() + timedelta(days=expires_in_days)
+        expires_at = get_ist_now() + timedelta(days=expires_in_days)
         
         # Store share link in database
         share_link_data = {
@@ -63,7 +64,7 @@ class ShareLinksDB:
             "expires_at": expires_at,
             "allow_edit": allow_edit,
             "created_by": created_by,
-            "created_at": datetime.now()
+            "created_at": get_ist_now()
         }
         
         # Insert into share_links collection
@@ -111,14 +112,14 @@ class ShareLinksDB:
         share_token = self.generate_share_token()
         
         # Calculate expiry date
-        expires_at = datetime.now() + timedelta(days=expires_in_days)
+        expires_at = get_ist_now() + timedelta(days=expires_in_days)
         
         # Create link document
         share_link = {
             "lead_id": ObjectId(lead_id),
             "share_token": share_token,
             "created_by": ObjectId(created_by),
-            "created_at": datetime.now(),
+            "created_at": get_ist_now(),
             "expires_at": expires_at,
             "allow_edit": allow_update,
             "is_active": True,
@@ -185,7 +186,7 @@ class ShareLinksDB:
             return False
         
         # Check expiration
-        if "expires_at" in share_link and share_link["expires_at"] < datetime.now():
+        if "expires_at" in share_link and share_link["expires_at"] < get_ist_now():
             return False
         
         return True
@@ -221,7 +222,7 @@ class ShareLinksDB:
         """
         result = await self.collection.update_one(
             {"share_token": share_token},
-            {"$set": {"expires_at": datetime.now() - timedelta(days=1)}}
+            {"$set": {"expires_at": get_ist_now() - timedelta(days=1)}}
         )
         
         return result.modified_count > 0
@@ -250,7 +251,7 @@ class ShareLinksDB:
         Returns:
             Number of links removed
         """
-        threshold_date = datetime.now() - timedelta(days=days_threshold)
+        threshold_date = get_ist_now() - timedelta(days=days_threshold)
         
         result = await self.collection.delete_many({
             "expires_at": {"$lt": threshold_date}

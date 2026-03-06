@@ -38,6 +38,7 @@ from app.schemas.ticket_schemas import (
 )
 from app.utils.permissions import PermissionManager
 from app.utils.common_utils import get_current_user_id
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 security = HTTPBearer()
@@ -671,7 +672,7 @@ async def add_comment(
         
         # Prepare response data
         comment["created_by_name"] = user_name
-        comment["created_at"] = datetime.now()
+        comment["created_at"] = get_ist_now()
         
         return CommentResponseSchema(**comment)
         
@@ -970,8 +971,11 @@ async def get_assignable_users(
     Returns all active users in the system.
     """
     try:
-        # Get all users
-        users = await users_db.list_users({"status": {"$ne": "inactive"}})
+        # Get all users — ONLY active employees (inactive should not appear in ticket assignment)
+        users = await users_db.list_users({
+            "employee_status": {"$ne": "inactive"},
+            "is_active": {"$ne": False}
+        })
         
         assignable_users = []
         for user in users:

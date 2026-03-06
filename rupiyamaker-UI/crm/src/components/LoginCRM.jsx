@@ -149,7 +149,7 @@ import {
     Clock,
     RefreshCw
 } from 'lucide-react';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, getISTTimestamp } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 import { leadsService } from '../services/leadsService';
 
@@ -2931,7 +2931,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: `Lead assigned to ${userIds.length} user(s)`,
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString()
+                created_at: getISTTimestamp()
             };
 
             const response = await fetch(`${API_BASE_URL}/lead-login/assign-multiple-users/${leadId}?user_id=${userId}`, {
@@ -2968,7 +2968,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: 'Lead operations data updated',
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 details: {
                     fields_updated: Object.keys(operationsData)
                 }
@@ -3011,7 +3011,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: 'Important questions validated',
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString(),
+                created_at: getISTTimestamp(),
                 details: {
                     questions_validated: Object.keys(responses).length,
                     question_ids: Object.keys(responses)
@@ -3062,7 +3062,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 description: `Leads assigned to ${userIds.length} user(s) in bulk operation`,
                 created_by: userName,
                 user_id: userId,
-                created_at: new Date().toISOString()
+                created_at: getISTTimestamp()
             };
 
             const promises = selectedLeads.map(leadId =>
@@ -4372,7 +4372,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         const detailSections = [
           {
             label: "LEAD DETAILS",
-            icon: <span className="mr-1">🏠</span>,
             getContent: (lead, handleFieldChange) => [
               {
                 label: "About",
@@ -4551,7 +4550,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "OBLIGATION",
-            icon: <DollarSign className="w-6 h-6 mr-2" />,
             getContent: (lead, handleFieldChange) => [
               {
                 content: (
@@ -4578,11 +4576,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "REMARK",
-            icon: <MessageSquare className="w-6 h-6 mr-2" />,
             getContent: (leadData) => [
               {
                 content: (
-                  <div>
+                  <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
                     <RemarkSection leadData={leadData} canEdit={canEditLogin()} />
                   </div>
                 ),
@@ -4591,12 +4588,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "TASK",
-            icon: <CheckSquare className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
-                label: "TASK",
                 content: (
-                  <div>
+                  <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
                       <LazySection height="300px">
                         <TaskComponent leadData={lead} canEdit={canEditLogin()} />
@@ -4609,7 +4604,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "ATTACHEMENT",
-            icon: <Paperclip className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
                 content: (
@@ -4632,12 +4626,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
           },
           {
             label: "LEADS ACTIVITY",
-            icon: <FileText className="w-6 h-6 mr-2" />,
             getContent: (lead) => [
               {
-                label: "LEADS ACTIVITY",
                 content: (
-                  <div>
+                  <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                     <div className="font-bold text-cyan-400 mb-2">
                       <LazySection height="400px">
                         <LeadActivity

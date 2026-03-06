@@ -6,6 +6,7 @@ import logging
 import bcrypt
 from app.utils.password_encryption import password_encryptor
 from app.config import Config
+from app.utils.timezone import get_ist_now
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class UsersDB:
         if user_data.get('is_employee', False) and not user_data.get('employee_id'):
             user_data['employee_id'] = await self._generate_employee_id()
             
-        user_data["created_at"] = datetime.now()
+        user_data["created_at"] = get_ist_now()
         user_data["updated_at"] = user_data["created_at"]
         
         result = await self.collection.insert_one(user_data)
@@ -245,7 +246,7 @@ class UsersDB:
         if 'password' in update_fields:
             update_fields['password'] = self._hash_password(update_fields['password'])
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
             {"_id": ObjectId(user_id)},
             {"$set": update_fields}
@@ -269,7 +270,7 @@ class UsersDB:
         hashed_password = self._hash_password(new_password)
         result = await self.collection.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"password": hashed_password, "updated_at": datetime.now()}}
+            {"$set": {"password": hashed_password, "updated_at": get_ist_now()}}
         )
         
         if result.modified_count == 1:
@@ -285,7 +286,7 @@ class UsersDB:
         hashed_password = self._hash_password(new_password)
         result = await self.collection.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"password": hashed_password, "updated_at": datetime.now()}}
+            {"$set": {"password": hashed_password, "updated_at": get_ist_now()}}
         )
         
         if result.modified_count == 1:
@@ -392,7 +393,7 @@ class UsersDB:
                 # Convert date to datetime at start of day
                 employee_data[key] = datetime.combine(value, datetime.min.time())
         
-        employee_data["created_at"] = datetime.now()
+        employee_data["created_at"] = get_ist_now()
         employee_data["updated_at"] = employee_data["created_at"]
         
         result = await self.collection.insert_one(employee_data)
@@ -454,7 +455,7 @@ class UsersDB:
             
         update_fields = {
             "employee_status": status,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         if remark:
@@ -480,7 +481,7 @@ class UsersDB:
             
         update_fields = {
             "onboarding_status": status,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         if remark:
@@ -499,7 +500,7 @@ class UsersDB:
             
         update_fields = {
             "crm_access": has_access,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
             
         result = await self.collection.update_one(
@@ -515,7 +516,7 @@ class UsersDB:
             
         update_fields = {
             "login_enabled": enabled,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # Removed cascade logic - admin can control login_enabled and otp_required independently
@@ -534,7 +535,7 @@ class UsersDB:
             
         update_fields = {
             "otp_required": required,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
             
         result = await self.collection.update_one(
@@ -550,7 +551,7 @@ class UsersDB:
             
         update_fields = {
             "is_active": is_active,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # Minimal cascade logic: Only for complete deactivation (security purposes)
@@ -591,7 +592,7 @@ class UsersDB:
                 # Convert date to datetime at start of day
                 update_fields[key] = datetime.combine(value, datetime.min.time())
         
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         
         result = await self.collection.update_one(
             {"_id": ObjectId(employee_id)},

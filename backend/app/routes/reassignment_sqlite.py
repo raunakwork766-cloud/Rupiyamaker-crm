@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Path, Body
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from app.utils.timezone import get_ist_now
 from bson import ObjectId
 import math
 import logging
@@ -347,7 +348,7 @@ async def create_reassignment_request(
             "reassignment_status": "approved",
             "reassignment_approved_by": user_id,
             "reassignment_approved_by_name": f"{requesting_user.get('first_name', '')} {requesting_user.get('last_name', '')}",
-            "reassignment_approved_at": datetime.now().isoformat(),
+            "reassignment_approved_at": get_ist_now().isoformat(),
             "assigned_to": target_user_id,
             "reassignment_reason": reason
         }
@@ -459,7 +460,7 @@ async def approve_reassignment_request(
             "success": True,
             "message": "Reassignment request approved successfully",
             "approved_by": approval_data["approved_by_name"],
-            "approved_at": datetime.now().isoformat()
+            "approved_at": get_ist_now().isoformat()
         }
     else:
         raise HTTPException(
@@ -511,7 +512,7 @@ async def reject_reassignment_request(
             "success": True,
             "message": "Reassignment request rejected successfully",
             "rejected_by": rejection_data["rejected_by_name"],
-            "rejected_at": datetime.now().isoformat(),
+            "rejected_at": get_ist_now().isoformat(),
             "reason": rejection_data.get("reason", "No reason provided")
         }
     else:

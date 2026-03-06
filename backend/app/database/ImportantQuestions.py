@@ -1,6 +1,7 @@
 from bson import ObjectId
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
@@ -35,8 +36,8 @@ class ImportantQuestionsDB:
         try:
             # Add metadata
             question_data.update({
-                "created_at": datetime.now(),
-                "updated_at": datetime.now(),
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now(),
                 "is_active": question_data.get("is_active", True)
             })
             
@@ -101,7 +102,7 @@ class ImportantQuestionsDB:
         """Update an important question"""
         try:
             # Add updated timestamp
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             
             result = await self.collection.update_one(
                 {"_id": ObjectId(question_id)},
@@ -153,7 +154,7 @@ class ImportantQuestionsDB:
                             "update": {
                                 "$set": {
                                     "display_order": new_order,
-                                    "updated_at": datetime.now()
+                                    "updated_at": get_ist_now()
                                 }
                             }
                         }
@@ -211,8 +212,8 @@ class ImportantQuestionsDB:
             duplicate_data.update({
                 "question": f"Copy of {duplicate_data['question']}",
                 "target_type": new_target_type or duplicate_data.get("target_type", "leads"),
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
             })
             
             return self.create_question(duplicate_data)
@@ -231,7 +232,7 @@ class ImportantQuestionsDB:
                 {
                     "$set": {
                         "is_active": is_active,
-                        "updated_at": datetime.now()
+                        "updated_at": get_ist_now()
                     }
                 }
             )

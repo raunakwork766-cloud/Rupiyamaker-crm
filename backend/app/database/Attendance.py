@@ -5,6 +5,7 @@ import pytz
 from typing import Optional, List, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
+from app.utils.timezone import get_ist_now
 
 # Define IST timezone for consistent date/time handling
 IST = pytz.timezone('Asia/Kolkata')
@@ -21,6 +22,7 @@ class AttendanceDB:
         self.collection = self.db['attendance']
         self.users_collection = self.db['users']
         self.departments_collection = self.db['departments']
+        self.grace_usage_collection = self.db['attendance_grace_usage']
         
     async def init_indexes(self):
         """Initialize database indexes asynchronously"""
@@ -72,9 +74,9 @@ class AttendanceDB:
                     "status": attendance_data["status"],
                     "comments": attendance_data.get("comments", ""),
                     "marked_by": attendance_data.get("marked_by"),
-                    "marked_at": datetime.now(),
+                    "marked_at": get_ist_now(),
                     "photo_path": attendance_data.get("photo_path"),
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 }
                 
                 await self.collection.update_one(
@@ -94,12 +96,12 @@ class AttendanceDB:
                     "status": attendance_data["status"],  # 1 = Full Day, 0.5 = Half Day, -1 = Absent
                     "comments": attendance_data.get("comments", ""),
                     "marked_by": attendance_data.get("marked_by"),
-                    "marked_at": datetime.now(),
+                    "marked_at": get_ist_now(),
                     "photo_path": attendance_data.get("photo_path"),
                     "check_in_time": attendance_data.get("check_in_time"),
                     "is_holiday": attendance_data.get("is_holiday", False),
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now()
+                    "created_at": get_ist_now(),
+                    "updated_at": get_ist_now()
                 }
                 
                 result = await self.collection.insert_one(attendance_doc)
@@ -353,9 +355,9 @@ class AttendanceDB:
         """Get monthly attendance data for calendar view"""
         try:
             if not year:
-                year = datetime.now().year
+                year = get_ist_now().year
             if not month:
-                month = datetime.now().month
+                month = get_ist_now().month
                 
             # Create date range for the month
             start_date = date(year, month, 1)
@@ -661,7 +663,7 @@ class AttendanceDB:
     async def update_attendance_record(self, attendance_id: str, update_data: Dict[str, Any], updated_by: str) -> bool:
         """Update an existing attendance record (for editing functionality)"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             update_data["updated_by"] = updated_by
             
             # Recalculate working hours if times are updated
@@ -735,7 +737,7 @@ class AttendanceDB:
             update_doc = {
                 "type": "attendance_settings",
                 "data": settings_data,
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             result = await settings_collection.update_one(
@@ -771,6 +773,10 @@ class AttendanceDB:
                     "updated_at": datetime.now(IST)
                 }
                 
+                # Update status if provided (based on timing rules)
+                if "status" in check_in_data:
+                    update_data["status"] = check_in_data["status"]
+                
                 await self.collection.update_one(
                     {"_id": existing["_id"]},
                     {"$set": update_data}
@@ -800,12 +806,12 @@ class AttendanceDB:
                     "check_out_photo_path": None,
                     "check_out_geolocation": None,
                     "total_working_hours": 0.0,
-                    "status": 1.0,  # Will be updated on check-out
+                    "status": check_in_data.get("status", 1.0),  # Use status from check_in_data (based on timing rules)
                     "comments": check_in_data.get("comments", ""),
                     "admin_comments": "",
                     "is_holiday": False,
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now()
+                    "created_at": get_ist_now(),
+                    "updated_at": get_ist_now()
                 }
                 
                 result = await self.collection.insert_one(attendance_doc)
@@ -815,8 +821,59 @@ class AttendanceDB:
             print(f"Error checking in employee: {e}")
             raise
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # AUTO GRACE HELPERS
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def _count_present_days_this_month(self, user_id: str, year_month: str, exclude_date: str = None) -> int:
+        """Count days with status >= 0.5 in the given month (optionally excluding a date)."""
+        from_date = year_month + "-01"
+        year, month = map(int, year_month.split("-"))
+        to_date = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+        query: dict = {
+            "user_id": user_id,
+            "date": {"$gte": from_date, "$lt": to_date},
+            "status": {"$gte": 0.5}
+        }
+        if exclude_date:
+            query["date"]["$ne"] = exclude_date
+        return await self.collection.count_documents(query)
+
+    async def _get_grace_used_this_month(self, user_id: str, year_month: str) -> int:
+        """Return how many graces this employee has consumed this month."""
+        record = await self.grace_usage_collection.find_one(
+            {"user_id": user_id, "year_month": year_month}
+        )
+        return record.get("grace_used", 0) if record else 0
+
+    async def _record_grace_usage(self, user_id: str, year_month: str, date_used: str) -> None:
+        """Increment grace_used count and log the date it was auto-applied."""
+        await self.grace_usage_collection.update_one(
+            {"user_id": user_id, "year_month": year_month},
+            {
+                "$inc": {"grace_used": 1},
+                "$push": {"dates_applied": date_used},
+                "$setOnInsert": {"user_id": user_id, "year_month": year_month},
+                "$set": {"updated_at": get_ist_now()}
+            },
+            upsert=True
+        )
+
+    def _calculate_earned_graces(self, present_days: int, settings: dict) -> int:
+        """Return how many grace marks the employee has earned based on present days."""
+        t1 = settings.get("auto_grace_threshold_1", 15)
+        t2 = settings.get("auto_grace_threshold_2", 20)
+        t3 = settings.get("auto_grace_threshold_3", 24)
+        monthly_limit = settings.get("auto_grace_monthly_limit", 3)
+        if present_days >= t3:
+            return min(3, monthly_limit)
+        if present_days >= t2:
+            return min(2, monthly_limit)
+        if present_days >= t1:
+            return min(1, monthly_limit)
+        return 0
+
     async def check_out_employee(self, user_id: str, check_out_data: Dict[str, Any]) -> str:
-        """Check-out employee with photo and geolocation"""
         try:
             from app.schemas.attendance_schemas import calculate_working_hours, determine_attendance_status
             from app.database.Settings import SettingsDB
@@ -846,7 +903,41 @@ class AttendanceDB:
             
             # Determine final attendance status
             final_status = determine_attendance_status(check_in_time, check_out_time, settings)
-            
+            grace_applied = False
+
+            # ── Auto Grace: override Half Day → Full Day if employee earned grace ──
+            if settings.get("auto_grace_enabled", False) and final_status < 1.0:
+                try:
+                    # Parse times to check if late check-in caused the half-day
+                    from datetime import datetime as _dt, time as _time
+                    deadline_str = settings.get("reporting_deadline", "10:15")
+                    deadline_t = _dt.strptime(deadline_str, "%H:%M").time()
+
+                    # Normalise check_in_time (may be HH:MM:SS or HH:MM)
+                    ci_parts = check_in_time.split(":")
+                    ci_t = _time(int(ci_parts[0]), int(ci_parts[1]))
+
+                    if ci_t > deadline_t:
+                        # Employee came in after deadline → candidate for auto-grace
+                        year_month = today[:7]
+                        # Count this month's present days (including today which will be present)
+                        past_present = await self._count_present_days_this_month(
+                            user_id, year_month, exclude_date=today
+                        )
+                        today_present_total = past_present + 1  # +1 for today
+
+                        grace_earned = self._calculate_earned_graces(today_present_total, settings)
+                        grace_used = await self._get_grace_used_this_month(user_id, year_month)
+
+                        if grace_earned > grace_used:
+                            final_status = 1.0
+                            grace_applied = True
+                            await self._record_grace_usage(user_id, year_month, today)
+                            print(f"[AutoGrace] Applied grace to {user_id} on {today} "
+                                  f"(present_days={today_present_total}, earned={grace_earned}, used={grace_used+1})")
+                except Exception as grace_err:
+                    print(f"[AutoGrace] Error applying auto grace: {grace_err}")
+
             # Update attendance record with check-out data
             update_data = {
                 "check_out_time": check_out_time,
@@ -854,8 +945,9 @@ class AttendanceDB:
                 "check_out_geolocation": check_out_data["check_out_location"],
                 "total_working_hours": total_working_hours,
                 "status": final_status,
+                "grace_applied": grace_applied,
                 "comments": check_out_data.get("comments", existing.get("comments", "")),
-                "updated_at": datetime.now()
+                "updated_at": get_ist_now()
             }
             
             await self.collection.update_one(
@@ -959,9 +1051,9 @@ class AttendanceDB:
             
             # Prepare update data
             update_data = {
-                "updated_at": datetime.now(),
+                "updated_at": get_ist_now(),
                 "edited_by": edited_by,
-                "edited_at": datetime.now()
+                "edited_at": get_ist_now()
             }
             
             # Update fields if provided
@@ -998,3 +1090,121 @@ class AttendanceDB:
         except Exception as e:
             print(f"Error editing attendance: {e}")
             raise
+    # Face Recognition Methods
+    async def register_employee_face(self, face_data: Dict[str, Any]) -> str:
+        """Register employee's face descriptors"""
+        try:
+            face_collection = self.db['employee_faces']
+            
+            # Check if face already registered
+            existing = await face_collection.find_one({"employee_id": face_data["employee_id"]})
+            
+            if existing:
+                # Update existing face data
+                update_data = {
+                    "face_descriptors": face_data["face_descriptors"],
+                    "samples_count": len(face_data["face_descriptors"]),
+                    "reference_photo_path": face_data.get("reference_photo_path"),
+                    "last_updated": get_ist_now(),
+                    "updated_by": face_data.get("registered_by")
+                }
+                
+                await face_collection.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": update_data}
+                )
+                return str(existing["_id"])
+            else:
+                # Create new face registration
+                face_doc = {
+                    "employee_id": face_data["employee_id"],
+                    "employee_name": face_data.get("employee_name", ""),
+                    "face_descriptors": face_data["face_descriptors"],
+                    "samples_count": len(face_data["face_descriptors"]),
+                    "reference_photo_path": face_data.get("reference_photo_path"),
+                    "registered_at": get_ist_now(),
+                    "registered_by": face_data.get("registered_by"),
+                    "last_updated": get_ist_now(),
+                    "is_active": True
+                }
+                
+                result = await face_collection.insert_one(face_doc)
+                return str(result.inserted_id)
+                
+        except Exception as e:
+            print(f"Error registering employee face: {e}")
+            raise
+
+    async def get_employee_face_data(self, employee_id: str) -> Optional[Dict[str, Any]]:
+        """Get employee's registered face descriptors"""
+        try:
+            face_collection = self.db['employee_faces']
+            face_data = await face_collection.find_one({"employee_id": employee_id, "is_active": True})
+            
+            if face_data:
+                face_data["_id"] = str(face_data["_id"])
+                
+            return face_data
+            
+        except Exception as e:
+            print(f"Error getting employee face data: {e}")
+            return None
+
+    async def delete_employee_face(self, employee_id: str) -> bool:
+        """Delete/deactivate employee's face registration"""
+        try:
+            face_collection = self.db['employee_faces']
+            result = await face_collection.update_one(
+                {"employee_id": employee_id},
+                {"$set": {"is_active": False, "deleted_at": get_ist_now()}}
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            print(f"Error deleting employee face: {e}")
+            return False
+
+    async def get_all_registered_faces(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Get all employees with registered faces"""
+        try:
+            face_collection = self.db['employee_faces']
+            query = {"is_active": True}
+            
+            if filters:
+                query.update(filters)
+            
+            cursor = face_collection.find(query).sort("registered_at", -1)
+            faces = await self._async_to_list(cursor)
+            
+            for face in faces:
+                face["_id"] = str(face["_id"])
+            
+            return faces
+            
+        except Exception as e:
+            print(f"Error getting registered faces: {e}")
+            return []
+
+    async def log_face_verification_attempt(self, log_data: Dict[str, Any]) -> str:
+        """Log face verification attempts for audit trail"""
+        try:
+            log_collection = self.db['face_verification_logs']
+            
+            log_doc = {
+                "employee_id": log_data["employee_id"],
+                "verification_result": log_data["verification_result"],  # success/failure
+                "confidence_score": log_data.get("confidence_score", 0.0),
+                "threshold_used": log_data.get("threshold_used", 0.6),
+                "photo_path": log_data.get("photo_path"),
+                "timestamp": get_ist_now(),
+                "ip_address": log_data.get("ip_address"),
+                "device_info": log_data.get("device_info")
+            }
+            
+            result = await log_collection.insert_one(log_doc)
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            print(f"Error logging face verification: {e}")
+            return ""

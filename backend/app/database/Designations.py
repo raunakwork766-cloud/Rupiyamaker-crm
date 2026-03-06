@@ -4,6 +4,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
 from app.schemas.designation_schemas import DesignationCreateSchema, DesignationUpdateSchema, DesignationResponse
+from app.utils.timezone import get_ist_now
 class DesignationsDB:
     def __init__(self, db=None):
         if db is None:
@@ -26,7 +27,7 @@ class DesignationsDB:
 
     async def create_designation(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new designation"""
-        now = datetime.now()
+        now = get_ist_now()
         
         # Convert any string IDs to ObjectId
         if data.get('department_id') and isinstance(data['department_id'], str):
@@ -127,7 +128,7 @@ class DesignationsDB:
 
     async def update_designation(self, designation_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a designation"""
-        data["updated_at"] = datetime.now()
+        data["updated_at"] = get_ist_now()
         
         # Convert string ID to ObjectId if present
         if data.get("department_id") and isinstance(data["department_id"], str):
@@ -176,7 +177,7 @@ class DesignationsDB:
             
         result = await self.collection.update_one(
             {"_id": ObjectId(designation_id)},
-            {"$set": {"is_active": False, "updated_at": datetime.now()}}
+            {"$set": {"is_active": False, "updated_at": get_ist_now()}}
         )
         return result.modified_count > 0
 

@@ -23,6 +23,7 @@ from app.schemas.otp_schemas import UserLoginWithOTP
 from app.database.OTP import OTPDB
 from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission, get_user_capabilities
+from app.utils.timezone import get_ist_now
 
 router = APIRouter(
     prefix="/users",
@@ -487,22 +488,7 @@ async def login(
     
     # Clear the session_invalidated_at timestamp after successful check
     # This allows them to login fresh without the flag blocking them
-    if session_invalidated_at:
-        print(f"🔒 User {user.get('username')} has session_invalidated_at: {session_invalidated_at}")
-        # Clear the invalidation flag on successful login
-        await users_db.collection.update_one(
-            {"_id": user["_id"]},
-            {
-                "$unset": {"session_invalidated_at": ""},
-                "$set": {"last_login": datetime.now()}
-            }
-        )
-    else:
-        # Update last login time
-        await users_db.collection.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"last_login": datetime.now()}}
-        )
+    # NOTE: last_login is only updated AFTER full auth (including OTP) below.
     
     # Check if OTP is required for this user (default is True if not set)
     otp_required = user.get("otp_required", True)
@@ -534,6 +520,27 @@ async def login(
                 detail=f"OTP verification failed: {otp_message}"
             )
     
+    # ✅ FULLY AUTHENTICATED — now generate session token and update DB.
+    # Doing this AFTER OTP so partial/failed logins never overwrite the active session.
+    new_session_token = str(uuid4())
+
+    if session_invalidated_at:
+        print(f"🔒 User {user.get('username')} has session_invalidated_at: {session_invalidated_at}")
+        # Clear the invalidation flag on successful login
+        await users_db.collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$unset": {"session_invalidated_at": ""},
+                "$set": {"last_login": get_ist_now(), "active_session_token": new_session_token}
+            }
+        )
+    else:
+        # Update last login time and set new session token
+        await users_db.collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"last_login": get_ist_now(), "active_session_token": new_session_token}}
+        )
+
     # Get role and permissions
     role = None
     role_permissions = []
@@ -558,7 +565,8 @@ async def login(
         "department": convert_object_id(department) if department else None,
         "designation": designation if designation else None,
         "permissions": role_permissions,
-        "otp_verified": otp_required  # Indicates if OTP was required and verified
+        "otp_verified": otp_required,  # Indicates if OTP was required and verified
+        "session_token": new_session_token  # 🔑 Unique token for this login session
     }
 
 @router.post("/verify-session", response_model=Dict)
@@ -622,6 +630,17 @@ async def verify_session_post(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Your session has been invalidated - please login again"
+            )
+
+    # 🔑 SINGLE ACTIVE SESSION CHECK: Validate session_token if provided
+    # If the client's session_token no longer matches DB, another device has logged in
+    client_session_token = user_data.get("session_token")
+    if client_session_token:
+        db_session_token = user.get("active_session_token")
+        if db_session_token and client_session_token != db_session_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="displaced"
             )
     
     return {
@@ -708,7 +727,7 @@ async def list_employees(
 ):
     """List all employees with optional filtering by status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get employees with readable passwords
     employees = await users_db.get_employees_with_readable_passwords(status, department_id)
@@ -723,8 +742,8 @@ async def create_employee(
     departments_db: DepartmentsDB = Depends(get_departments_db)
 ):
     """Create a new employee record with all necessary information"""
-    # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    # Check permission - allow users with employees.show OR hrms.show access
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if username exists (required field)
     if await users_db.get_user_by_username(employee.username):
@@ -775,7 +794,7 @@ async def upload_employee_photo(
 ):
     """Upload a profile photo for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -812,7 +831,7 @@ async def get_employee(
 ):
     """Get a specific employee by ID"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get employee with readable password
     employee = await users_db.get_user_with_readable_password(employee_id)
@@ -842,7 +861,7 @@ async def update_employee(
 ):
     """Update employee information"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     current_employee = await users_db.get_user(employee_id)
@@ -911,7 +930,7 @@ async def update_employee_status(
 ):
     """Update employee status (active/inactive)"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -953,7 +972,7 @@ async def update_onboarding_status(
 ):
     """Update employee onboarding status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -995,7 +1014,7 @@ async def update_crm_access(
 ):
     """Update employee CRM access"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1026,7 +1045,7 @@ async def update_login_enabled(
 ):
     """Update employee login enabled status"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Verify employee exists
     employee = await users_db.get_user(employee_id)
@@ -1057,7 +1076,7 @@ async def update_login_status(
 ):
     """Enable or disable login for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1088,7 +1107,7 @@ async def update_otp_required(
 ):
     """Toggle OTP requirement for an employee"""
     # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    await check_permission(user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Check if employee exists
     employee = await users_db.get_user(employee_id)
@@ -1372,7 +1391,7 @@ async def get_user_password(
 ):
     """Get a user's password (for admin use only)"""
     # First, check permission - only allow admins or users with special permission
-    await check_permission(requesting_user_id, "employees", "show", users_db, roles_db)
+    await check_permission(requesting_user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Get the user
     user = await users_db.get_user(user_id)
@@ -1414,6 +1433,7 @@ async def update_user_with_photo(
     blood_group: Optional[str] = Form(None),
     pan_number: Optional[str] = Form(None),
     aadhaar_number: Optional[str] = Form(None),
+    current_city: Optional[str] = Form(None),
     highest_qualification: Optional[str] = Form(None),
     experience_level: Optional[str] = Form(None),
     employee_id: Optional[str] = Form(None),
@@ -1461,7 +1481,7 @@ async def update_user_with_photo(
     
     # Check permissions (users can update their own profile, or admin can update anyone)
     if str(user_id) != requesting_user_id:
-        await check_permission(requesting_user_id, "employees", "show", users_db, roles_db)
+        await check_permission(requesting_user_id, ["employees", "hrms"], "show", users_db, roles_db)
     
     # Build update data from form fields
     update_data = {}
@@ -1654,7 +1674,7 @@ async def update_user_with_photo(
                 )
     
     # Add updated timestamp
-    update_data["updated_at"] = datetime.now()
+    update_data["updated_at"] = get_ist_now()
     
     # Update the user
     success = await users_db.update_user(user_id, update_data)
@@ -1778,6 +1798,7 @@ async def upload_user_profile_photo(
 async def bulk_update_user_status(
     target_status: bool = Query(..., description="Target status value (true for active, false for inactive)"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update user status (is_active) for all users except super admins"""
@@ -1794,19 +1815,25 @@ async def bulk_update_user_status(
         update_data = {
             "is_active": target_status,
             "employee_status": "active" if target_status else "inactive",
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # If setting status to inactive (false), also disable login and OTP
         if not target_status:
             update_data["login_enabled"] = False
             update_data["otp_required"] = False
+
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
         
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": update_data
             }
@@ -1829,6 +1856,7 @@ async def bulk_update_user_status(
 async def bulk_update_login_access(
     target_login_enabled: bool = Query(..., description="Target login_enabled value"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update login access (login_enabled) for all users except super admins"""
@@ -1843,26 +1871,32 @@ async def bulk_update_login_access(
         # Prepare update data
         update_data = {
             "login_enabled": target_login_enabled,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         # 🔒 CRITICAL: ALWAYS set session_invalidated_at timestamp
         # This ensures ALL users must re-login whether we're enabling or disabling
         # When disabling: Forces logout for offline users
         # When enabling: Forces logout for ALL users (including those already logged in)
-        update_data["session_invalidated_at"] = datetime.now()
+        update_data["session_invalidated_at"] = get_ist_now()
         
         if target_login_enabled:
-            print(f"🔒 BULK RE-ENABLE: Setting session_invalidated_at at {datetime.now()} - All users must re-login")
+            print(f"🔒 BULK RE-ENABLE: Setting session_invalidated_at at {get_ist_now()} - All users must re-login")
         else:
-            print(f"🔒 BULK DISABLE: Setting session_invalidated_at at {datetime.now()} - All users logged out")
+            print(f"🔒 BULK DISABLE: Setting session_invalidated_at at {get_ist_now()} - All users logged out")
         
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
+
         # Update query: exclude users with super admin role_id
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": update_data
             }
@@ -1886,6 +1920,7 @@ async def bulk_update_login_access(
 async def bulk_update_otp_requirement(
     target_otp_required: bool = Query(..., description="Target otp_required value"),
     user_id: str = Query(..., description="ID of the user making the request"),
+    filter_employee_status: Optional[str] = Query(None, description="Only affect employees with this status (active/inactive)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Bulk update OTP requirement (otp_required) for all users except super admins"""
@@ -1896,17 +1931,23 @@ async def bulk_update_otp_requirement(
     try:
         # Get all users except super admins
         users_collection = users_db.collection
+
+        # Build the filter query
+        filter_query = {
+            "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
+            "is_employee": True
+        }
+        # If a tab filter is provided, restrict to only those employees
+        if filter_employee_status in ("active", "inactive"):
+            filter_query["employee_status"] = filter_employee_status
         
         # Update query: exclude users with super admin role_id
         update_result = await users_collection.update_many(
-            {
-                "role_id": {"$ne": SUPER_ADMIN_ROLE_ID},
-                "is_employee": True
-            },
+            filter_query,
             {
                 "$set": {
                     "otp_required": target_otp_required,
-                    "updated_at": datetime.now()
+                    "updated_at": get_ist_now()
                 }
             }
         )

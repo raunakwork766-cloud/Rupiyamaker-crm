@@ -12,6 +12,7 @@ import traceback
 from app.database.Tasks import TasksDB
 from app.database.Users import UsersDB
 from app.database.Notifications import NotificationsDB
+from app.utils.timezone import get_ist_now
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -91,7 +92,7 @@ class TaskNotificationsScheduler:
                         if due_date:
                             try:
                                 due_date_dt = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-                                hours_overdue = (datetime.now() - due_date_dt).total_seconds() / 3600
+                                hours_overdue = (get_ist_now() - due_date_dt).total_seconds() / 3600
                                 
                                 # Only notify if overdue by less than 24 hours or high priority
                                 is_high_priority = task.get("priority", "").lower() in ["high", "urgent"]
@@ -114,7 +115,7 @@ class TaskNotificationsScheduler:
     async def process_daily_task_summaries(self):
         """Send daily summaries of today's tasks"""
         try:
-            now = datetime.now()
+            now = get_ist_now()
             today = now.strftime("%Y-%m-%d")
             
             # Check if we already sent the summary today
@@ -162,7 +163,7 @@ class TaskNotificationsScheduler:
             "check_interval": self.check_interval,
             "daily_summary_time": self.daily_summary_time,
             "last_daily_summary_date": self.last_daily_summary_date,
-            "last_check": datetime.now().isoformat()
+            "last_check": get_ist_now().isoformat()
         }
     
     def update_check_interval(self, interval_seconds: int):

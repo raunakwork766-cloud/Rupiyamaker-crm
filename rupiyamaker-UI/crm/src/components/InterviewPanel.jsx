@@ -47,6 +47,11 @@ const InterviewPanel = () => {
       z-index: 10;
       border-bottom: 2px solid #e5e7eb;
     }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
   `;
 
   const navigate = useNavigate();
@@ -3329,75 +3334,44 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  // Qualification options
-  const qualificationOptions = [
-    "BELOW 10TH",
-    "10TH PASS",
-    "12TH PASS",
-    "ITI - INDUSTRIAL TRAINING INSTITUTE",
-    "D.ED - DIPLOMA IN EDUCATION",
-    "D.PHARM - DIPLOMA IN PHARMACY",
-    "GNM / ANM - DIPLOMA IN NURSING",
-    "B.A - BACHELOR OF ARTS",
-    "B.SC - BACHELOR OF SCIENCE",
-    "B.COM - BACHELOR OF COMMERCE",
-    "B.E / B.TECH - BACHELOR OF ENGINEERING / TECHNOLOGY",
-    "BBA - BACHELOR OF BUSINESS ADMINISTRATION",
-    "BCA - BACHELOR OF COMPUTER APPLICATIONS",
-    "LLB - BACHELOR OF LAWS",
-    "MBBS - BACHELOR OF MEDICINE, BACHELOR OF SURGERY",
-    "BDS - BACHELOR OF DENTAL SURGERY",
-    "BAMS - BACHELOR OF AYURVEDIC MEDICINE AND SURGERY",
-    "BHMS - BACHELOR OF HOMEOPATHIC MEDICINE AND SURGERY",
-    "B.PHARM - BACHELOR OF PHARMACY",
-    "B.ARCH - BACHELOR OF ARCHITECTURE",
-    "B.DES - BACHELOR OF DESIGN",
-    "BHM - BACHELOR OF HOTEL MANAGEMENT",
-    "B.ED - BACHELOR OF EDUCATION",
-    "B.P.ED - BACHELOR OF PHYSICAL EDUCATION",
-    "BFA - BACHELOR OF FINE ARTS",
-    "M.A - MASTER OF ARTS",
-    "M.SC - MASTER OF SCIENCE",
-    "M.COM - MASTER OF COMMERCE",
-    "M.E / M.TECH - MASTER OF ENGINEERING / TECHNOLOGY",
-    "MBA - MASTER OF BUSINESS ADMINISTRATION",
-    "PGDM - POST GRADUATE DIPLOMA IN MANAGEMENT",
-    "MCA - MASTER OF COMPUTER APPLICATIONS",
-    "LLM - MASTER OF LAWS",
-    "MD - DOCTOR OF MEDICINE",
-    "MS - MASTER OF SURGERY",
-    "M.PHARM - MASTER OF PHARMACY",
-    "M.ARCH - MASTER OF ARCHITECTURE",
-    "M.DES - MASTER OF DESIGN",
-    "M.ED - MASTER OF EDUCATION",
-    "M.PHIL - MASTER OF PHILOSOPHY",
-    "PHD - DOCTOR OF PHILOSOPHY",
-    "CA - CHARTERED ACCOUNTANT",
-    "CS - COMPANY SECRETARY",
-    "CMA - COST AND MANAGEMENT ACCOUNTANT",
-    "OTHER QUALIFICATION"
+  // Grouped qualification catalog (matching HTML design)
+  const qualCatalog = [
+    { level: 'School Level', entries: ['10th Pass', '12th Pass'] },
+    { level: 'Diploma Level', entries: ['ITI', 'Polytechnic Diploma', 'Diploma in Engineering', 'Diploma in Pharmacy (D.Pharm)', 'Diploma in Computer Applications', 'Diploma in Hotel Management', 'Diploma in Fashion Designing', 'Diploma in Nursing', 'Diploma in Agriculture', 'Diploma in Architecture', 'Diploma in Education (D.Ed)', 'Diploma in Physiotherapy', 'Diploma in Lab Technology'] },
+    { level: "Bachelor's Degree", entries: ['BA', 'BA (Hons)', 'B.Com', 'B.Com (Hons)', 'B.Sc', 'B.Sc (Hons)', 'BBA', 'BCA', 'BMS', 'BSW', 'BFA', 'BJMC', 'BHM', 'BTTM', 'B.Des', 'B.Voc', 'B.Lib', 'B.Tech', 'BE', 'B.Arch', 'B.Plan', 'MBBS', 'BDS', 'BAMS', 'BHMS', 'BUMS', 'BPT', 'B.Pharm', 'B.Sc Nursing', 'BVSc', 'LLB (3 Year)', 'BA LLB', 'BBA LLB', 'B.Com LLB', 'B.Ed', 'B.El.Ed', 'CA', 'CS', 'CMA'] },
+    { level: "Master's Degree", entries: ['MA', 'M.Com', 'M.Sc', 'MBA', 'PGDM', 'MCA', 'M.Tech', 'ME', 'M.Pharm', 'MS', 'LLM', 'M.Ed', 'MSW', 'M.Des', 'M.Lib', 'M.Plan'] },
+    { level: 'Doctorate Level', entries: ['PhD', 'MPhil', 'D.Litt', 'DM', 'MCh'] }
   ];
+
+  // Flat list for backward compat
+  const qualificationOptions = qualCatalog.flatMap(g => g.entries);
 
   // Extended formData to match HTML structure
   const [formData, setFormData] = useState({
     candidate_name: '',
     mobile_number: '',
     alternate_number: '',
-    gender: '',
+    gender: 'Male',
     qualification: '',
+    qualificationLevel: '',
     job_opening: '',
-    marital_status: '',
+    marital_status: 'Single',
     age: '',
     city: '',
-    state: '', // Add state field for backend compatibility
-    experience_type: 'fresher', // Use lowercase for backend compatibility
+    state: '',
+    experience_type: 'fresher',
     total_experience: '',
-    old_salary: '', // Changed from last_salary to match backend
-    offer_salary: '', // Added for backend compatibility
-    living_arrangement: '',
+    yearsExpNum: 0,
+    monthsExpNum: 0,
+    numCompanies: '',
+    companies: [],
+    documents: { salarySlip: false, bankStatement: false, expLetter: false },
+    old_salary: '',
+    offer_salary: '',
+    living_arrangement: 'With Family',
     primary_earning_member: '',
     type_of_business: '',
-    banking_experience: '',
+    banking_experience: 'No',
     interview_type: '',
     source_portal: '',
     monthly_salary_offered: '',
@@ -3409,6 +3383,12 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Drawer UI state
+  const [qualSearch, setQualSearch] = useState('');
+  const [qualOpen, setQualOpen] = useState(false);
+  const qualRef = useRef(null);
+  const [drawerShowDupDetails, setDrawerShowDupDetails] = useState(false);
 
   // Duplicate check state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -3431,6 +3411,48 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     };
     loadAvailableUsers();
   }, []);
+
+  // Click-outside for qualification dropdown
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (qualRef.current && !qualRef.current.contains(e.target)) setQualOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handlers for company/experience/documents
+  const handleCompanyChange = (i, f, v) => {
+    const nc = [...formData.companies];
+    if (!nc[i]) nc[i] = { name: '', duration: '', salary: '' };
+    nc[i][f] = v;
+    setFormData(prev => ({ ...prev, companies: nc }));
+  };
+
+  const handleNumCompaniesChange = (e) => {
+    const count = parseInt(e.target.value, 10) || 0;
+    setFormData(prev => ({ ...prev, numCompanies: e.target.value, companies: Array.from({ length: count }, () => ({ name: '', duration: '', salary: '' })) }));
+  };
+
+  const handleDocChange = (doc) => {
+    setFormData(prev => ({ ...prev, documents: { ...prev.documents, [doc]: !prev.documents[doc] } }));
+  };
+
+  const selectQualification = (entry, level) => {
+    setFormData(prev => ({ ...prev, qualification: entry, qualificationLevel: level }));
+    setQualSearch(entry);
+    setQualOpen(false);
+    if (errors.qualification) setErrors(prev => ({ ...prev, qualification: '' }));
+  };
+
+  const filteredQualGroups = qualCatalog.map(group => ({
+    ...group,
+    entries: group.entries.filter(e => e.toLowerCase().includes((qualSearch || '').toLowerCase()))
+  })).filter(g => g.entries.length > 0);
+
+  const expLabel = formData.experience_type === 'experienced'
+    ? `${formData.yearsExpNum} yr${formData.yearsExpNum !== 1 ? 's' : ''} ${formData.monthsExpNum} mo`
+    : 'Fresher';
 
   // Format status display for CreateInterviewModal dropdown
   const formatStatusDisplayForModal = (status, subStatus = null) => {
@@ -3492,10 +3514,16 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       ? value
       : value.toUpperCase();
 
-    setFormData(prev => ({
-      ...prev,
-      [name]: processedValue
-    }));
+    setFormData(prev => {
+      const updated = { ...prev, [name]: processedValue };
+      // Keep date_time in sync with interview_date + interview_time
+      if (name === 'interview_date' || name === 'interview_time') {
+        const d = name === 'interview_date' ? processedValue : prev.interview_date;
+        const t = name === 'interview_time' ? processedValue : prev.interview_time;
+        if (d && t) updated.date_time = `${d}T${t}`;
+      }
+      return updated;
+    });
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -3746,444 +3774,376 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     setLoading(false);
   };
 
+  const drawerInputCls = "w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all";
+  const canSubmit = formData.mobile_number.length >= 10 && formData.interview_date && formData.candidate_name.trim();
+
   return (
-    <div className="bg-transparent bg-opacity-50 fixed inset-0 z-[1000] flex items-center justify-center">
-      <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-4xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
-        {/* Close Button */}
-        <button
-          className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-          onClick={onClose}
-          aria-label="Close"
-          type="button"
-        >
-          ×
-        </button>
+    <div className="fixed inset-0 z-[1000] flex justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-        {/* Form Container */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          
-          {/* Validation Error Summary */}
-          {Object.keys(errors).length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center mb-2">
-                <svg className="w-5 h-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <h3 className="text-red-800 font-bold">Please fix the following errors:</h3>
+      {/* Drawer */}
+      <div
+        className="relative w-full max-w-2xl bg-white h-full border-l border-slate-200 flex flex-col shadow-2xl"
+        style={{ animation: 'slideInRight 0.25s ease-out' }}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 to-indigo-900 flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="font-black text-white text-lg flex items-center gap-2">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <line x1="19" y1="8" x2="19" y2="14"/>
+                <line x1="22" y1="11" x2="16" y2="11"/>
+              </svg>
+              Add Candidate
+            </h2>
+            <p className="text-slate-400 text-xs mt-0.5">Full interview registration form</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="p-5 overflow-y-auto flex-1 bg-slate-50 space-y-4">
+
+          {/* ── Phone Check ── */}
+          <div className="bg-white border-2 border-indigo-200 rounded-2xl p-4">
+            <label className="block text-xs font-black text-indigo-600 uppercase tracking-wider mb-2">
+              📱 Phone Number <span className="text-red-400">*</span>
+            </label>
+            <input
+              name="mobile_number"
+              value={formData.mobile_number}
+              onChange={e => {
+                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                setFormData(prev => ({ ...prev, mobile_number: val }));
+                if (errors.mobile_number) setErrors(prev => ({ ...prev, mobile_number: '' }));
+              }}
+              className="w-full bg-indigo-50 border border-indigo-200 focus:bg-white focus:border-indigo-500 rounded-xl px-4 py-3 text-slate-900 text-base font-bold outline-none transition-all tracking-widest"
+              placeholder="Enter 10-digit mobile"
+              maxLength="10"
+              inputMode="numeric"
+            />
+            {formData.mobile_number.length > 0 && formData.mobile_number.length < 10 && (
+              <p className="text-xs text-amber-600 mt-1 font-medium">Enter full 10-digit number</p>
+            )}
+            {errors.mobile_number && (
+              <p className="text-xs text-red-500 mt-1 font-medium">{errors.mobile_number}</p>
+            )}
+          </div>
+
+          {/* ── Main form (shown after phone entered) ── */}
+          {formData.mobile_number.length >= 10 && (
+            <form id="create-interview-drawer" onSubmit={handleSubmit} className="space-y-4">
+
+              {/* ── Basic Info ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">👤</span>
+                  <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Basic Info</span>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  {/* Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Candidate Name <span className="text-red-400">*</span></label>
+                    <input name="candidate_name" value={formData.candidate_name} onChange={handleInputChange}
+                      className={errors.candidate_name ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                      placeholder="Full name" />
+                    {errors.candidate_name && <p className="text-xs text-red-500 mt-1">{errors.candidate_name}</p>}
+                  </div>
+                  {/* Interview Date */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Date <span className="text-red-400">*</span></label>
+                    <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange}
+                      className={errors.date_time ? drawerInputCls + ' border-red-400' : drawerInputCls} />
+                    {errors.date_time && <p className="text-xs text-red-500 mt-1">{errors.date_time}</p>}
+                  </div>
+                  {/* Interview Time */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Time <span className="text-red-400">*</span></label>
+                    <input type="time" name="interview_time" value={formData.interview_time} onChange={handleInputChange}
+                      className={drawerInputCls} />
+                  </div>
+                  {/* Alternate Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
+                    <input name="alternate_number" value={formData.alternate_number} onChange={e => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setFormData(prev => ({ ...prev, alternate_number: val }));
+                    }}
+                      className={errors.alternate_number ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                      placeholder="Optional" maxLength="10" inputMode="numeric" />
+                    {errors.alternate_number && <p className="text-xs text-red-500 mt-1">{errors.alternate_number}</p>}
+                  </div>
+                  {/* Source */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source/Portal</label>
+                    <select name="source_portal" value={formData.source_portal} onChange={handleInputChange} className={drawerInputCls}>
+                      <option value="">Select...</option>
+                      {(sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Employee Referral', 'IVR']).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Age */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Age</label>
+                    <input type="number" name="age" value={formData.age} onChange={handleInputChange}
+                      className={drawerInputCls} placeholder="e.g. 24" min="18" max="65" />
+                  </div>
+                  {/* City */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">City</label>
+                    <input name="city" value={formData.city} onChange={handleInputChange}
+                      className={drawerInputCls} placeholder="Current city" />
+                  </div>
+                  {/* Job Opening */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Job Applied <span className="text-red-400">*</span></label>
+                    <select name="job_opening" value={formData.job_opening} onChange={handleInputChange}
+                      className={errors.job_opening ? drawerInputCls + ' border-red-400' : drawerInputCls}>
+                      <option value="">Select role...</option>
+                      {jobOpeningOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                    {errors.job_opening && <p className="text-xs text-red-500 mt-1">{errors.job_opening}</p>}
+                  </div>
+                  {/* Interview Type */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Type <span className="text-red-400">*</span></label>
+                    <select name="interview_type" value={formData.interview_type} onChange={handleInputChange}
+                      className={errors.interview_type ? drawerInputCls + ' border-red-400' : drawerInputCls}>
+                      <option value="">Select type...</option>
+                      {interviewTypeOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                    {errors.interview_type && <p className="text-xs text-red-500 mt-1">{errors.interview_type}</p>}
+                  </div>
+                  {/* Gender toggle */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Gender <span className="text-red-400">*</span></label>
+                    <div className="flex gap-2">
+                      {['Male', 'Female', 'Other'].map(g => (
+                        <label key={g} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                          <input type="radio" name="gender" value={g} checked={formData.gender === g} onChange={handleInputChange} className="hidden" />
+                          {g === 'Male' ? '👨' : g === 'Female' ? '👩' : '🧑'} {g}
+                        </label>
+                      ))}
+                    </div>
+                    {errors.gender && <p className="text-xs text-red-500 mt-1">{errors.gender}</p>}
+                  </div>
+                </div>
               </div>
-              <ul className="list-disc list-inside space-y-1">
-                {Object.entries(errors).map(([field, message]) => (
-                  <li key={field} className="text-red-700 text-sm">
-                    <span className="font-medium">{field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</span> {message}
-                  </li>
-                ))}
-              </ul>
-            </div>
+
+              {/* ── Education & Background ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">🎓</span>
+                  <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  {/* Marital Status */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Marital Status</label>
+                    <select name="marital_status" value={formData.marital_status} onChange={handleInputChange} className={drawerInputCls}>
+                      <option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
+                    </select>
+                  </div>
+                  {/* Living Arrangement */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Living Arrangement</label>
+                    <select name="living_arrangement" value={formData.living_arrangement} onChange={handleInputChange} className={drawerInputCls}>
+                      <option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
+                    </select>
+                  </div>
+                  {/* Qualification — searchable grouped */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
+                    <div className="relative" ref={qualRef}>
+                      <input
+                        value={qualSearch !== '' ? qualSearch : formData.qualification}
+                        onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }}
+                        onFocus={() => { setQualSearch(''); setQualOpen(true); }}
+                        placeholder="Type to search e.g. MBA, BA, ITI..."
+                        className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                      />
+                      {formData.qualificationLevel && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
+                      )}
+                      {qualOpen && filteredQualGroups.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                          {filteredQualGroups.map(group => (
+                            <div key={group.level}>
+                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
+                              {group.entries.map(entry => (
+                                <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
+                                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                                  {entry}
+                                </button>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
+                  </div>
+                  {/* Banking experience toggle */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Banking Experience?</label>
+                    <div className="flex gap-2">
+                      {['Yes', 'No'].map(opt => (
+                        <label key={opt} className={`flex-1 flex items-center justify-center py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.banking_experience === opt ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+                          <input type="radio" name="banking_experience" value={opt} checked={formData.banking_experience === opt} onChange={handleInputChange} className="hidden" />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Professional Details ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">💼</span>
+                  <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {/* Primary earner */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Primary Earning Member</label>
+                    <select name="primary_earning_member" value={formData.primary_earning_member} onChange={handleInputChange} className={drawerInputCls}>
+                      <option value="">Select...</option>
+                      {['Father', 'Mother', 'Both Parents', 'Self', 'Spouse', 'Sibling', 'Other'].map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  {/* Work Experience toggle */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Work Experience</label>
+                    <div className="flex gap-2 p-1 bg-white border border-slate-200 rounded-xl mb-2">
+                      {['fresher', 'experienced'].map(type => (
+                        <button type="button" key={type} onClick={() => setFormData(prev => ({ ...prev, experience_type: type }))}
+                          className={`flex-1 py-2 text-xs font-black rounded-lg transition-all capitalize ${formData.experience_type === type ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {formData.experience_type === 'experienced' && (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                          Experience Duration — <span className="text-indigo-700 font-black">{expLabel}</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">Years</label>
+                            <select value={formData.yearsExpNum} onChange={e => setFormData(prev => ({ ...prev, yearsExpNum: parseInt(e.target.value) || 0 }))} className={drawerInputCls}>
+                              {Array.from({ length: 31 }, (_, i) => <option key={i} value={i}>{i} yr{i !== 1 ? 's' : ''}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">Months</label>
+                            <select value={formData.monthsExpNum} onChange={e => setFormData(prev => ({ ...prev, monthsExpNum: parseInt(e.target.value) || 0 }))} className={drawerInputCls}>
+                              {Array.from({ length: 12 }, (_, i) => <option key={i} value={i}>{i} mo</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">No. of Companies Worked</label>
+                        <input type="number" min="1" value={formData.numCompanies} onChange={handleNumCompaniesChange} className={drawerInputCls} placeholder="e.g. 2" />
+                      </div>
+                      {formData.companies.map((comp, idx) => (
+                        <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                          <div className="text-xs font-black text-slate-500 uppercase tracking-wider">Company #{idx + 1}</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <input value={comp.name || ''} onChange={e => handleCompanyChange(idx, 'name', e.target.value)} placeholder="Company Name" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
+                            <input value={comp.duration || ''} onChange={e => handleCompanyChange(idx, 'duration', e.target.value)} placeholder="Duration" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
+                            <input value={comp.salary || ''} onChange={e => handleCompanyChange(idx, 'salary', e.target.value)} placeholder="Last CTC" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
+                          </div>
+                        </div>
+                      ))}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Proof of Experience (Check all available)</label>
+                        <div className="flex gap-3 flex-wrap">
+                          {[['salarySlip', '💰 Salary Slip'], ['bankStatement', '🏦 Bank Statement'], ['expLetter', '📄 Exp. Letter']].map(([doc, lbl]) => (
+                            <label key={doc} className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold ${formData.documents[doc] ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                              <input type="checkbox" checked={formData.documents[doc]} onChange={() => handleDocChange(doc)} className="hidden" />
+                              {lbl}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Salary Information ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">💵</span>
+                  <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">Salary Information</span>
+                </div>
+                <div className="p-4 grid grid-cols-1 gap-3">
+                  {[
+                    { label: 'Last Salary (Monthly CTC)', name: 'old_salary' },
+                    { label: 'Salary Expectation (Monthly CTC)', name: 'offer_salary' },
+                    { label: 'Final Offered Salary (fill after offer)', name: 'monthly_salary_offered' }
+                  ].map(({ label, name }) => (
+                    <div key={name}>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold pointer-events-none">₹</span>
+                        <input
+                          type="number"
+                          name={name}
+                          value={formData[name]}
+                          onChange={handleInputChange}
+                          className={drawerInputCls + ' pl-7'}
+                          placeholder="0"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </form>
           )}
+        </div>
 
-          {/* Header Section with Date & Time and Created By */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                Date & Time <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="datetime-local"
-                name="date_time"
-                value={formData.date_time}
-                onChange={handleInputChange}
-                className={getInputClasses('date_time')}
-                required
-              />
-              {errors.date_time && (
-                <p className="text-red-500 text-sm mt-1 font-medium">{errors.date_time}</p>
-              )}
-            </div>
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                Created By
-              </label>
-              <input
-                type="text"
-                name="created_by"
-                value={formData.created_by}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                readOnly
-              />
-            </div>
-          </div>
-
-          {/* Candidate Details Section */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center mb-4">
-              <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center mr-3">
-                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-cyan-600">Candidate Details</h3>
-            </div>
-            
-            {/* Row 1: Name, Mobile, Alternate Number */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Candidate Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="candidate_name"
-                  value={formData.candidate_name}
-                  onChange={handleInputChange}
-                  className={getInputClasses('candidate_name')}
-                  placeholder="Enter candidate name"
-                  required
-                />
-                {errors.candidate_name && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.candidate_name}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Mobile Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  name="mobile_number"
-                  value={formData.mobile_number}
-                  onChange={handleInputChange}
-                  className={getInputClasses('mobile_number')}
-                  placeholder="Enter mobile number"
-                  required
-                />
-                {errors.mobile_number && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.mobile_number}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Alternate Number
-                </label>
-                <input
-                  type="tel"
-                  name="alternate_number"
-                  value={formData.alternate_number}
-                  onChange={handleInputChange}
-                  className={getInputClasses('alternate_number')}
-                  placeholder="Enter alternate number"
-                />
-                {errors.alternate_number && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.alternate_number}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Row 2: Gender, Qualification, Job Applied */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Gender <span className="text-red-500">*</span>
-                </label>
-                <SearchableSelect
-                  name="gender"
-                  value={formData.gender}
-                  onChange={handleInputChange}
-                  options={['Male', 'Female', 'Other']}
-                  placeholder="Select Gender"
-                  className={getInputClasses('gender')}
-                  required
-                />
-                {errors.gender && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.gender}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Qualification <span className="text-red-500">*</span>
-                </label>
-                <SearchableSelect
-                  name="qualification"
-                  value={formData.qualification}
-                  onChange={handleInputChange}
-                  options={qualificationOptions}
-                  placeholder="Select Qualification"
-                  className={getInputClasses('qualification')}
-                  required
-                />
-                {errors.qualification && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.qualification}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Job Applied <span className="text-red-500">*</span>
-                </label>
-                <SearchableSelect
-                  name="job_opening"
-                  value={formData.job_opening}
-                  onChange={handleInputChange}
-                  options={jobOpeningOptions}
-                  placeholder="Select Job Applied"
-                  className={getInputClasses('job_opening')}
-                  required
-                />
-                {errors.job_opening && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.job_opening}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Row 3: Marital Status, Age, City */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Marital Status
-                </label>
-                <SearchableSelect
-                  name="marital_status"
-                  value={formData.marital_status}
-                  onChange={handleInputChange}
-                  options={['Single', 'Married', 'Divorced', 'Widowed']}
-                  placeholder="Select status"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Age
-                </label>
-                <input
-                  type="number"
-                  name="age"
-                  value={formData.age}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                  placeholder="Enter age"
-                  min="18"
-                  max="65"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  City
-                </label>
-                <input
-                  type="text"
-                  name="city"
-                  value={formData.city}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                  placeholder="Enter city"
-                />
-              </div>
-            </div>
-
-            {/* Row 4: Experience Type */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Experience Type
-                </label>
-                <SearchableSelect
-                  name="experience_type"
-                  value={formData.experience_type}
-                  onChange={handleInputChange}
-                  options={['fresher', 'experienced']}
-                  placeholder="Select Experience Type"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Family & Living Situation Section */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center mb-4">
-              <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center mr-3">
-                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-cyan-600">Family & Living Situation</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Living Arrangement
-                </label>
-                <SearchableSelect
-                  name="living_arrangement"
-                  value={formData.living_arrangement}
-                  onChange={handleInputChange}
-                  options={['With Family', 'PG/Hostel', 'Rented Alone', 'Shared Apartment', 'Own House']}
-                  placeholder="Select living arrangement"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Primary Earning Member
-                </label>
-                <SearchableSelect
-                  name="primary_earning_member"
-                  value={formData.primary_earning_member}
-                  onChange={handleInputChange}
-                  options={['Father', 'Mother', 'Both Parents', 'Self', 'Spouse', 'Sibling', 'Other']}
-                  placeholder="Select primary earner"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Type of Business/Work
-                </label>
-                <SearchableSelect
-                  name="type_of_business"
-                  value={formData.type_of_business}
-                  onChange={handleInputChange}
-                  options={['Salaried Job', 'Government Job', 'Private Business', 'Shop/Retail Business', 'Manufacturing Business', 'Service Business', 'Farming/Agriculture', 'Professional Practice', 'Other']}
-                  placeholder="Select work type"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Banking/Finance Experience
-                </label>
-                <SearchableSelect
-                  name="banking_experience"
-                  value={formData.banking_experience}
-                  onChange={handleInputChange}
-                  options={['No Experience', 'Loan Sales', 'Credit Card Sales', 'Collection/Recovery', 'Bank Operations', 'Insurance Sales', 'Investment/Mutual Funds', 'Other Finance']}
-                  placeholder="Select experience"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Interview Details Section */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center mb-4">
-              <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center mr-3">
-                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-cyan-600">Interview Details</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Interview Type <span className="text-red-500">*</span>
-                </label>
-                <SearchableSelect
-                  name="interview_type"
-                  value={formData.interview_type}
-                  onChange={handleInputChange}
-                  options={interviewTypeOptions}
-                  placeholder="Select Interview Type"
-                  className={getInputClasses('interview_type')}
-                  required
-                />
-                {errors.interview_type && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.interview_type}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Source/Portal
-                </label>
-                <SearchableSelect
-                  name="source_portal"
-                  value={formData.source_portal}
-                  onChange={handleInputChange}
-                  options={sourcePortalOptions}
-                  placeholder="Select Source/Portal"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Monthly Salary Offered
-                </label>
-                <input
-                  type="number"
-                  name="monthly_salary_offered"
-                  value={formData.monthly_salary_offered}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-                  placeholder="Enter monthly salary"
-                  step="0.1"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Interview Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  name="interview_date"
-                  value={formData.interview_date}
-                  onChange={handleInputChange}
-                  className={getInputClasses('date_time')}
-                  required
-                />
-                {errors.date_time && (
-                  <p className="text-red-500 text-sm mt-1 font-medium">{errors.date_time}</p>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Interview Time <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="time"
-                  name="interview_time"
-                  value={formData.interview_time}
-                  onChange={handleInputChange}
-                  className={getInputClasses('date_time')}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-4 pt-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-6 py-3 bg-gray-500 text-white font-bold rounded shadow-md hover:bg-gray-600 transition-colors duration-200"
-            >
-              Cancel
-            </button>
+        {/* ── Footer submit button ── */}
+        {formData.mobile_number.length >= 10 && (
+          <div className="p-4 border-t border-slate-200 bg-white shrink-0">
             <button
               type="submit"
-              disabled={loading}
-              className={cn(
-                "flex-1 px-6 py-3 bg-cyan-500 text-white font-bold rounded shadow-md transition-colors duration-200",
-                loading 
-                  ? "opacity-50 cursor-not-allowed bg-cyan-400" 
-                  : "hover:bg-cyan-600"
-              )}
+              form="create-interview-drawer"
+              disabled={loading || !canSubmit}
+              className={`w-full py-3.5 rounded-2xl font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 ${(canSubmit && !loading) ? 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-indigo-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
             >
-              {loading ? 'Creating Interview...' : 'Create Interview'}
+              {loading ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                  Creating Interview...
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                  Save Candidate Profile
+                </>
+              )}
             </button>
           </div>
-        </form>
+        )}
       </div>
 
-      {/* Duplicate Interview Modal */}
+      {/* Duplicate Interview Modal (API-based check) */}
       <DuplicateInterviewModal
         visible={showDuplicateModal}
         onClose={handleCloseDuplicateModal}

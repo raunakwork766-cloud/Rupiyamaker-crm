@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Attachments V6 - Refined</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', primaryLight: '#eff6ff', bgMain: '#f8fafc', textDark: '#0f172a' },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .tab-btn {
+            padding: 8px 16px;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            background: transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+            background: white;
+        }
+
+        /* Drag and Drop styles */
+        .dragging {
+            opacity: 0.5;
+            background-color: #f8fafc;
+            border: 2px dashed #94a3b8;
+        }
+
+        .drag-over {
+            border-top: 2px solid #2563eb !important;
+        }
+
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body class="p-2 md:p-4 min-h-screen">
+
+    <!-- Top CRM Navigation Tabs Simulation (Simple) -->
+    <div class="flex flex-wrap items-center gap-1 mb-4 border-b border-gray-300">
+        <button class="tab-btn">LEAD DETAILS</button>
+        <button class="tab-btn">OBLIGATION</button>
+        <button class="tab-btn">REMARK</button>
+        <button class="tab-btn">TASK</button>
+        <button class="tab-btn active">ATTACHMENT</button>
+        <button class="tab-btn">LEADS ACTIVITY</button>
+
+        <!-- Utils -->
+        <div class="ml-auto flex gap-2 pb-1 pr-1">
+            <button onclick="openSettings()"
+                class="bg-white border-2 border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-800 px-3 py-1.5 rounded text-xs font-bold transition flex items-center shadow-sm">
+                <i class="fa-solid fa-gear mr-1.5 text-sm"></i> SETTINGS
+            </button>
+            <button onclick="downloadAll()"
+                class="bg-gray-900 border-2 border-gray-900 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-black transition flex items-center shadow-sm">
+                <i class="fa-solid fa-download mr-1.5 text-sm"></i> DL ALL
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN ATTACHMENTS CONTAINER (Fits inside CRM tab space) -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-5 w-full max-w-6xl mx-auto">
+
+        <div class="mb-3 border-b border-gray-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 class="text-lg font-black text-gray-900 tracking-tight"></h2>
+
+            <!-- Applicant / Co-Applicant Switcher -->
+            <div
+                class="flex items-center gap-1 bg-gray-100/80 p-1 rounded-lg self-start sm:self-auto border border-gray-200 shadow-inner">
+                <button id="tab_applicant" onclick="switchProfile('applicant')"
+                    class="px-5 py-1.5 rounded-md text-[11px] font-black tracking-wide transition-all bg-white text-primary shadow-sm border border-gray-200">APPLICANT</button>
+                <button id="tab_coapplicant" onclick="switchProfile('coapplicant')"
+                    class="px-5 py-1.5 rounded-md text-[11px] font-bold text-gray-500 hover:text-gray-800 transition-all border border-transparent hover:bg-gray-200/50">CO-APPLICANT</button>
+            </div>
+        </div>
+
+        <!-- Flat List Container -->
+        <div class="space-y-3" id="categories-container">
+            <!-- Categories rendered via JS -->
+        </div>
+
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal"
+        class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div
+            class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-[fadeIn_0.1s_ease-out]">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-black text-lg text-gray-800"><i class="fa-solid fa-gear text-primary mr-2"></i> DOCUMENT
+                    SETTINGS</h3>
+                <button onclick="closeSettings()"
+                    class="text-gray-400 hover:text-red-500 transition text-xl w-6 h-6 flex items-center justify-center"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1 bg-gray-50/50" id="settings-content">
+                <!-- Settings rendered via JS -->
+            </div>
+
+            <div class="p-3 border-t border-gray-200 bg-white flex justify-end gap-2">
+                <button onclick="closeSettings()"
+                    class="px-4 py-1.5 rounded text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition uppercase">Cancel</button>
+                <button onclick="saveSettings()"
+                    class="px-4 py-1.5 rounded text-xs font-bold text-white bg-primary hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5 uppercase">
+                    <i class="fa-solid fa-check"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // MASTER DATA STRUCTURE - With Visibility & Ordering state
+        let appStructure = [
+            {
+                id: 'cat_cibil',
+                title: 'PERSONAL IDENTIFICATION (KYC)',
+                docs: [
+                    { id: 'd_cibil', title: 'CIBIL REPORT', isPrimary: true, isActive: true, files: [], coFiles: [] },
+                    { id: 'd_pan', title: 'PAN CARD', isPrimary: true, isActive: true, files: [], coFiles: [] },
+                    { id: 'd_aadhar', title: 'E-AADHAAR CARD', isPrimary: true, isActive: true, files: [], coFiles: [] },
+                    { id: 'd_voter', title: 'VOTER ID', isPrimary: false, isActive: false, files: [], coFiles: [] },
+                    { id: 'd_dl', title: 'DRIVING LICENSE', isPrimary: false, isActive: false, files: [], coFiles: [] }
+                ]
+            },
+            {
+                id: 'cat_emp',
+                title: 'EMPLOYMENT PROOFS',
+                docs: [
+                    { id: 'd_sal', title: 'LATEST 3 MONTHS SALARY SLIPS', isPrimary: true, isActive: true, files: [], coFiles: [] },
+                    { id: 'd_offer', title: 'OFFER LETTER', isPrimary: false, isActive: false, files: [], coFiles: [] }
+                ]
+            },
+            {
+                id: 'cat_bank',
+                title: 'FINANCIAL STATEMENTS',
+                docs: [
+                    { id: 'd_bank_sal', title: 'SALARY ACCOUNT STATEMENT (6 MONTHS)', isPrimary: true, isActive: true, files: [], coFiles: [] },
+                    { id: 'd_itr', title: 'ITR V FOR LAST 2 YEARS', isPrimary: false, isActive: false, files: [], coFiles: [] }
+                ]
+            }
+        ];
+
+        // Deep clone for settings draft so we can cancel
+        let draftAppStructure = [];
+
+        let currentProfile = 'applicant'; // 'applicant' or 'coapplicant'
+
+        function switchProfile(prof) {
+            currentProfile = prof;
+
+            const tabApp = document.getElementById('tab_applicant');
+            const tabCoApp = document.getElementById('tab_coapplicant');
+
+            if (prof === 'applicant') {
+                tabApp.className = "px-5 py-1.5 rounded-md text-[11px] font-black tracking-wide transition-all bg-white text-primary shadow-sm border border-gray-200";
+                tabCoApp.className = "px-5 py-1.5 rounded-md text-[11px] font-bold text-gray-500 hover:text-gray-800 transition-all border border-transparent hover:bg-gray-200/50";
+            } else {
+                tabCoApp.className = "px-5 py-1.5 rounded-md text-[11px] font-black tracking-wide transition-all bg-white text-primary shadow-sm border border-gray-200";
+                tabApp.className = "px-5 py-1.5 rounded-md text-[11px] font-bold text-gray-500 hover:text-gray-800 transition-all border border-transparent hover:bg-gray-200/50";
+            }
+
+            renderUI();
+        }
+
+        function getFilesList(doc) {
+            if (!doc.coFiles) doc.coFiles = [];
+            return currentProfile === 'applicant' ? doc.files : doc.coFiles;
+        }
+
+        // --- RENDER MAIN UI ---
+        function renderUI() {
+            const container = document.getElementById('categories-container');
+            container.innerHTML = '';
+
+            let globalFileIndex = 1; // Global file number counter
+
+            appStructure.forEach((cat, catIndex) => {
+                let docsHtml = '';
+
+                // Filter docs that are currently active
+                const activeDocs = cat.docs.filter(d => d.isActive);
+                const availableExtraDocs = cat.docs.filter(d => !d.isActive);
+
+                activeDocs.forEach((doc, docIndex) => {
+                    // Generate list of attached files
+                    const activeFiles = getFilesList(doc);
+                    let filesHtml = '';
+                    if (activeFiles.length > 0) {
+                        docsHtml += `<div class="space-y-1 w-full pt-1" id="file_list_${doc.id}" 
+                            ondragover="handleFileDragOver(event)" 
+                            ondrop="handleFileDrop(event, '${cat.id}', '${doc.id}')">`;
+
+                        activeFiles.forEach((file, fileIdx) => {
+                            const isEnc = file.isLocked;
+                            // Prepend global index to file view
+                            const displayNumber = globalFileIndex++;
+
+                            // File Row - Make draggable
+                            filesHtml += `
+                                <div id="file_row_${file.id}" draggable="true" ondragstart="handleFileDragStart(event, '${cat.id}', '${doc.id}', ${fileIdx})" 
+                                    class="cursor-grab active:cursor-grabbing bg-white border border-gray-200 rounded p-1.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition hover:border-blue-300 ${isEnc ? 'border-red-200' : ''} group/filerow">
+                                    
+                                    <div class="flex items-start gap-1.5 min-w-0 pr-2 flex-1 w-full">
+                                        <div class="text-[9px] font-black w-4 h-4 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 mt-0.5 group-hover/filerow:bg-blue-100 group-hover/filerow:text-primary transition-colors">${displayNumber}</div>
+                                        <i class="fa-solid fa-grip-vertical text-gray-300 mt-0.5 mr-0.5 text-[10px] shrink-0 cursor-grab"></i>
+                                        <i class="fa-solid ${isEnc ? 'fa-file-shield text-red-500' : 'fa-file-pdf text-blue-500'} text-base shrink-0 mt-0.5"></i>
+                                        
+                                        <div class="flex-1 w-full min-w-0">
+                                            ${file.renaming ? `
+                                                <div class="flex items-center gap-1 w-full relative z-10">
+                                                    <input type="text" id="rn_${file.id}" value="${file.name.substring(0, file.name.lastIndexOf('.'))}" class="text-[11px] uppercase border border-primary px-1.5 py-1 rounded w-full outline-none shadow-sm shadow-blue-100/50">
+                                                    <span class="text-[10px] text-gray-500 font-bold ml-1">${file.name.substring(file.name.lastIndexOf('.'))}</span>
+                                                    <button onclick="saveRename('${cat.id}', '${doc.id}', '${file.id}')" class="text-white bg-green-500 hover:bg-green-600 rounded px-2 py-1 shadow-sm ml-1"><i class="fa-solid fa-check text-xs"></i></button>
+                                                </div>
+                                            ` : `
+                                                <div class="flex items-start justify-between gap-2 group/rn">
+                                                    <span class="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title="${file.name.toUpperCase()}">${file.name.toUpperCase()}</span>
+                                                    ${!isEnc ? `<button onclick="toggleRename('${cat.id}', '${doc.id}', '${file.id}')" class="text-gray-400 hover:text-primary shrink-0 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded"><i class="fa-solid fa-pen text-[9px]"></i></button>` : ''}
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-auto relative z-10">
+                                        ${isEnc && !file.renaming ? `
+                                            <input type="password" id="pw_${file.id}" placeholder="Password" class="text-[10px] border border-red-200 px-1.5 py-1 rounded w-24 outline-none focus:border-red-400">
+                                            <button onclick="unlockFile('${cat.id}', '${doc.id}', '${file.id}')" class="bg-gray-800 hover:bg-black text-white text-[9px] font-bold px-2.5 py-1 rounded whitespace-nowrap">DECRYPT</button>
+                                        ` : ''}
+                                        
+                                        ${!isEnc ? `
+                                            <button class="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-primary hover:bg-white transition shadow-sm"><i class="fa-solid fa-eye text-[10px]"></i></button>
+                                            <button class="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-green-600 hover:bg-white transition shadow-sm"><i class="fa-solid fa-download text-[10px]"></i></button>
+                                        ` : ''}
+                                        <div class="w-px h-4 bg-gray-200 mx-0.5 hidden sm:block"></div>
+                                        <button onclick="deleteFile('${cat.id}', '${doc.id}', '${file.id}')" class="bg-red-50 border border-red-100 rounded p-1 text-gray-500 hover:text-red-500 hover:bg-red-100 transition shadow-sm"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        docsHtml += `</div>`;
+                    } else {
+                        filesHtml = `<div class="text-[11px] text-gray-400 font-medium italic py-2 flex items-center justify-center h-full w-full border border-dashed border-gray-300 rounded bg-gray-50/50">No files attached yet. Click "Attach Files".</div>`;
+                    }
+
+                    // Remove capability for extra docs if they have no files and are not primary
+                    const canRemove = !doc.isPrimary && activeFiles.length === 0;
+
+                    // Main Row Structure (Compacted)
+                    docsHtml += `
+                        <div class="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm">
+                            ${canRemove ? `
+                                <button onclick="removeExtraDoc('${cat.id}', '${doc.id}')" class="absolute -top-1.5 -right-1.5 bg-red-100 text-red-500 hover:bg-red-500 hover:text-white rounded-full w-5 h-5 flex items-center justify-center shadow-sm opacity-0 group-hover/docrow:opacity-100 transition z-20"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+                            ` : ''}
+                            
+                            <!-- Left: Doc Info -->
+                            <div class="w-full md:w-1/4 lg:w-1/5 shrink-0 flex items-start gap-3">
+                                <div class="w-8 h-8 rounded bg-primaryLight text-primary flex items-center justify-center text-sm shrink-0"><i class="fa-solid fa-file-invoice"></i></div>
+                                <div class="pt-0.5">
+                                    <h4 class="font-bold text-gray-900 text-xs leading-tight pr-1 tracking-tight">${doc.title}</h4>
+                                    ${!doc.isPrimary ? `<span class="inline-block mt-1 px-1 py-0.5 bg-yellow-100 text-yellow-800 text-[8px] font-bold rounded">EXTRA</span>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Middle: Files Container -->
+                            <div class="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-1.5 flex flex-col gap-1.5 min-h-[50px]">
+                                ${filesHtml}
+                            </div>
+
+                            <!-- Right: Actions -->
+                            <div class="w-full md:w-32 shrink-0 flex flex-col gap-1.5 items-end justify-center">
+                                <div class="relative w-full">
+                                    <input type="file" multiple class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" title="" onchange="handleUpload(event, '${cat.id}', '${doc.id}')">
+                                    <button class="w-full bg-primary hover:bg-blue-700 text-white font-bold py-2 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1.5 transition uppercase"><i class="fa-solid fa-cloud-arrow-up"></i> Attach Files</button>
+                                </div>
+                                
+                                <button onclick="injectDemo('${cat.id}', '${doc.id}')" class="text-[9px] text-gray-400 hover:text-purple-600 font-bold bg-transparent mx-auto relative z-30"><i class="fa-solid fa-bolt"></i> Load Demo</button>
+                            </div>
+
+                        </div>
+                    `;
+                });
+
+                if (activeDocs.length === 0) docsHtml = `<div class="p-3 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">No documents active in this section.</div>`;
+
+                // Add "Add Extra Document" Dynamic Row based on available extra docs
+                if (availableExtraDocs.length > 0) {
+                    let optionsHtml = `<option value="">-- SELECT EXTRA DOCUMENT --</option>`;
+                    availableExtraDocs.forEach(d => {
+                        optionsHtml += `<option value="${d.id}">${d.title}</option>`;
+                    });
+
+                    docsHtml += `
+                        <div class="mt-2 pt-2 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-end gap-2">
+                            <div id="add_ui_${cat.id}" class="hidden w-full sm:flex-1 items-center gap-1.5 max-w-sm ml-auto">
+                                <select id="add_select_${cat.id}" class="w-full bg-white border border-gray-300 rounded px-2 py-1 text-[10px] font-bold outline-none focus:border-primary shadow-sm uppercase cursor-pointer text-gray-700 font-sans">
+                                    ${optionsHtml}
+                                </select>
+                                <button onclick="addExtraDoc('${cat.id}')" class="bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded font-bold text-[10px] shadow-sm uppercase shrink-0">Add</button>
+                                <button onclick="toggleUserAdd('${cat.id}')" class="text-gray-400 hover:text-red-500 px-1 text-sm shrink-0 w-6 h-6 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <button id="add_btn_${cat.id}" onclick="toggleUserAdd('${cat.id}')" class="text-gray-500 hover:text-primary text-[10px] font-bold flex items-center justify-center gap-1 bg-gray-50 hover:bg-blue-50 border border-gray-200 px-3 py-1.5 rounded transition uppercase ml-auto w-full sm:w-auto shadow-sm">
+                                <i class="fa-solid fa-plus"></i> Add Extra Document
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Empty extra row so user can add extra document directly if none exist in settings
+                    docsHtml += `
+                        <div class="mt-2 pt-2 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-end gap-2">
+                            <div id="add_ui_${cat.id}" class="hidden w-full sm:flex-1 items-center gap-1.5 max-w-sm ml-auto">
+                                <input type="text" id="add_free_${cat.id}" class="w-full bg-white border border-gray-300 rounded px-2 py-1 text-[10px] font-bold outline-none focus:border-primary shadow-sm uppercase text-gray-700 font-sans" placeholder="NAME OF EXTRA DOCUMENT">
+                                <button onclick="addFreeExtraDoc('${cat.id}')" class="bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded font-bold text-[10px] shadow-sm uppercase shrink-0">Add</button>
+                                <button onclick="toggleUserAdd('${cat.id}')" class="text-gray-400 hover:text-red-500 px-1 text-sm shrink-0 w-6 h-6 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <button id="add_btn_${cat.id}" onclick="toggleUserAdd('${cat.id}')" class="text-gray-500 hover:text-primary text-[10px] font-bold flex items-center justify-center gap-1 bg-gray-50 hover:bg-blue-50 border border-gray-200 px-3 py-1.5 rounded transition uppercase ml-auto w-full sm:w-auto shadow-sm">
+                                <i class="fa-solid fa-plus"></i> Add Extra Document
+                            </button>
+                        </div>
+                    `;
+                }
+
+                // Wrapper per Category
+                container.innerHTML += `
+                    <div class="bg-white">
+                        <!-- Section Header -->
+                        <div class="border-b-2 border-gray-800 pb-1 mb-3 flex items-center justify-between">
+                            <h3 class="text-base font-black text-gray-900 uppercase tracking-tight">${catIndex + 1}. ${cat.title}</h3>
+                        </div>
+                        
+                        <!-- List of Documents -->
+                        <div class="space-y-2.5">
+                            ${docsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // --- FILE ACTIONS ---
+        function getCatDoc(catId, docId) {
+            const cat = appStructure.find(c => c.id === catId);
+            return cat.docs.find(d => d.id === docId);
+        }
+
+        function handleUpload(e, catId, docId) {
+            const doc = getCatDoc(catId, docId);
+            const list = getFilesList(doc);
+            Array.from(e.target.files).forEach(f => {
+                const enc = f.name.toLowerCase().includes('lock') || f.name.toLowerCase().includes('pwd');
+                const lastDot = f.name.lastIndexOf('.');
+                const name = f.name.substring(0, lastDot);
+                const ext = f.name.substring(lastDot);
+                const capsName = name.toUpperCase() + ext.toUpperCase();
+                // Ensure extension exists
+                list.push({ id: 'f_' + Date.now() + Math.random(), name: capsName, isLocked: enc, renaming: false });
+            });
+            e.target.value = ''; // reset
+            renderUI();
+        }
+
+        function injectDemo(catId, docId) {
+            const doc = getCatDoc(catId, docId);
+            const list = getFilesList(doc);
+            list.push({ id: 'f_demo_1_' + Date.now(), name: 'STATEMENT_Q1.PDF', isLocked: false, renaming: false });
+            list.push({ id: 'f_demo_2_' + Date.now(), name: 'STATMENT_PWD_LOCK_LONG_NAME_TEST_WRAPPER_DOC_XYZ_123.PDF', isLocked: true, renaming: false });
+            renderUI();
+        }
+
+        function deleteFile(catId, docId, fileId) {
+            const doc = getCatDoc(catId, docId);
+            const list = getFilesList(doc);
+            if (currentProfile === 'applicant') doc.files = list.filter(f => f.id !== fileId);
+            else doc.coFiles = list.filter(f => f.id !== fileId);
+            renderUI();
+        }
+
+        function unlockFile(catId, docId, fileId) {
+            const pw = document.getElementById('pw_' + fileId).value;
+            if (!pw) return alert('Enter password to decrypt');
+            const file = getFilesList(getCatDoc(catId, docId)).find(f => f.id === fileId);
+            if (file) file.isLocked = false;
+            renderUI();
+        }
+
+        function toggleRename(catId, docId, fileId) {
+            const file = getFilesList(getCatDoc(catId, docId)).find(f => f.id === fileId);
+            if (file) file.renaming = !file.renaming;
+            renderUI();
+        }
+
+        function saveRename(catId, docId, fileId) {
+            const file = getFilesList(getCatDoc(catId, docId)).find(f => f.id === fileId);
+            if (!file) return;
+            let v = document.getElementById('rn_' + fileId).value.trim().toUpperCase();
+            if (v) {
+                const ext = file.name.substring(file.name.lastIndexOf('.'));
+                file.name = v + ext;
+            }
+            file.renaming = false;
+            renderUI();
+        }
+
+        function downloadAll() {
+            let n = 0;
+            appStructure.forEach(c => c.docs.forEach(d => {
+                getFilesList(d).filter(f => !f.isLocked).forEach(() => n++);
+            }));
+            if (n === 0) alert("No unlocked files available to download for " + currentProfile.toUpperCase() + ".");
+            else alert(`Batch downloading ${n} files securely for ${currentProfile.toUpperCase()}.`);
+        }
+
+        // --- DYNAMIC ADDS ---
+        function toggleUserAdd(catId) {
+            const ui = document.getElementById('add_ui_' + catId);
+            const btn = document.getElementById('add_btn_' + catId);
+            if (ui.classList.contains('hidden')) {
+                ui.classList.remove('hidden');
+                ui.classList.add('flex');
+                btn.classList.add('hidden');
+            } else {
+                ui.classList.add('hidden');
+                ui.classList.remove('flex');
+                btn.classList.remove('hidden');
+            }
+        }
+
+        function addExtraDoc(catId) {
+            const sel = document.getElementById('add_select_' + catId);
+            const val = sel.value;
+            if (!val) return;
+            const doc = getCatDoc(catId, val);
+            if (doc) {
+                doc.isActive = true;
+            }
+            renderUI();
+        }
+
+        function addFreeExtraDoc(catId) {
+            const inp = document.getElementById('add_free_' + catId);
+            const val = inp.value.trim().toUpperCase();
+            if (!val) return;
+            const cat = appStructure.find(c => c.id === catId);
+            cat.docs.push({ id: 'd_added_' + Date.now(), title: val, isPrimary: false, isActive: true, files: [], coFiles: [] });
+            inp.value = '';
+            renderUI();
+        }
+
+        function removeExtraDoc(catId, docId) {
+            const doc = getCatDoc(catId, docId);
+            if (doc && !doc.isPrimary) {
+                doc.isActive = false;
+            }
+            renderUI();
+        }
+
+        // --- FILE DRAG & DROP LOGIC ---
+        let draggedFileData = null;
+
+        function handleFileDragStart(e, catId, docId, fileIndex) {
+            draggedFileData = { catId, docId, fileIndex };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', fileIndex); // Needed for Firefox
+            setTimeout(() => e.target.classList.add('dragging', 'opacity-50'), 0);
+        }
+
+        function handleFileDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const targetRow = e.target.closest('[id^="file_row_"]');
+
+            // clear previous styles
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (targetRow) {
+                targetRow.classList.add('drag-over');
+            }
+        }
+
+        function handleFileDrop(e, targetCatId, targetDocId) {
+            e.preventDefault();
+            document.querySelectorAll('.opacity-50').forEach(el => el.classList.remove('opacity-50', 'dragging'));
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!draggedFileData) return;
+
+            // Only allow dropping within same doc slot
+            if (draggedFileData.catId !== targetCatId || draggedFileData.docId !== targetDocId) {
+                draggedFileData = null;
+                return;
+            }
+
+            const targetRow = e.target.closest('[id^="file_row_"]');
+            const doc = getCatDoc(targetCatId, targetDocId);
+            const list = getFilesList(doc);
+            const allRowsArray = Array.from(document.getElementById('file_list_' + targetDocId).children);
+
+            let targetIndex = list.length; // default to end if dropped outside specific row
+            if (targetRow) {
+                targetIndex = allRowsArray.indexOf(targetRow);
+            }
+
+            if (targetIndex !== -1 && draggedFileData.fileIndex !== targetIndex) {
+                // Reorder files array safely
+                const itemToMove = list[draggedFileData.fileIndex];
+                list.splice(draggedFileData.fileIndex, 1);
+                // Adjust target index if we removed an item before it
+                const insertIndex = draggedFileData.fileIndex < targetIndex ? targetIndex - 1 : targetIndex;
+                list.splice(insertIndex, 0, itemToMove);
+                renderUI();
+            }
+            draggedFileData = null;
+        }
+
+        // --- SETTINGS LOGIC ---
+        function openSettings() {
+            // Create deep copy for draft
+            draftAppStructure = JSON.parse(JSON.stringify(appStructure));
+
+            // Default all categories to be collapsed in settings
+            draftAppStructure.forEach(cat => cat.isCollapsed = true);
+
+            renderSettingsUI();
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('settingsModal').classList.add('flex');
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+            document.getElementById('settingsModal').classList.remove('flex');
+        }
+
+        function saveSettings() {
+            let newAppStructure = [];
+            draftAppStructure.forEach(draftCat => {
+                let realCat = appStructure.find(c => c.id === draftCat.id);
+                if (realCat) {
+                    // Update docs order and primary flags
+                    let newDocs = [];
+                    draftCat.docs.forEach(draftDoc => {
+                        let realDoc = realCat.docs.find(d => d.id === draftDoc.id);
+                        if (realDoc) {
+                            realDoc.title = draftDoc.title; // update title
+                            realDoc.isPrimary = draftDoc.isPrimary;
+                            if (realDoc.isPrimary) realDoc.isActive = true;
+                            if (!realDoc.isPrimary && realDoc.files.length === 0) realDoc.isActive = false;
+
+                            newDocs.push(realDoc);
+                        } else {
+                            // Recover new docs
+                            if (draftDoc.isPrimary) draftDoc.isActive = true;
+                            newDocs.push(draftDoc);
+                        }
+                    });
+                    realCat.docs = newDocs;
+                    realCat.title = draftCat.title; // In case of title edits
+                    newAppStructure.push(realCat);
+                } else {
+                    // Recover new categories
+                    draftCat.docs.forEach(d => {
+                        if (d.isPrimary) d.isActive = true;
+                    })
+                    newAppStructure.push(draftCat);
+                }
+            });
+
+            appStructure = newAppStructure;
+            renderUI();
+            closeSettings();
+        }
+
+        let dragState = null; // for settings drag
+
+        function renderSettingsUI() {
+            const container = document.getElementById('settings-content');
+            container.innerHTML = '';
+
+            draftAppStructure.forEach((cat, catIndex) => {
+                let docRows = '';
+
+                cat.docs.forEach((doc, docIndex) => {
+                    const isPrim = doc.isPrimary;
+                    docRows += `
+                        <div draggable="true" ondragstart="sDragDocStart(event, '${cat.id}', ${docIndex})" ondragover="sDragOver(event)" ondrop="sDropDoc(event, '${cat.id}', ${docIndex})"
+                            class="flex items-center justify-between p-2 lg:p-2.5 bg-white border border-gray-200 rounded-md mb-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-grab active:cursor-grabbing hover:border-blue-300 group/sdoc transition">
+                            <div class="flex items-center gap-2.5 w-3/4 pr-2">
+                                <i class="fa-solid fa-grip-vertical text-gray-300"></i>
+                                <input type="text" value="${doc.title}" onchange="updateDocTitle('${cat.id}', '${doc.id}', this.value)" class="text-[11px] lg:text-xs font-bold text-gray-700 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-primary focus:bg-white rounded px-1 transition uppercase">
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <select onchange="updateDocVisibility('${cat.id}', '${doc.id}', this.value)" class="text-[9px] font-bold px-1.5 py-1 rounded border outline-none cursor-pointer ${isPrim ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}">
+                                    <option value="primary" ${isPrim ? 'selected' : ''}>OUTSIDE (DEFAULT)</option>
+                                    <option value="extra" ${!isPrim ? 'selected' : ''}>EXTRA DOC</option>
+                                </select>
+                                <button onclick="sDeleteDoc('${cat.id}', '${doc.id}')" class="text-gray-400 hover:text-red-500 w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 transition"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                // Add internal 'Add Doc' form
+                docRows += `
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 border-dashed">
+                        <input type="text" id="s_add_doc_${cat.id}" placeholder="NEW DOC TITLE..." class="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none flex-1 uppercase shadow-inner">
+                        <button onclick="sAddDoc('${cat.id}')" class="bg-gray-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold shadow-sm uppercase shrink-0 transition">Add Doc</button>
+                    </div>
+                `;
+
+                const isCol = cat.isCollapsed;
+
+                container.innerHTML += `
+                    <div class="mb-3 bg-gray-100/70 p-3 border border-gray-200 rounded-lg shadow-sm"
+                         draggable="true" ondragstart="sDragCatStart(event, ${catIndex})" ondragover="sDragOver(event)" ondrop="sDropCat(event, ${catIndex})">
+                        <div class="flex items-center justify-between pb-1 ${!isCol ? 'border-b border-gray-300 mb-3' : ''} text-gray-800">
+                            <div class="flex items-center gap-2 cursor-grab active:cursor-grabbing flex-1 mr-2">
+                                <i class="fa-solid fa-grip text-gray-400 text-base shrink-0"></i>
+                                <span class="font-black text-sm uppercase shrink-0">${catIndex + 1}.</span>
+                                <input type="text" value="${cat.title}" onchange="updateCatTitle('${cat.id}', this.value)" class="font-black text-sm uppercase tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-primary focus:bg-white rounded px-1 transition text-gray-800">
+                            </div>
+                            <div class="flex items-center gap-0.5 shrink-0">
+                                <button onclick="sDeleteCat('${cat.id}')" class="text-gray-400 hover:text-red-500 transition p-1.5 rounded hover:bg-white w-7 h-7 flex items-center justify-center">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                                <button onclick="sToggleCat('${cat.id}')" class="text-gray-500 hover:text-primary transition p-1.5 rounded hover:bg-white w-7 h-7 flex items-center justify-center border border-transparent hover:border-gray-200">
+                                    <i class="fa-solid fa-chevron-${isCol ? 'down' : 'up'} text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="pl-6 pr-1 ${isCol ? 'hidden' : 'block'}">
+                            ${docRows}
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Main Footer Add Category
+            container.innerHTML += `
+                <div class="p-3 border-2 border-dashed border-gray-300 rounded-lg flex items-center gap-2 bg-gray-50/50 mt-4 transition hover:border-primary">
+                    <input type="text" id="s_add_cat" placeholder="NEW CATEGORY HEADING..." class="text-[11px] font-bold px-3 py-2 rounded border border-gray-300 outline-none flex-1 uppercase shadow-inner">
+                    <button onclick="sAddCat()" class="bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold shadow-sm uppercase shrink-0 transition">Add Category</button>
+                </div>
+            `;
+        }
+
+        // --- Setting Interaction Utils ---
+        function sToggleCat(catId) {
+            const cat = draftAppStructure.find(c => c.id === catId);
+            cat.isCollapsed = !cat.isCollapsed;
+            renderSettingsUI();
+        }
+
+        function updateCatTitle(catId, val) {
+            const cat = draftAppStructure.find(c => c.id === catId);
+            if (val.trim()) cat.title = val.trim().toUpperCase();
+        }
+
+        function updateDocTitle(catId, docId, val) {
+            const cat = draftAppStructure.find(c => c.id === catId);
+            const doc = cat.docs.find(d => d.id === docId);
+            if (val.trim()) doc.title = val.trim().toUpperCase();
+        }
+
+        function sAddDoc(catId) {
+            const cat = draftAppStructure.find(c => c.id === catId);
+            const input = document.getElementById('s_add_doc_' + catId);
+            const val = input.value.trim().toUpperCase();
+            if (val) {
+                // Default new docs to primary (OUTSIDE)
+                cat.docs.push({ id: 'd_new_' + Date.now(), title: val, isPrimary: true, isActive: true, files: [], coFiles: [] });
+                renderSettingsUI();
+            }
+        }
+
+        function sAddCat() {
+            const input = document.getElementById('s_add_cat');
+            const val = input.value.trim().toUpperCase();
+            if (val) {
+                draftAppStructure.push({ id: 'cat_new_' + Date.now(), title: val, isCollapsed: false, docs: [] });
+                renderSettingsUI();
+            }
+        }
+
+        function sDeleteDoc(catId, docId) {
+            if (!confirm('Delete this document?')) return;
+            const cat = draftAppStructure.find(c => c.id === catId);
+            cat.docs = cat.docs.filter(d => d.id !== docId);
+            renderSettingsUI();
+        }
+
+        function sDeleteCat(catId) {
+            if (!confirm('Delete this entire category and its documents?')) return;
+            draftAppStructure = draftAppStructure.filter(c => c.id !== catId);
+            renderSettingsUI();
+        }
+
+        function updateDocVisibility(catId, docId, val) {
+            const cat = draftAppStructure.find(c => c.id === catId);
+            const doc = cat.docs.find(d => d.id === docId);
+            doc.isPrimary = (val === 'primary');
+            renderSettingsUI();
+        }
+
+        // Settings Drag Drop Logic
+        function sDragCatStart(e, catIndex) {
+            const catItem = e.target.closest('[draggable="true"]');
+            if (catItem && catItem.querySelector('.fa-chevron-down') == null && catItem.querySelector('.fa-chevron-up') != null) {
+                // To safely drag categories, it's highly recommended to collapse them, but we allow it unconditionally anyway.
+            }
+            dragState = { type: 'cat', catIndex };
+            e.dataTransfer.effectAllowed = 'move';
+            e.stopPropagation();
+            setTimeout(() => e.target.classList.add('opacity-50'), 0);
+        }
+
+        function sDragDocStart(e, catId, docIndex) {
+            dragState = { type: 'doc', catId, docIndex };
+            e.dataTransfer.effectAllowed = 'move';
+            e.stopPropagation();
+            setTimeout(() => e.target.classList.add('opacity-50'), 0);
+        }
+
+        function sDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        function sDropCat(e, targetCatIndex) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.querySelectorAll('.opacity-50').forEach(el => el.classList.remove('opacity-50'));
+
+            if (dragState && dragState.type === 'cat' && dragState.catIndex !== targetCatIndex) {
+                const draggedItem = draftAppStructure.splice(dragState.catIndex, 1)[0];
+                draftAppStructure.splice(targetCatIndex, 0, draggedItem);
+                renderSettingsUI();
+            }
+            dragState = null;
+        }
+
+        function sDropDoc(e, targetCatId, targetDocIndex) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.querySelectorAll('.opacity-50').forEach(el => el.classList.remove('opacity-50'));
+
+            if (dragState && dragState.type === 'doc' && dragState.catId === targetCatId && dragState.docIndex !== targetDocIndex) {
+                const cat = draftAppStructure.find(c => c.id === targetCatId);
+                const draggedItem = cat.docs.splice(dragState.docIndex, 1)[0];
+                cat.docs.splice(targetDocIndex, 0, draggedItem);
+                renderSettingsUI();
+            }
+            dragState = null;
+        }
+
+        window.onload = renderUI;
+
+        // Prevent OS global file drops from overriding the browser page and freezing/navigating away
+        window.addEventListener('dragover', e => e.preventDefault(), false);
+        window.addEventListener('drop', e => e.preventDefault(), false);
+    </script>
+</body>
+
+</html>

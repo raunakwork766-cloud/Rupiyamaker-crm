@@ -3,6 +3,7 @@ from app.config import Config
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class TaskHistoryDB:
     def __init__(self, db=None):
@@ -54,7 +55,7 @@ class TaskHistoryDB:
                 "description": action_description,  # For compatibility
                 "created_by": ObjectId(created_by) if ObjectId.is_valid(created_by) else created_by,
                 "created_by_name": created_by_name,
-                "created_at": datetime.now(),
+                "created_at": get_ist_now(),
                 "details": details or {}
             }
             

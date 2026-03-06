@@ -26,6 +26,7 @@ const groupActivitiesByDateAndTime = (activities) => {
         day: '2-digit',
         month: 'long',
         year: 'numeric',
+        timeZone: 'Asia/Kolkata',
       });
       
       if (!acc[date]) {
@@ -36,6 +37,7 @@ const groupActivitiesByDateAndTime = (activities) => {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
+        timeZone: 'Asia/Kolkata',
       });
       
       if (!acc[date][time]) {
@@ -761,7 +763,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
                                           )}
                                           {activity.details.due_date && (
                                             <li className="py-1">
-                                              <span className="font-medium">Due Date:</span> {new Date(activity.details.due_date).toLocaleDateString()}
+                                              <span className="font-medium">Due Date:</span> {new Date(activity.details.due_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                                             </li>
                                           )}
                                           {activity.details.priority && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
     ArrowLeft, User, Building, CreditCard, FileText, MessageSquare,
     Paperclip, CheckSquare, Activity, UserCheck, Share2, Lock,
@@ -6,22 +6,23 @@ import {
     Plus, Edit3, Trash2, Save, X, Eye, Download, Copy, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
+import { getISTTimestamp } from '../utils/dateUtils';
 
-// Import new section components
-import AboutSection from './lead-details/AboutSection';
-import HowToProcessSection from './lead-details/HowToProcessSection';
+// Import section components from sections/ folder (updated from lead-details/)
+import AboutSection from './sections/AboutSection';
+import HowToProcessSection from './sections/HowToProcessSection';
+const ObligationsSection = lazy(() => import('./sections/ObligationSection')); // Using singular name from sections
+import LoginFormSection from './sections/LoginFormSection';
+import AttachmentsSection from './sections/Attachments'; // Using shorter name from sections
+import TasksSection from './sections/TaskSectionInLead'; // Using different name from sections
+import ImportantQuestionsSection from './sections/ImportantQuestionsSection';
+import OperationsSection from './sections/OperationsSection';
+
+// These remain from lead-details/ (not available in sections/)
 import StatusSection from './lead-details/StatusSection';
-import ObligationsSection from './lead-details/ObligationsSection';
-import LoginFormSection from './lead-details/LoginFormSection';
 import AssignmentInfoSection from './lead-details/AssignmentInfoSection';
-import AttachmentsSection from './lead-details/AttachmentsSection';
-import TasksSection from './lead-details/TasksSection';
-import ImportantQuestionsSection from './lead-details/ImportantQuestionsSection';
-import OperationsSection from './lead-details/OperationsSection';
-import AutoSaveTest from './lead-details/AutoSaveTest';
-import AutoSaveDebugger from './lead-details/AutoSaveDebugger';
 
-// Import new modular section components
+// Import modular section components
 import Remarks from './sections/Remarks';
 import Activities from './sections/Activities';
 import RequestReassignmentButton from './sections/RequestReassignmentButton';
@@ -45,7 +46,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
             
             if (response.ok) {
                 const data = await response.json();
-                setAssignableUsers(data);
+                // ✅ FILTER: Only show active employees in reassignment dropdown
+                const activeUsers = (Array.isArray(data) ? data : []).filter(user =>
+                    user.employee_status !== 'inactive' && user.is_active !== false
+                );
+                setAssignableUsers(activeUsers);
             }
         } catch (error) {
             console.error('Error fetching assignable users:', error);
@@ -158,7 +163,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
             // Add metadata
             sanitizedPayload.updated_by = userId;
-            sanitizedPayload.updated_at = new Date().toISOString();
+            sanitizedPayload.updated_at = getISTTimestamp();
 
             console.log('📡 Making API call to update lead:', {
                 leadId: leadData._id,
@@ -331,12 +336,12 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     }, [lead._id]);
 
     const tabs = [
-        { id: 'details', label: 'Lead Details', icon: User },
-        { id: 'obligations', label: 'Obligations', icon: CreditCard },
-        { id: 'remarks', label: 'Remark', icon: MessageSquare },
-        { id: 'attachments', label: 'Attachments', icon: Paperclip },
-        { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-        { id: 'activities', label: 'Activities', icon: Activity }
+        { id: 'details', label: 'LEAD DETAILS', icon: null },
+        { id: 'obligations', label: 'OBLIGATION', icon: null },
+        { id: 'remarks', label: 'REMARK', icon: null },
+        { id: 'attachments', label: 'ATTACHEMENT', icon: null },
+        { id: 'tasks', label: 'TASK', icon: null },
+        { id: 'activities', label: 'LEADS ACTIVITY', icon: null }
     ];
 
     const updateLeadStatus = async (status, subStatus) => {
@@ -407,7 +412,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
             month: '2-digit',
             year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            timeZone: 'Asia/Kolkata'
         });
     };
 
@@ -417,7 +423,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
 
     return (
         <div className="min-h-screen bg-black text-white p-6">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
                 {/* Header */}
                 <div className=" rounded-lg p-6 mb-6">
                     <div className="flex items-center justify-between">
@@ -540,120 +546,161 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 )}
 
                 {/* Tab Navigation */}
-                <div className="bg-black rounded-lg  overflow-hidden mb-6">
-                    <div className="flex overflow-x-auto ml-2 gap-3">
-                        {tabs.map((tab) => {
-                            const Icon = tab.icon;
+                <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
+                    {tabs.map((tab) => {
+                        // Check if user can view this tab
+                        const canViewTab = leadData.can_view_all_tabs ||
+                            tab.id === 'details' || // Details tab always visible
+                            (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
+                            (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
+                            (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
+                            (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
+                            (tab.id === 'obligations' && leadData.can_view_all_tabs);
 
-                            // Check if user can view this tab
-                            const canViewTab = leadData.can_view_all_tabs ||
-                                tab.id === 'details' || // Details tab always visible
-                                (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
-                                (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
-                                (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
-                                (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
-                                (tab.id === 'obligations' && leadData.can_view_all_tabs);
+                        if (!canViewTab) return null;
 
-                            if (!canViewTab) return null;
-
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center px-6 py-4 font-bold text-md h-[30px] border-b-2 rounded-4xl transition-colors whitespace-nowrap ${activeTab === tab.id
-                                        ? ' text-white bg-[#03b0f5]'
-                                        : ' text-[#000] bg-white hover:text-[#03b0f5] hover:bg-gray-300'
-                                        }`}
-                                >
-                                    <Icon className="w-5 h-5 mr-2" />
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="p-6 bg-black">
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`
+                                    flex items-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-base lg:text-[1.05rem] transition whitespace-nowrap
+                                    ${activeTab === tab.id
+                                        ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
+                                        : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
+                                    }
+                                    focus:outline-none
+                                `}
+                                style={{
+                                    boxShadow: activeTab === tab.id ? "0 4px 16px 0 #1cb5e080" : undefined,
+                                    cursor: "pointer",
+                                    letterSpacing: "0.01em"
+                                }}
+                            >
+                                {tab.icon && <span className="mr-1">{tab.icon}</span>}
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                
+                {/* Tab Content Container */}
+                <div className="px-2 sm:px-4 lg:px-6 py-6 w-full">
+                    <div className="w-full">
                         {activeTab === 'details' && (
                             <div className="space-y-6">
-                                {/* Auto-save Test Component - For Debugging */}
-                                <AutoSaveTest 
-                                    onUpdate={updateLead} 
-                                    leadData={leadData}
-                                />
-
-                                {/* Auto-Save Debugger for Testing */}
-                                <AutoSaveDebugger
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                />
-
                                 {/* About Section */}
-                                <AboutSection
-                                    key={`about-${leadData._id}`}
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                    currentUserRole={user}
-                                />
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">About</h3>
+                                    <AboutSection
+                                        key={`about-${leadData._id}`}
+                                        lead={leadData}
+                                        onSave={updateLead}
+                                    />
+                                </div>
 
-                                {/* How To Process Section */}
-                                <HowToProcessSection
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                />
+                                {/* How to Process Section */}
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">How to Process</h3>
+                                    <HowToProcessSection
+                                        lead={leadData}
+                                        process={leadData.process}
+                                        onSave={updateLead}
+                                    />
+                                </div>
 
-                                {/* Login Form Section */}
-                                <LoginFormSection
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                    onGenerateShareableLink={generateShareableLink}
-                                    shareableLink={shareableLink}
-                                />
-                                    
-                                {/* Co-Applicant Form */}
-                                {showCoApplicant && (
-                                    <div className="mt-8 pt-6 border-t-2 border-cyan-400">
-                                        {console.log("Rendering co-applicant form", {
-                                            coApplicantData: leadData.dynamic_fields?.co_applicant_form 
-                                        })}
+                                {/* Applicant Form Section */}
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">APPLICANT FORM</h3>
+                                    <div className="space-y-6">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-lg font-bold text-[#03B0F5]">Co-Applicant</h3>
-                                            <button
-                                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold"
-                                                onClick={() => {
-                                                    updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
-                                                    setShowCoApplicant(false);
-                                                }}
-                                            >
-                                                Remove Co-Applicant
-                                            </button>
+                                            <h4 className="text-md font-semibold text-[#03B0F5]">Primary Applicant</h4>
+                                            {!showCoApplicant && (
+                                                <button
+                                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-lg"
+                                                    onClick={() => setShowCoApplicant(true)}
+                                                >
+                                                    + Add Co-Applicant
+                                                </button>
+                                            )}
                                         </div>
                                         <LoginFormSection
+                                            data={leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}}
+                                            onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, applicant_form: updated } })}
+                                            bankOptions={[]}
+                                            mobileNumber={leadData.mobile_number}
+                                            bankName={leadData.salaryAccountBank || leadData.bank_name}
+                                            isReadOnlyMobile={true}
+                                            leadId={leadData._id}
+                                            leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
                                             leadData={leadData}
-                                            onUpdate={updateLead}
-                                            isCoApplicant={true}
-                                            shareableLink={shareableLink}
-                                            onGenerateShareableLink={generateShareableLink}
                                         />
+                                        
+                                        {/* Co-Applicant Form */}
+                                        {showCoApplicant && (
+                                            <div className="mt-8 pt-6 border-t-2 border-cyan-400">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="text-md font-semibold text-[#03B0F5]">Co-Applicant</h4>
+                                                    <button
+                                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-lg"
+                                                        onClick={() => {
+                                                            updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
+                                                            setShowCoApplicant(false);
+                                                        }}
+                                                    >
+                                                        Remove Co-Applicant
+                                                    </button>
+                                                </div>
+                                                <LoginFormSection
+                                                    data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
+                                                    onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
+                                                    bankOptions={[]}
+                                                    mobileNumber=""
+                                                    bankName=""
+                                                    isCoApplicant={true}
+                                                    leadId={leadData._id}
+                                                    leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
+                                                    leadData={leadData}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
                                 {/* Important Questions Section */}
-                                <ImportantQuestionsSection
-                                    leadData={leadData}
-                                    onUpdate={updateLead}
-                                    currentUserRole={user}
-                                />
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">Important Questions</h3>
+                                    <ImportantQuestionsSection
+                                        leadData={leadData}
+                                        onUpdate={(updated) => {
+                                            updateLead(updated);
+                                            if (updated.question_responses) {
+                                                updateLead({ question_responses: updated.question_responses });
+                                            }
+                                            if (updated.important_questions_validated !== undefined) {
+                                                updateLead({ important_questions_validated: updated.important_questions_validated });
+                                            }
+                                        }}
+                                        currentUserRole={{
+                                            permissions: [],
+                                            _id: localStorage.getItem('userId'),
+                                            department: localStorage.getItem('userDepartment') || 'sales'
+                                        }}
+                                    />
+                                </div>
 
                                 {/* Operations Section - Show for login department or leads sent to login */}
                                 {(userDepartment === 'login' || leadData.file_sent_to_login) && (
-                                    <OperationsSection
-                                        leadData={leadData}
-                                        onUpdate={updateLead}
-                                    />
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-[#03B0F5] mb-4">Operations</h3>
+                                        <OperationsSection
+                                            lead={leadData}
+                                            onUpdate={updateLead}
+                                        />
+                                    </div>
                                 )}
-
-                                {/* Request Reassignment Button - Always visible */}
+                                
+                                {/* Request Reassignment Button - Always visible at bottom */}
                                 <div className="mt-6">
                                     <RequestReassignmentButton
                                         leadId={lead._id}
@@ -664,75 +711,90 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                         }}
                                     />
                                 </div>
+                            </div>
+                        )}
 
-                                {/* AutoSaveTest Component - For debugging */}
-                                <div className="mt-6 p-4 bg-gray-800 rounded-lg">
-                                    <h4 className="text-lg font-bold mb-2 text-white">AutoSave Debug Info</h4>
-                                    <AutoSaveTest 
-                                        leadData={leadData}
-                                        onUpdate={updateLead}
+                        {activeTab === 'obligations' && (
+                            <div>
+                                <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
+                                    <ObligationsSection
+                                        leadData={{
+                                            ...leadData,
+                                            // Initialize obligations if they don't exist
+                                            obligations: leadData.obligations || [],
+                                            dynamic_fields: {
+                                                ...leadData.dynamic_fields,
+                                                obligations: leadData.dynamic_fields?.obligations || []
+                                            }
+                                        }}
+                                        handleChangeFunc={(field, value) => {
+                                            updateLead({ [field]: value });
+                                        }}
+                                        onDataUpdate={async () => {
+                                            // Refresh lead data after obligation update
+                                            if (onLeadUpdate) {
+                                                const userId = localStorage.getItem('userId') || '';
+                                                const token = localStorage.getItem('token') || '';
+                                            try {
+                                                const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
+                                                    headers: { 'Authorization': `Bearer ${token}` }
+                                                });
+                                                if (response.ok) {
+                                                    const freshData = await response.json();
+                                                    setLeadData(freshData);
+                                                    onLeadUpdate(freshData);
+                                                }
+                                            } catch (error) {
+                                                console.error('Error refreshing lead:', error);
+                                            }
+                                        }
+                                    }}
+                                />
+                                </Suspense>
+                            </div>
+                        )}
+
+                        {activeTab === 'remarks' && (
+                            <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
+                                <Remarks
+                                    leadId={lead._id}
+                                    userId={userId}
+                                    formatDate={formatDate}
+                                />
+                            </div>
+                        )}
+
+                        {activeTab === 'attachments' && (
+                            <div>
+                                <AttachmentsSection
+                                    leadId={lead._id}
+                                    userId={userId}
+                                />
+                            </div>
+                        )}
+
+                        {activeTab === 'tasks' && (
+                            <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
+                                <div className="font-bold text-cyan-400 mb-2">
+                                    <TasksSection
+                                        leadId={lead._id}
+                                        userId={userId}
+                                        formatDate={formatDate}
                                     />
                                 </div>
                             </div>
                         )}
 
-                        {activeTab === 'obligations' && (
-                            <ObligationsSection
-                                leadData={{
-                                    ...leadData,
-                                    // Initialize obligations if they don't exist
-                                    obligations: leadData.obligations || [],
-                                    dynamic_fields: {
-                                        ...leadData.dynamic_fields,
-                                        obligations: leadData.dynamic_fields?.obligations || []
-                                    }
-                                }}
-                                onUpdate={(updatedData) => {
-                                    // Handle updating obligations - merge approach to support both formats
-                                    const updatedObligations = updatedData.obligations || updatedData.dynamic_fields?.obligations || [];
-                                    const currentDynamicFields = leadData.dynamic_fields || {};
-                                    
-                                    updateLead({
-                                        obligations: updatedObligations,
-                                        dynamic_fields: {
-                                            ...currentDynamicFields,
-                                            obligations: updatedObligations
-                                        }
-                                    });
-                                }}
-                            />
-                        )}
-
-                        {activeTab === 'remarks' && (
-                            <Remarks
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
-                        )}
-
-                        {activeTab === 'attachments' && (
-                            <AttachmentsSection
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
-                        )}
-
-                        {activeTab === 'tasks' && (
-                            <TasksSection
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
-                        )}
-
                         {activeTab === 'activities' && (
-                            <Activities
-                                leadId={lead._id}
-                                userId={userId}
-                                formatDate={formatDate}
-                            />
+                            <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
+                                <div className="font-bold text-cyan-400 mb-2">
+                                    <Activities
+                                        leadId={lead._id}
+                                        userId={userId}
+                                        formatDate={formatDate}
+                                    />
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

@@ -615,8 +615,8 @@ export default function TicketPage() {
 
   // Memoized filters with counts
   const FILTERS_WITH_COUNTS = useMemo(() => [
-    { key: "open", label: "OpenTicket", count: filterCounts.open },
-    { key: "closed", label: "CloseTicket", count: filterCounts.closed },
+    { key: "open", label: "Open", count: filterCounts.open },
+    { key: "closed", label: "Closed", count: filterCounts.closed },
     { key: "failed", label: "Failed", count: filterCounts.failed },
     { key: "all", label: "All", count: filterCounts.all },
   ], [filterCounts]);
@@ -1187,7 +1187,7 @@ export default function TicketPage() {
                   className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                   onClick={handleShowCheckboxes}
                 >
-                  {selectedRows.length > 0 ? `Select (${selectedRows.length})` : "Select"}
+                  {selectedRows.length > 0 ? `Selected (${selectedRows.length})` : "Select"}
                 </button>
               ) : (
                 <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
@@ -1225,7 +1225,7 @@ export default function TicketPage() {
         <div className="flex items-center gap-3">
           {/* Create Ticket Button - Positioned on the right side */}
           <button
-            className="bg-[#00C5FA] hover:bg-[#00a9d4] text-white text-base font-bold px-6 py-2 rounded-lg shadow focus:outline-none transition"
+            className="bg-[#03B0F5] hover:bg-[#0299d4] text-white text-base font-bold px-6 py-2 rounded-lg shadow focus:outline-none transition"
             onClick={openCreateModal}
           >
             Create Ticket
@@ -1233,49 +1233,49 @@ export default function TicketPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 px-7 mt-4 mb-6">
-        {FILTERS_WITH_COUNTS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => handleFilterChange(f.key)}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${activeFilter === f.key
-                ? "bg-[#00C5FA] text-white shadow-lg"
-                : "bg-white text-[#00C5FA] hover:bg-blue-50"
-              }
-            `}
-            style={{
-              minWidth: 144,
-              justifyContent: "center",
-              fontSize: "1.18rem",
-            }}
-          >
-            {f.label}
-            <span
-              className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${
-                f.count > 0 ? "bg-[#222] text-white" : "bg-[#eee] text-[#00C5FA]"
-              }`}
-            >
-              {f.count}
-            </span>
-          </button>
-        ))}
-        <div className="ml-auto flex items-center">
-          <input
-            className="rounded-full px-4 py-2 border-2 border-[#00C5FA] bg-[#232a36] text-[#eee] font-medium focus:outline-none text-base shadow"
-            style={{ minWidth: 258, maxWidth: 268 }}
-            placeholder="Search by created by, subject, assign, message..."
-            value={search}
-            onChange={handleSearchChange}
-          />
-        </div>
-      </div>
+      {/* Filters — Row 1: status pills | Row 2: search */}
+      <div className="px-7 mt-4 mb-6">
+            {/* Row 1: status filter pills */}
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              {FILTERS_WITH_COUNTS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => handleFilterChange(f.key)}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${
+                    activeFilter === f.key
+                      ? "bg-[#03B0F5] text-white shadow-lg"
+                      : "bg-white text-[#03B0F5] hover:bg-blue-50"
+                  }`}
+                  style={{ minWidth: 120, justifyContent: "center", fontSize: "1.05rem" }}
+                >
+                  {f.label}
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${
+                    f.count > 0 ? "bg-[#222] text-white" : "bg-[#eee] text-[#03B0F5]"
+                  }`}>
+                    {f.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {/* Row 2: search bar right-aligned */}
+            <div className="flex items-center justify-end">
+              <div className="flex items-center gap-2 bg-[#232a36] border-2 border-[#03B0F5] rounded-full px-4 py-2 shadow">
+                <Search className="text-[#03B0F5] shrink-0" size={18} />
+                <input
+                  className="bg-transparent text-[#eee] font-medium focus:outline-none w-64 placeholder-gray-400 text-base"
+                  placeholder="Search by subject, created by, assign..."
+                  value={search}
+                  onChange={handleSearchChange}
+                />
+              </div>
+            </div>
+          </div>
 
       {/* Table */}
       <div className="overflow-x-auto px-2 sticky-table-container">
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <div className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#00C5FA]">
+            <div className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#03B0F5]">
               Loading tickets...
             </div>
           </div>
@@ -1288,7 +1288,7 @@ export default function TicketPage() {
         ) : (
           <table className="min-w-[616px] w-full rounded-xl overflow-hidden">
             <thead className="sticky-header">
-              <tr className="bg-white text-[#00C5FA]">
+              <tr className="bg-white text-[#03B0F5]">
                 {(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes && (
                   <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">
                     <input
@@ -1312,7 +1312,7 @@ export default function TicketPage() {
                 <tr>
                   <td
                     colSpan={(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes ? 7 : 6}
-                    className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#00C5FA]"
+                    className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#03B0F5]"
                   >
                     {isLoading ? (
                       "Loading tickets..."

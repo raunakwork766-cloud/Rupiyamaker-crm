@@ -2,6 +2,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class EmailSettingsDB:
     def __init__(self, database=None):
@@ -41,8 +42,8 @@ class EmailSettingsDB:
                 "use_ssl": email_data.get("use_ssl", True),
                 "is_active": email_data.get("is_active", True),
                 "purpose": email_data.get("purpose", "otp"),  # otp, notifications, etc.
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
             }
             
             result = await self.collection.insert_one(email_setting)
@@ -74,7 +75,7 @@ class EmailSettingsDB:
     async def update_email_setting(self, setting_id, update_data):
         """Update email setting"""
         try:
-            update_data["updated_at"] = datetime.now()
+            update_data["updated_at"] = get_ist_now()
             result = await self.collection.update_one(
                 {"_id": ObjectId(setting_id)},
                 {"$set": update_data}

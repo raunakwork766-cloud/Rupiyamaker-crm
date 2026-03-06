@@ -1,0 +1,682 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
+
+const BASE_URL = '/api';
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const getUid = () => {
+  try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.user_id || u?._id || ''; }
+  catch { return ''; }
+};
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch { return String(d); }
+};
+
+// ── Leave type config ──
+// All leave types (for history & modals)
+const ALL_LEAVE_TYPES = [
+  { key: 'earned',  label: 'Earned Leave',  short: 'EL',    color: '#60a5fa', lightBg: '#1e3a5f', fieldPrefix: 'earned_leaves' },
+  { key: 'paid',    label: 'Paid Leave',     short: 'PL',    color: '#4ade80', lightBg: '#14532d', fieldPrefix: 'paid_leaves' },
+  { key: 'grace',   label: 'Grace Leave',    short: 'Grace', color: '#c084fc', lightBg: '#3b0764', fieldPrefix: 'grace_leaves' },
+  { key: 'sick',    label: 'Sick Leave',     short: 'SL',    color: '#fbbf24', lightBg: '#451a03', fieldPrefix: 'sick_leaves' },
+  { key: 'casual',  label: 'Casual Leave',   short: 'CL',    color: '#22d3ee', lightBg: '#164e63', fieldPrefix: 'casual_leaves' },
+];
+
+// Only 3 types shown in main table
+const TABLE_LEAVE_TYPES = ALL_LEAVE_TYPES.filter(lt => ['earned', 'paid', 'grace'].includes(lt.key));
+
+/* ═════════════════ COMPONENT ═════════════════ */
+const PaidLeaveManagement = () => {
+  const now = new Date();
+  const [selMonth, setSelMonth] = useState(now.getMonth());
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [rows, setRows] = useState([]);
+  const [deptMap, setDeptMap] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [search, setSearch] = useState('');
+
+  const [selectedEmp, setSelectedEmp] = useState(null);
+  const [detailTab, setDetailTab] = useState('overview');
+
+  const [actionModal, setActionModal] = useState(null);
+  const [leaveType, setLeaveType] = useState('earned');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const [history, setHistory] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+
+  // Grace settings from attendance config
+  const [graceSettings, setGraceSettings] = useState({ grace_period_minutes: 30, grace_usage_limit: 0 });
+
+  useEffect(() => { loadDepartments(); loadGraceSettings(); }, []);
+  useEffect(() => { loadAll(); }, [selMonth, selYear]);
+
+  const loadGraceSettings = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/settings/attendance-settings`, { params: { user_id: getUid() } });
+      const data = res.data?.data || res.data || {};
+      setGraceSettings({
+        grace_period_minutes: data.grace_period_minutes ?? 30,
+        grace_usage_limit: data.grace_usage_limit ?? 0,
+      });
+    } catch (e) { console.warn('Could not load grace settings:', e); }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/departments/?user_id=${getUid()}`);
+      const depts = Array.isArray(res.data) ? res.data : [];
+      const map = {};
+      depts.forEach(d => { map[d._id] = d.name; });
+      setDeptMap(map);
+    } catch (e) { console.warn('Could not load departments:', e); }
+  };
+
+  const loadAll = async () => {
+    setLoading(true); setError(null);
+    const userId = getUid();
+    try {
+      const empRes = await axios.get(`${BASE_URL}/users/?user_id=${userId}`);
+      const empList = Array.isArray(empRes.data) ? empRes.data : (empRes.data.users || empRes.data.data || []);
+      const employees = empList.filter(e => e.is_employee !== false);
+      const balResults = await Promise.allSettled(
+        employees.map(emp =>
+          axios.get(`${BASE_URL}/settings/leave-balance/${emp._id || emp.id}?user_id=${userId}`)
+            .then(r => r.data?.data || null)
+        )
+      );
+      setRows(employees.map((emp, i) => ({
+        emp,
+        bal: balResults[i].status === 'fulfilled' ? balResults[i].value : null,
+      })));
+    } catch (e) {
+      setError('Failed to load: ' + (e.response?.data?.detail || e.message));
+    } finally { setLoading(false); }
+  };
+
+  const loadHistory = async (empId) => {
+    setHistLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/settings/leave-balance/history/${empId}?user_id=${getUid()}`);
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
+  };
+
+  const handleAction = async () => {
+    if (!actionModal || !quantity || !reason.trim()) { setError('Please fill all fields'); return; }
+    setActionLoading(true); setError(null);
+    try {
+      const endpoint = actionModal.mode === 'allot' ? 'allocate' : 'deduct';
+      await axios.post(`${BASE_URL}/settings/leave-balance/${endpoint}?user_id=${getUid()}`, {
+        employee_id: actionModal.emp._id || actionModal.emp.id,
+        leave_type: leaveType,
+        quantity: parseFloat(quantity),
+        reason: reason.trim(),
+      });
+      setSuccess(`${actionModal.mode === 'allot' ? 'Allocated' : 'Deducted'} ${quantity} ${leaveType} leave(s) successfully`);
+      setActionModal(null); setQuantity(''); setReason('');
+      setTimeout(() => setSuccess(null), 3500);
+      loadAll();
+      if (selectedEmp) loadHistory(selectedEmp.emp._id || selectedEmp.emp.id);
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Action failed');
+    } finally { setActionLoading(false); }
+  };
+
+  const openDetail = (row) => {
+    setSelectedEmp(row);
+    setDetailTab('overview');
+    loadHistory(row.emp._id || row.emp.id);
+  };
+
+  const getDeptName = (emp) => emp.department_name || emp.department || deptMap[emp.department_id] || '—';
+
+  const filtered = useMemo(() => rows.filter(({ emp }) => {
+    const q = search.toLowerCase();
+    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+    const code = (emp.employee_code || emp.employee_id || emp.emp_id || '').toLowerCase();
+    const dept = getDeptName(emp).toLowerCase();
+    return name.includes(q) || code.includes(q) || dept.includes(q);
+  }), [rows, search, deptMap]);
+
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
+  const lv = (bal, lt, f) => parseFloat(bal?.[`${lt.fieldPrefix}_${f}`] ?? 0);
+
+  return (
+    <div style={{ padding: '4px 0', minHeight: '60vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ═══ HEADER BAR ═══ */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12,
+        padding: '14px 18px', marginBottom: 14,
+        background: '#1a1a2e', borderRadius: 10, border: '1px solid #2a2a40'
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#fff' }}>Leave Management</h2>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+            {MONTHS[selMonth]} {selYear} &middot; {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)}
+            style={inputStyle} />
+          <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))} style={selectStyle}>
+            {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+          </select>
+          <select value={selYear} onChange={e => setSelYear(Number(e.target.value))} style={selectStyle}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={loadAll} style={{
+            background: '#2563eb', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 7,
+            cursor: 'pointer', fontSize: 13, fontWeight: 600
+          }}>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ ALERTS ═══ */}
+      {success && (
+        <div style={{ background: '#065f46', border: '1px solid #10b981', color: '#a7f3d0', padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>&#10003; {success}</span>
+          <span onClick={() => setSuccess(null)} style={{ cursor: 'pointer', fontWeight: 700 }}>&#215;</span>
+        </div>
+      )}
+      {error && !actionModal && (
+        <div style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fecaca', padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>&#10007; {error}</span>
+          <span onClick={() => setError(null)} style={{ cursor: 'pointer', fontWeight: 700 }}>&#215;</span>
+        </div>
+      )}
+
+      {/* ═══ LOADING ═══ */}
+      {loading && <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af', fontSize: 14 }}>Loading employees...</div>}
+
+      {/* ═══════════════════ MAIN TABLE ═══════════════════ */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ borderRadius: 10, border: '1px solid #2a2a40', overflow: 'hidden', background: '#16162a' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#1e1e36' }}>
+                  <th style={{ ...TH, width: 44, textAlign: 'center' }}>#</th>
+                  <th style={{ ...TH, textAlign: 'left', minWidth: 200 }}>Employee</th>
+                  <th style={{ ...TH, textAlign: 'left', minWidth: 120 }}>Department</th>
+                  {TABLE_LEAVE_TYPES.map(lt => (
+                    <th key={lt.key} style={{ ...TH, textAlign: 'center', minWidth: 90 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: lt.color }} />
+                        <span style={{ color: lt.color }}>{lt.short}</span>
+                        {lt.key === 'grace' && <span style={{ color: '#9ca3af', fontSize: 10 }}>({graceSettings.grace_usage_limit}/mo)</span>}
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{ ...TH, textAlign: 'center', minWidth: 280 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(({ emp, bal }, idx) => {
+                  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+                  const code = emp.employee_code || emp.employee_id || emp.emp_id || '';
+                  const dept = getDeptName(emp);
+                  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                  const rowBg = idx % 2 === 0 ? '#16162a' : '#1a1a30';
+
+                  return (
+                    <tr key={emp._id || emp.id}
+                      style={{ borderTop: '1px solid #2a2a40', background: rowBg, cursor: 'pointer', transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#222244'}
+                      onMouseLeave={e => e.currentTarget.style.background = rowBg}
+                      onClick={() => openDetail({ emp, bal })}
+                    >
+                      <td style={{ ...TD, textAlign: 'center', color: '#6b7280', fontWeight: 500 }}>{idx + 1}</td>
+
+                      <td style={TD}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{
+                            width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0
+                          }}>{initials}</div>
+                          <div>
+                            <div style={{ color: '#f3f4f6', fontWeight: 600, fontSize: 13 }}>{name}</div>
+                            <div style={{ color: '#8b8bb5', fontSize: 11, marginTop: 1 }}>{code}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ ...TD, color: '#a5b4fc', fontSize: 12 }}>{dept}</td>
+
+                      {TABLE_LEAVE_TYPES.map(lt => {
+                        if (lt.key === 'grace') {
+                          // Grace column: show settings value
+                          const used = lv(bal, lt, 'used');
+                          const limit = graceSettings.grace_usage_limit;
+                          const remaining = Math.max(limit - used, 0);
+                          const pct = limit > 0 ? (remaining / limit) * 100 : 0;
+                          return (
+                            <td key={lt.key} style={{ ...TD, textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                <span style={{ fontSize: 14, fontWeight: 700, color: lt.color }}>{remaining}</span>
+                                <div style={{ width: 44, height: 4, background: '#2a2a44', borderRadius: 2, overflow: 'hidden' }}>
+                                  <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: lt.color, borderRadius: 2, transition: 'width 0.3s' }} />
+                                </div>
+                                <span style={{ fontSize: 10, color: '#6b7280' }}>{used}/{limit}</span>
+                              </div>
+                            </td>
+                          );
+                        }
+                        const total = lv(bal, lt, 'total');
+                        const remaining = lv(bal, lt, 'remaining');
+                        const used = lv(bal, lt, 'used');
+                        const pct = total > 0 ? (remaining / total) * 100 : 0;
+                        return (
+                          <td key={lt.key} style={{ ...TD, textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: lt.color }}>{remaining}</span>
+                              <div style={{ width: 44, height: 4, background: '#2a2a44', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: lt.color, borderRadius: 2, transition: 'width 0.3s' }} />
+                              </div>
+                              <span style={{ fontSize: 10, color: '#6b7280' }}>{used}/{total}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+
+                      <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                          <button onClick={() => { setActionModal({ emp, mode: 'allot' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                            style={allocateBtn}>
+                            + Allocate
+                          </button>
+                          <button onClick={() => { setActionModal({ emp, mode: 'deduct' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                            style={deductBtn}>
+                            &minus; Deduct
+                          </button>
+                          <button onClick={() => { openDetail({ emp, bal }); setDetailTab('history'); }}
+                            style={historyBtn}>
+                            View History
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            padding: '10px 18px', borderTop: '1px solid #2a2a40', background: '#1e1e36',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8
+          }}>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>
+              Showing {filtered.length} of {rows.length} employees
+            </span>
+            <div style={{ display: 'flex', gap: 14 }}>
+              {TABLE_LEAVE_TYPES.map(lt => {
+                const tot = lt.key === 'grace'
+                  ? filtered.reduce((s, { bal }) => s + Math.max(graceSettings.grace_usage_limit - lv(bal, lt, 'used'), 0), 0)
+                  : filtered.reduce((s, { bal }) => s + lv(bal, lt, 'remaining'), 0);
+                return (
+                  <span key={lt.key} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: lt.color }} />
+                    <span style={{ color: '#9ca3af' }}>{lt.short}:</span>
+                    <span style={{ color: lt.color, fontWeight: 700 }}>{tot}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+          <p style={{ fontSize: 15 }}>No employees found</p>
+        </div>
+      )}
+
+      {/* ═══════════════ EMPLOYEE DETAIL MODAL ═══════════════ */}
+      {selectedEmp && (
+        <Overlay onClose={() => setSelectedEmp(null)}>
+          <div style={{
+            background: '#1a1a2e', border: '1px solid #2a2a40', borderRadius: 14,
+            width: '100%', maxWidth: 680, maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #2a2a40', flexShrink: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: '#fff'
+                  }}>
+                    {empInitials(selectedEmp.emp)}
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#fff' }}>{empName(selectedEmp.emp)}</h3>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                      <span style={chipBlue}>{selectedEmp.emp.employee_code || selectedEmp.emp.employee_id || 'N/A'}</span>
+                      <span style={chipPurple}>{getDeptName(selectedEmp.emp)}</span>
+                    </div>
+                  </div>
+                </div>
+                <CloseBtn onClick={() => setSelectedEmp(null)} />
+              </div>
+
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
+                <TabBtn active={detailTab === 'overview'} onClick={() => setDetailTab('overview')}>Leave Balance</TabBtn>
+                <TabBtn active={detailTab === 'history'} onClick={() => { setDetailTab('history'); loadHistory(selectedEmp.emp._id || selectedEmp.emp.id); }}>Transaction History</TabBtn>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+
+              {/* ── BALANCE TAB ── */}
+              {detailTab === 'overview' && (
+                <>
+                  <div style={{ borderRadius: 10, border: '1px solid #2a2a40', overflow: 'hidden', marginBottom: 18 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#1e1e36' }}>
+                          <th style={{ ...THM, textAlign: 'left' }}>Leave Type</th>
+                          <th style={{ ...THM, textAlign: 'center' }}>Yearly Total</th>
+                          <th style={{ ...THM, textAlign: 'center' }}>Monthly</th>
+                          <th style={{ ...THM, textAlign: 'center' }}>Used</th>
+                          <th style={{ ...THM, textAlign: 'center' }}>Remaining</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ALL_LEAVE_TYPES.map((lt, i) => {
+                          const b = selectedEmp.bal || {};
+                          const total = lt.key === 'grace' ? graceSettings.grace_usage_limit : parseFloat(b[`${lt.fieldPrefix}_total`] ?? 0);
+                          const used = parseFloat(b[`${lt.fieldPrefix}_used`] ?? 0);
+                          const remaining = lt.key === 'grace' ? Math.max(total - used, 0) : parseFloat(b[`${lt.fieldPrefix}_remaining`] ?? 0);
+                          const monthly = lt.key === 'grace' ? `${total}` : (total / 12).toFixed(1);
+                          const pct = total > 0 ? (remaining / total) * 100 : 0;
+                          return (
+                            <tr key={lt.key} style={{ borderTop: '1px solid #2a2a40', background: i % 2 === 0 ? '#16162a' : '#1a1a30' }}>
+                              <td style={{ padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: lt.color }} />
+                                  <span style={{ color: lt.color, fontWeight: 600 }}>{lt.short}</span>
+                                  <span style={{ color: '#9ca3af', fontSize: 11 }}>{lt.label}</span>
+                                </div>
+                              </td>
+                              <td style={{ ...TDM, textAlign: 'center', fontWeight: 600, color: '#e5e7eb' }}>{total}</td>
+                              <td style={{ ...TDM, textAlign: 'center', color: '#9ca3af' }}>{lt.key === 'grace' ? `${monthly}/mo` : `${monthly}/mo`}</td>
+                              <td style={{ ...TDM, textAlign: 'center', color: '#f87171', fontWeight: 600 }}>{used}</td>
+                              <td style={{ ...TDM, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                                  <span style={{ fontWeight: 700, color: lt.color, fontSize: 16 }}>{remaining}</span>
+                                  <div style={{ width: 56, height: 4, background: '#2a2a44', borderRadius: 2, overflow: 'hidden' }}>
+                                    <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: lt.color, borderRadius: 2 }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => { setActionModal({ emp: selectedEmp.emp, mode: 'allot' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                      style={{ ...modalActionBtn, background: '#059669' }}>+ Allocate Leaves</button>
+                    <button onClick={() => { setActionModal({ emp: selectedEmp.emp, mode: 'deduct' }); setLeaveType('earned'); setQuantity(''); setReason(''); setError(null); }}
+                      style={{ ...modalActionBtn, background: '#dc2626' }}>&minus; Deduct Leaves</button>
+                  </div>
+                </>
+              )}
+
+              {/* ── HISTORY TAB ── */}
+              {detailTab === 'history' && (
+                <>
+                  {histLoading ? (
+                    <p style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Loading history...</p>
+                  ) : history.length === 0 ? (
+                    <p style={{ textAlign: 'center', padding: 40, color: '#6b7280', fontSize: 14 }}>No transactions found</p>
+                  ) : (
+                    <div style={{ borderRadius: 10, border: '1px solid #2a2a40', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#1e1e36' }}>
+                            <th style={{ ...THM, textAlign: 'center', width: 36 }}>#</th>
+                            <th style={{ ...THM, textAlign: 'left' }}>Action</th>
+                            <th style={{ ...THM, textAlign: 'left' }}>Leave</th>
+                            <th style={{ ...THM, textAlign: 'center' }}>Qty</th>
+                            <th style={{ ...THM, textAlign: 'left' }}>Reason</th>
+                            <th style={{ ...THM, textAlign: 'left' }}>Date</th>
+                            <th style={{ ...THM, textAlign: 'left' }}>By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((h, i) => {
+                            const qty = parseFloat(h.quantity ?? h.amount ?? 0);
+                            const isAlloc = (h.action || '').toLowerCase().includes('alloc') || qty > 0;
+                            const ltDef = ALL_LEAVE_TYPES.find(l => l.key === h.leave_type) || ALL_LEAVE_TYPES[0];
+                            return (
+                              <tr key={h._id || i} style={{ borderTop: '1px solid #2a2a40', background: i % 2 === 0 ? '#16162a' : '#1a1a30' }}>
+                                <td style={{ ...TDM, textAlign: 'center', color: '#6b7280' }}>{i + 1}</td>
+                                <td style={TDM}>
+                                  <span style={{
+                                    padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700,
+                                    background: isAlloc ? '#065f46' : '#7f1d1d', color: isAlloc ? '#6ee7b7' : '#fca5a5',
+                                  }}>
+                                    {isAlloc ? 'Allocated' : 'Deducted'}
+                                  </span>
+                                </td>
+                                <td style={TDM}>
+                                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: ltDef.lightBg, color: ltDef.color, fontWeight: 600 }}>
+                                    {ltDef.short}
+                                  </span>
+                                </td>
+                                <td style={{ ...TDM, textAlign: 'center', fontWeight: 700, color: isAlloc ? '#6ee7b7' : '#fca5a5' }}>
+                                  {isAlloc ? '+' : '−'}{Math.abs(qty)}
+                                </td>
+                                <td style={{ ...TDM, color: '#d1d5db', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {h.reason || h.note || '—'}
+                                </td>
+                                <td style={{ ...TDM, color: '#9ca3af', fontSize: 11, whiteSpace: 'nowrap' }}>
+                                  {fmtDate(h.created_at || h.timestamp || h.date)}
+                                </td>
+                                <td style={{ ...TDM, color: '#9ca3af', fontSize: 11 }}>
+                                  {h.performed_by_name || h.created_by_name || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </Overlay>
+      )}
+
+      {/* ═══════════════ ALLOCATE / DEDUCT MODAL ═══════════════ */}
+      {actionModal && (
+        <Overlay onClose={() => { setActionModal(null); setError(null); }} zIndex={1100}>
+          <div style={{ background: '#1a1a2e', border: '1px solid #2a2a40', borderRadius: 14, padding: 24, width: 440, maxWidth: '95vw' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#fff' }}>
+                {actionModal.mode === 'allot' ? 'Allocate Leave' : 'Deduct Leave'}
+              </h3>
+              <CloseBtn onClick={() => { setActionModal(null); setError(null); }} />
+            </div>
+
+            {/* Employee info bar */}
+            <div style={{ background: '#16162a', borderRadius: 8, padding: 12, marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', border: '1px solid #2a2a40' }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff'
+              }}>
+                {empInitials(actionModal.emp)}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: '#f3f4f6', fontSize: 13 }}>{empName(actionModal.emp)}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{actionModal.emp.employee_code || actionModal.emp.employee_id || ''} &middot; {getDeptName(actionModal.emp)}</div>
+              </div>
+            </div>
+
+            {error && <div style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fecaca', padding: '8px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13 }}>{error}</div>}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Leave Type Selector */}
+              <div>
+                <label style={labelStyle}>Select Leave Type</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {ALL_LEAVE_TYPES.map(lt => (
+                    <button key={lt.key} onClick={() => setLeaveType(lt.key)}
+                      style={{
+                        padding: '9px 6px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, textAlign: 'center',
+                        transition: 'all 0.15s',
+                        border: leaveType === lt.key ? `2px solid ${lt.color}` : '2px solid #2a2a40',
+                        background: leaveType === lt.key ? lt.lightBg : '#16162a',
+                        color: leaveType === lt.key ? lt.color : '#9ca3af',
+                      }}>
+                      {lt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Quantity (days)</label>
+                <input type="number" min="0.5" step="0.5" value={quantity} onChange={e => setQuantity(e.target.value)}
+                  placeholder="e.g. 1 or 0.5" style={fieldStyle} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Reason <span style={{ color: '#ef4444' }}>*</span></label>
+                <textarea value={reason} onChange={e => setReason(e.target.value)}
+                  placeholder="Enter reason for this action..." rows={3} style={{ ...fieldStyle, resize: 'none' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button onClick={handleAction} disabled={actionLoading}
+                  style={{
+                    flex: 1, padding: '12px', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 14, color: '#fff',
+                    background: actionModal.mode === 'allot' ? '#059669' : '#dc2626',
+                    opacity: actionLoading ? 0.5 : 1
+                  }}>
+                  {actionLoading ? 'Processing...' : actionModal.mode === 'allot' ? '+ Allocate Leave' : '− Deduct Leave'}
+                </button>
+                <button onClick={() => { setActionModal(null); setError(null); }}
+                  style={{ flex: 1, padding: '12px', background: '#2a2a40', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14, color: '#9ca3af' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Overlay>
+      )}
+    </div>
+  );
+};
+
+/* ═════════ HELPER FUNCTIONS ═════════ */
+const empName = (emp) => `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+const empInitials = (emp) => empName(emp).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+/* ═════════ MICRO COMPONENTS ═════════ */
+const Overlay = ({ children, onClose, zIndex = 1000 }) => (
+  <div onClick={onClose}
+    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex, padding: 16 }}>
+    <div onClick={e => e.stopPropagation()} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>{children}</div>
+  </div>
+);
+
+const CloseBtn = ({ onClick }) => (
+  <button onClick={onClick}
+    style={{ background: '#2a2a40', border: 'none', color: '#9ca3af', width: 32, height: 32, borderRadius: 8,
+      cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      transition: 'background 0.15s' }}
+    onMouseEnter={e => e.currentTarget.style.background = '#3a3a55'}
+    onMouseLeave={e => e.currentTarget.style.background = '#2a2a40'}
+  >&#215;</button>
+);
+
+const TabBtn = ({ active, onClick, children }) => (
+  <button onClick={onClick}
+    style={{
+      padding: '8px 22px', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+      transition: 'all 0.15s',
+      background: active ? '#6366f1' : '#2a2a40',
+      color: active ? '#fff' : '#9ca3af'
+    }}>{children}</button>
+);
+
+/* ═════════ STYLE TOKENS ═════════ */
+const inputStyle = {
+  background: '#16162a', border: '1px solid #2a2a40', color: '#e5e7eb', padding: '8px 14px',
+  borderRadius: 7, fontSize: 13, outline: 'none', width: 190
+};
+
+const selectStyle = {
+  background: '#16162a', border: '1px solid #2a2a40', color: '#e5e7eb', padding: '8px 12px',
+  borderRadius: 7, fontSize: 13, outline: 'none', cursor: 'pointer'
+};
+
+// Main table styles
+const TH = {
+  padding: '13px 12px', fontWeight: 600, fontSize: 12, color: '#d1d5db', textTransform: 'uppercase',
+  letterSpacing: '0.04em', borderBottom: '2px solid #2a2a40', whiteSpace: 'nowrap'
+};
+const TD = { padding: '11px 12px', verticalAlign: 'middle' };
+
+// Modal table styles
+const THM = {
+  padding: '11px 12px', fontWeight: 600, fontSize: 11, color: '#d1d5db', textTransform: 'uppercase',
+  letterSpacing: '0.04em', borderBottom: '1px solid #2a2a40', whiteSpace: 'nowrap'
+};
+const TDM = { padding: '10px 12px', verticalAlign: 'middle' };
+
+// Action buttons in main table
+const allocateBtn = {
+  padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+  background: '#059669', border: 'none', color: '#fff', transition: 'opacity 0.15s', whiteSpace: 'nowrap'
+};
+const deductBtn = {
+  padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+  background: '#dc2626', border: 'none', color: '#fff', transition: 'opacity 0.15s', whiteSpace: 'nowrap'
+};
+const historyBtn = {
+  padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+  background: '#4f46e5', border: 'none', color: '#fff', transition: 'opacity 0.15s', whiteSpace: 'nowrap'
+};
+
+// Modal action buttons
+const modalActionBtn = {
+  flex: 1, padding: '12px', border: 'none', borderRadius: 8, cursor: 'pointer',
+  fontWeight: 700, fontSize: 13, color: '#fff'
+};
+
+// Chips
+const chipBlue = { fontSize: 11, color: '#93c5fd', background: '#1e3a5f', padding: '3px 10px', borderRadius: 5, fontWeight: 600 };
+const chipPurple = { fontSize: 11, color: '#c4b5fd', background: '#3b0764', padding: '3px 10px', borderRadius: 5, fontWeight: 600 };
+
+// Form styles
+const labelStyle = { display: 'block', color: '#e5e7eb', fontSize: 13, fontWeight: 600, marginBottom: 6 };
+const fieldStyle = {
+  width: '100%', background: '#16162a', border: '1px solid #2a2a40', color: '#f3f4f6',
+  padding: '10px 14px', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box'
+};
+
+export default PaidLeaveManagement;

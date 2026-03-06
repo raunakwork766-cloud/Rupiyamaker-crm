@@ -256,7 +256,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
         ? backendTicket.comments.map(comment => ({
             user: comment.created_by_name || "Unknown",
             text: comment.content,
-            time: new Date(comment.created_at).toLocaleString()
+            time: new Date(comment.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
           })) 
         : [],
       attachments: backendTicket.attachments 
@@ -1044,7 +1044,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                           </a>
                           {attachment.uploadedAt && (
                             <span className="text-xs text-gray-500">
-                              Uploaded: {new Date(attachment.uploadedAt).toLocaleString()}
+                              Uploaded: {new Date(attachment.uploadedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                             </span>
                           )}
                         </div>
@@ -1516,12 +1516,14 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                                     formattedDate = date.toLocaleDateString('en-GB', {
                                       day: '2-digit',
                                       month: 'short',
-                                      year: 'numeric'
+                                      year: 'numeric',
+                                      timeZone: 'Asia/Kolkata'
                                     }).toUpperCase();
                                     formattedTime = date.toLocaleTimeString('en-GB', {
                                       hour: '2-digit',
                                       minute: '2-digit',
-                                      hour12: true
+                                      hour12: true,
+                                      timeZone: 'Asia/Kolkata'
                                     }).toUpperCase();
                                   } catch (e) {
                                     console.error("Date formatting error:", e);

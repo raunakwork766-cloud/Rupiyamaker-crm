@@ -10,6 +10,7 @@ const groupActivitiesByDateAndTime = (activities) => {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
     if (!acc[date]) {
       acc[date] = {};
@@ -18,6 +19,7 @@ const groupActivitiesByDateAndTime = (activities) => {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
+      timeZone: 'Asia/Kolkata',
     });
     if (!acc[date][time]) {
       acc[date][time] = [];
@@ -298,7 +300,6 @@ export default function Activities({ leadId, userId, formatDate }) {
                               <div
                                 className={`z-10 w-6 h-6 rounded-full border-2 ${getActivityColor(activityType)} flex items-center justify-center mt-2`}
                               >
-                                <span className="text-sm">{getActivityIcon(activityType)}</span>
                               </div>
                               {timeIndex !== timeArray.length - 1 && (
                                 <div className="absolute top-8 right-2.5 w-0.5 h-full bg-gray-300"></div>

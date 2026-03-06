@@ -28,7 +28,7 @@ const OverdueTaskPopup = ({ task, onClose, onViewTask }) => {
   } = task;
 
   // Format due date
-  const formattedDueDate = due_date ? new Date(due_date).toLocaleString() : 'Not specified';
+  const formattedDueDate = due_date ? new Date(due_date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not specified';
 
   // Get priority color
   const getPriorityColor = (priority) => {

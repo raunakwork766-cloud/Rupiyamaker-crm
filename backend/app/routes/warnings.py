@@ -288,13 +288,13 @@ async def create_warning(
         # Check for duplicate warning
         duplicate_check = await warnings_db.check_duplicate_warning(
             warning_data.issued_to,
-            warning_data.warning_type.value
+            warning_data.warning_type
         )
         
         if duplicate_check["has_duplicate"]:
             return {
                 "success": False,
-                "message": f"Duplicate warning found. Employee already has a {warning_data.warning_type.value} warning today.",
+                "message": f"Duplicate warning found. Employee already has a {warning_data.warning_type} warning today.",
                 "duplicate_warning": duplicate_check["existing_warning"]
             }
         
@@ -305,7 +305,7 @@ async def create_warning(
         
         # Create warning
         warning_dict = {
-            "warning_type": warning_data.warning_type.value,
+            "warning_type": warning_data.warning_type,
             "issued_to": warning_data.issued_to,
             "issued_by": user_id,
             "department_id": employee.get('department_id'),
@@ -483,7 +483,12 @@ async def get_user_warnings(
                 warning_message=warning["warning_message"],
                 issued_date=warning.get("issued_date", warning["created_at"]),
                 created_at=warning["created_at"],
-                updated_at=warning["updated_at"]
+                updated_at=warning["updated_at"],
+                is_waived=warning.get("is_waived", False),
+                waived_by=warning.get("waived_by"),
+                waived_at=warning.get("waived_at"),
+                status=warning.get("status"),
+                employee_status=warning.get("employee_status")
             )
             warning_list.append(warning_response)
         
@@ -715,7 +720,12 @@ async def get_warnings(
                 warning_message=warning["warning_message"],
                 issued_date=warning.get("issued_date", warning["created_at"]),
                 created_at=warning["created_at"],
-                updated_at=warning["updated_at"]
+                updated_at=warning["updated_at"],
+                is_waived=warning.get("is_waived", False),
+                waived_by=warning.get("waived_by"),
+                waived_at=warning.get("waived_at"),
+                status=warning.get("status"),
+                employee_status=warning.get("employee_status")
             )
             warning_list.append(warning_response)
         
@@ -793,9 +803,14 @@ async def get_warning(
             department_name=department_name,
             penalty_amount=warning["penalty_amount"],
             warning_message=warning["warning_message"],
-            issued_date=warning.get("issued_date", warning["created_at"]),  # Use created_at as fallback
+            issued_date=warning.get("issued_date", warning["created_at"]),
             created_at=warning["created_at"],
-            updated_at=warning["updated_at"]
+            updated_at=warning["updated_at"],
+            is_waived=warning.get("is_waived", False),
+            waived_by=warning.get("waived_by"),
+            waived_at=warning.get("waived_at"),
+            status=warning.get("status"),
+            employee_status=warning.get("employee_status")
         )
         
     except HTTPException:
@@ -824,7 +839,7 @@ async def update_warning(
         # Prepare update data
         update_data = {}
         if warning_data.warning_type is not None:
-            update_data["warning_type"] = warning_data.warning_type.value
+            update_data["warning_type"] = warning_data.warning_type
         if warning_data.penalty_amount is not None:
             update_data["penalty_amount"] = warning_data.penalty_amount
         if warning_data.warning_message is not None:
@@ -879,6 +894,132 @@ async def delete_warning(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete warning: {str(e)}")
+
+@router.patch("/{warning_id}/waive", response_model=dict)
+async def waive_penalty(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Waive the penalty for a specific warning (admin action)"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_edit:
+            raise HTTPException(status_code=403, detail="Not authorized to waive penalties")
+
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+
+        update_data = {
+            "is_waived": True,
+            "waived_by": user_id,
+            "waived_at": get_ist_now().isoformat()
+        }
+        result = await warnings_db.update_warning(warning_id, update_data)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to waive penalty")
+
+        return {"success": True, "message": "Penalty waived successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to waive penalty: {str(e)}")
+
+@router.patch("/{warning_id}/reinstate", response_model=dict)
+async def reinstate_penalty(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Reinstate the penalty for a previously waived warning (admin action)"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_edit:
+            raise HTTPException(status_code=403, detail="Not authorized to reinstate penalties")
+
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+
+        update_data = {
+            "is_waived": False,
+            "waived_by": None,
+            "waived_at": None
+        }
+        result = await warnings_db.update_warning(warning_id, update_data)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to reinstate penalty")
+
+        return {"success": True, "message": "Penalty reinstated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reinstate penalty: {str(e)}")
+
+@router.get("/penalties/employee/{employee_id}", response_model=dict)
+async def get_employee_penalties(
+    employee_id: str,
+    month: int = Query(..., ge=1, le=12, description="Month number (1-12)"),
+    year: int = Query(..., ge=2020, description="Year"),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get active (non-waived) warning penalties for an employee in a given month/year"""
+    try:
+        from datetime import date
+        import calendar
+
+        # Date range for the month
+        first_day = datetime(year, month, 1)
+        last_day_num = calendar.monthrange(year, month)[1]
+        last_day = datetime(year, month, last_day_num, 23, 59, 59)
+
+        # Fetch all warnings for this employee issued UP TO end of selected month
+        # We do NOT filter by start_date so warnings from previous months still
+        # contribute to deductions until they are explicitly waived.
+        filters = {
+            "employee_id": employee_id,
+            "end_date": last_day.strftime("%Y-%m-%d")
+        }
+        all_warnings = await warnings_db.get_all_warnings(filters=filters, limit=500)
+
+        # Filter: only those with a penalty amount AND not waived
+        penalty_warnings = []
+        total_penalty = 0
+        for w in all_warnings:
+            amount = w.get("penalty_amount") or 0
+            try:
+                amount = float(amount)
+            except Exception:
+                amount = 0
+            if amount > 0 and not w.get("is_waived", False):
+                penalty_warnings.append({
+                    "id": w.get("id") or w.get("_id"),
+                    "warning_type": w.get("warning_type", ""),
+                    "warning_message": w.get("warning_message", ""),
+                    "penalty_amount": amount,
+                    "issued_date": w.get("issued_date", ""),
+                    "is_waived": False
+                })
+                total_penalty += amount
+
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "month": month,
+            "year": year,
+            "total_penalty": total_penalty,
+            "penalties": penalty_warnings
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get employee penalties: {str(e)}")
 
 @router.get("/stats/summary")
 async def get_warning_statistics(
@@ -1756,6 +1897,12 @@ async def get_employees_for_warnings(
         
         # Use all users if no employees found with the flag
         users_to_process = employees_only if employees_only else users
+        
+        # ✅ FILTER: Only include active employees — inactive employees should not appear in warning assignment
+        users_to_process = [
+            u for u in users_to_process 
+            if u.get("employee_status", "active") != "inactive" and u.get("is_active", True) != False
+        ]
         
         if not users_to_process:
             return {

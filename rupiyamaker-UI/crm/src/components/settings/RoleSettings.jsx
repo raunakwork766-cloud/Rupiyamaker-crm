@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { Edit, Trash2, ChevronDown, Users, Plus, Shield, Download } from 'lucide-react';
 import { updateRoleWithImmediateRefresh, setupPermissionRefreshListeners } from '../../utils/immediatePermissionRefresh.js';
+const RoleCompare = lazy(() => import('./RoleCompare.jsx'));
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
 const RoleSettings = () => {
+    const navigate = useNavigate();
+    const [activeRoleTab, setActiveRoleTab] = useState('roles');
     const [roles, setRoles] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -22,6 +26,17 @@ const RoleSettings = () => {
         'settings', 'interview', 'reports'
     ]));
 
+    // Role Field Config Modal states
+    const [roleFieldModal, setRoleFieldModal] = useState(false);
+    const [roleFieldSearch, setRoleFieldSearch] = useState('');
+
+    // Compare mode
+    const [compareMode, setCompareMode] = useState(false);
+    const [compareSelected, setCompareSelected] = useState([]);
+    const [showCompareModal, setShowCompareModal] = useState(false);
+    const [showCompareOptions, setShowCompareOptions] = useState(false);
+
+    // Compare mode
     // Hierarchical dropdown states for Department
     const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
     const [showMainDepartments, setShowMainDepartments] = useState(true);
@@ -66,13 +81,74 @@ const RoleSettings = () => {
         'hrms': ['show', ],
         'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
         'leaves': ['show', 'own', 'junior', 'all', 'delete'],
-        'attendance': ['show', 'own', 'junior', 'all', 'delete'],
+        'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
         'dialer_report': ['show'],
         'apps': ['show', 'manage'],
         "notification":['show', 'delete', 'send'],
         'reports': ['show'],
         'settings': ['show'],
     };
+
+    // Per-module descriptive action labels
+    const getActionLabel = (moduleName, section, action) => {
+        const key = section ? (moduleName + '|' + section) : moduleName;
+        const map = {
+            'feeds': { show:'Sidebar Access', post:'Create Post', all:'Manage All', delete:'Delete' },
+            'Leads CRM|Create LEAD': { show:'View Leads', add:'Add Lead', reassignment_popup:'Reassign Popup' },
+            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', delete:'Delete' },
+            'login': { show:'Sidebar', own:'Own Logins', junior:'Junior Logins', all:'All Logins', channel:'Channel', edit:'Edit', delete:'Delete' },
+            'tasks': { show:'Sidebar', own:'Own Tasks', junior:'Junior Tasks', all:'All Tasks', delete:'Delete' },
+            'tickets': { show:'Sidebar', own:'Own Tickets', junior:'Junior Tickets', all:'All Tickets', delete:'Delete' },
+            'warnings': { show:'Sidebar', own:'Own Warnings', junior:'Junior Warnings', all:'All Warnings', delete:'Delete' },
+            'interview': { show:'Sidebar', junior:'Junior Panel', all:'All Interviews', settings:'Settings', delete:'Delete' },
+            'hrms': { show:'Sidebar Access' },
+            'employees': { show:'Sidebar', password:'Change Password', junior:'Junior Employees', all:'All Employees', role:'Role Field Config', delete:'Delete' },
+            'leaves': { show:'Sidebar', own:'Own Leaves', junior:'Junior Leaves', all:'All Leaves', delete:'Delete' },
+            'attendance': { show:'Sidebar', own:'Own Attendance', junior:'Junior Attendance', all:'All Attendance', update:'Update Attendance', delete:'Delete' },
+            'dialer_report': { show:'View Dialer Report' },
+            'apps': { show:'Sidebar', manage:'Manage Apps' },
+            'notification': { show:'View', delete:'Delete', send:'Send Notification' },
+            'reports': { show:'Access Reports' },
+            'settings': { show:'Access Settings' },
+        };
+        return (map[key] && map[key][action]) || action;
+    };
+
+    // Build flat permission module list for the table columns
+    const permissionModules = React.useMemo(() => {
+        const mods = [];
+        Object.entries(allPermissions).forEach(([module, actions]) => {
+            if (module === 'SuperAdmin') return;
+            if (typeof actions === 'object' && !Array.isArray(actions)) {
+                Object.entries(actions).forEach(([section, sectionActions]) => {
+                    if (Array.isArray(sectionActions)) {
+                        mods.push({ label: (module + ' - ' + section).toUpperCase(), originalModule: module, section, actions: sectionActions, isNested: true });
+                    }
+                });
+            } else if (Array.isArray(actions)) {
+                mods.push({ label: module.toUpperCase(), originalModule: module, section: null, actions, isNested: false });
+            }
+        });
+        return mods;
+    }, []);
+
+    const checkRolePerm = (role, mod, action) => {
+        if (!role.permissions || !Array.isArray(role.permissions)) return false;
+        if (role.permissions.some(p => p.page === '*')) return true;
+        if (mod.isNested) {
+            const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
+            const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
+            const pageKey = dbModule + '.' + dbSection;
+            const perm = role.permissions.find(p => p.page === pageKey);
+            return !!(perm && perm.actions && perm.actions.includes(action));
+        } else {
+            const perm = role.permissions.find(p => p.page === mod.originalModule);
+            return !!(perm && perm.actions && perm.actions.includes(action));
+        }
+    };
+
+    // Total action columns count (for colSpan)
+    const totalPermCols = React.useMemo(() => permissionModules.reduce((s, m) => s + m.actions.length, 0), [permissionModules]);
 
     // Permission descriptions for UI
     const permissionDescriptions = {
@@ -909,30 +985,32 @@ const RoleSettings = () => {
             
             // Check if the edited role matches the current user's role
             if (editingRole && (editingRole.id === role_id || editingRole._id === role_id)) {
-                // Fetch the updated user permissions
-                const response = await fetch(`${API_BASE_URL}/users/${user_id}`, {
+                // Fetch the updated user permissions using the correct permissions endpoint
+                const response = await fetch(`${API_BASE_URL}/users/permissions/${user_id}`, {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
                     }
                 });
 
                 if (response.ok) {
-                    const updatedUserData = await response.json();
+                    // /users/permissions/:userId returns the permissions array directly
+                    const updatedPermissions = await response.json();
+                    const permissionsArray = Array.isArray(updatedPermissions) ? updatedPermissions : [];
                     
                     // Update localStorage with new permissions in userData
                     const currentUserData = JSON.parse(localStorage.getItem('userData'));
                     const updatedData = {
                         ...currentUserData,
-                        permissions: updatedUserData.permissions || []
+                        permissions: permissionsArray
                     };
                     localStorage.setItem('userData', JSON.stringify(updatedData));
                     
                     // IMPORTANT: Also update userPermissions separately (used by permission utilities)
-                    localStorage.setItem('userPermissions', JSON.stringify(updatedUserData.permissions || []));
+                    localStorage.setItem('userPermissions', JSON.stringify(permissionsArray));
                     
                     // Trigger a custom event to notify other components
                     window.dispatchEvent(new CustomEvent('permissionsUpdated', { 
-                        detail: { permissions: updatedUserData.permissions } 
+                        detail: { permissions: permissionsArray } 
                     }));
                     
                     message.info('Your permissions have been updated. Some features may now be available or restricted.');
@@ -942,6 +1020,21 @@ const RoleSettings = () => {
             console.error('Error refreshing user permissions:', error);
             // Don't show error to user as this is a background operation
         }
+    };
+
+    // Toggle a role in employees.role_field_roles config
+    const handleRoleFieldRoleToggle = (roleId) => {
+        const current = formData.permissions['employees.role_field_roles'] || [];
+        const updated = current.includes(roleId)
+            ? current.filter(id => id !== roleId)
+            : [...current, roleId];
+        setFormData({
+            ...formData,
+            permissions: {
+                ...formData.permissions,
+                'employees.role_field_roles': updated
+            }
+        });
     };
 
     const handlePermissionChange = (module, action, checked) => {
@@ -1465,9 +1558,10 @@ const RoleSettings = () => {
             });
             headerRow2 += '</tr>';
             
-            // Build data rows
+            // Build data rows with editable permissions
             let dataRows = '';
             reportRoles.forEach(role => {
+                const roleId = role._id || role.id;
                 const isSuperAdmin = role.permissions && role.permissions.some(p => p.page === '*');
                 const dept = reportDepartments.find(d => (d.id || d._id) === role.department_id);
                 const reportingIds = role.reporting_ids || (role.reporting_id ? [role.reporting_id] : []);
@@ -1481,40 +1575,29 @@ const RoleSettings = () => {
                 console.log(`Processing role: ${role.name}`);
                 console.log('Role permissions:', role.permissions);
                 
-                dataRows += '<tr class="data-row">';
+                dataRows += `<tr class="data-row" data-role-id="${roleId}">`;
                 dataRows += `<td class="sticky-col role-name" data-role="${role.name.toLowerCase()}">${role.name}</td>`;
                 dataRows += `<td class="dept-cell">${dept?.name || '-'}</td>`;
                 dataRows += `<td class="reports-cell">${reportingRoles.length > 0 ? reportingRoles.join(', ') : 'Top Level'}</td>`;
-                dataRows += `<td class="sticky-col perm-cell">${permCount}</td>`;
+                dataRows += `<td class="sticky-col perm-cell perm-count-${roleId}">${permCount}</td>`;
                 
-                // Check each permission
+                // Check each permission - make clickable
                 permissionModules.forEach((mod, modIdx) => {
                     mod.actions.forEach((action, actIdx) => {
                         const isFirstAction = actIdx === 0 && modIdx > 0;
                         let hasPermission = false;
+                        let pageKey = mod.module;
                         
                         if (isSuperAdmin) {
                             hasPermission = true;
                         } else if (role.permissions && Array.isArray(role.permissions)) {
                             if (mod.isNested) {
                                 // For nested modules (Leads CRM sections), check specific section
-                                // Database stores as "leads.create_lead" but we display as "Leads CRM - Create LEAD"
-                                // Need to convert display format to database format
                                 const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
                                 const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
-                                const pageKey = `${dbModule}.${dbSection}`;
+                                pageKey = `${dbModule}.${dbSection}`;
                                 
                                 const modulePerm = role.permissions.find(p => p.page === pageKey);
-                                
-                                // Debug logging for Leads CRM
-                                if (mod.originalModule === 'Leads CRM' && actIdx === 0) {
-                                    console.log(`  Checking ${role.name} for ${mod.module}`);
-                                    console.log('  Display format:', `${mod.originalModule}.${mod.section}`);
-                                    console.log('  Database format (looking for):', pageKey);
-                                    console.log('  Available pages in permissions:', role.permissions.map(p => p.page));
-                                    console.log('  Found permission:', modulePerm);
-                                }
-                                
                                 if (modulePerm && modulePerm.actions && modulePerm.actions.includes(action)) {
                                     hasPermission = true;
                                 }
@@ -1529,7 +1612,16 @@ const RoleSettings = () => {
                         
                         const checkMark = hasPermission ? '<span class="check-yes">✓</span>' : '<span class="check-no">-</span>';
                         const partitionClass = isFirstAction ? 'cell-partition' : '';
-                        dataRows += `<td class="check-cell ${partitionClass}">${checkMark}</td>`;
+                        // Make cell clickable with data attributes
+                        dataRows += `<td class="check-cell ${partitionClass} editable-cell" 
+                            data-role-id="${roleId}" 
+                            data-module="${pageKey}" 
+                            data-action="${action}" 
+                            data-has-perm="${hasPermission}"
+                            onclick="togglePermission(this)"
+                            style="cursor: pointer;"
+                            title="Click to toggle ${action} for ${role.name}"
+                        >${checkMark}</td>`;
                     });
                 });
                 
@@ -1776,6 +1868,15 @@ const RoleSettings = () => {
                             background: #fff;
                             min-width: 50px;
                         }
+                        .editable-cell:hover {
+                            background: #e3f2fd !important;
+                            transform: scale(1.05);
+                            transition: all 0.2s;
+                        }
+                        .cell-changed {
+                            background: #fff9c4 !important;
+                            box-shadow: 0 0 0 2px #ffd700 inset;
+                        }
                         .cell-partition {
                             border-left: 5px solid #ffd700 !important;
                         }
@@ -1794,6 +1895,34 @@ const RoleSettings = () => {
                         .data-row.hidden {
                             display: none;
                         }
+                        .save-button {
+                            display: none;
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #00c851;
+                            color: #fff;
+                            border: none;
+                            padding: 12px 24px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            font-weight: bold;
+                            cursor: pointer;
+                            box-shadow: 0 4px 12px rgba(0,200,81,0.4);
+                            z-index: 1000;
+                            transition: all 0.2s;
+                        }
+                        .save-button.visible {
+                            display: block;
+                        }
+                        .save-button:hover {
+                            background: #00a844;
+                            transform: scale(1.05);
+                        }
+                        .save-button:disabled {
+                            background: #666;
+                            cursor: not-allowed;
+                        }
                         @media print {
                             body { background: #fff; padding: 0; }
                             .container { box-shadow: none; }
@@ -1806,6 +1935,162 @@ const RoleSettings = () => {
                         let sortDeptAscending = true;
                         let sortReportsAscending = true;
                         let selectedRoles = [];
+                        
+                        // Track permission changes
+                        const permissionChanges = {};
+                        
+                        function togglePermission(cell) {
+                            const roleId = cell.getAttribute('data-role-id');
+                            const module = cell.getAttribute('data-module');
+                            const action = cell.getAttribute('data-action');
+                            const currentState = cell.getAttribute('data-has-perm') === 'true';
+                            const newState = !currentState;
+                            
+                            // Update cell display
+                            cell.setAttribute('data-has-perm', newState);
+                            cell.innerHTML = newState 
+                                ? '<span class="check-yes">✓</span>' 
+                                : '<span class="check-no">-</span>';
+                            cell.classList.add('cell-changed');
+                            
+                            // Track change
+                            if (!permissionChanges[roleId]) {
+                                permissionChanges[roleId] = {};
+                            }
+                            if (!permissionChanges[roleId][module]) {
+                                permissionChanges[roleId][module] = {};
+                            }
+                            permissionChanges[roleId][module][action] = newState;
+                            
+                            // Update permission count for the role
+                            updatePermissionCount(roleId);
+                            
+                            // Show save button
+                            document.getElementById('saveButton').classList.add('visible');
+                        }
+                        
+                        function updatePermissionCount(roleId) {
+                            const row = document.querySelector(\`tr[data-role-id="\${roleId}"]\`);
+                            const cells = row.querySelectorAll('.editable-cell');
+                            let count = 0;
+                            cells.forEach(cell => {
+                                if (cell.getAttribute('data-has-perm') === 'true') {
+                                    count++;
+                                }
+                            });
+                            const countCell = row.querySelector('.perm-count-' + roleId);
+                            if (countCell) {
+                                countCell.textContent = count;
+                            }
+                        }
+                        
+                        async function saveChanges() {
+                            const saveBtn = document.getElementById('saveButton');
+                            if (Object.keys(permissionChanges).length === 0) {
+                                alert('No changes to save');
+                                return;
+                            }
+                            
+                            saveBtn.disabled = true;
+                            saveBtn.textContent = '💾 Saving...';
+                            
+                            try {
+                                // Get token from localStorage (opener window)
+                                const token = window.opener?.localStorage.getItem('token');
+                                if (!token) {
+                                    alert('Authentication token not found. Please keep the main window open.');
+                                    saveBtn.disabled = false;
+                                    saveBtn.textContent = '💾 SAVE CHANGES';
+                                    return;
+                                }
+                                
+                                // Convert changes to API format
+                                for (const roleId in permissionChanges) {
+                                    const roleChanges = permissionChanges[roleId];
+                                    
+                                    // Build permissions array
+                                    const permissions = {};
+                                    for (const module in roleChanges) {
+                                        for (const action in roleChanges[module]) {
+                                            if (!permissions[module]) {
+                                                permissions[module] = [];
+                                            }
+                                            if (roleChanges[module][action]) {
+                                                permissions[module].push(action);
+                                            } else {
+                                                // Remove action if unchecked
+                                                const idx = permissions[module].indexOf(action);
+                                                if (idx > -1) {
+                                                    permissions[module].splice(idx, 1);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Get all current permissions from cells
+                                    const row = document.querySelector(\`tr[data-role-id="\${roleId}"]\`);
+                                    const cells = row.querySelectorAll('.editable-cell');
+                                    const fullPermissions = {};
+                                    
+                                    cells.forEach(cell => {
+                                        const mod = cell.getAttribute('data-module');
+                                        const act = cell.getAttribute('data-action');
+                                        const hasPerm = cell.getAttribute('data-has-perm') === 'true';
+                                        
+                                        if (hasPerm) {
+                                            if (!fullPermissions[mod]) {
+                                                fullPermissions[mod] = [];
+                                            }
+                                            fullPermissions[mod].push(act);
+                                        }
+                                    });
+                                    
+                                    // Convert to array format for API
+                                    const permissionsArray = Object.entries(fullPermissions).map(([page, actions]) => ({
+                                        page,
+                                        actions
+                                    }));
+                                    
+                                    // Call API to update role
+                                    const response = await fetch(\`/api/roles/\${roleId}\`, {
+                                        method: 'PUT',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': \`Bearer \${token}\`
+                                        },
+                                        body: JSON.stringify({
+                                            permissions: permissionsArray
+                                        })
+                                    });
+                                    
+                                    if (!response.ok) {
+                                        throw new Error(\`Failed to update role \${roleId}\`);
+                                    }
+                                }
+                                
+                                // Clear changes and hide save button
+                                Object.keys(permissionChanges).forEach(key => delete permissionChanges[key]);
+                                document.querySelectorAll('.cell-changed').forEach(cell => {
+                                    cell.classList.remove('cell-changed');
+                                });
+                                saveBtn.classList.remove('visible');
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = '💾 SAVE CHANGES';
+                                
+                                alert('✓ Changes saved successfully! The main page will reload.');
+                                
+                                // Trigger reload in parent window
+                                if (window.opener && !window.opener.closed) {
+                                    window.opener.location.reload();
+                                }
+                                
+                            } catch (error) {
+                                console.error('Error saving changes:', error);
+                                alert('Error saving changes: ' + error.message);
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = '💾 SAVE CHANGES';
+                            }
+                        }
 
                         function sortTable() {
                             const table = document.querySelector('tbody');
@@ -1922,10 +2207,16 @@ const RoleSettings = () => {
                     </script>
                 </head>
                 <body>
+                    <!-- Save Button -->
+                    <button id="saveButton" class="save-button" onclick="saveChanges()">
+                        💾 SAVE CHANGES
+                    </button>
+                    
                     <div class="container">
                         <div class="header">
                             <h1>📊 ROLES & PERMISSIONS REPORT</h1>
-                            <div class="timestamp">Generated: ${new Date().toLocaleDateString('en-US', { 
+                            <div class="timestamp">Generated: ${new Date().toLocaleDateString('en-IN', { 
+                                timeZone: 'Asia/Kolkata',
                                 weekday: 'long',
                                 year: 'numeric', 
                                 month: 'long', 
@@ -2156,7 +2447,7 @@ const RoleSettings = () => {
                         </tbody>
                     </table>
                     <div class="generated-date">
-                        Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+                        Generated on: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
                     </div>
                 </body>
                 </html>
@@ -2403,7 +2694,7 @@ const RoleSettings = () => {
                         height: '2px',
                         background: '#000000'
                     }}>
-                        <td colSpan="5" style={{ 
+                        <td colSpan={5} style={{ 
                             padding: 0,
                             borderTop: '2px solid #ffffff',
                             borderBottom: 'none'
@@ -2543,6 +2834,22 @@ const RoleSettings = () => {
                     </div>
                 </td>
                 
+
+
+                {/* Compare Checkbox */}
+                {compareMode && (
+                    <td style={{ padding: '16px 15px', borderLeft: '2px solid #ffd700', textAlign: 'center' }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const id = role._id || role.id;
+                            setCompareSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                        }}
+                    >
+                        <div style={{ width:'24px', height:'24px', borderRadius:'6px', border:'2px solid '+(compareSelected.includes(role._id||role.id)?'#ffd700':'#555'), background:compareSelected.includes(role._id||role.id)?'#ffd700':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'auto', transition:'all 0.15s' }}>
+                            {compareSelected.includes(role._id||role.id) && <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                        </div>
+                    </td>
+                )}
                 {/* Actions */}
                 <td style={{ padding: '16px 15px' }}>
                     <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
@@ -3251,7 +3558,7 @@ const RoleSettings = () => {
         });
     };
 
-    const treeData = buildTree(roles);
+    const treeData = React.useMemo(() => buildTree(roles), [roles]);
 
     const totalPermissions = Object.values(allPermissions).flat().length;
     const selectedPermissions = Object.values(formData.permissions).flat().length;
@@ -3260,8 +3567,7 @@ const RoleSettings = () => {
 
     return (
         <div style={{
-            maxWidth: '1400px',
-            margin: '0 auto',
+            width: '100%',
             background: '#000000',
             border: '1px solid #333333',
             borderRadius: '12px',
@@ -3270,93 +3576,93 @@ const RoleSettings = () => {
             color: '#ffffff',
             fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
         }}>
-            {/* Header */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                marginBottom: '2rem'
-            }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1rem'
-                }}>
-                    {/* Export Button */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <button 
-                            onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                console.log('Download Report button clicked!');
-                                try {
-                                    await exportToHTML();
-                                } catch (err) {
-                                    console.error('Button click error:', err);
-                                    message.error('Error: ' + err.message);
-                                }
-                            }}
-                            style={{
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                color: '#ffffff',
-                                fontWeight: '700',
-                                padding: '0.75rem 1.5rem',
-                                borderRadius: '0.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                border: 'none',
-                                cursor: 'pointer',
-                                transition: 'all 0.3s',
-                                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
-                            }}
-                            title="Download comprehensive interactive HTML report - Opens in new tab with all permissions and fixed columns"
-                            type="button"
-                        >
-                            <Download className="h-5 w-5" />
-                            <span>📊 Download Report</span>
-                        </button>
-                    </div>
-                    
-                    {/* Add Role Button */}
-                    <button 
+            {/* Tabs */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid #333' }}>
+                <button
+                    onClick={() => setActiveRoleTab('roles')}
+                    style={{
+                        padding: '0.75rem 1.5rem',
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        border: 'none',
+                        borderBottom: activeRoleTab === 'roles' ? '3px solid #3b82f6' : '3px solid transparent',
+                        background: activeRoleTab === 'roles' ? '#111' : 'transparent',
+                        color: activeRoleTab === 'roles' ? '#3b82f6' : '#888',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        letterSpacing: '0.5px'
+                    }}
+                    onMouseEnter={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#bbb'; }}
+                    onMouseLeave={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#888'; }}
+                >
+                    <Users className="h-4 w-4" />
+                    Roles
+                </button>
+                <button
+                    onClick={() => setActiveRoleTab('permissions')}
+                    style={{
+                        padding: '0.75rem 1.5rem',
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        border: 'none',
+                        borderBottom: activeRoleTab === 'permissions' ? '3px solid #a855f7' : '3px solid transparent',
+                        background: activeRoleTab === 'permissions' ? '#111' : 'transparent',
+                        color: activeRoleTab === 'permissions' ? '#a855f7' : '#888',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        letterSpacing: '0.5px'
+                    }}
+                    onMouseEnter={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#bbb'; }}
+                    onMouseLeave={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#888'; }}
+                >
+                    <Shield className="h-4 w-4" />
+                    All Permissions
+                </button>
+                {/* Spacer + Add Role button (only on Roles tab) */}
+                <div style={{ flex: 1 }} />
+                {activeRoleTab === 'roles' && (
+                    <button
                         onClick={() => openModal()}
                         style={{
                             background: '#ffffff',
                             color: '#000000',
                             fontWeight: '600',
-                            padding: '0.625rem 1.5rem',
+                            padding: '0.5rem 1.25rem',
                             borderRadius: '0.5rem',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.5rem',
                             border: 'none',
                             cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            transition: 'all 0.2s',
+                            marginBottom: '4px'
                         }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                            e.currentTarget.style.background = '#f0f0f0';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.background = '#ffffff';
-                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.background = '#f0f0f0'; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#ffffff'; }}
                     >
                         <Plus className="h-5 w-5" />
                         <span>Add New Role</span>
                     </button>
-                </div>
+                )}
             </div>
 
+            {/* === ALL PERMISSIONS TAB === */}
+            {activeRoleTab === 'permissions' && (
+                <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>}>
+                    <div style={{ margin: '-1rem -2rem -2rem', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                        <RoleCompare embedded />
+                    </div>
+                </Suspense>
+            )}
+
+            {/* === ROLES TAB === */}
+            {activeRoleTab === 'roles' && (<>
             {/* Info Cards */}
             <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-xl p-4">
@@ -3414,78 +3720,15 @@ const RoleSettings = () => {
                 }}>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', textAlign: 'left', fontSize: '0.95rem', borderCollapse: 'collapse' }}>
-                            <thead style={{
-                                background: '#000000',
-                                borderBottom: '3px solid #ffffff',
-                                position: 'sticky',
-                                top: 0,
-                                zIndex: 10
-                            }}>
+                            <thead style={{ background: '#000000', borderBottom: '3px solid #ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
                                 <tr>
-                                    <th scope="col" style={{
-                                        padding: '18px 15px',
-                                        textAlign: 'left',
-                                        fontWeight: '700',
-                                        fontSize: '0.95rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '1.5px',
-                                        color: '#ffffff',
-                                        borderRight: '1px solid #333333',
-                                        width: '30%'
-                                    }}>
-                                        ROLE NAME
-                                    </th>
-                                    <th scope="col" style={{
-                                        padding: '18px 15px',
-                                        textAlign: 'left',
-                                        fontWeight: '700',
-                                        fontSize: '0.95rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '1.5px',
-                                        color: '#ffffff',
-                                        borderRight: '1px solid #333333',
-                                        width: '20%'
-                                    }}>
-                                        DEPARTMENT
-                                    </th>
-                                    <th scope="col" style={{
-                                        padding: '18px 15px',
-                                        textAlign: 'left',
-                                        fontWeight: '700',
-                                        fontSize: '0.95rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '1.5px',
-                                        color: '#ffffff',
-                                        borderRight: '1px solid #333333',
-                                        width: '25%'
-                                    }}>
-                                        REPORTS TO
-                                    </th>
-                                    <th scope="col" style={{
-                                        padding: '18px 15px',
-                                        textAlign: 'left',
-                                        fontWeight: '700',
-                                        fontSize: '0.95rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '1.5px',
-                                        color: '#ffffff',
-                                        borderRight: '1px solid #333333',
-                                        width: '12%'
-                                    }}>
-                                        PERMISSIONS
-                                    </th>
-                                    <th scope="col" style={{
-                                        padding: '18px 15px',
-                                        textAlign: 'left',
-                                        fontWeight: '700',
-                                        fontSize: '0.95rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '1.5px',
-                                        color: '#ffffff',
-                                        width: '13%'
-                                    }}>
-                                        ACTIONS
-                                    </th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '180px' }}>ROLE NAME</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '140px' }}>DEPARTMENT</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '160px' }}>REPORTS TO</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '90px' }}>PERMS</th>
+                                    {compareMode && <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffd700', borderLeft: '2px solid #ffd700', whiteSpace: 'nowrap', minWidth: '60px', textAlign: 'center' }}>SELECT</th>}
+
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderLeft: '2px solid #333', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'center' }}>ACTIONS</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -3531,13 +3774,11 @@ const RoleSettings = () => {
                 </div>
             )}
 
-            {/* Role Form Modal */}
-            {isModalVisible && (
+            {/* Add Role Modal */}
+            {isModalVisible && !editingRole && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 border border-white/10 p-8 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <h2 className="text-2xl font-bold text-white mb-6">
-                            {editingRole ? 'Edit Role' : 'Add Role'}
-                        </h2>
+                    <div className="bg-gray-800 border border-white/10 p-8 rounded-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+                        <h2 className="text-2xl font-bold text-white mb-6">Add Role</h2>
                         <form onSubmit={handleSubmit}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                                 <div>
@@ -3828,274 +4069,595 @@ const RoleSettings = () => {
                                     )}
                                 </div>
                             </div>
-                            
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-400 mb-4">Permissions</label>
-                                
-                                {/* SuperAdmin Option - Special Treatment */}
-                                <div className={`border-2 rounded-lg overflow-hidden mb-4 transition-all duration-300 ${
-                                    formData.permissions.SuperAdmin ? 
-                                    'border-yellow-500 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 shadow-lg shadow-yellow-500/20' : 
-                                    'border-gray-600 hover:border-yellow-500/50'
-                                }`}>
-                                    <div className="p-4">
-                                        <label className="flex items-center cursor-pointer group">
-                                            <div className="relative">
-                                                <input 
-                                                    type="checkbox" 
-                                                    className="h-6 w-6 rounded mr-4 accent-yellow-500 transition-all"
-                                                    checked={!!formData.permissions.SuperAdmin}
-                                                    onChange={(e) => handlePermissionChange('SuperAdmin', '*', e.target.checked)}
-                                                />
-                                                {formData.permissions.SuperAdmin && (
-                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center">
-                                                <Shield className={`h-6 w-6 mr-3 transition-colors ${
-                                                    formData.permissions.SuperAdmin ? 'text-yellow-400' : 'text-gray-400 group-hover:text-yellow-400'
-                                                }`} />
-                                                <div>
-                                                    <span className={`text-lg font-bold transition-colors ${
-                                                        formData.permissions.SuperAdmin ? 'text-yellow-400' : 'text-white group-hover:text-yellow-400'
-                                                    }`}>
-                                                        Super Administrator
-                                                    </span>
-                                                    {formData.permissions.SuperAdmin && (
-                                                        <span className="ml-3 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full animate-pulse">
-                                                            ACTIVE
-                                                        </span>
+                            <div className="flex justify-end space-x-4 mt-8">
+                                <button type="button" onClick={closeModal} className="px-5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold transition-colors">Cancel</button>
+                                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ════════════════════════════════════════════════════════
+                 COMPARE ROLES MODAL
+                 ════════════════════════════════════════════════════════ */}
+            {showCompareModal && compareSelected.length >= 2 && (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:9000,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+                    {/* Header */}
+                    <div style={{flexShrink:0,background:'#000',borderBottom:'3px solid #fff',padding:'16px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffd700" strokeWidth="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                            <span style={{color:'#fff',fontWeight:'800',fontSize:'1.1rem',letterSpacing:'1px'}}>ROLE PERMISSION COMPARISON</span>
+                            <span style={{background:'#ffd700',color:'#000',fontWeight:'700',fontSize:'0.75rem',padding:'3px 10px',borderRadius:'20px'}}>{compareSelected.length} roles</span>
+                        </div>
+                        <button onClick={()=>setShowCompareModal(false)} style={{background:'transparent',border:'none',color:'#ccc',cursor:'pointer',padding:'8px',borderRadius:'8px'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+
+                    {/* Horizontal table: roles = rows, permissions = columns */}
+                    <div style={{flex:1,overflowX:'auto',overflowY:'auto'}}>
+                        <table style={{borderCollapse:'collapse',minWidth:'max-content',background:'#000',fontSize:'0.82rem'}}>
+                            <thead style={{position:'sticky',top:0,zIndex:5}}>
+                                {/* Row 1: ROLE NAME col + module group headers */}
+                                <tr>
+                                    <th rowSpan={2} style={{padding:'14px 20px',background:'#000',color:'#fff',fontWeight:'800',textTransform:'uppercase',letterSpacing:'1px',borderRight:'3px solid #ffd700',position:'sticky',left:0,zIndex:6,minWidth:'200px',textAlign:'left',verticalAlign:'middle'}}>
+                                        ROLE NAME
+                                    </th>
+                                    {permissionModules.map((mod,idx)=>(
+                                        <th key={mod.label} colSpan={mod.actions.length} style={{padding:'8px 6px',textAlign:'center',fontWeight:'800',fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.5px',color:'#ffd700',background:idx%2===0?'#000':'#0d0d0d',borderLeft:idx>0?'2px solid #ffd700':'none',whiteSpace:'nowrap'}}>
+                                            {mod.label}
+                                        </th>
+                                    ))}
+                                </tr>
+                                {/* Row 2: action subheaders */}
+                                <tr>
+                                    {permissionModules.map((mod,mIdx)=>
+                                        mod.actions.map((action,aIdx)=>(
+                                            <th key={mod.label+action} style={{padding:'6px 8px',textAlign:'center',fontWeight:'600',fontSize:'0.68rem',color:'#aaa',background:mIdx%2===0?'#111':'#0a0a0a',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',borderTop:'1px solid #333',whiteSpace:'nowrap',minWidth:'70px'}}>
+                                                {getActionLabel(mod.originalModule,mod.section,action)}
+                                            </th>
+                                        ))
+                                    )}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {compareSelected.map((id,rIdx)=>{
+                                    const role=roles.find(x=>(x._id||x.id)===id);
+                                    if(!role) return null;
+                                    return(
+                                        <tr key={id} style={{background:rIdx%2===0?'#000':'#060606',borderBottom:'1px solid #1a1a1a'}}>
+                                            {/* Sticky role name cell */}
+                                            <td style={{padding:'12px 20px',background:rIdx%2===0?'#000':'#060606',borderRight:'3px solid #ffd700',position:'sticky',left:0,zIndex:2,whiteSpace:'nowrap'}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                                                    <div style={{width:'8px',height:'8px',borderRadius:'50%',background:'#ffd700',flexShrink:0}}></div>
+                                                    <span style={{color:'#fff',fontWeight:'700',fontSize:'0.875rem'}}>{role.name}</span>
+                                                </div>
+                                                {role.department_id && <div style={{color:'#555',fontSize:'0.7rem',marginTop:'3px',paddingLeft:'16px'}}>{getDepartmentName(role.department_id)}</div>}
+                                            </td>
+                                            {/* Permission cells */}
+                                            {permissionModules.map((mod,mIdx)=>
+                                                mod.actions.map((action,aIdx)=>{
+                                                    const en=checkRolePerm(role,mod,action);
+                                                    return(
+                                                        <td key={mod.label+action} style={{padding:'10px 8px',textAlign:'center',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #1a1a1a',background:en?'rgba(0,200,81,0.1)':'transparent',minWidth:'70px'}}>
+                                                            <span style={{fontSize:'20px',fontWeight:'900',color:en?'#00c851':'#252525'}}>{en?'✓':'—'}</span>
+                                                        </td>
+                                                    );
+                                                })
+                                            )}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+
+            {/* Edit Role Full Page */}
+            {isModalVisible && editingRole && (
+                <div className="fixed inset-0 z-50 bg-white overflow-hidden flex flex-col">
+                        {/* Black gradient header */}
+                        <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-5 flex-shrink-0" style={{background: 'linear-gradient(135deg, #000 0%, #333 100%)'}}>
+                            <div>
+                                <h2 className="text-2xl font-bold text-white">✏️ Edit Role</h2>
+                                <p className="text-sm mt-0.5" style={{color: '#aaa'}}>{editingRole.name} &nbsp;•&nbsp; {editingRole.department || 'No Department'}</p>
+                            </div>
+                            <button type="button" onClick={closeModal} style={{color:'#ccc',background:'transparent',border:'none',cursor:'pointer',padding:'8px',borderRadius:'8px'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="flex flex-1 overflow-hidden">
+                            {/* Left Pane: Form Fields */}
+                            <div style={{width:'380px',flexShrink:0,overflowY:'auto',borderRight:'2px solid #e5e7eb',display:'flex',flexDirection:'column'}}>
+                            <div className="m-4 bg-gray-800 rounded-xl border border-gray-700 p-5">
+                            <div className="grid grid-cols-1 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Role Name</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                        placeholder="Enter role name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Department</label>
+                                    <div className="relative department-dropdown-container">
+                                        {/* Department Dropdown Button */}
+                                        <button
+                                            type="button"
+                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex justify-between items-center"
+                                            onClick={() => setShowDepartmentDropdown(!showDepartmentDropdown)}
+                                        >
+                                            <span className="text-left">
+                                                {(() => {
+                                                    if (formData.department_id === null) {
+                                                        return "No Department";
+                                                    }
+                                                    const selectedDept = departments.find(dept => 
+                                                        dept._id === formData.department_id || 
+                                                        dept.id === formData.department_id
+                                                    );
+                                                    return selectedDept ? selectedDept.name : "Select Department";
+                                                })()}
+                                            </span>
+                                            <svg
+                                                className={`w-5 h-5 transition-transform ${showDepartmentDropdown ? 'rotate-180' : ''}`}
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+
+                                        {/* Department Dropdown Menu */}
+                                        {showDepartmentDropdown && (
+                                            <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-xl mt-1 max-h-80 overflow-hidden flex flex-col">
+                                                {/* Header with Search */}
+                                                <div className="p-3 border-b border-gray-200 bg-white sticky top-0">
+                                                    <div className="relative">
+                                                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                            </svg>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:border-blue-400"
+                                                            placeholder="Search departments..."
+                                                            value={departmentSearch}
+                                                            onChange={(e) => setDepartmentSearch(e.target.value)}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Options List */}
+                                                <div className="overflow-y-auto max-h-60">
+                                                    {/* No Department Option */}
+                                                    <div
+                                                        className={`px-4 py-3 cursor-pointer border-b border-gray-100 transition-colors ${
+                                                            formData.department_id === null 
+                                                                ? 'bg-yellow-200 text-black font-medium' 
+                                                                : 'text-gray-800 hover:bg-blue-50'
+                                                        }`}
+                                                        onClick={() => {
+                                                            setFormData({...formData, department_id: null});
+                                                            setShowDepartmentDropdown(false);
+                                                            setDepartmentSearch('');
+                                                            setExpandedDepartments(new Set());
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center">
+                                                            <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                                            </svg>
+                                                            No Department
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 mt-1">No department assignment</div>
+                                                    </div>
+
+                                                    {/* Department Tree */}
+                                                    {buildDepartmentTree().map(dept => renderDepartmentTreeItem(dept))}
+
+                                                    {/* No Results Message */}
+                                                    {buildDepartmentTree().length === 0 && (
+                                                        <div className="px-4 py-6 text-center text-gray-500">
+                                                            <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                                            </svg>
+                                                            <div className="font-medium text-gray-600">
+                                                                {departments.length === 0 
+                                                                    ? 'No departments created yet' 
+                                                                    : departmentSearch 
+                                                                        ? `No departments found matching "${departmentSearch}"` 
+                                                                        : 'No departments available'
+                                                                }
+                                                            </div>
+                                                            {departments.length === 0 ? (
+                                                                <div className="text-xs mt-2 text-gray-400">
+                                                                    Create your first department to organize roles
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-xs mt-2 text-gray-400">
+                                                                    Total departments: {departments.length} | Available: {buildDepartmentTree().length}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )}
-                                                    <p className={`text-sm mt-1 transition-colors ${
-                                                        formData.permissions.SuperAdmin ? 'text-yellow-300' : 'text-gray-400'
-                                                    }`}>
-                                                        Complete system access with all permissions (page: *, actions: *)
-                                                    </p>
                                                 </div>
                                             </div>
-                                        </label>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Multiple Reporting Roles Selection */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-400 mb-2">Reporting Roles</label>
+                                <div className="space-y-2">
+                                    {/* Display selected reporting roles */}
+                                    {(formData.reporting_ids || []).map((reportingId, index) => {
+                                        const selectedRole = roles.find(r => (r._id || r.id) === reportingId);
+                                        return (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <div className="flex-1 relative reporting-role-dropdown">
+                                                    {/* Custom Searchable Dropdown */}
+                                                    <div className="relative">
+                                                        {/* Dropdown Button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (openDropdownIndex === index) {
+                                                                    setOpenDropdownIndex(null);
+                                                                    setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                } else {
+                                                                    setOpenDropdownIndex(index);
+                                                                    setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                }
+                                                            }}
+                                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                                                        >
+                                                            <span>{selectedRole?.name || 'Select Reporting Role'}</span>
+                                                            <ChevronDown className={`h-4 w-4 transition-transform ${openDropdownIndex === index ? 'rotate-180' : ''}`} />
+                                                        </button>
+
+                                                        {/* Dropdown Menu */}
+                                                        {openDropdownIndex === index && (
+                                                            <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-80 overflow-hidden">
+                                                                {/* Search Input */}
+                                                                <div className="p-2 border-b border-gray-600 sticky top-0 bg-gray-800">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="🔍 Search roles..."
+                                                                        value={dropdownSearchTerms[index] || ''}
+                                                                        onChange={(e) => {
+                                                                            setDropdownSearchTerms({...dropdownSearchTerms, [index]: e.target.value});
+                                                                        }}
+                                                                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        autoFocus
+                                                                    />
+                                                                </div>
+
+                                                                {/* Options List */}
+                                                                <div className="overflow-y-auto max-h-64">
+                                                                    {(() => {
+                                                                        // Filter roles
+                                                                        const filteredRoles = roles.filter(r => {
+                                                                            const roleId = r._id || r.id;
+                                                                            const editingId = editingRole?._id || editingRole?.id;
+                                                                            // Don't show current role being edited or already selected roles
+                                                                            return roleId !== editingId && 
+                                                                                   (!(formData.reporting_ids || []).includes(roleId) || roleId === reportingId);
+                                                                        });
+
+                                                                        // Separate Super Admin from other roles
+                                                                        const superAdminRole = filteredRoles.find(r => 
+                                                                            r.name.toLowerCase().includes('super admin') || 
+                                                                            r.name.toLowerCase() === 'super admin'
+                                                                        );
+                                                                        
+                                                                        const otherRoles = filteredRoles.filter(r => 
+                                                                            !(r.name.toLowerCase().includes('super admin') || 
+                                                                              r.name.toLowerCase() === 'super admin')
+                                                                        );
+
+                                                                        // Sort other roles alphabetically
+                                                                        otherRoles.sort((a, b) => a.name.localeCompare(b.name));
+
+                                                                        // Combine: Super Admin first, then sorted others
+                                                                        const sortedRoles = superAdminRole 
+                                                                            ? [superAdminRole, ...otherRoles] 
+                                                                            : otherRoles;
+
+                                                                        // Apply search filter
+                                                                        const searchTerm = dropdownSearchTerms[index] || '';
+                                                                        const finalRoles = searchTerm
+                                                                            ? sortedRoles.filter(r => 
+                                                                                r.name.toLowerCase().includes(searchTerm.toLowerCase())
+                                                                              )
+                                                                            : sortedRoles;
+
+                                                                        if (finalRoles.length === 0) {
+                                                                            return (
+                                                                                <div className="px-4 py-3 text-gray-400 text-sm text-center">
+                                                                                    No roles found
+                                                                                </div>
+                                                                            );
+                                                                        }
+
+                                                                        return finalRoles.map((role) => {
+                                                                            const roleId = role._id || role.id;
+                                                                            const isSuperAdmin = role.name.toLowerCase().includes('super admin') || 
+                                                                                               role.name.toLowerCase() === 'super admin';
+                                                                            const isSelected = roleId === reportingId;
+                                                                            
+                                                                            return (
+                                                                                <button
+                                                                                    key={roleId}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        const newReportingIds = [...(formData.reporting_ids || [])];
+                                                                                        newReportingIds[index] = roleId;
+                                                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                                                        setOpenDropdownIndex(null);
+                                                                                        setDropdownSearchTerms({...dropdownSearchTerms, [index]: ''});
+                                                                                    }}
+                                                                                    className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition-colors flex items-center ${
+                                                                                        isSelected ? 'bg-blue-600 text-white' : 'text-gray-200'
+                                                                                    } ${isSuperAdmin ? 'font-semibold' : ''}`}
+                                                                                >
+                                                                                    {isSuperAdmin && <span className="mr-2">⭐</span>}
+                                                                                    {role.name}
+                                                                                    {isSelected && <span className="ml-auto">✓</span>}
+                                                                                </button>
+                                                                            );
+                                                                        });
+                                                                    })()}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newReportingIds = (formData.reporting_ids || []).filter((_, i) => i !== index);
+                                                        setFormData({ ...formData, reporting_ids: newReportingIds });
+                                                    }}
+                                                    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                                    title="Remove this reporting role"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                    
+                                    {/* Add new reporting role button */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newReportingIds = [...(formData.reporting_ids || []), ''];
+                                            setFormData({ ...formData, reporting_ids: newReportingIds });
+                                        }}
+                                        className="w-full border-2 border-dashed border-gray-600 rounded-lg px-3 py-3 text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <span className="text-xl">+</span>
+                                        <span>Add Reporting Role</span>
+                                    </button>
+                                    
+                                    {/* Show message if no reporting roles */}
+                                    {(!formData.reporting_ids || formData.reporting_ids.length === 0) && (
+                                        <div className="text-xs text-gray-500 text-center py-2">
+                                            This role doesn't report to anyone
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            </div>
+                            {/* Left pane footer */}
+                            <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 flex gap-3 p-4 shrink-0">
+                                <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 rounded-lg font-semibold text-sm" style={{border:'1px solid #4b5563',color:'#9ca3af',background:'transparent'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Cancel</button>
+                                <button type="submit" className="flex-1 px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{background:'linear-gradient(135deg,#000 0%,#333 100%)'}} onMouseEnter={e=>e.currentTarget.style.opacity='0.85'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>💾 Save</button>
+                            </div>
+                            </div>{/* /left-pane */}
+                            {/* Right Pane: Permissions - same dark style as main list */}
+                            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#000'}}>
+
+                                {/* Header bar */}
+                                <div style={{flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 20px',background:'#000',borderBottom:'3px solid #fff'}}>
+                                    <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                        <span style={{color:'#fff',fontWeight:'700',fontSize:'0.85rem',textTransform:'uppercase',letterSpacing:'1.5px'}}>PERMISSIONS</span>
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'center',gap:'16px'}}>
+                                        {/* Super Admin toggle */}
+                                        <div onClick={()=>handlePermissionChange('SuperAdmin','*',!formData.permissions.SuperAdmin)}
+                                            style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',userSelect:'none',padding:'6px 12px',borderRadius:'8px',border:formData.permissions.SuperAdmin?'1px solid #f59e0b':'1px solid #444',background:formData.permissions.SuperAdmin?'rgba(245,158,11,0.15)':'rgba(255,255,255,0.05)',transition:'all 0.2s'}}
+                                        >
+                                            <div style={{width:'36px',height:'20px',borderRadius:'10px',background:formData.permissions.SuperAdmin?'#f59e0b':'#444',position:'relative',transition:'background 0.2s',flexShrink:0}}>
+                                                <div style={{position:'absolute',top:'2px',left:formData.permissions.SuperAdmin?'18px':'2px',width:'16px',height:'16px',borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}></div>
+                                            </div>
+                                            <span style={{color:formData.permissions.SuperAdmin?'#ffd700':'#888',fontSize:'0.75rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap'}}>Super Admin</span>
+                                        </div>
+                                        <span style={{background:'#fff',color:'#000',fontWeight:'800',fontSize:'0.75rem',padding:'4px 12px',borderRadius:'20px',whiteSpace:'nowrap'}}>
+                                            {Object.entries(formData.permissions).filter(([k,v])=>k!=='employees.role_field_roles'&&(Array.isArray(v)?v.length>0:v===true)).reduce((s,[k,v])=>s+(Array.isArray(v)?v.length:1),0)} active
+                                        </span>
                                     </div>
                                 </div>
 
-                                {/* Regular Permissions - Hidden when SuperAdmin is selected */}
-                                {!formData.permissions.SuperAdmin && (
-                                <div className="space-y-4">{/* Add transition class */}
-                                    <div className="flex items-center text-lg font-semibold text-white mb-4">
-                                       
+                                {/* SuperAdmin active banner */}
+                                {formData.permissions.SuperAdmin && (
+                                    <div style={{flexShrink:0,padding:'16px 20px',background:'rgba(245,158,11,0.1)',borderBottom:'1px solid rgba(245,158,11,0.3)',display:'flex',alignItems:'center',gap:'12px'}}>
+                                        <span style={{fontSize:'1.5rem'}}>⭐</span>
+                                        <div>
+                                            <p style={{color:'#ffd700',fontWeight:'700',margin:0,fontSize:'0.875rem'}}>Super Administrator Active</p>
+                                            <p style={{color:'#92400e',margin:0,fontSize:'0.75rem',marginTop:'2px'}}>All permissions granted automatically</p>
+                                        </div>
                                     </div>
-                                    
-                                    {Object.entries(allPermissions).filter(([module]) => module !== 'SuperAdmin').map(([module, actions]) => {
-                                        // Check if this is a nested module (Leads CRM)
-                                        const isNestedModule = typeof actions === 'object' && !Array.isArray(actions);
-                                        
-                                        if (isNestedModule) {
-                                            // Handle nested permissions (Leads CRM)
-                                            const sections = Object.entries(actions);
-                                            const totalPermissions = sections.reduce((sum, [_, sectionActions]) => sum + sectionActions.length, 0);
-                                            const selectedPermissions = sections.reduce((sum, [section, _]) => {
-                                                const sectionPerms = formData.permissions[`${module}.${section}`] || [];
-                                                return sum + sectionPerms.length;
-                                            }, 0);
-                                            
-                                            return (
-                                                <div key={module} className="border-2 border-indigo-600 rounded-lg overflow-hidden hover:border-indigo-400 transition-colors">
-                                                    <div 
-                                                        className="bg-gradient-to-r from-indigo-700 to-indigo-600 p-3 cursor-pointer flex justify-between items-center hover:from-indigo-600 hover:to-indigo-500 transition-colors"
-                                                        onClick={() => togglePermissionCollapse(module)}
-                                                    >
-                                                        <label className="font-bold flex items-center cursor-pointer text-lg">
-                                                            <span className="text-white">🎯 {module}</span>
-                                                            {selectedPermissions > 0 && (
-                                                                <span className="ml-2 bg-yellow-400 text-indigo-900 text-xs font-bold px-2 py-1 rounded-full">
-                                                                    {selectedPermissions}/{totalPermissions}
-                                                                </span>
-                                                            )}
-                                                        </label>
-                                                        <ChevronDown 
-                                                            className={`h-5 w-5 transition-transform text-white ${
-                                                                collapsedPermissions.has(module) ? 'rotate-180' : ''
-                                                            }`} 
-                                                        />
-                                                    </div>
-                                                    <div 
-                                                        className={`transition-all duration-300 overflow-hidden ${
-                                                            collapsedPermissions.has(module) ? 'max-h-0' : 'max-h-[800px]'
-                                                        }`}
-                                                    >
-                                                        <div className="p-4 bg-gray-800/50 space-y-3">
-                                                            {sections.map(([section, sectionActions]) => {
-                                                                const sectionKey = `${module}.${section}`;
-                                                                const sectionPermissions = formData.permissions[sectionKey] || [];
-                                                                const allSectionSelected = sectionActions.length > 0 && 
-                                                                                          sectionActions.length === sectionPermissions.length && 
-                                                                                          sectionActions.every(action => sectionPermissions.includes(action));
-                                                                const someSectionSelected = sectionPermissions.length > 0 && !allSectionSelected;
-                                                                
-                                                                return (
-                                                                    <div key={section} className="border border-gray-600 rounded-lg overflow-hidden bg-gray-900/30">
-                                                                        <div className="bg-gray-700/70 p-2.5 flex items-center justify-between">
-                                                                            <label className="font-semibold flex items-center cursor-pointer text-sm">
-                                                                                <input 
-                                                                                    type="checkbox" 
-                                                                                    className="h-4 w-4 rounded mr-2 accent-green-500"
-                                                                                    checked={allSectionSelected}
-                                                                                    ref={input => {
-                                                                                        if (input) input.indeterminate = someSectionSelected;
-                                                                                    }}
-                                                                                    onChange={(e) => handleModuleToggle(sectionKey, e.target.checked)}
-                                                                                    onClick={(e) => e.stopPropagation()}
-                                                                                />
-                                                                                <span className="text-gray-200">📌 {section}</span>
-                                                                                {sectionPermissions.length > 0 && (
-                                                                                    <span className="ml-2 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                                                                                        {sectionPermissions.length}
-                                                                                    </span>
-                                                                                )}
-                                                                            </label>
-                                                                        </div>
-                                                                        <div className="p-3 grid grid-cols-2 md:grid-cols-3 gap-2">
-                                                                            {sectionActions.map(action => (
-                                                                                <label key={action} className="flex items-center text-xs hover:bg-gray-700/50 p-2 rounded transition-colors">
-                                                                                    <input 
-                                                                                        type="checkbox" 
-                                                                                        className="h-3.5 w-3.5 rounded mr-2 accent-green-500"
-                                                                                        checked={sectionPermissions.includes(action)}
-                                                                                        onChange={(e) => handlePermissionChange(sectionKey, action, e.target.checked)}
-                                                                                    />
-                                                                                    <span className="text-gray-300" title={permissionDescriptions[action] || action}>
-                                                                                        {action === 'show' ? '👁️ Show' : 
-                                                                                         action === 'own' ? '👤 Own' : 
-                                                                                         action === 'junior' ? '🔸 Junior' : 
-                                                                                         action === 'all' ? '🔑 All' : 
-                                                                                         action === 'add' ? '➕ Add' :
-                                                                                         action === 'edit' ? '✏️ Edit' :
-                                                                                         action === 'assign' ? '👥 Assign' :
-                                                                                         action === 'download_obligation' ? '📥 Download' :
-                                                                                         action === 'status_update' ? '🔄 Status' :
-                                                                                         action === 'settings' ? '⚙️ Settings' :
-                                                                                         action === 'delete' ? '🗑️ Delete' :
-                                                                                         action === 'reassignment_popup' ? '🔄 Reassignment' : action}
-                                                                                    </span>
-                                                                                </label>
-                                                                            ))}
-                                                                        </div>
+                                )}
+
+                                {/* Permission table - horizontal scroll, dark themed */}
+                                {!formData.permissions.SuperAdmin && (
+                                <div style={{flex:1,overflowX:'auto',overflowY:'auto',borderBottom:'3px solid #fff'}}>
+                                    <table style={{borderCollapse:'collapse',tableLayout:'auto',minWidth:'max-content',fontSize:'0.875rem'}}>
+                                        <thead style={{position:'sticky',top:0,zIndex:5}}>
+                                            {/* Row 1: module group headers */}
+                                            <tr>
+                                                <th style={{padding:'10px 16px',background:'#000',color:'#fff',fontWeight:'700',fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'1px',borderRight:'3px solid #ffd700',whiteSpace:'nowrap',minWidth:'200px',textAlign:'left',position:'sticky',left:0,zIndex:6}}>
+                                                    MODULE
+                                                </th>
+                                                {permissionModules.map((mod,idx)=>{
+                                                    const allSel = (()=>{
+                                                        let key;
+                                                        if(mod.isNested){const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');key=dm+'.'+ds;}
+                                                        else key=mod.originalModule;
+                                                        const p=formData.permissions[key]||[];
+                                                        return p.length===mod.actions.length&&mod.actions.length>0;
+                                                    })();
+                                                    return(
+                                                        <th key={mod.label} colSpan={mod.actions.length}
+                                                            onClick={()=>{
+                                                                let key;
+                                                                if(mod.isNested){const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');key=dm+'.'+ds;}
+                                                                else key=mod.originalModule;
+                                                                handleModuleToggle(key,!allSel);
+                                                            }}
+                                                            style={{padding:'8px 6px',textAlign:'center',fontWeight:'800',fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.5px',color:'#ffd700',background:idx%2===0?'#000':'#0d0d0d',borderLeft:idx>0?'2px solid #ffd700':'none',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}
+                                                            title="Click to toggle all"
+                                                        >
+                                                            {mod.label}
+                                                        </th>
+                                                    );
+                                                })}
+                                            </tr>
+                                            {/* Row 2: action names */}
+                                            <tr>
+                                                <th style={{padding:'6px 16px',background:'#111',borderRight:'3px solid #ffd700',color:'#888',fontSize:'0.65rem',textTransform:'uppercase',position:'sticky',left:0,zIndex:6}}></th>
+                                                {permissionModules.map((mod,mIdx)=>
+                                                    mod.actions.map((action,aIdx)=>{
+                                                        return(
+                                                        <th key={mod.label+action} style={{padding:'5px 8px',textAlign:'center',fontWeight:'600',fontSize:'0.68rem',color:'#aaa',background:mIdx%2===0?'#111':'#0a0a0a',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',borderTop:'1px solid #333',whiteSpace:'nowrap',minWidth:'80px'}}>
+                                                            {getActionLabel(mod.originalModule,mod.section,action)}
+                                                        </th>
+                                                        );
+                                                    })
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{padding:'10px 16px',background:'#000',borderRight:'3px solid #ffd700',position:'sticky',left:0,zIndex:2,whiteSpace:'nowrap',verticalAlign:'middle'}}>
+                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'0.85rem',textTransform:'uppercase',letterSpacing:'1px',lineHeight:1}}>{formData.name||'—'}</div>
+                                                    <div style={{color:'#555',fontSize:'0.65rem',marginTop:'4px',fontStyle:'italic'}}>Click ✓/— to toggle</div>
+                                                </td>
+                                                {permissionModules.map((mod,mIdx)=>
+                                                    mod.actions.map((action,aIdx)=>{
+                                                        let enabled=false, key=mod.originalModule;
+                                                        if(mod.isNested){
+                                                            const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();
+                                                            const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');
+                                                            key=dm+'.'+ds;
+                                                            enabled=(formData.permissions[key]||[]).includes(action);
+                                                        } else if(mod.originalModule==='employees'&&action==='role'){
+                                                            const isChecked=(formData.permissions['employees']||[]).includes('role');
+                                                            const selRoleIds=formData.permissions['employees.role_field_roles']||[];
+                                                            return(
+                                                                <td key={mod.label+action} style={{padding:'8px',textAlign:'center',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',background:isChecked?'rgba(0,200,81,0.12)':'#000',minWidth:'60px',verticalAlign:'middle'}}>
+                                                                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px'}}>
+                                                                        <span onClick={()=>handlePermissionChange('employees','role',!isChecked)} style={{fontSize:'22px',fontWeight:'900',cursor:'pointer',color:isChecked?'#00c851':'#333',lineHeight:1}}>{isChecked?'✓':'—'}</span>
+                                                                        {isChecked&&<button type="button" onClick={()=>setRoleFieldModal(true)} style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:selRoleIds.length>0?'#92400e':'#333',color:selRoleIds.length>0?'#fbbf24':'#aaa',border:`1px solid ${selRoleIds.length>0?'#f59e0b':'#555'}`,cursor:'pointer',whiteSpace:'nowrap',fontWeight:700}}>🔒 {selRoleIds.length}</button>}
                                                                     </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        } else {
-                                            // Handle regular flat permissions
-                                            const modulePermissions = formData.permissions[module] || [];
-                                            const allModuleSelected = actions.length > 0 && actions.length === modulePermissions.length && 
-                                                                     actions.every(action => modulePermissions.includes(action));
-                                            const someModuleSelected = modulePermissions.length > 0 && !allModuleSelected;
-                                            
-                                            return (
-                                                <div key={module} className="border border-gray-600 rounded-lg overflow-hidden hover:border-indigo-500/50 transition-colors">
-                                                    <div 
-                                                        className="bg-gray-700 p-3 cursor-pointer flex justify-between items-center hover:bg-gray-600 transition-colors"
-                                                        onClick={() => togglePermissionCollapse(module)}
-                                                    >
-                                                        <label className="font-semibold flex items-center cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="h-5 w-5 rounded mr-3 accent-indigo-500"
-                                                                checked={allModuleSelected}
-                                                                ref={input => {
-                                                                    if (input) input.indeterminate = someModuleSelected;
-                                                                }}
-                                                                onChange={(e) => handleModuleToggle(module, e.target.checked)}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            />
-                                                            <span className="text-white">{module}</span>
-                                                            {modulePermissions.length > 0 && (
-                                                                <span className="ml-2 bg-indigo-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                                                                    {modulePermissions.length}
-                                                                </span>
-                                                            )}
-                                                        </label>
-                                                        <ChevronDown 
-                                                            className={`h-5 w-5 transition-transform text-gray-400 ${
-                                                                collapsedPermissions.has(module) ? 'rotate-180' : ''
-                                                            }`} 
-                                                        />
-                                                    </div>
-                                                    <div 
-                                                        className={`transition-all duration-300 overflow-hidden ${
-                                                            collapsedPermissions.has(module) ? 'max-h-0' : 'max-h-96'
-                                                        }`}
-                                                    >
-                                                        <div className="p-4 bg-gray-800/50 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                                            {actions.map(action => (
-                                                                <label key={action} className="flex items-center text-sm hover:bg-gray-700/50 p-2 rounded transition-colors">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        className="h-4 w-4 rounded mr-2 accent-indigo-500"
-                                                                        checked={modulePermissions.includes(action)}
-                                                                        onChange={(e) => handlePermissionChange(module, action, e.target.checked)}
-                                                                    />
-                                                                    <span className="text-gray-300" title={permissionDescriptions[action] || action}>
-                                                                        {action === 'show' ? '👁️ Show' : 
-                                                                         action === 'own' ? '👤 Own' : 
-                                                                         action === 'junior' ? '🔸 Junior' : 
-                                                                         action === 'all' ? '🔑 All' : 
-                                                                         action === 'settings' ? '⚙️ Settings' : 
-                                                                         action === 'delete' ? '🗑️ Delete' : 
-                                                                         action === 'add' ? '➕ Add' :
-                                                                         action === 'edit' ? '✏️ Edit' :
-                                                                         action === 'post' ? '📝 Post' :
-                                                                         action === 'channel' ? '📺 Channel' :
-                                                                         action === 'password' ? '🔑 Password' :
-                                                                         action === 'role' ? '👥 Role' :
-                                                                         action === 'manage' ? '⚙️ Manage' :
-                                                                         action === 'send' ? '📤 Send' : action}
-                                                                    </span>
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        }
-                                    })}
+                                                                </td>
+                                                            );
+                                                        } else {
+                                                            enabled=(formData.permissions[mod.originalModule]||[]).includes(action);
+                                                        }
+                                                        return(
+                                                            <td key={mod.label+action}
+                                                                onClick={()=>handlePermissionChange(key,action,!enabled)}
+                                                                style={{padding:'8px',textAlign:'center',cursor:'pointer',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',background:enabled?'rgba(0,200,81,0.12)':'#000',minWidth:'60px',transition:'background 0.1s'}}
+                                                                onMouseEnter={e=>{if(!enabled)e.currentTarget.style.background='rgba(255,255,255,0.06)';}}
+                                                                onMouseLeave={e=>{e.currentTarget.style.background=enabled?'rgba(0,200,81,0.12)':'#000';}}
+                                                            >
+                                                                <span style={{fontSize:'22px',fontWeight:'900',color:enabled?'#00c851':'#333',lineHeight:1}}>{enabled?'✓':'—'}</span>
+                                                            </td>
+                                                        );
+                                                    })
+                                                )}
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                                 )}
 
-                                {/* SuperAdmin Active Message */}
-                                {formData.permissions.SuperAdmin && (
-                                    <div className="mt-6 p-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded-lg">
-                                        <div className="flex items-center">
-                                            <Shield className="h-6 w-6 text-yellow-400 mr-3" />
-                                            <div>
-                                                <p className="text-yellow-400 font-semibold">Super Administrator Access Enabled</p>
-                                                <p className="text-yellow-300 text-sm mt-1">
-                                                    This role has complete system access (page: *, actions: *). Individual permissions are not needed.
-                                                </p>
+                                {roleFieldModal && (
+                                    <div style={{position:'fixed',inset:0,background:'#000c',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}
+                                        onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}}>
+                                        <div style={{background:'#111',border:'2px solid #f59e0b',borderRadius:'14px',width:'100%',maxWidth:'460px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 16px 64px #000e'}}
+                                            onClick={e=>e.stopPropagation()}>
+
+                                            {/* Header */}
+                                            <div style={{padding:'18px 22px 12px',borderBottom:'1px solid #222'}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
+                                                    <span style={{fontSize:'22px'}}>🔒</span>
+                                                    <div style={{flex:1}}>
+                                                        <h3 style={{color:'#f59e0b',margin:0,fontSize:'1rem',fontWeight:800}}>Lock Roles</h3>
+                                                        <p style={{color:'#666',margin:0,fontSize:'11px'}}>for <strong style={{color:'#ccc'}}>{formData.name}</strong></p>
+                                                    </div>
+                                                    <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'transparent',border:'none',color:'#555',fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+                                                </div>
+                                                <p style={{color:'#666',fontSize:'11px',margin:'4px 0 10px',lineHeight:'1.5'}}>Selected roles will be <strong style={{color:'#f59e0b'}}>hidden</strong> from the Role dropdown in Employee forms, and employees with those roles <strong style={{color:'#f59e0b'}}>won't be visible</strong> to users of this role.</p>
+                                                <input type="text" placeholder="Search roles to lock…" value={roleFieldSearch} onChange={e=>setRoleFieldSearch(e.target.value)} autoFocus
+                                                    style={{width:'100%',background:'#000',border:'1px solid #333',color:'#fff',padding:'6px 12px',borderRadius:'7px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
+                                            </div>
+
+                                            {/* Role list */}
+                                            <div style={{flex:1,overflowY:'auto',padding:'6px 0'}}>
+                                                {roles.filter(r=>r.name?.toLowerCase().includes(roleFieldSearch.toLowerCase())).map(r=>{
+                                                    const rid=r._id||r.id;
+                                                    const locked=(formData.permissions['employees.role_field_roles']||[]).includes(rid);
+                                                    return(
+                                                        <div key={rid} onClick={()=>handleRoleFieldRoleToggle(rid)}
+                                                            style={{display:'flex',alignItems:'center',gap:'12px',padding:'9px 20px',cursor:'pointer',background:locked?'#200d00':'transparent',borderLeft:locked?'3px solid #f59e0b':'3px solid transparent',transition:'background 0.15s'}}
+                                                            onMouseEnter={e=>{if(!locked)e.currentTarget.style.background='#1a1a1a';}}
+                                                            onMouseLeave={e=>{if(!locked)e.currentTarget.style.background='transparent';}}>
+                                                            <div style={{width:'17px',height:'17px',border:`2px solid ${locked?'#f59e0b':'#444'}`,borderRadius:'4px',background:locked?'#f59e0b':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                                                {locked&&<span style={{color:'#000',fontSize:'11px',fontWeight:900}}>✓</span>}
+                                                            </div>
+                                                            <span style={{color:locked?'#fff':'#bbb',fontSize:'13px',fontWeight:locked?700:400}}>{r.name}</span>
+                                                            {r.permissions?.some(p=>p.page==='*')&&<span style={{background:'#ffd700',color:'#000',fontSize:'8px',fontWeight:800,padding:'1px 5px',borderRadius:'3px'}}>SA</span>}
+                                                            {locked&&<span style={{marginLeft:'auto',fontSize:'13px'}}>🔒</span>}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Footer */}
+                                            <div style={{padding:'14px 22px',borderTop:'1px solid #222',display:'flex',alignItems:'center',gap:'10px'}}>
+                                                <span style={{color:'#666',fontSize:'12px',flex:1}}>
+                                                    {(formData.permissions['employees.role_field_roles']||[]).length>0
+                                                        ?<><strong style={{color:'#f59e0b'}}>{(formData.permissions['employees.role_field_roles']||[]).length}</strong> role(s) locked</>
+                                                        :'No roles locked'}
+                                                </span>
+                                                <button type="button" onClick={()=>setFormData({...formData,permissions:{...formData.permissions,'employees.role_field_roles':[]}})} style={{background:'transparent',border:'1px solid #4b1414',color:'#f87171',padding:'7px 14px',borderRadius:'7px',cursor:'pointer',fontSize:'12px',fontWeight:600}}>Clear All</button>
+                                                <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'#f59e0b',border:'2px solid #f59e0b',color:'#000',padding:'7px 20px',borderRadius:'7px',cursor:'pointer',fontWeight:800,fontSize:'12px'}}
+                                                    onMouseEnter={e=>{e.currentTarget.style.background='#d97706';e.currentTarget.style.borderColor='#d97706';}}
+                                                    onMouseLeave={e=>{e.currentTarget.style.background='#f59e0b';e.currentTarget.style.borderColor='#f59e0b';}}>🔒 Save</button>
                                             </div>
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                            <div className="flex justify-end space-x-4 mt-8">
-                                <button 
-                                    type="button" 
-                                    onClick={closeModal}
-                                    className="px-5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    type="submit" 
-                                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors"
-                                >
-                                    Save
-                                </button>
-                            </div>
+                            </div>{/* /right-pane */}
                         </form>
-                    </div>
                 </div>
             )}
 
@@ -4124,6 +4686,7 @@ const RoleSettings = () => {
                     </div>
                 </div>
             )}
+            </>)}{/* end Roles tab */}
         </div>
     );
 };

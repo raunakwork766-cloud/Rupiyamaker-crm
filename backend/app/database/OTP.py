@@ -2,6 +2,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import Config
 from bson import ObjectId
 from datetime import datetime, timedelta
+from app.utils.timezone import get_ist_now
 import random
 import string
 
@@ -40,7 +41,7 @@ class OTPDB:
             otp_code = self.generate_otp()
             
             # Calculate expiry time (30 minutes from now)
-            expiry_time = datetime.now() + timedelta(minutes=30)
+            expiry_time = get_ist_now() + timedelta(minutes=30)
             
             otp_record = {
                 "user_id": user_id,
@@ -48,7 +49,7 @@ class OTPDB:
                 "employee_last_name": user_data.get("last_name", ""),
                 "employee_id": user_data.get("employee_id", user_id),
                 "otp_code": otp_code,
-                "created_at": datetime.now(),
+                "created_at": get_ist_now(),
                 "expires_at": expiry_time,
                 "is_used": False,
                 "attempts": 0,
@@ -69,7 +70,7 @@ class OTPDB:
             otp_record = await self.collection.find_one({
                 "user_id": user_id,
                 "is_used": False,
-                "expires_at": {"$gt": datetime.now()}
+                "expires_at": {"$gt": get_ist_now()}
             })
             
             if not otp_record:
@@ -90,7 +91,7 @@ class OTPDB:
                 # Mark OTP as used
                 await self.collection.update_one(
                     {"_id": otp_record["_id"]},
-                    {"$set": {"is_used": True, "used_at": datetime.now()}}
+                    {"$set": {"is_used": True, "used_at": get_ist_now()}}
                 )
                 return True, "OTP verified successfully"
             else:
@@ -104,7 +105,7 @@ class OTPDB:
         """Remove expired OTP records"""
         try:
             result = await self.collection.delete_many({
-                "expires_at": {"$lt": datetime.now()}
+                "expires_at": {"$lt": get_ist_now()}
             })
             print(f"Cleaned up {result.deleted_count} expired OTP records")
         except Exception as e:
@@ -116,7 +117,7 @@ class OTPDB:
             return await self.collection.find_one({
                 "user_id": user_id,
                 "is_used": False,
-                "expires_at": {"$gt": datetime.now()}
+                "expires_at": {"$gt": get_ist_now()}
             })
         except Exception as e:
             print(f"Error getting OTP record: {e}")

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getISTTimestamp } from '../../utils/dateUtils';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
@@ -157,7 +158,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
             // Add transfer metadata for tracking
             _transferMetadata: {
               originalLeadId: lead._id,
-              transferDate: new Date().toISOString(),
+              transferDate: getISTTimestamp(),
               sourceSystem: 'LEAD_CRM',
               targetSystem: 'LOGIN_CRM',
               version: '2.0'
@@ -232,7 +233,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
           // Step 3: Create transfer backup
           const transferBackup = {
             leadId: lead._id,
-            timestamp: new Date().toISOString(),
+            timestamp: getISTTimestamp(),
             originalData: currentObligationData,
             enhancedData: enhancedObligationData,
             leadInfo: {
@@ -279,7 +280,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
               },
               body: JSON.stringify({
                 obligation_data: enhancedObligationData,
-                _lastObligationUpdate: new Date().toISOString(),
+                _lastObligationUpdate: getISTTimestamp(),
                 _loginTransferReady: true
               })
             }).then(response => ({ 
@@ -304,7 +305,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
               body: JSON.stringify({
                 ...enhancedObligationData,
                 _isBackup: true,
-                _backupTimestamp: new Date().toISOString()
+                _backupTimestamp: getISTTimestamp()
               })
             }).then(response => ({ 
               method: 'backup_endpoint', 
@@ -343,7 +344,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
           const minimalStructure = {
             _transferMetadata: {
               originalLeadId: lead._id,
-              transferDate: new Date().toISOString(),
+              transferDate: getISTTimestamp(),
               sourceSystem: 'LEAD_CRM',
               targetSystem: 'LOGIN_CRM',
               dataStatus: 'NO_DATA_FOUND'
@@ -376,7 +377,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
         try {
           const emergencyBackup = {
             leadId: lead._id,
-            timestamp: new Date().toISOString(),
+            timestamp: getISTTimestamp(),
             leadData: lead,
             errorInfo: error.message
           };
@@ -429,7 +430,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
           details: {
             form_type: 'login',
             login_status: 'sent',
-            timestamp: new Date().toISOString(),
+            timestamp: getISTTimestamp(),
             department_id: selectedDepartment,
             assigned_user_id: selectedUser || null
           }
@@ -491,7 +492,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
                   body: JSON.stringify({
                     ...parsedBackup.enhancedData,
                     _recoveredFromBackup: true,
-                    _recoveryTimestamp: new Date().toISOString()
+                    _recoveryTimestamp: getISTTimestamp()
                   })
                 });
                 
@@ -526,7 +527,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
         onUpdate({
           ...lead,
           file_sent_to_login: true,
-          login_department_sent_date: new Date().toISOString(),
+          login_department_sent_date: getISTTimestamp(),
           login_department_id: selectedDepartment,
           login_assigned_user_id: selectedUser || null
         });

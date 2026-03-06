@@ -8,7 +8,7 @@ import EmployeeAttachments from './sections/EmployeeAttachmentsNew';
 import EmployeeActivity from './employee-details/EmployeeActivity';
 import ProfileAvatar from './common/ProfileAvatar';
 import usePostalLookup from '../hooks/usePostalLookup';
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, getISTTimestamp } from '../utils/dateUtils';
 import { useCustomNotification } from './common/CustomNotification';
 import FieldUpdateIndicator from './common/FieldUpdateIndicator';
 import CustomSuccessPopup from './common/CustomSuccessPopup';
@@ -234,7 +234,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                 const activityData = {
                     action: 'profile_updated',
                     description: description,
-                    timestamp: new Date().toISOString(),
+                    timestamp: getISTTimestamp(),
                     details: {
                         field_changes: fieldChanges,
                         changes: changedFields,
@@ -271,18 +271,18 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                 
                 if (fetchResponse && fetchResponse.data) {
                     // Use fresh data from server
-                    freshEmployeeData = {...fetchResponse.data, _refreshKey: Date.now(), _lastUpdated: new Date().toISOString()};
+                    freshEmployeeData = {...fetchResponse.data, _refreshKey: Date.now(), _lastUpdated: getISTTimestamp()};
                     console.log('🔄 EmployeeDetails: Using fresh data from server:', freshEmployeeData);
                 } else {
                     // Fallback: merge updated data with existing employee data if server fetch fails
                     console.warn('⚠️ EmployeeDetails: Server refresh failed, merging updated data with existing data');
-                    freshEmployeeData = {...employeeData, ...updatedData, _refreshKey: Date.now(), _lastUpdated: new Date().toISOString()};
+                    freshEmployeeData = {...employeeData, ...updatedData, _refreshKey: Date.now(), _lastUpdated: getISTTimestamp()};
                     console.log('🔄 EmployeeDetails: Using merged data as fallback:', freshEmployeeData);
                 }
             } catch (fetchError) {
                 console.warn('⚠️ EmployeeDetails: Error fetching fresh data, using merged data as fallback:', fetchError);
                 // Fallback: merge updated data with existing employee data
-                freshEmployeeData = {...employeeData, ...updatedData, _refreshKey: Date.now(), _lastUpdated: new Date().toISOString()};
+                freshEmployeeData = {...employeeData, ...updatedData, _refreshKey: Date.now(), _lastUpdated: getISTTimestamp()};
                 console.log('🔄 EmployeeDetails: Using merged data as fallback:', freshEmployeeData);
             }
             

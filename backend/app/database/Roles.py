@@ -4,6 +4,7 @@ from app.utils.permission_helpers import is_super_admin_permission
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
+from app.utils.timezone import get_ist_now
 
 class RolesDB:
     def __init__(self, db=None):
@@ -41,7 +42,7 @@ class RolesDB:
     
     async def create_role(self, role: dict) -> str:
         """Create a new role with timestamps"""
-        role["created_at"] = datetime.now()
+        role["created_at"] = get_ist_now()
         role["updated_at"] = role["created_at"]
         
         # Handle both old reporting_id and new reporting_ids
@@ -76,7 +77,7 @@ class RolesDB:
         if not ObjectId.is_valid(role_id):
             return False
             
-        update_fields["updated_at"] = datetime.now()
+        update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
             {"_id": ObjectId(role_id)},
             {"$set": update_fields}
@@ -107,6 +108,7 @@ class RolesDB:
             {"page": "reports", "actions": ["own", "junior", "all"]},
             {"page": "hrms", "actions": ["own", "junior", "all"]},
             {"page": "tasks", "actions": ["own", "junior", "all"]},
+            {"page": "dialer_report", "actions": ["show"]},
             {"page": "calculators", "actions": ["show", "use"]},  # Special case - no hierarchy needed
             {"page": "dialer_report", "actions": ["show"]},
             {"page": "settings", "actions": ["show", "create", "edit", "delete"]},  # Admin-only
@@ -338,7 +340,7 @@ class RolesDB:
         
         update_fields = {
             "permissions": permissions,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         result = await self.collection.update_one(
@@ -380,8 +382,8 @@ class RolesDB:
                 ],
                 "reporting_ids": [],  # Top level role - no reporting
                 "is_super_admin": True,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
             }
             
             result = await self.collection.insert_one(super_admin_role)
@@ -406,7 +408,7 @@ class RolesDB:
         update_fields = {
             "permissions": super_admin_permissions,
             "is_super_admin": True,
-            "updated_at": datetime.now()
+            "updated_at": get_ist_now()
         }
         
         result = await self.collection.update_one(
@@ -475,7 +477,7 @@ class RolesDB:
                         {
                             "$set": {
                                 "reporting_ids": reporting_ids,
-                                "updated_at": datetime.now()
+                                "updated_at": get_ist_now()
                             },
                             "$unset": {"reporting_id": ""}  # Remove old field
                         }
