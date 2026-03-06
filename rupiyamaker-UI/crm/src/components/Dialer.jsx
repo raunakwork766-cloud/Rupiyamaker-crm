@@ -385,7 +385,7 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                                 {/* Header: single row — count + total + add button */}
                                                 <div className="flex items-center justify-between gap-1 mb-1.5">
                                                     <span className="text-[11px] font-black text-[#22c55e] whitespace-nowrap leading-none">
-                                                        {myRemarks.length} Justification{myRemarks.length !== 1 ? 's' : ''}&nbsp;·&nbsp;Total:&nbsp;{fmtMins(totalMins)}
+                                                        {myRemarks.length}&nbsp;·&nbsp;{fmtMins(totalMins)}
                                                     </span>
                                                     <button onClick={(e) => { e.stopPropagation(); setRemarkPopup({ ext: a.ext, name: a.name, date: a.date }); setRemarkType('Training'); setRemarkText(''); setRemarkMins(''); }}
                                                         className="w-5 h-5 rounded-full bg-[#22c55e]/20 border border-[#22c55e]/50 hover:bg-[#22c55e]/40 text-[#22c55e] flex items-center justify-center transition-all flex-shrink-0"
