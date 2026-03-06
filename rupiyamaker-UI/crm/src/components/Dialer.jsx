@@ -277,24 +277,13 @@ function WasteCell({ a }) {
 }
 
 // ── Agent Table ───────────────────────────────────────────────────────────────
-function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent, warnings, onWarn, warnToggle, warnToggleHistory, onToggle, agentSeqNum = {}, agentRemarks = {}, onAddRemark, onDeleteRemark, agentLogins = {}, onAddLogin, onDeleteLogin, agentLeads = {}, onAddLead, onDeleteLead, agentMappings = {} }) {
+function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent, warnings, onWarn, warnToggle, warnToggleHistory, onToggle, agentSeqNum = {}, agentRemarks = {}, onAddRemark, onDeleteRemark, agentMappings = {} }) {
     const [togglePopExt, setTogglePopExt] = useState(null); // ext whose history modal is open
     const [warnPopup, setWarnPopup] = useState(null); // { ext, name, date, isMultiDate, warnKey } — agent being warned
     const [warnRemarks, setWarnRemarks] = useState('');
     const [justifyPopup, setJustifyPopup] = useState(null); // { ext, name, date, isMultiDate, warnKey } — agent being justified
     const [justifyRemarks, setJustifyRemarks] = useState('');
-    // Login popup state
-    const [loginPopup, setLoginPopup] = useState(null); // { ext, name, date }
-    const [loginType, setLoginType] = useState('On Time');
-    const [loginText, setLoginText] = useState('');
-    const [loginDetailPopup, setLoginDetailPopup] = useState(null);
-    const loginTypes = ['On Time', 'Late Login', 'Early Logout', 'Absent', 'Half Day', 'Other'];
-    // Lead CRM popup state
-    const [leadPopup, setLeadPopup] = useState(null); // { ext, name, date }
-    const [leadType, setLeadType] = useState('New Lead');
-    const [leadText, setLeadText] = useState('');
-    const [leadDetailPopup, setLeadDetailPopup] = useState(null);
-    const leadTypes = ['New Lead', 'Follow Up', 'Callback', 'Converted', 'Rejected', 'Other'];    const [remarkPopup, setRemarkPopup] = useState(null); // { ext, name, date } — agent getting a remark
+    const [remarkPopup, setRemarkPopup] = useState(null); // { ext, name, date } — agent getting a remark
     const [remarkType, setRemarkType] = useState('Training');
     const [remarkText, setRemarkText] = useState('');
     const [remarkMins, setRemarkMins] = useState('');
@@ -321,8 +310,6 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                         <SortTh k="breakTime">Break</SortTh>
                         <SortTh k="wasteSec">Waste Time</SortTh>
                         <th className="px-3 py-2 bg-white border-b-2 border-[#22c55e] text-xs font-black uppercase tracking-widest text-[#22c55e] whitespace-nowrap">⏱ Justification</th>
-                        <th className="px-3 py-2 bg-white border-b-2 border-[#3b82f6] text-xs font-black uppercase tracking-widest text-[#3b82f6] whitespace-nowrap">🔑 Login</th>
-                        <th className="px-3 py-2 bg-white border-b-2 border-[#8b5cf6] text-xs font-black uppercase tracking-widest text-[#8b5cf6] whitespace-nowrap">📋 Lead CRM</th>
                         <th className="px-3 py-2 bg-white border-b-2 border-[#f59e0b] text-xs font-black uppercase tracking-widest text-[#f59e0b] whitespace-nowrap">⚡ Status</th>
                     </tr>
                 </thead>
@@ -342,7 +329,14 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                         const mp = agentMappings[a.ext];
                                         return <>
                                             <div className="font-black text-[12px] text-white leading-tight whitespace-nowrap" style={{ letterSpacing: '.2px' }}>{mp?.mapped_name || a.name}</div>
-                                            {!isSingleAgent && <div className="text-[10px] text-[#777] font-bold mt-0.5 whitespace-nowrap">Ext: {a.ext}{mp?.mapped_name && a.name !== mp.mapped_name ? ` · ${a.name}` : ''}</div>}
+                                            {!isSingleAgent && (
+                                                <>
+                                                    <div className="text-[10px] text-[#777] font-bold mt-0.5 whitespace-nowrap">Ext: {a.ext}</div>
+                                                    {mp?.mapped_name && a.name !== mp.mapped_name && (
+                                                        <div className="text-[10px] text-[#666] font-bold mt-0 whitespace-nowrap truncate" style={{ maxWidth: '130px' }}>{a.name}</div>
+                                                    )}
+                                                </>
+                                            )}
                                             {(mp?.designation || mp?.team) && (
                                                 <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                                                     {mp.designation && <span className="text-[9px] font-black bg-[#60a5fa]/15 text-[#60a5fa] border border-[#60a5fa]/30 px-1 py-0 rounded">{mp.designation}</span>}
@@ -408,88 +402,6 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                                     ))}
                                                     {myRemarks.length > 4 && (
                                                         <div className="text-[9px] text-[#22c55e]/60 font-bold text-left mt-0.5">+{myRemarks.length - 4} more — double-click to see all</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </td>
-                                {/* ── Login column ── */}
-                                <td className="px-2 py-1.5 border-r border-[#1a1a1a] align-middle">
-                                    {(() => {
-                                        const loginKey = `${a.ext}__${a.date}`;
-                                        const myLogins = (agentLogins && agentLogins[loginKey]) || [];
-                                        if (myLogins.length === 0) {
-                                            return (
-                                                <button onClick={() => { setLoginPopup({ ext: a.ext, name: a.name, date: a.date }); setLoginType('On Time'); setLoginText(''); }}
-                                                    className="w-7 h-7 rounded-lg bg-[#0a0e1a] border border-[#3b82f6]/30 hover:border-[#3b82f6] hover:bg-[#3b82f6]/15 text-[#3b82f6]/50 hover:text-[#3b82f6] transition-all flex items-center justify-center"
-                                                    title="Add login entry">
-                                                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" /></svg>
-                                                </button>
-                                            );
-                                        }
-                                        return (
-                                            <div className="rounded-md border-2 bg-[#050a1a] border-[#3b82f6] text-white font-['Arial_Black',Arial,sans-serif] cursor-pointer"
-                                                style={{ padding: '5px 8px' }}
-                                                onDoubleClick={() => setLoginDetailPopup({ ext: a.ext, name: a.name, date: a.date })}
-                                                title="Double-click to view details">
-                                                <div className="flex items-center justify-between gap-1 mb-1.5">
-                                                    <span className="text-[11px] font-black text-[#3b82f6] whitespace-nowrap leading-none">
-                                                        {myLogins.length} Entr{myLogins.length !== 1 ? 'ies' : 'y'}
-                                                    </span>
-                                                    <button onClick={(e) => { e.stopPropagation(); setLoginPopup({ ext: a.ext, name: a.name, date: a.date }); setLoginType('On Time'); setLoginText(''); }}
-                                                        className="w-5 h-5 rounded-full bg-[#3b82f6]/20 border border-[#3b82f6]/50 hover:bg-[#3b82f6]/40 text-[#3b82f6] flex items-center justify-center transition-all flex-shrink-0"
-                                                        title="Add login entry">
-                                                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" /></svg>
-                                                    </button>
-                                                </div>
-                                                <div className="flex flex-col gap-0.5">
-                                                    {myLogins.slice(0, 4).map((r, ri) => (
-                                                        <div key={ri} className="text-[10px] font-bold leading-none text-white truncate">• {r.entry_type}</div>
-                                                    ))}
-                                                    {myLogins.length > 4 && (
-                                                        <div className="text-[9px] text-[#3b82f6]/60 font-bold text-left mt-0.5">+{myLogins.length - 4} more</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </td>
-                                {/* ── Lead CRM column ── */}
-                                <td className="px-2 py-1.5 border-r border-[#1a1a1a] align-middle">
-                                    {(() => {
-                                        const leadKey = `${a.ext}__${a.date}`;
-                                        const myLeads = (agentLeads && agentLeads[leadKey]) || [];
-                                        if (myLeads.length === 0) {
-                                            return (
-                                                <button onClick={() => { setLeadPopup({ ext: a.ext, name: a.name, date: a.date }); setLeadType('New Lead'); setLeadText(''); }}
-                                                    className="w-7 h-7 rounded-lg bg-[#0e0a1a] border border-[#8b5cf6]/30 hover:border-[#8b5cf6] hover:bg-[#8b5cf6]/15 text-[#8b5cf6]/50 hover:text-[#8b5cf6] transition-all flex items-center justify-center"
-                                                    title="Add lead entry">
-                                                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" /></svg>
-                                                </button>
-                                            );
-                                        }
-                                        return (
-                                            <div className="rounded-md border-2 bg-[#0e051a] border-[#8b5cf6] text-white font-['Arial_Black',Arial,sans-serif] cursor-pointer"
-                                                style={{ padding: '5px 8px' }}
-                                                onDoubleClick={() => setLeadDetailPopup({ ext: a.ext, name: a.name, date: a.date })}
-                                                title="Double-click to view details">
-                                                <div className="flex items-center justify-between gap-1 mb-1.5">
-                                                    <span className="text-[11px] font-black text-[#8b5cf6] whitespace-nowrap leading-none">
-                                                        {myLeads.length} Lead{myLeads.length !== 1 ? 's' : ''}
-                                                    </span>
-                                                    <button onClick={(e) => { e.stopPropagation(); setLeadPopup({ ext: a.ext, name: a.name, date: a.date }); setLeadType('New Lead'); setLeadText(''); }}
-                                                        className="w-5 h-5 rounded-full bg-[#8b5cf6]/20 border border-[#8b5cf6]/50 hover:bg-[#8b5cf6]/40 text-[#8b5cf6] flex items-center justify-center transition-all flex-shrink-0"
-                                                        title="Add lead entry">
-                                                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" /></svg>
-                                                    </button>
-                                                </div>
-                                                <div className="flex flex-col gap-0.5">
-                                                    {myLeads.slice(0, 4).map((r, ri) => (
-                                                        <div key={ri} className="text-[10px] font-bold leading-none text-white truncate">• {r.lead_type}</div>
-                                                    ))}
-                                                    {myLeads.length > 4 && (
-                                                        <div className="text-[9px] text-[#8b5cf6]/60 font-bold text-left mt-0.5">+{myLeads.length - 4} more</div>
                                                     )}
                                                 </div>
                                             </div>
@@ -629,33 +541,50 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
             </table>
             {/* ── Warn Popup Modal — captures remarks before warning ── */}
             {warnPopup && (
-                <div className="fixed inset-0 z-[950] flex items-center justify-center" onClick={() => setWarnPopup(null)}>
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                    <div className="relative bg-[#0d0d0d] border-2 border-[#f59e0b] rounded-2xl shadow-[0_20px_60px_rgba(245,158,11,.2)] w-[380px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-3 bg-gradient-to-r from-[#1a0f00] to-[#0d0d0d] border-b border-[#2a1a00] flex items-center justify-between">
-                            <div>
-                                <div className="text-[12px] font-black text-[#f59e0b] uppercase tracking-wider">⚠ Warn Agent</div>
-                                <div className="text-[10px] text-[#888] font-bold mt-0.5">{warnPopup.name} · Ext: {warnPopup.ext} · {fmtDate(warnPopup.date)}</div>
+                <div className="fixed inset-0 z-[950] flex items-center justify-center p-4" onClick={() => setWarnPopup(null)}>
+                    <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
+                    <div className="relative bg-gradient-to-b from-[#1a0e00] to-[#0d0d0d] border border-[#f59e0b]/40 rounded-3xl shadow-[0_30px_80px_rgba(245,158,11,.25),0_0_0_1px_rgba(245,158,11,.15)] w-[480px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Glow strip */}
+                        <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#f59e0b] to-transparent" />
+                        {/* Header */}
+                        <div className="px-6 pt-5 pb-4 flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-[#f59e0b]/20 border border-[#f59e0b]/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(245,158,11,.2)]">
+                                <span className="text-[22px]">⚠️</span>
                             </div>
-                            <button onClick={() => setWarnPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#f59e0b] hover:text-white transition-all">✕</button>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[15px] font-black text-white leading-tight">Issue Warning</div>
+                                <div className="text-[11px] text-[#f59e0b]/80 font-bold mt-0.5">Documenting a performance concern for this agent</div>
+                            </div>
+                            <button onClick={() => setWarnPopup(null)} className="w-8 h-8 rounded-xl bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[12px] text-[#888] hover:border-[#f59e0b]/50 hover:text-white hover:bg-[#f59e0b]/10 transition-all flex-shrink-0">✕</button>
                         </div>
-                        <div className="px-5 py-4 space-y-3">
-                            <div className="text-[11px] font-black text-white">What action have you taken?</div>
-                            <textarea value={warnRemarks} onChange={e => { setWarnRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={2}
-                                placeholder="Enter the action / reason for warning..."
+                        {/* Agent info chip */}
+                        <div className="mx-6 mb-4 px-4 py-2.5 bg-[#f59e0b]/10 border border-[#f59e0b]/25 rounded-xl flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-[#f59e0b]/20 border border-[#f59e0b]/30 flex items-center justify-center text-[11px] font-black text-[#f59e0b] shrink-0">
+                                {(warnPopup.name || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-[12px] font-black text-white truncate">{warnPopup.name}</div>
+                                <div className="text-[10px] text-[#888] font-semibold">Ext: {warnPopup.ext} &nbsp;·&nbsp; {fmtDate(warnPopup.date)}</div>
+                            </div>
+                        </div>
+                        {/* Body */}
+                        <div className="px-6 pb-6 space-y-3">
+                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Action / Reason <span className="text-[#f59e0b]">*</span></div>
+                            <textarea value={warnRemarks} onChange={e => { setWarnRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={3}
+                                placeholder="Describe the performance issue and action taken..."
                                 autoFocus
-                                className="w-full bg-[#0a0a0a] border border-[#333] rounded-lg px-3 py-2 text-xs text-white font-bold resize-none focus:outline-none focus:border-[#f59e0b] placeholder:text-[#444]" style={{ minHeight: '52px', maxHeight: '200px', overflow: 'auto' }} />
-                            <div className="flex gap-2 justify-end">
+                                className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-4 py-3 text-[12px] text-white font-semibold resize-none focus:outline-none focus:border-[#f59e0b]/60 focus:shadow-[0_0_0_3px_rgba(245,158,11,.1)] placeholder:text-[#444] transition-all" style={{ minHeight: '80px', maxHeight: '200px', overflow: 'auto' }} />
+                            <div className="flex gap-2.5 justify-end pt-1">
                                 <button onClick={() => setWarnPopup(null)}
-                                    className="px-3 py-1.5 border border-[#333] text-[#aaa] text-[10px] font-bold rounded-md hover:border-[#555] transition-all">Cancel</button>
+                                    className="px-4 py-2 bg-[#111] border border-[#2a2a2a] text-[#888] text-[11px] font-bold rounded-xl hover:border-[#444] hover:text-white transition-all">Cancel</button>
                                 <button onClick={() => {
                                     if (!warnRemarks.trim()) return;
                                     onToggle(warnPopup.ext, warnPopup.name, warnPopup.date, warnPopup.isMultiDate, 'on', warnRemarks.trim());
                                     setWarnPopup(null);
                                     setWarnRemarks('');
                                 }} disabled={!warnRemarks.trim()}
-                                    className="px-4 py-1.5 bg-[#f59e0b] text-black text-[10px] font-black rounded-md hover:bg-[#fbbf24] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                                    ⚠ Submit Warning
+                                    className="px-5 py-2 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-black text-[11px] font-black rounded-xl hover:from-[#fbbf24] hover:to-[#f59e0b] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4px_16px_rgba(245,158,11,.35)] flex items-center gap-1.5">
+                                    <span className="text-[13px]">⚠</span> Submit Warning
                                 </button>
                             </div>
                         </div>
@@ -664,33 +593,50 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
             )}
             {/* ── Justify Popup Modal — captures remarks before justification ── */}
             {justifyPopup && (
-                <div className="fixed inset-0 z-[950] flex items-center justify-center" onClick={() => setJustifyPopup(null)}>
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                    <div className="relative bg-[#0d0d0d] border-2 border-[#22c55e] rounded-2xl shadow-[0_20px_60px_rgba(34,197,94,.2)] w-[380px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-3 bg-gradient-to-r from-[#001a0a] to-[#0d0d0d] border-b border-[#0a3a1a] flex items-center justify-between">
-                            <div>
-                                <div className="text-[12px] font-black text-[#22c55e] uppercase tracking-wider">✓ Justify Agent</div>
-                                <div className="text-[10px] text-[#888] font-bold mt-0.5">{justifyPopup.name} · Ext: {justifyPopup.ext} · {fmtDate(justifyPopup.date)}</div>
+                <div className="fixed inset-0 z-[950] flex items-center justify-center p-4" onClick={() => setJustifyPopup(null)}>
+                    <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
+                    <div className="relative bg-gradient-to-b from-[#001a0a] to-[#0d0d0d] border border-[#22c55e]/40 rounded-3xl shadow-[0_30px_80px_rgba(34,197,94,.2),0_0_0_1px_rgba(34,197,94,.12)] w-[480px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Glow strip */}
+                        <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#22c55e] to-transparent" />
+                        {/* Header */}
+                        <div className="px-6 pt-5 pb-4 flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-[#22c55e]/20 border border-[#22c55e]/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(34,197,94,.15)]">
+                                <span className="text-[22px]">✅</span>
                             </div>
-                            <button onClick={() => setJustifyPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#22c55e] hover:text-white transition-all">✕</button>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[15px] font-black text-white leading-tight">Justify Agent</div>
+                                <div className="text-[11px] text-[#22c55e]/80 font-bold mt-0.5">Provide a reason to clear this agent's status</div>
+                            </div>
+                            <button onClick={() => setJustifyPopup(null)} className="w-8 h-8 rounded-xl bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[12px] text-[#888] hover:border-[#22c55e]/50 hover:text-white hover:bg-[#22c55e]/10 transition-all flex-shrink-0">✕</button>
                         </div>
-                        <div className="px-5 py-4 space-y-3">
-                            <div className="text-[11px] font-black text-white">Why is this agent justified?</div>
-                            <textarea value={justifyRemarks} onChange={e => { setJustifyRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={2}
-                                placeholder="Enter the justification reason..."
+                        {/* Agent info chip */}
+                        <div className="mx-6 mb-4 px-4 py-2.5 bg-[#22c55e]/10 border border-[#22c55e]/25 rounded-xl flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-[#22c55e]/20 border border-[#22c55e]/30 flex items-center justify-center text-[11px] font-black text-[#22c55e] shrink-0">
+                                {(justifyPopup.name || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-[12px] font-black text-white truncate">{justifyPopup.name}</div>
+                                <div className="text-[10px] text-[#888] font-semibold">Ext: {justifyPopup.ext} &nbsp;·&nbsp; {fmtDate(justifyPopup.date)}</div>
+                            </div>
+                        </div>
+                        {/* Body */}
+                        <div className="px-6 pb-6 space-y-3">
+                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Justification Reason <span className="text-[#22c55e]">*</span></div>
+                            <textarea value={justifyRemarks} onChange={e => { setJustifyRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={3}
+                                placeholder="Explain why this agent's performance is justified..."
                                 autoFocus
-                                className="w-full bg-[#0a0a0a] border border-[#333] rounded-lg px-3 py-2 text-xs text-white font-bold resize-none focus:outline-none focus:border-[#22c55e] placeholder:text-[#444]" style={{ minHeight: '52px', maxHeight: '200px', overflow: 'auto' }} />
-                            <div className="flex gap-2 justify-end">
+                                className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-4 py-3 text-[12px] text-white font-semibold resize-none focus:outline-none focus:border-[#22c55e]/60 focus:shadow-[0_0_0_3px_rgba(34,197,94,.1)] placeholder:text-[#444] transition-all" style={{ minHeight: '80px', maxHeight: '200px', overflow: 'auto' }} />
+                            <div className="flex gap-2.5 justify-end pt-1">
                                 <button onClick={() => setJustifyPopup(null)}
-                                    className="px-3 py-1.5 border border-[#333] text-[#aaa] text-[10px] font-bold rounded-md hover:border-[#555] transition-all">Cancel</button>
+                                    className="px-4 py-2 bg-[#111] border border-[#2a2a2a] text-[#888] text-[11px] font-bold rounded-xl hover:border-[#444] hover:text-white transition-all">Cancel</button>
                                 <button onClick={() => {
                                     if (!justifyRemarks.trim()) return;
                                     onToggle(justifyPopup.ext, justifyPopup.name, justifyPopup.date, justifyPopup.isMultiDate, 'justified', justifyRemarks.trim());
                                     setJustifyPopup(null);
                                     setJustifyRemarks('');
                                 }} disabled={!justifyRemarks.trim()}
-                                    className="px-4 py-1.5 bg-[#22c55e] text-black text-[10px] font-black rounded-md hover:bg-[#16a34a] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                                    ✓ Submit Justified
+                                    className="px-5 py-2 bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-black text-[11px] font-black rounded-xl hover:from-[#4ade80] hover:to-[#22c55e] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4px_16px_rgba(34,197,94,.3)] flex items-center gap-1.5">
+                                    <span className="text-[13px]">✓</span> Submit Justified
                                 </button>
                             </div>
                         </div>
@@ -832,242 +778,6 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                     + Add New Justification
                                 </button>
                                 <button onClick={() => setJustDetailPopup(null)}
-                                    className="px-3 py-1.5 border border-[#333] text-[#aaa] text-[10px] font-bold rounded-lg hover:border-[#555] transition-all">
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
-            {/* ── Login Entry Popup Modal ── */}
-            {loginPopup && (
-                <div className="fixed inset-0 z-[950] flex items-center justify-center" onClick={() => setLoginPopup(null)}>
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                    <div className="relative bg-[#0d0d0d] border-2 border-[#3b82f6] rounded-2xl shadow-[0_20px_60px_rgba(59,130,246,.2)] w-[420px] max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-3 bg-gradient-to-r from-[#000d20] to-[#0d0d0d] border-b border-[#1a2a40] flex items-center justify-between flex-shrink-0">
-                            <div>
-                                <div className="text-[12px] font-black text-[#3b82f6] uppercase tracking-wider">🔑 Login Entry</div>
-                                <div className="text-[10px] text-[#888] font-bold mt-0.5">{loginPopup.name} · Ext: {loginPopup.ext} · {fmtDate(loginPopup.date)}</div>
-                            </div>
-                            <button onClick={() => setLoginPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#3b82f6] hover:text-white transition-all">✕</button>
-                        </div>
-                        <div className="px-5 py-4 space-y-3 overflow-y-auto">
-                            <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-3 space-y-2.5">
-                                <div className="text-[10px] font-black text-[#3b82f6] uppercase tracking-wider">+ Add Login Entry</div>
-                                <div className="flex gap-1.5 flex-wrap">
-                                    {loginTypes.map(t => (
-                                        <button key={t} onClick={() => setLoginType(t)}
-                                            className={`px-2 py-0.5 text-[9px] font-black rounded-full border transition-all ${loginType === t ? 'bg-[#3b82f6] text-black border-[#3b82f6]' : 'border-[#333] text-[#888] hover:border-[#3b82f6]/50'}`}>{t}</button>
-                                    ))}
-                                </div>
-                                <input type="text" value={loginText} onChange={e => setLoginText(e.target.value)}
-                                    placeholder="Enter login details..."
-                                    className="w-full bg-[#0a0a0a] border border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-white font-bold focus:outline-none focus:border-[#3b82f6] placeholder:text-[#444]" />
-                                <button onClick={() => {
-                                    if (!loginText.trim()) return;
-                                    onAddLogin && onAddLogin({
-                                        ext: loginPopup.ext, agent_name: loginPopup.name, date: loginPopup.date,
-                                        entry_type: loginType, entry_text: loginText.trim(),
-                                    });
-                                    setLoginText('');
-                                }} disabled={!loginText.trim()}
-                                    className="px-3 py-1.5 bg-[#3b82f6] text-black text-[10px] font-black rounded-md hover:bg-[#60a5fa] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                                    🔑 Add Entry
-                                </button>
-                            </div>
-                            {(() => {
-                                const loginKey = `${loginPopup.ext}__${loginPopup.date}`;
-                                const myLogins = (agentLogins && agentLogins[loginKey]) || [];
-                                return myLogins.length > 0 ? (
-                                    <div className="space-y-1.5">
-                                        <div className="text-[10px] font-black text-[#888] uppercase tracking-wider">{myLogins.length} Existing Entr{myLogins.length !== 1 ? 'ies' : 'y'}</div>
-                                        {myLogins.map((r, ri) => (
-                                            <div key={ri} className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-lg px-3 py-2 flex items-start gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#3b82f6]/20 text-[#3b82f6] border border-[#3b82f6]/30">{r.entry_type}</span>
-                                                    </div>
-                                                    <div className="text-[10px] text-[#ccc] font-bold mt-0.5">{r.entry_text}</div>
-                                                    <div className="text-[9px] text-[#555] font-bold mt-0.5">
-                                                        by {r.added_by_name || '—'}{r.added_by_employee_id ? ` (${r.added_by_employee_id})` : ''} · {fmtIST(r.created_at)}
-                                                    </div>
-                                                </div>
-                                                <button onClick={() => onDeleteLogin && onDeleteLogin(r._id, loginPopup.ext, loginPopup.date)}
-                                                    className="text-[#c0392b] text-[10px] hover:text-red-400 font-black flex-shrink-0 mt-0.5" title="Delete">🗑</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-4 text-[11px] text-[#444] font-bold">No login entries yet.</div>
-                                );
-                            })()}
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* ── Login Detail Modal (double-click) ── */}
-            {loginDetailPopup && (() => {
-                const loginKey = `${loginDetailPopup.ext}__${loginDetailPopup.date}`;
-                const myLogins = (agentLogins && agentLogins[loginKey]) || [];
-                return (
-                    <div className="fixed inset-0 z-[960] flex items-center justify-center" onClick={() => setLoginDetailPopup(null)}>
-                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                        <div className="relative bg-[#0d0d0d] border-2 border-[#3b82f6] rounded-2xl shadow-[0_20px_60px_rgba(59,130,246,.15)] w-[440px] max-h-[70vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                            <div className="px-5 py-3.5 bg-gradient-to-r from-[#000d20] to-[#0d0d0d] border-b border-[#1a2a40] flex items-center justify-between flex-shrink-0">
-                                <div>
-                                    <div className="text-[12px] font-black text-[#3b82f6] uppercase tracking-wider">🔑 Login Details</div>
-                                    <div className="text-[10px] text-[#888] font-bold mt-0.5">{loginDetailPopup.name} · Ext: {loginDetailPopup.ext} · {fmtDate(loginDetailPopup.date)}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black bg-[#3b82f6]/15 text-[#3b82f6] border border-[#3b82f6]/30 px-2 py-0.5 rounded-full">{myLogins.length} entr{myLogins.length !== 1 ? 'ies' : 'y'}</span>
-                                    <button onClick={() => setLoginDetailPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#3b82f6] hover:text-white transition-all">✕</button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
-                                {myLogins.length === 0 ? (
-                                    <div className="text-center py-8 text-[#444] text-[12px] font-bold">No login entries for this agent.</div>
-                                ) : myLogins.map((r, ri) => (
-                                    <div key={ri} className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3.5 hover:border-[#3b82f6]/30 transition-all">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <span className="text-[10px] font-black text-[#3b82f6] bg-[#3b82f6]/10 border border-[#3b82f6]/25 px-2 py-0.5 rounded-full">{r.entry_type}</span>
-                                        </div>
-                                        {r.entry_text && (
-                                            <div className="text-[11px] text-[#ddd] font-semibold leading-relaxed mt-1 bg-[#0a0a0a] rounded-lg px-3 py-2 border-l-2 border-[#3b82f6]/40" style={{ whiteSpace: 'pre-wrap' }}>
-                                                {r.entry_text}
-                                            </div>
-                                        )}
-                                        <div className="text-[9px] text-[#555] font-bold mt-1.5 flex items-center gap-2">
-                                            <span>Added by {r.added_by_name || '—'}{r.added_by_employee_id ? ` (${r.added_by_employee_id})` : ''}</span>
-                                            <span>· {fmtIST(r.created_at)}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="px-5 py-2.5 border-t border-[#1a1a1a] flex justify-between items-center flex-shrink-0">
-                                <button onClick={() => { setLoginDetailPopup(null); setLoginPopup({ ext: loginDetailPopup.ext, name: loginDetailPopup.name, date: loginDetailPopup.date }); setLoginType('On Time'); setLoginText(''); }}
-                                    className="px-3 py-1.5 bg-[#3b82f6]/15 border border-[#3b82f6]/40 text-[#3b82f6] text-[10px] font-black rounded-lg hover:bg-[#3b82f6]/25 transition-all">
-                                    + Add New Entry
-                                </button>
-                                <button onClick={() => setLoginDetailPopup(null)}
-                                    className="px-3 py-1.5 border border-[#333] text-[#aaa] text-[10px] font-bold rounded-lg hover:border-[#555] transition-all">
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
-            {/* ── Lead CRM Entry Popup Modal ── */}
-            {leadPopup && (
-                <div className="fixed inset-0 z-[950] flex items-center justify-center" onClick={() => setLeadPopup(null)}>
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                    <div className="relative bg-[#0d0d0d] border-2 border-[#8b5cf6] rounded-2xl shadow-[0_20px_60px_rgba(139,92,246,.2)] w-[420px] max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-3 bg-gradient-to-r from-[#0d0020] to-[#0d0d0d] border-b border-[#2a1a40] flex items-center justify-between flex-shrink-0">
-                            <div>
-                                <div className="text-[12px] font-black text-[#8b5cf6] uppercase tracking-wider">📋 Lead CRM Entry</div>
-                                <div className="text-[10px] text-[#888] font-bold mt-0.5">{leadPopup.name} · Ext: {leadPopup.ext} · {fmtDate(leadPopup.date)}</div>
-                            </div>
-                            <button onClick={() => setLeadPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#8b5cf6] hover:text-white transition-all">✕</button>
-                        </div>
-                        <div className="px-5 py-4 space-y-3 overflow-y-auto">
-                            <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-3 space-y-2.5">
-                                <div className="text-[10px] font-black text-[#8b5cf6] uppercase tracking-wider">+ Add Lead Entry</div>
-                                <div className="flex gap-1.5 flex-wrap">
-                                    {leadTypes.map(t => (
-                                        <button key={t} onClick={() => setLeadType(t)}
-                                            className={`px-2 py-0.5 text-[9px] font-black rounded-full border transition-all ${leadType === t ? 'bg-[#8b5cf6] text-black border-[#8b5cf6]' : 'border-[#333] text-[#888] hover:border-[#8b5cf6]/50'}`}>{t}</button>
-                                    ))}
-                                </div>
-                                <input type="text" value={leadText} onChange={e => setLeadText(e.target.value)}
-                                    placeholder="Enter lead details..."
-                                    className="w-full bg-[#0a0a0a] border border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-white font-bold focus:outline-none focus:border-[#8b5cf6] placeholder:text-[#444]" />
-                                <button onClick={() => {
-                                    if (!leadText.trim()) return;
-                                    onAddLead && onAddLead({
-                                        ext: leadPopup.ext, agent_name: leadPopup.name, date: leadPopup.date,
-                                        lead_type: leadType, lead_text: leadText.trim(),
-                                    });
-                                    setLeadText('');
-                                }} disabled={!leadText.trim()}
-                                    className="px-3 py-1.5 bg-[#8b5cf6] text-black text-[10px] font-black rounded-md hover:bg-[#a78bfa] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                                    📋 Add Lead
-                                </button>
-                            </div>
-                            {(() => {
-                                const leadKey = `${leadPopup.ext}__${leadPopup.date}`;
-                                const myLeads = (agentLeads && agentLeads[leadKey]) || [];
-                                return myLeads.length > 0 ? (
-                                    <div className="space-y-1.5">
-                                        <div className="text-[10px] font-black text-[#888] uppercase tracking-wider">{myLeads.length} Existing Lead{myLeads.length !== 1 ? 's' : ''}</div>
-                                        {myLeads.map((r, ri) => (
-                                            <div key={ri} className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-lg px-3 py-2 flex items-start gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">{r.lead_type}</span>
-                                                    </div>
-                                                    <div className="text-[10px] text-[#ccc] font-bold mt-0.5">{r.lead_text}</div>
-                                                    <div className="text-[9px] text-[#555] font-bold mt-0.5">
-                                                        by {r.added_by_name || '—'}{r.added_by_employee_id ? ` (${r.added_by_employee_id})` : ''} · {fmtIST(r.created_at)}
-                                                    </div>
-                                                </div>
-                                                <button onClick={() => onDeleteLead && onDeleteLead(r._id, leadPopup.ext, leadPopup.date)}
-                                                    className="text-[#c0392b] text-[10px] hover:text-red-400 font-black flex-shrink-0 mt-0.5" title="Delete">🗑</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-4 text-[11px] text-[#444] font-bold">No lead entries yet.</div>
-                                );
-                            })()}
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* ── Lead CRM Detail Modal (double-click) ── */}
-            {leadDetailPopup && (() => {
-                const leadKey = `${leadDetailPopup.ext}__${leadDetailPopup.date}`;
-                const myLeads = (agentLeads && agentLeads[leadKey]) || [];
-                return (
-                    <div className="fixed inset-0 z-[960] flex items-center justify-center" onClick={() => setLeadDetailPopup(null)}>
-                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                        <div className="relative bg-[#0d0d0d] border-2 border-[#8b5cf6] rounded-2xl shadow-[0_20px_60px_rgba(139,92,246,.15)] w-[440px] max-h-[70vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                            <div className="px-5 py-3.5 bg-gradient-to-r from-[#0d0020] to-[#0d0d0d] border-b border-[#2a1a40] flex items-center justify-between flex-shrink-0">
-                                <div>
-                                    <div className="text-[12px] font-black text-[#8b5cf6] uppercase tracking-wider">📋 Lead CRM Details</div>
-                                    <div className="text-[10px] text-[#888] font-bold mt-0.5">{leadDetailPopup.name} · Ext: {leadDetailPopup.ext} · {fmtDate(leadDetailPopup.date)}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black bg-[#8b5cf6]/15 text-[#8b5cf6] border border-[#8b5cf6]/30 px-2 py-0.5 rounded-full">{myLeads.length} lead{myLeads.length !== 1 ? 's' : ''}</span>
-                                    <button onClick={() => setLeadDetailPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#8b5cf6] hover:text-white transition-all">✕</button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
-                                {myLeads.length === 0 ? (
-                                    <div className="text-center py-8 text-[#444] text-[12px] font-bold">No lead entries for this agent.</div>
-                                ) : myLeads.map((r, ri) => (
-                                    <div key={ri} className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3.5 hover:border-[#8b5cf6]/30 transition-all">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <span className="text-[10px] font-black text-[#8b5cf6] bg-[#8b5cf6]/10 border border-[#8b5cf6]/25 px-2 py-0.5 rounded-full">{r.lead_type}</span>
-                                        </div>
-                                        {r.lead_text && (
-                                            <div className="text-[11px] text-[#ddd] font-semibold leading-relaxed mt-1 bg-[#0a0a0a] rounded-lg px-3 py-2 border-l-2 border-[#8b5cf6]/40" style={{ whiteSpace: 'pre-wrap' }}>
-                                                {r.lead_text}
-                                            </div>
-                                        )}
-                                        <div className="text-[9px] text-[#555] font-bold mt-1.5 flex items-center gap-2">
-                                            <span>Added by {r.added_by_name || '—'}{r.added_by_employee_id ? ` (${r.added_by_employee_id})` : ''}</span>
-                                            <span>· {fmtIST(r.created_at)}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="px-5 py-2.5 border-t border-[#1a1a1a] flex justify-between items-center flex-shrink-0">
-                                <button onClick={() => { setLeadDetailPopup(null); setLeadPopup({ ext: leadDetailPopup.ext, name: leadDetailPopup.name, date: leadDetailPopup.date }); setLeadType('New Lead'); setLeadText(''); }}
-                                    className="px-3 py-1.5 bg-[#8b5cf6]/15 border border-[#8b5cf6]/40 text-[#8b5cf6] text-[10px] font-black rounded-lg hover:bg-[#8b5cf6]/25 transition-all">
-                                    + Add New Lead
-                                </button>
-                                <button onClick={() => setLeadDetailPopup(null)}
                                     className="px-3 py-1.5 border border-[#333] text-[#aaa] text-[10px] font-bold rounded-lg hover:border-[#555] transition-all">
                                     Close
                                 </button>
@@ -2525,6 +2235,7 @@ function ControlsBar({ agents, dates, selectedAgent, filterFrom, filterTo, onAge
 
 // ── Agent Mapping Modal ────────────────────────────────────────────────────────
 function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSave }) {
+    const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase());
     const [agents, setAgents] = useState([]);
     const [unmappedExts, setUnmappedExts] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -2537,6 +2248,11 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
     
     // For inline assignment popover
     const [assigningExt, setAssigningExt] = useState(null); // {ext, dialer_name}
+    // For quick-create profile from unmapped popover
+    const [quickCreateMode, setQuickCreateMode] = useState(false);
+    const [qcName, setQcName] = useState('');
+    const [qcDesig, setQcDesig] = useState('');
+    const [qcTeam, setQcTeam] = useState('');
 
     useEffect(() => {
         if (!show) return;
@@ -2579,13 +2295,33 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
 
     const handleCreateAgent = () => {
         if (!newName.trim()) return;
-        const name = newName.trim();
+        const name = toTitleCase(newName.trim());
         if (agents.find(a => a.mapped_name.toLowerCase() === name.toLowerCase())) {
             alert('A profile with this name already exists.');
             return;
         }
-        setAgents([{ id: name, mapped_name: name, designation: newDesig.trim(), team: newTeam.trim(), exts: [] }, ...agents]);
+        setAgents([{ id: name, mapped_name: name, designation: toTitleCase(newDesig.trim()), team: toTitleCase(newTeam.trim()), exts: [] }, ...agents]);
         setNewName(''); setNewDesig(''); setNewTeam('');
+    };
+
+    // Quick create profile AND assign extension from unmapped popover
+    const handleQuickCreateAndAssign = (extObj) => {
+        if (!qcName.trim()) return;
+        const name = toTitleCase(qcName.trim());
+        let finalAgents = agents;
+        let targetAgent = agents.find(a => a.mapped_name.toLowerCase() === name.toLowerCase());
+        if (!targetAgent) {
+            targetAgent = { id: name, mapped_name: name, designation: toTitleCase(qcDesig.trim()), team: toTitleCase(qcTeam.trim()), exts: [] };
+            finalAgents = [targetAgent, ...agents];
+        }
+        // Assign ext to this profile
+        finalAgents = finalAgents.map(a => a.id === targetAgent.id ? { ...a, exts: [...a.exts, extObj] } : a);
+        setAgents(finalAgents);
+        setUnmappedExts(prev => prev.filter(e => e.ext !== extObj.ext));
+        // Reset quick create state
+        setQcName(''); setQcDesig(''); setQcTeam('');
+        setQuickCreateMode(false);
+        setAssigningExt(null);
     };
 
     const handleAssignExt = (agentId, extObj) => {
@@ -2741,7 +2477,7 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                                             return (
                                                 <div key={ue.ext} className="relative">
                                                     <button
-                                                        onClick={() => setAssigningExt(isAssigning ? null : ue)}
+                                                        onClick={() => { setAssigningExt(isAssigning ? null : ue); setQuickCreateMode(false); setQcName(''); setQcDesig(''); setQcTeam(''); }}
                                                         className={`w-full group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border transition-all text-center ${
                                                             isAssigning
                                                                 ? 'bg-violet-600/30 border-violet-400/70 shadow-[0_0_20px_rgba(124,58,237,0.35)]'
@@ -2759,30 +2495,65 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                                                     {/* Agent Picker Popover */}
                                                     {isAssigning && (
                                                         <>
-                                                            <div className="fixed inset-0 z-[50]" onClick={() => setAssigningExt(null)}></div>
-                                                            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-[#1f2937] border border-gray-500 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.7)] overflow-hidden min-w-[220px]">
-                                                                <div className="px-4 py-2.5 border-b border-gray-600 bg-gray-800">
-                                                                    <p className="text-[11px] uppercase text-gray-300 font-black tracking-widest">Assign to profile</p>
-                                                                </div>
-                                                                {agents.length === 0 ? (
-                                                                    <div className="px-4 py-3 text-[12px] text-amber-200 font-semibold">No profiles yet — go to "Mapped Profiles" tab</div>
-                                                                ) : (
-                                                                    <div className="p-2 flex flex-col gap-1 max-h-52 overflow-y-auto custom-scrollbar">
-                                                                        {agents.map(ag => (
-                                                                            <button key={ag.id}
-                                                                                onClick={() => { handleAssignExt(ag.id, ue); setAssigningExt(null); }}
-                                                                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-violet-500/20 text-left transition-all group/pick border border-transparent hover:border-violet-500/30">
-                                                                                <div className="w-8 h-8 rounded-xl bg-violet-500/30 border border-violet-400/40 flex items-center justify-center text-[11px] font-black text-violet-200 shrink-0">
-                                                                                    {ag.mapped_name.slice(0,2).toUpperCase()}
-                                                                                </div>
-                                                                                <div className="flex-1 min-w-0">
-                                                                                    <p className="text-[13px] font-bold text-white truncate">{ag.mapped_name}</p>
-                                                                                    {ag.designation && <p className="text-[11px] text-gray-400 truncate">{ag.designation}</p>}
-                                                                                </div>
-                                                                                <svg className="w-4 h-4 text-violet-400 opacity-0 group-hover/pick:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                                                            </button>
-                                                                        ))}
+                                                            <div className="fixed inset-0 z-[50]" onClick={() => { setAssigningExt(null); setQuickCreateMode(false); setQcName(''); setQcDesig(''); setQcTeam(''); }}></div>
+                                                            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[60] bg-[#1f2937] border border-gray-500 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.7)] overflow-hidden min-w-[260px]" onClick={e => e.stopPropagation()}>
+                                                                {/* Create New Profile section */}
+                                                                {quickCreateMode ? (
+                                                                    <div className="p-3 space-y-2 border-b border-gray-600 bg-violet-900/30">
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <p className="text-[10px] uppercase text-violet-300 font-black tracking-widest">New Profile</p>
+                                                                            <button onClick={() => { setQuickCreateMode(false); setQcName(''); setQcDesig(''); setQcTeam(''); }}
+                                                                                className="text-[10px] text-gray-400 hover:text-white transition-colors">✕</button>
+                                                                        </div>
+                                                                        <input autoFocus type="text" placeholder="Full Name *" value={qcName}
+                                                                            onChange={e => setQcName(toTitleCase(e.target.value))}
+                                                                            onKeyDown={e => e.key === 'Enter' && handleQuickCreateAndAssign(ue)}
+                                                                            className="w-full h-8 bg-gray-800 border border-gray-600 rounded-lg px-3 text-[12px] text-white placeholder:text-gray-500 outline-none focus:border-violet-400 transition-colors" />
+                                                                        <div className="flex gap-1.5">
+                                                                            <input type="text" placeholder="Designation" value={qcDesig}
+                                                                                onChange={e => setQcDesig(toTitleCase(e.target.value))}
+                                                                                className="flex-1 h-8 bg-gray-800 border border-gray-600 rounded-lg px-2 text-[11px] text-white placeholder:text-gray-500 outline-none focus:border-violet-400 transition-colors" />
+                                                                            <input type="text" placeholder="Team" value={qcTeam}
+                                                                                onChange={e => setQcTeam(toTitleCase(e.target.value))}
+                                                                                className="w-20 h-8 bg-gray-800 border border-gray-600 rounded-lg px-2 text-[11px] text-white placeholder:text-gray-500 outline-none focus:border-violet-400 transition-colors" />
+                                                                        </div>
+                                                                        <button onClick={() => handleQuickCreateAndAssign(ue)}
+                                                                            disabled={!qcName.trim()}
+                                                                            className="w-full h-8 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-[12px] rounded-lg transition-all flex items-center justify-center gap-1.5">
+                                                                            ✓ Create &amp; Assign
+                                                                        </button>
                                                                     </div>
+                                                                ) : (
+                                                                    <div className="px-3 py-2 border-b border-gray-600 bg-gray-800 flex items-center justify-between">
+                                                                        <p className="text-[11px] uppercase text-gray-300 font-black tracking-widest">Assign to profile</p>
+                                                                        <button onClick={() => setQuickCreateMode(true)}
+                                                                            className="flex items-center gap-1 text-[10px] font-black text-violet-400 hover:text-violet-300 transition-colors bg-violet-500/15 border border-violet-500/30 px-2 py-1 rounded-lg hover:bg-violet-500/25">
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                                            New Profile
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {!quickCreateMode && (
+                                                                    agents.length === 0 ? (
+                                                                        <div className="px-4 py-3 text-[12px] text-amber-200 font-semibold">Click "New Profile" above to create one</div>
+                                                                    ) : (
+                                                                        <div className="p-2 flex flex-col gap-1 max-h-52 overflow-y-auto custom-scrollbar">
+                                                                            {agents.map(ag => (
+                                                                                <button key={ag.id}
+                                                                                    onClick={() => { handleAssignExt(ag.id, ue); setAssigningExt(null); }}
+                                                                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-violet-500/20 text-left transition-all group/pick border border-transparent hover:border-violet-500/30">
+                                                                                    <div className="w-8 h-8 rounded-xl bg-violet-500/30 border border-violet-400/40 flex items-center justify-center text-[11px] font-black text-violet-200 shrink-0">
+                                                                                        {ag.mapped_name.slice(0,2).toUpperCase()}
+                                                                                    </div>
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <p className="text-[13px] font-bold text-white truncate">{ag.mapped_name}</p>
+                                                                                        {ag.designation && <p className="text-[11px] text-gray-400 truncate">{ag.designation}</p>}
+                                                                                    </div>
+                                                                                    <svg className="w-4 h-4 text-violet-400 opacity-0 group-hover/pick:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )
                                                                 )}
                                                             </div>
                                                         </>
@@ -2804,12 +2575,12 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                             <div className="shrink-0 px-7 py-5 border-b border-[#374151] bg-[#1f2937]">
                                 <p className="text-[11px] uppercase text-gray-400 font-black tracking-widest mb-3">New Profile</p>
                                 <div className="flex items-center gap-2.5 flex-wrap">
-                                    <input type="text" placeholder="Full Name *" value={newName} onChange={e => setNewName(e.target.value)}
+                                    <input type="text" placeholder="Full Name *" value={newName} onChange={e => setNewName(toTitleCase(e.target.value))}
                                         onKeyDown={e => e.key === 'Enter' && handleCreateAgent()}
                                         className="flex-1 min-w-[180px] h-10 bg-gray-800 border border-gray-600 rounded-xl px-4 text-[13px] text-white placeholder:text-gray-500 outline-none focus:border-violet-500 transition-colors font-semibold" />
-                                    <input type="text" placeholder="Designation" value={newDesig} onChange={e => setNewDesig(e.target.value)}
+                                    <input type="text" placeholder="Designation" value={newDesig} onChange={e => setNewDesig(toTitleCase(e.target.value))}
                                         className="w-36 h-10 bg-gray-800 border border-gray-600 rounded-xl px-3 text-[13px] text-white placeholder:text-gray-500 outline-none focus:border-violet-500 transition-colors font-semibold" />
-                                    <input type="text" placeholder="Team" value={newTeam} onChange={e => setNewTeam(e.target.value)}
+                                    <input type="text" placeholder="Team" value={newTeam} onChange={e => setNewTeam(toTitleCase(e.target.value))}
                                         className="w-28 h-10 bg-gray-800 border border-gray-600 rounded-xl px-3 text-[13px] text-white placeholder:text-gray-500 outline-none focus:border-violet-500 transition-colors font-semibold" />
                                     <button onClick={handleCreateAgent}
                                         className="h-10 px-5 bg-violet-600 hover:bg-violet-500 text-white font-black text-[13px] rounded-xl transition-all flex items-center gap-2 shadow-[0_4px_16px_rgba(124,58,237,0.5)] whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
@@ -3479,8 +3250,8 @@ export default function Dashboard() {
             wrapup: x => x.avgWu, autoIdle: x => toSec(x.autoIdle),
             manualIdle: x => x.miSec, breakTime: x => x.brkSec, wasteSec: x => x.wasteSec,
         };
-        if (isMultiDate && !isSingleAgent) {
-            // Multi-date grouped sorting: sort all by key, group by agent (preserving sort order), sort within group by date
+        if (isMultiDate && !isSingleAgent && sortKey === 'name') {
+            // When sorting by Agent column: group by agent, sort each group chronologically by date
             const sorted = [...base].sort((a, b) => {
                 const f = kfn[sortKey] || (() => 0);
                 const av = f(a), bv = f(b);
@@ -3690,8 +3461,6 @@ export default function Dashboard() {
                 <AgentTable list={sortedList} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} isMultiDate={isMultiDate} isSingleAgent={isSingleAgent}
                     warnings={warnings} onWarn={setWarnAgent} warnToggle={warnToggle} warnToggleHistory={warnToggleHistory} onToggle={handleToggleWarn} agentSeqNum={agentSeqNum}
                     agentRemarks={agentRemarks} onAddRemark={handleAddRemark} onDeleteRemark={handleDeleteRemark}
-                    agentLogins={agentLogins} onAddLogin={handleAddLogin} onDeleteLogin={handleDeleteLogin}
-                    agentLeads={agentLeads} onAddLead={handleAddLead} onDeleteLead={handleDeleteLead}
                     agentMappings={agentMappings} />
             )}
             </div>{/* end scroll zone */}
