@@ -276,7 +276,7 @@ const exportLeadsToExcel = async (rows, filename) => {
     const oblColIdx = cols.indexOf('Obligation Details') + 1;
 
     // Add data rows — track max line length in obligation cells
-    let maxOblLineLen = 60; // minimum fallback
+    let maxOblLineLen = 90; // minimum fallback (wider base)
     rows.forEach(rowData => {
         const exRow = ws.addRow(rowData);
 
@@ -295,8 +295,8 @@ const exportLeadsToExcel = async (rows, filename) => {
                 // Track the longest line to correctly size the column
                 lines.forEach(l => { if (l.length > maxOblLineLen) maxOblLineLen = l.length; });
 
-                // Row height: each logical line = 13.5pt; add 10% buffer
-                exRow.height = Math.max(22, Math.ceil(lineCount * 14));
+                // Row height: 16pt per line + 8pt padding buffer so all rows are fully visible
+                exRow.height = Math.max(32, Math.ceil(lineCount * 16) + 8);
 
                 const oblCell = exRow.getCell(oblColIdx);
                 // wrapText: true so \n renders as real line breaks in Excel
@@ -306,10 +306,10 @@ const exportLeadsToExcel = async (rows, filename) => {
         }
     });
 
-    // Now set obligation column width based on actual longest line
-    // Courier New 9pt chars ≈ 0.875x default Excel column width unit
+    // Now set obligation column width based on actual longest line.
+    // Use 1.15x multiplier (generous) so Courier New chars never get clipped.
     if (oblColIdx > 0) {
-        ws.getColumn(oblColIdx).width = Math.ceil(maxOblLineLen * 0.875) + 4;
+        ws.getColumn(oblColIdx).width = Math.ceil(maxOblLineLen * 1.15) + 6;
     }
 
     const buffer = await wb.xlsx.writeBuffer();
