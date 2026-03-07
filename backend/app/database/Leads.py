@@ -414,10 +414,12 @@ class LeadsDB:
                 # ⚡ CRITICAL: Include dynamic_fields for table columns + full export support
                 "dynamic_fields.eligibility_details": 1,
                 "dynamic_fields.financial_details": 1,
+                "dynamic_fields.personal_details": 1,      # ⚡ ADDED: Company name/type/category from obligation
+                "dynamic_fields.check_eligibility": 1,     # ⚡ ADDED: CE section (FOIR, tenure, ROI, multiplier etc)
                 "dynamic_fields.obligation_data": 1,
-                "dynamic_fields.obligations": 1,       # ⚡ ADDED: Obligation table rows for export
-                "dynamic_fields.process": 1,           # ⚡ ADDED: How to Process section
-                "dynamic_fields.applicant_form": 1,    # ⚡ ADDED: Applicant Form section for export
+                "dynamic_fields.obligations": 1,           # ⚡ ADDED: Obligation table rows for export
+                "dynamic_fields.process": 1,               # ⚡ ADDED: How to Process section
+                "dynamic_fields.applicant_form": 1,        # ⚡ ADDED: Applicant Form section for export
                 
                 # Root-level obligation summary fields
                 "totalBtPos": 1,
