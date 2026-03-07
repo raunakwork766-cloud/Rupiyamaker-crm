@@ -7632,6 +7632,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   onChange={canEdit ? handleCeRoiChange : undefined}
                 />
               </div>
+              {/* TOTAL BT POS */}
+              <div className="form-group flex-1 min-w-[180px] max-w-[180px]">
+                <label className="block mb-1 text-base font-bold text-white">TOTAL BT POS</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1 text-lg font-bold text-black bg-green-400 border border-green-600 rounded-lg form-control"
+                  value={eligibility.totalBtPos}
+                  readOnly
+                />
+              </div>
             </div>
             {/* Third Row - Loan Eligibility Results */}
             <div className="flex flex-wrap items-end gap-4 mb-2">
@@ -7666,16 +7676,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   type="text"
                   className="w-full px-4 py-4 font-bold text-white bg-black border rounded-lg form-control border-gray-600 text-2xl"
                   value={eligibility.multiplierEligibility}
-                  readOnly
-                />
-              </div>
-              {/* TOTAL BT POS */}
-              <div className="form-group flex-1 min-w-[280px]">
-                <label className="block mb-1 text-base font-bold text-white">TOTAL BT POS</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-4 font-bold text-black bg-green-400 border border-green-600 rounded-lg form-control text-2xl"
-                  value={eligibility.totalBtPos}
                   readOnly
                 />
               </div>

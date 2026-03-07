@@ -77,12 +77,6 @@ const icons = {
       <path d="M12 12v4M9 14h6" />
     </svg>
   ),
-  "Dialer Report": (
-    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.11-.22 11.36 11.36 0 003.55.7A1 1 0 0121 17.5v3.5a1 1 0 01-1 1A17 17 0 013 5a1 1 0 011-1h3.5a1 1 0 011 .88 11.36 11.36 0 00.7 3.55 1 1 0 01-.24 1.01z" />
-      <path d="M16 2v6M13 5h6" />
-    </svg>
-  ),
   Apps: (
     <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="6" height="6" rx="1" />
@@ -219,7 +213,6 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
     (label === 'Attendance' && currentPath.includes('/attendance')) ||
     (label === 'Leave' && currentPath.includes('/leave')) ||
     (label === 'Daily Performance' && currentPath.includes('/performance')) ||
-    (label === 'Dialer Report' && currentPath.includes('/dialer-report')) ||
     // Check URL-based selection for Warning items
     (label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) ||
     (label === 'All Warnings' && currentPath.includes('/warning/all')) ||
@@ -343,8 +336,7 @@ const DropdownHeader = React.memo(({
       if ((item.label === 'Employees' && currentPath.includes('/employees')) ||
           (item.label === 'Attendance' && currentPath.includes('/attendance')) ||
           (item.label === 'Leave' && currentPath.includes('/leave')) ||
-          (item.label === 'Daily Performance' && currentPath.includes('/performance')) ||
-          (item.label === 'Dialer Report' && currentPath.includes('/dialer-report'))) {
+          (item.label === 'Daily Performance' && currentPath.includes('/performance'))) {
         return true;
       }
       
@@ -638,9 +630,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       }
       else if (currentPath.includes('/performance')) {
         urlBasedLabel = 'Daily Performance';
-      }
-      else if (currentPath.includes('/dialer-report')) {
-        urlBasedLabel = 'Dialer Report';
       }
       
       // Use URL-based label if it's different from persisted or if no persisted label
@@ -1276,9 +1265,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     else if (loanTypeName && (currentPath.includes('/login-crm') || currentPath.includes('/login'))) {
       shouldOpenDropdown = 'Login CRM';
     }
-    else if (currentPath.includes('/employees') || currentPath.includes('/attendance') ||
+    else if (currentPath.includes('/employees') || currentPath.includes('/attendance') || 
              currentPath.includes('/leave') || currentPath.includes('/performance') ||
-             currentPath.includes('/dialer-report') ||
              currentPath.includes('/hrms')) {
       shouldOpenDropdown = 'HRMS';
     }
@@ -1327,8 +1315,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           (currentPath.includes('/employees') && persistedLabel !== 'Employees') ||
           (currentPath.includes('/attendance') && persistedLabel !== 'Attendance') ||
           (currentPath.includes('/leave') && persistedLabel !== 'Leave') ||
-          (currentPath.includes('/performance') && persistedLabel !== 'Daily Performance') ||
-          (currentPath.includes('/dialer-report') && persistedLabel !== 'Dialer Report')) {
+          (currentPath.includes('/performance') && persistedLabel !== 'Daily Performance')) {
         
         // Derive selection from URL path
         if (loanTypeName) {
@@ -1349,9 +1336,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         }
         else if (currentPath.includes('/performance')) {
           persistedLabel = 'Daily Performance';
-        }
-        else if (currentPath.includes('/dialer-report')) {
-          persistedLabel = 'Dialer Report';
         }
         else if (currentPath.includes('/warning/dashboard')) {
           persistedLabel = 'Warning Dashboard';
@@ -1597,10 +1581,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       canShowDialerReport: checkPermission('dialer_report', 'show') ||
                            isSuperAdmin(userPermissions),
       
-      // Dialer Report
-      canShowDialerReport: checkPermission('dialer_report', 'show') ||
-                           isSuperAdmin(userPermissions),
-
       // Apps
       canShowApps: checkPermission('apps', 'show') || 
                    checkPermission('Apps', 'show') || 

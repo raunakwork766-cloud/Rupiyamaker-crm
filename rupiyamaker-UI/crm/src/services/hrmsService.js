@@ -488,7 +488,7 @@ export const hrmsService = {
     createDesignation: async (designationData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/?user_id=${userId}`, { 
                 method: 'POST',
                 body: JSON.stringify(designationData)
             });
@@ -506,7 +506,7 @@ export const hrmsService = {
     updateDesignation: async (designationId, designationData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations/${designationId}?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/${designationId}/?user_id=${userId}`, { 
                 method: 'PUT',
                 body: JSON.stringify(designationData)
             });
@@ -524,7 +524,7 @@ export const hrmsService = {
     deleteDesignation: async (designationId) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/designations/${designationId}?user_id=${userId}`, { 
+            const response = await apiCall(`/designations/${designationId}/?user_id=${userId}`, { 
                 method: 'DELETE'
             });
             return {
@@ -591,7 +591,7 @@ export const hrmsService = {
     addEmployeeRemark: async (remarkData) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/employees/remarks?user_id=${userId}`, {
+            const response = await apiCall(`/employees/remarks/?user_id=${userId}`, {
                 method: 'POST',
                 body: JSON.stringify(remarkData),
                 headers: {
@@ -611,7 +611,7 @@ export const hrmsService = {
     deleteEmployeeRemark: async (remarkId) => {
         const userId = getUserId();
         try {
-            const response = await apiCall(`/employees/remarks/${remarkId}?user_id=${userId}`, { method: 'DELETE' });
+            const response = await apiCall(`/employees/remarks/${remarkId}/?user_id=${userId}`, { method: 'DELETE' });
             return {
                 data: response,
                 success: true
