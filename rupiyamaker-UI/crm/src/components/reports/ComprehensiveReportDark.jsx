@@ -28,6 +28,169 @@ const { Search } = Input;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://156.67.111.95:8049';
 
+// =====================================================
+// LEAD CRM EXPORT HELPERS
+// =====================================================
+
+// Format date to IST for export
+const fmtDateIST = (d) => {
+    if (!d) return '';
+    const parsed = dayjs(d);
+    return parsed.isValid() ? parsed.tz('Asia/Kolkata').format('DD-MM-YYYY HH:mm') : '';
+};
+
+// Format INR amount with Indian comma separator
+const fmtINR = (val) => {
+    if (val === null || val === undefined || val === '') return '';
+    const cleaned = typeof val === 'string' ? val.replace(/[₹,\s]/g, '') : String(val);
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return val || '';
+    return `₹${Math.round(num).toLocaleString('en-IN')}`;
+};
+
+// Format obligation table as single-cell text
+const formatObligationTable = (obligations) => {
+    if (!obligations || !obligations.length) return '';
+    const validRows = obligations.filter(o =>
+        o.product || o.bank_name || o.bankName || o.tenure ||
+        o.total_loan || o.totalLoan || o.outstanding || o.emi
+    );
+    if (!validRows.length) return '';
+    const header = '#  | PRODUCT | BANK NAME | TENURE | ROI % | TOTAL LOAN | OUTSTANDING | EMI | ACTION';
+    const sep = '-'.repeat(90);
+    const rows = validRows.map((o, i) => {
+        const product = o.product || '-';
+        const bankName = o.bank_name || o.bankName || '-';
+        const tenure = o.tenure ? String(o.tenure) : '-';
+        const roi = o.roi ? `${o.roi}${String(o.roi).includes('%') ? '' : '%'}` : '-';
+        const totalLoan = (o.total_loan || o.totalLoan) ? fmtINR(o.total_loan || o.totalLoan) : '-';
+        const outstanding = o.outstanding ? fmtINR(o.outstanding) : '-';
+        const emi = o.emi ? fmtINR(o.emi) : '-';
+        const action = o.action || '-';
+        return `${i + 1}  | ${product} | ${bankName} | ${tenure} | ${roi} | ${totalLoan} | ${outstanding} | ${emi} | ${action}`;
+    });
+    return [header, sep, ...rows].join('\n');
+};
+
+// Build a comprehensive export row from lead data matching UI labels
+const buildLeadExportRow = (lead, getUserNameFn) => {
+    const row = {};
+    const df = lead.dynamic_fields || {};
+
+    // ═══ ABOUT SECTION ═══
+    row['Lead ID'] = lead.custom_lead_id || lead.id || '';
+    row['Lead Date & Time'] = fmtDateIST(lead.createdAt || lead.created_date || lead.created_at);
+    row['Created By'] = lead.created_by_name || getUserNameFn(lead.created_by);
+    row['Team Name'] = lead.team_name || '';
+    row['Product Name'] = lead.product_name || '';
+    row['Campaign Name'] = lead.campaign_name || lead.campaignName || '';
+    row['Data Code'] = lead.data_code || lead.dataCode || '';
+    row['Customer Name'] = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || '';
+    row['Mobile Number'] = lead.mobile_number || lead.phone || '';
+    row['Alternate Number'] = lead.alternative_phone || lead.alternate_phone || '';
+    row['Email'] = lead.email || '';
+    row['Pincode & City'] = lead.pincode_city || '';
+    row['Status'] = lead.status || '';
+    row['Sub Status'] = lead.sub_status || '';
+    row['Assigned To'] = lead.assigned_to_name || getUserNameFn(lead.assigned_to);
+
+    // ═══ HOW TO PROCESS SECTION ═══
+    const proc = df.process || lead.process_data || {};
+    row['Processing Bank'] = proc.processing_bank || lead.processing_bank || '';
+    row['Loan Type'] = proc.loan_type || lead.loan_type_name || lead.loan_type || '';
+    row['Case Type'] = proc.case_type || '';
+    row['Loan Amount Required'] = proc.loan_amount_required ? fmtINR(proc.loan_amount_required) : (lead.loan_amount ? fmtINR(lead.loan_amount) : '');
+    row['Required Tenure (Months)'] = proc.required_tenure ? `${proc.required_tenure} Months` : '';
+    row['Purpose of Loan'] = proc.purpose_of_loan || '';
+    row['How to Process'] = proc.how_to_process || '';
+
+    // ═══ APPLICANT FORM SECTION ═══
+    const af = df.applicant_form || lead.loginForm || {};
+    row['Login Call Reference'] = af.referenceNameForLogin || '';
+    row['Aadhar Number'] = af.aadharNumber || '';
+    row['Pan Card'] = af.panCard || '';
+    row["Father's Name"] = af.fathersName || '';
+    row['Salary A/C Bank Name'] = af.salaryAccountBank || '';
+    row['Salary A/C Bank Number'] = af.salaryAccountBankNumber || '';
+    row['IFSC Code'] = af.ifscCode || '';
+    row['Applicant Customer Name'] = af.customerName || '';
+    row['Applicant Mobile Number'] = af.mobileNumber || '';
+    row['Applicant Alternate Number'] = af.alternateNumber || '';
+    row['Qualification'] = af.qualification || '';
+    row["Mother's Name"] = af.mothersName || '';
+    row['Marital Status'] = af.maritalStatus || '';
+    row['Spouse Name'] = af.spousesName || '';
+    row["Spouse's DOB"] = af.spousesDob || '';
+    row['Current Address'] = af.currentAddress || '';
+    row['Current Address Landmark'] = af.currentAddressLandmark || '';
+    row['Current Address Type'] = af.currentAddressType || '';
+    row['Current Address Proof'] = af.currentAddressProof || '';
+    row['Years at Current Address'] = af.yearsAtCurrentAddress || '';
+    row['Years in Current City'] = af.yearsInCurrentCity || '';
+    row['Permanent Address'] = af.permanentAddress || '';
+    row['Permanent Address Landmark'] = af.permanentAddressLandmark || '';
+    row['Company Name (Applicant)'] = af.companyName || '';
+    row['Designation'] = af.yourDesignation || '';
+    row['Department (Applicant)'] = af.yourDepartment || '';
+    row['DOJ in Current Company'] = af.dojCurrentCompany || '';
+    row['Current Work Experience (Years)'] = af.currentWorkExperience || '';
+    row['Total Work Experience (Years)'] = af.totalWorkExperience || '';
+    row['Personal Email'] = af.personalEmail || '';
+    row['Work Email'] = af.workEmail || '';
+    row['Office Address'] = af.officeAddress || '';
+    row['Office Address Landmark'] = af.officeAddressLandmark || '';
+    row['Reference 1 Name'] = af.ref1Name || '';
+    row['Reference 1 Mobile'] = af.ref1Mobile || '';
+    row['Reference 1 Relation'] = af.ref1Relation || '';
+    row['Reference 1 Address'] = af.ref1Address || '';
+    row['Reference 2 Name'] = af.ref2Name || '';
+    row['Reference 2 Mobile'] = af.ref2Mobile || '';
+    row['Reference 2 Relation'] = af.ref2Relation || '';
+    row['Reference 2 Address'] = af.ref2Address || '';
+
+    // ═══ OBLIGATION SECTION ═══
+    const fin = df.financial_details || {};
+    const elig = df.eligibility_details || {};
+    const obligations = df.obligations || [];
+    row['Salary (Obligation)'] = fmtINR(lead.salary || fin.monthly_income || df.salary) || '';
+    row['Partner Salary'] = fmtINR(lead.partnerSalary || fin.partner_salary || df.partnerSalary) || '';
+    row['CIBIL Score'] = lead.cibilScore || lead.cibil_score || fin.cibil_score || df.cibilScore || '';
+    row['Total BT POS'] = fmtINR(lead.totalBtPos || lead.total_bt_pos || df.totalBtPos || elig.totalBtPos) || '';
+    row['Total Obligation'] = fmtINR(lead.totalObligation || lead.total_obligation || df.totalObligation || elig.totalObligations) || '';
+    row['Obligation Details'] = formatObligationTable(obligations);
+
+    return row;
+};
+
+// Build Excel worksheet with proper column widths for lead export
+const buildLeadWorksheet = (rows) => {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Set column widths — wider for key columns
+    const cols = Object.keys(rows[0] || {});
+    ws['!cols'] = cols.map(col => {
+        if (col === 'Obligation Details') return { wch: 95 };
+        if (col.includes('Address')) return { wch: 35 };
+        if (col.includes('Name') || col.includes('Email')) return { wch: 25 };
+        if (col.includes('Lead ID') || col.includes('Date')) return { wch: 22 };
+        return { wch: 20 };
+    });
+    // Set row heights for obligation column (enable multiline viewing)
+    if (rows.length > 0) {
+        const oblIdx = cols.indexOf('Obligation Details');
+        if (oblIdx >= 0) {
+            rows.forEach((r, i) => {
+                const cellRef = XLSX.utils.encode_cell({ c: oblIdx, r: i + 1 });
+                if (ws[cellRef] && ws[cellRef].v && typeof ws[cellRef].v === 'string' && ws[cellRef].v.includes('\n')) {
+                    const lineCount = ws[cellRef].v.split('\n').length;
+                    if (!ws['!rows']) ws['!rows'] = [];
+                    ws['!rows'][i + 1] = { hpt: Math.max(15, lineCount * 15) };
+                }
+            });
+        }
+    }
+    return ws;
+};
+
 const SECTIONS = [
     { key: 'plod-leads',  label: 'Lead CRM', icon: <CreditCardOutlined />, color: '#6366f1', group: 'leads' },
     { key: 'login-leads', label: 'Login Leads',   icon: <FileTextOutlined />,   color: '#3b82f6', group: 'leads' },
@@ -55,6 +218,8 @@ const ComprehensiveReportDark = () => {
     const [detailLoading, setDetailLoading] = useState(false);
     const [filters, setFilters] = useState({ dateRange: null, searchText: '', status: null });
     const [statistics, setStatistics]   = useState({ total: 0, active: 0, completed: 0, pending: 0 });
+    const [exportLoading, setExportLoading] = useState(false);
+    const [exportProgress, setExportProgress] = useState('');
 
     useEffect(() => { fetchUsers(); }, []);
     useEffect(() => { fetchSectionData(); }, [selectedSection]);
@@ -205,26 +370,114 @@ const ComprehensiveReportDark = () => {
     };
 
     const fmtLabel = (k) => k.replace(/_/g,' ').replace(/([A-Z])/g,' $1').trim();
-    const exportAllToExcel = () => {
+    const isLeadSection = ['plod-leads', 'login-leads'].includes(selectedSection);
+
+    // Batch-fetch full lead details for export (needed because list API uses aggressive projection)
+    const fetchFullLeadsForExport = async (leads) => {
+        const BATCH_SIZE = 15;
+        const fullLeads = [];
+        for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+            const batch = leads.slice(i, i + BATCH_SIZE);
+            setExportProgress(`Fetching lead details... ${Math.min(i + BATCH_SIZE, leads.length)}/${leads.length}`);
+            const results = await Promise.allSettled(
+                batch.map(lead => {
+                    const leadId = lead._id?.$oid || lead._id;
+                    return leadId ? leadsService.getLeadById(leadId) : Promise.resolve({ success: false });
+                })
+            );
+            results.forEach((result, idx) => {
+                if (result.status === 'fulfilled' && result.value?.success && result.value.data) {
+                    fullLeads.push(result.value.data);
+                } else {
+                    // Fallback to list data if detail fetch fails
+                    fullLeads.push(batch[idx]);
+                }
+            });
+        }
+        return fullLeads;
+    };
+
+    const exportAllToExcel = async () => {
         if (!filteredData.length) { message.warning('No data'); return; }
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = r[k]; }); return o; }));
+        let ws;
+        if (isLeadSection) {
+            setExportLoading(true);
+            setExportProgress('Preparing export...');
+            try {
+                const fullLeads = await fetchFullLeadsForExport(filteredData);
+                setExportProgress('Building Excel file...');
+                const rows = fullLeads.map(r => buildLeadExportRow(r, getUserName));
+                ws = buildLeadWorksheet(rows);
+                XLSX.utils.book_append_sheet(wb, ws, selectedSection);
+                XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+                message.success(`Exported ${fullLeads.length} leads with complete data`);
+            } catch (err) {
+                console.error('Export error:', err);
+                message.error('Export failed. Please try again.');
+            } finally {
+                setExportLoading(false);
+                setExportProgress('');
+            }
+            return;
+        }
+        ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
         XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
-        message.success('Exported');
+        message.success(`Exported ${filteredData.length} records`);
     };
-    const exportBulkToExcel = () => {
+    const exportBulkToExcel = async () => {
         if (!selectedRows.length) { message.warning('Select records'); return; }
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = r[k]; }); return o; }));
+        let ws;
+        if (isLeadSection) {
+            setExportLoading(true);
+            setExportProgress('Preparing export...');
+            try {
+                const fullLeads = await fetchFullLeadsForExport(selectedRows);
+                setExportProgress('Building Excel file...');
+                const rows = fullLeads.map(r => buildLeadExportRow(r, getUserName));
+                ws = buildLeadWorksheet(rows);
+                XLSX.utils.book_append_sheet(wb, ws, selectedSection);
+                XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+                message.success(`Exported ${fullLeads.length} leads with complete data`);
+            } catch (err) {
+                console.error('Export error:', err);
+                message.error('Export failed. Please try again.');
+            } finally {
+                setExportLoading(false);
+                setExportProgress('');
+            }
+            return;
+        }
+        ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
         XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
         message.success(`Exported ${selectedRows.length} records`);
     };
-    const exportRowExcel = (record) => {
+    const exportRowExcel = async (record) => {
         const wb = XLSX.utils.book_new();
-        const o = {}; Object.keys(record).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = record[k]; });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([o]), 'Record');
+        let ws;
+        if (isLeadSection) {
+            try {
+                const leadId = record._id?.$oid || record._id;
+                let fullLead = record;
+                if (leadId) {
+                    const res = await leadsService.getLeadById(leadId);
+                    if (res?.success && res.data) fullLead = res.data;
+                }
+                const rows = [buildLeadExportRow(fullLead, getUserName)];
+                ws = buildLeadWorksheet(rows);
+            } catch (err) {
+                console.error('Single row export error:', err);
+                const rows = [buildLeadExportRow(record, getUserName)];
+                ws = buildLeadWorksheet(rows);
+            }
+        } else {
+            const o = {}; Object.keys(record).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof record[k] === 'object' ? JSON.stringify(record[k]) : record[k]; });
+            ws = XLSX.utils.json_to_sheet([o]);
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Record');
         XLSX.writeFile(wb, `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`);
     };
 
@@ -476,20 +729,20 @@ const ComprehensiveReportDark = () => {
                             onSearch={v => setFilters(p=>({...p,searchText:v}))}
                             onChange={e => !e.target.value && setFilters(p=>({...p,searchText:''}))} />
                         <Button size="small" icon={<ReloadOutlined />} onClick={resetFilters}>Reset</Button>
-                        <Button size="small" icon={<FileExcelOutlined />} onClick={exportBulkToExcel} disabled={!selectedRows.length}
+                        <Button size="small" icon={<FileExcelOutlined />} onClick={exportBulkToExcel} disabled={!selectedRows.length || exportLoading}
                             style={{ background:selectedRows.length?'rgba(99,102,241,0.15)':undefined, border:selectedRows.length?'1px solid #6366f1':undefined, color:selectedRows.length?'#a5b4fc':undefined }}>
                             Export ({selectedRows.length})
                         </Button>
-                        <Button size="small" icon={<DownloadOutlined />} onClick={exportAllToExcel} disabled={!filteredData.length}
+                        <Button size="small" icon={<DownloadOutlined />} onClick={exportAllToExcel} disabled={!filteredData.length || exportLoading}
                             style={{ background:filteredData.length?'rgba(16,185,129,0.12)':undefined, border:filteredData.length?'1px solid #10b981':undefined, color:filteredData.length?'#10b981':undefined }}>
-                            Export All
+                            {exportLoading ? exportProgress : 'Export All'}
                         </Button>
                     </Space>
                 </div>
 
                 {/* Table */}
                 <div style={{ flex:1, overflow:'auto', padding:'4px 6px 8px' }}>
-                    <Spin spinning={loading} tip="Loading…" size="large">
+                    <Spin spinning={loading || exportLoading} tip={exportLoading ? exportProgress : "Loading…"} size="large">
                         <Table
                             rowSelection={{ selectedRowKeys, onChange:(keys,rows)=>{setSelectedRowKeys(keys);setSelectedRows(rows);} }}
                             columns={getColumns()}
