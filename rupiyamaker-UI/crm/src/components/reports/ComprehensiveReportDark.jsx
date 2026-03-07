@@ -180,7 +180,8 @@ const buildLeadExportRow = (lead, getUserNameFn) => {
     const pd   = df.personal_details   || {};
     const ce   = df.check_eligibility  || {};
     const elig = df.eligibility_details || {};
-    const obligations = df.obligations || [];
+    // Obligations may be stored directly in df.obligations OR nested inside df.obligation_data.obligations
+    const obligations = df.obligations || df.obligation_data?.obligations || [];
 
     // Financial Details
     row['Monthly Income (Salary)'] = fmtINR(fin.monthly_income || lead.salary || df.salary) || '';
@@ -235,16 +236,29 @@ const buildLeadWorksheet = (rows) => {
         if (col.startsWith('CE:'))              return { wch: 20 };
         return { wch: 20 };
     });
-    // Set row heights for obligation column (enable multiline viewing)
+    // Set row heights + wrapText + monospace font for obligation column
     if (rows.length > 0) {
         const oblIdx = cols.indexOf('Obligation Details');
         if (oblIdx >= 0) {
+            // Style the header cell too
+            const headerRef = XLSX.utils.encode_cell({ c: oblIdx, r: 0 });
+            if (ws[headerRef]) {
+                ws[headerRef].s = {
+                    font: { name: 'Courier New', sz: 9, bold: true },
+                    alignment: { wrapText: true, vertical: 'top' },
+                };
+            }
             rows.forEach((r, i) => {
                 const cellRef = XLSX.utils.encode_cell({ c: oblIdx, r: i + 1 });
-                if (ws[cellRef] && ws[cellRef].v && typeof ws[cellRef].v === 'string' && ws[cellRef].v.includes('\n')) {
+                if (ws[cellRef] && ws[cellRef].v && typeof ws[cellRef].v === 'string') {
                     const lineCount = ws[cellRef].v.split('\n').length;
                     if (!ws['!rows']) ws['!rows'] = [];
-                    ws['!rows'][i + 1] = { hpt: Math.max(15, lineCount * 15) };
+                    ws['!rows'][i + 1] = { hpt: Math.max(20, lineCount * 14) };
+                    // Apply wrapText + monospace font so newlines render as line breaks and columns align
+                    ws[cellRef].s = {
+                        font: { name: 'Courier New', sz: 9 },
+                        alignment: { wrapText: true, vertical: 'top' },
+                    };
                 }
             });
         }
@@ -442,7 +456,7 @@ const ComprehensiveReportDark = () => {
             ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         }
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-        XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+        XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`, { cellStyles: true });
         message.success(`${filteredData.length} records export ho gayi!`);
     };
     const exportBulkToExcel = () => {
@@ -456,7 +470,7 @@ const ComprehensiveReportDark = () => {
             ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         }
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-        XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+        XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`, { cellStyles: true });
         message.success(`${selectedRows.length} selected records exported!`);
     };
     const exportRowExcel = (record) => {
@@ -469,7 +483,7 @@ const ComprehensiveReportDark = () => {
             ws = XLSX.utils.json_to_sheet([o]);
         }
         XLSX.utils.book_append_sheet(wb, ws, 'Record');
-        XLSX.writeFile(wb, `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`);
+        XLSX.writeFile(wb, `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`, { cellStyles: true });
     };
 
     const getStatusColor = (s) => {
