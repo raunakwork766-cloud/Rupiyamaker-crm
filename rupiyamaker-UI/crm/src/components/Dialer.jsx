@@ -2271,6 +2271,9 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
     const [qcName, setQcName] = useState('');
     const [qcDesig, setQcDesig] = useState('');
     const [qcTeam, setQcTeam] = useState('');
+    // For searchable dropdown in Mapped tab
+    const [extDropdownOpen, setExtDropdownOpen] = useState(null); // agentId whose dropdown is open
+    const [extDropdownSearch, setExtDropdownSearch] = useState('');
 
     useEffect(() => {
         if (!show) return;
@@ -2419,7 +2422,7 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
 
     return (
         <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-lg flex items-center justify-center p-3 lg:p-8 font-sans"
-             onClick={() => setAssigningExt(null)}>
+             onClick={() => { setAssigningExt(null); setExtDropdownOpen(null); setExtDropdownSearch(''); }}>
             <div className="bg-[#111827] border border-[#374151] rounded-[24px] w-full max-w-[1160px] h-[88vh] flex flex-col shadow-[0_40px_100px_rgba(0,0,0,0.7)] overflow-hidden"
                  onClick={e => e.stopPropagation()}>
 
@@ -2698,26 +2701,79 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                                                     ))}
                                                 </div>
 
-                                                {/* Direct Assign from Unmapped — shown inline on Mapped tab */}
-                                                {unmappedExts.length > 0 && (
-                                                    <div className="mt-2 pt-2 border-t border-gray-700/40">
-                                                        <p className="text-[10px] text-emerald-400/70 font-bold mb-1.5 uppercase tracking-wider">+ Assign extension:</p>
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {unmappedExts.slice(0, 8).map(ue => (
-                                                                <button key={ue.ext}
-                                                                    onClick={() => handleAssignExt(ag.id, ue)}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/35 hover:bg-emerald-500/25 hover:border-emerald-400/70 text-emerald-300 text-[10px] font-bold transition-all">
-                                                                    <span>+</span>
-                                                                    <span>{ue.ext}</span>
-                                                                    {ue.dialer_name && <span className="opacity-60 truncate max-w-[55px] text-[9px]">{ue.dialer_name}</span>}
-                                                                </button>
-                                                            ))}
-                                                            {unmappedExts.length > 8 && (
-                                                                <span className="text-[10px] text-gray-500 italic self-center">+{unmappedExts.length - 8} more in Unmapped tab</span>
-                                                            )}
+                                                {/* Searchable Dropdown — Assign extension directly from Mapped tab */}
+                                                <div className="mt-3 pt-3 border-t border-gray-700/40 relative">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (extDropdownOpen === ag.id) {
+                                                                setExtDropdownOpen(null); setExtDropdownSearch('');
+                                                            } else {
+                                                                setExtDropdownOpen(ag.id); setExtDropdownSearch('');
+                                                            }
+                                                        }}
+                                                        disabled={unmappedExts.length === 0}
+                                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 hover:border-emerald-400/60 text-emerald-300 text-[12px] font-bold transition-all disabled:opacity-35 disabled:cursor-not-allowed">
+                                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                        Add Extension
+                                                        {unmappedExts.length > 0 && (
+                                                            <span className="ml-0.5 bg-emerald-500/20 text-emerald-200 text-[9px] font-black px-1.5 py-0.5 rounded-full">{unmappedExts.length} available</span>
+                                                        )}
+                                                        {unmappedExts.length === 0 && (
+                                                            <span className="text-[10px] text-gray-500 font-semibold">— none available</span>
+                                                        )}
+                                                    </button>
+
+                                                    {/* Dropdown Panel */}
+                                                    {extDropdownOpen === ag.id && (
+                                                        <div
+                                                            className="absolute left-0 top-full mt-2 z-[100] w-[300px] bg-[#1a2332] border border-gray-600 rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.7)] overflow-hidden"
+                                                            onClick={e => e.stopPropagation()}>
+                                                            {/* Search Input */}
+                                                            <div className="p-3 border-b border-gray-700">
+                                                                <div className="relative">
+                                                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                                                    <input
+                                                                        autoFocus
+                                                                        type="text"
+                                                                        value={extDropdownSearch}
+                                                                        onChange={e => setExtDropdownSearch(e.target.value)}
+                                                                        placeholder="Search ext or name..."
+                                                                        className="w-full bg-gray-800 border border-gray-600 rounded-xl pl-9 pr-3 py-2 text-[12px] text-white placeholder:text-gray-500 focus:outline-none focus:border-emerald-500 transition-colors" />
+                                                                </div>
+                                                            </div>
+                                                            {/* Results List */}
+                                                            <div className="max-h-[230px] overflow-y-auto custom-scrollbar">
+                                                                {(() => {
+                                                                    const q = extDropdownSearch.toLowerCase();
+                                                                    const filtered = unmappedExts.filter(ue =>
+                                                                        ue.ext.toLowerCase().includes(q) ||
+                                                                        (ue.dialer_name || '').toLowerCase().includes(q)
+                                                                    );
+                                                                    if (filtered.length === 0) return (
+                                                                        <div className="px-4 py-6 text-center text-[12px] text-gray-500">
+                                                                            {extDropdownSearch ? `No match for "${extDropdownSearch}"` : 'No unmapped extensions'}
+                                                                        </div>
+                                                                    );
+                                                                    return filtered.map(ue => (
+                                                                        <button key={ue.ext}
+                                                                            onClick={() => { handleAssignExt(ag.id, ue); setExtDropdownOpen(null); setExtDropdownSearch(''); }}
+                                                                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-emerald-500/10 transition-colors text-left group border-b border-gray-700/30 last:border-0">
+                                                                            <div className="w-9 h-9 rounded-xl bg-gray-700 border border-gray-600 flex items-center justify-center text-[11px] font-black text-gray-300 shrink-0 group-hover:border-emerald-500/40 group-hover:bg-emerald-500/10 group-hover:text-emerald-300 transition-all">
+                                                                                {String(ue.ext).slice(-4)}
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-[12px] font-bold text-white truncate group-hover:text-emerald-100 transition-colors">{ue.dialer_name || <span className="italic text-gray-500">Unknown</span>}</p>
+                                                                                <p className="text-[10px] text-gray-400 font-semibold">Ext: {ue.ext}</p>
+                                                                            </div>
+                                                                            <svg className="w-4 h-4 text-emerald-400 opacity-0 group-hover:opacity-100 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                                        </button>
+                                                                    ));
+                                                                })()}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

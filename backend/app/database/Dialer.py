@@ -85,7 +85,9 @@ class DialerDB:
         ]
         state = {}
         async for doc in self.toggles.aggregate(pipeline):
-            state[doc["_id"]] = doc["action"] == "on"
+            # Return actual action string ("on" or "justified") — skip "off" (means cleared)
+            if doc["action"] != "off":
+                state[doc["_id"]] = doc["action"]
         return state
 
     # ── Upload History ────────────────────────────────────────────────────────
