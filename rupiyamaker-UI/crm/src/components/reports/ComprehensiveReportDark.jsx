@@ -48,7 +48,7 @@ const fmtINR = (val) => {
     return `₹${Math.round(num).toLocaleString('en-IN')}`;
 };
 
-// Format obligation table as single-cell text
+// Format obligation table as single-cell text — monospace padded alignment (like screenshot)
 const formatObligationTable = (obligations) => {
     if (!obligations || !obligations.length) return '';
     const validRows = obligations.filter(o =>
@@ -56,20 +56,47 @@ const formatObligationTable = (obligations) => {
         o.total_loan || o.totalLoan || o.outstanding || o.emi
     );
     if (!validRows.length) return '';
-    const header = '#  | PRODUCT | BANK NAME | TENURE | ROI % | TOTAL LOAN | OUTSTANDING | EMI | ACTION';
-    const sep = '-'.repeat(90);
-    const rows = validRows.map((o, i) => {
-        const product = o.product || '-';
-        const bankName = o.bank_name || o.bankName || '-';
-        const tenure = o.tenure ? String(o.tenure) : '-';
-        const roi = o.roi ? `${o.roi}${String(o.roi).includes('%') ? '' : '%'}` : '-';
-        const totalLoan = (o.total_loan || o.totalLoan) ? fmtINR(o.total_loan || o.totalLoan) : '-';
-        const outstanding = o.outstanding ? fmtINR(o.outstanding) : '-';
-        const emi = o.emi ? fmtINR(o.emi) : '-';
-        const action = o.action || '-';
-        return `${i + 1}  | ${product} | ${bankName} | ${tenure} | ${roi} | ${totalLoan} | ${outstanding} | ${emi} | ${action}`;
-    });
-    return [header, sep, ...rows].join('\n');
+
+    const pad = (s, w) => String(s == null ? '' : s).padEnd(w);
+    const fmtNum = (val) => {
+        if (val === null || val === undefined || val === '') return '-';
+        const cleaned = typeof val === 'string' ? val.replace(/[₹,\s]/g, '') : String(val);
+        const num = parseFloat(cleaned);
+        if (isNaN(num)) return String(val);
+        return Math.round(num).toLocaleString('en-IN');
+    };
+
+    const rowData = validRows.map((o, i) => ({
+        num: String(i + 1),
+        product: o.product || '-',
+        bank: o.bank_name || o.bankName || '-',
+        tenure: o.tenure ? `${o.tenure}M` : '-',
+        roi: o.roi ? `${o.roi}${String(o.roi).includes('%') ? '' : '%'}` : '-',
+        totalLoan: fmtNum(o.total_loan || o.totalLoan),
+        outstanding: fmtNum(o.outstanding),
+        emi: fmtNum(o.emi),
+        action: o.action || 'Obligate',
+    }));
+
+    const W = {
+        num: 3,
+        product: Math.max(7,  ...rowData.map(r => r.product.length)),
+        bank:    Math.max(13, ...rowData.map(r => r.bank.length)),
+        tenure:  Math.max(7,  ...rowData.map(r => r.tenure.length)),
+        roi:     Math.max(5,  ...rowData.map(r => r.roi.length)),
+        totalLoan:   Math.max(10, ...rowData.map(r => r.totalLoan.length)),
+        outstanding: Math.max(11, ...rowData.map(r => r.outstanding.length)),
+        emi:     Math.max(9,  ...rowData.map(r => r.emi.length)),
+    };
+
+    const header = `${pad('#',W.num)}  ${pad('Product',W.product)}  ${pad('Bank',W.bank)}  ${pad('Tenure',W.tenure)}  ${pad('ROI',W.roi)}  ${pad('Total Loan',W.totalLoan)}  ${pad('Outstanding',W.outstanding)}  ${pad('EMI',W.emi)}  Action`;
+    const sep = '-'.repeat(header.length);
+
+    const rows = rowData.map(r =>
+        `${pad(r.num,W.num)}  ${pad(r.product,W.product)}  ${pad(r.bank,W.bank)}  ${pad(r.tenure,W.tenure)}  ${pad(r.roi,W.roi)}  ${pad(r.totalLoan,W.totalLoan)}  ${pad(r.outstanding,W.outstanding)}  ${pad(r.emi,W.emi)}  ${r.action}`
+    );
+
+    return ['Obligation Details', header, sep, ...rows].join('\n');
 };
 
 // Build a comprehensive export row from lead data matching UI labels
@@ -149,15 +176,47 @@ const buildLeadExportRow = (lead, getUserNameFn) => {
     row['Reference 2 Address'] = af.ref2Address || '';
 
     // ═══ OBLIGATION SECTION ═══
-    const fin = df.financial_details || {};
+    const fin  = df.financial_details  || {};
+    const pd   = df.personal_details   || {};
+    const ce   = df.check_eligibility  || {};
     const elig = df.eligibility_details || {};
     const obligations = df.obligations || [];
-    row['Salary (Obligation)'] = fmtINR(lead.salary || fin.monthly_income || df.salary) || '';
-    row['Partner Salary'] = fmtINR(lead.partnerSalary || fin.partner_salary || df.partnerSalary) || '';
-    row['CIBIL Score'] = lead.cibilScore || lead.cibil_score || fin.cibil_score || df.cibilScore || '';
-    row['Total BT POS'] = fmtINR(lead.totalBtPos || lead.total_bt_pos || df.totalBtPos || elig.totalBtPos) || '';
+
+    // Financial Details
+    row['Monthly Income (Salary)'] = fmtINR(fin.monthly_income || lead.salary || df.salary) || '';
+    row['Yearly Bonus']            = fmtINR(fin.yearly_bonus   || df.yearlyBonus) || '';
+    row['Partner Salary']          = fmtINR(fin.partner_salary || lead.partnerSalary || df.partnerSalary) || '';
+    row['CIBIL Score']             = fin.cibil_score || lead.cibilScore || lead.cibil_score || df.cibilScore || '';
+
+    // Company / Personal Details (from Obligation section)
+    row['Company Name (Obligation)']     = pd.company_name     || lead.company_name     || '';
+    row['Company Type']                  = pd.company_type     || lead.company_type     || '';
+    row['Company Category (Obligation)'] = pd.company_category || lead.company_category || '';
+
+    // Obligation Summary
+    row['Total BT POS']     = fmtINR(lead.totalBtPos || lead.total_bt_pos || df.totalBtPos || elig.totalBtPos) || '';
     row['Total Obligation'] = fmtINR(lead.totalObligation || lead.total_obligation || df.totalObligation || elig.totalObligations) || '';
+
+    // Obligation Table (formatted as aligned monospace text)
     row['Obligation Details'] = formatObligationTable(obligations);
+
+    // Check Eligibility Section
+    row['CE: Company Category'] = ce.company_category || '';
+    row['FOIR %']               = ce.foir_percent ? `${ce.foir_percent}%` : '';
+    row['Monthly EMI Can Pay']  = fmtINR(ce.monthly_emi_can_pay) || '';
+    row['CE: Tenure (Months)']  = ce.tenure_months ? `${ce.tenure_months} M` : '';
+    row['CE: Tenure (Years)']   = ce.tenure_years  ? `${ce.tenure_years} Yrs` : '';
+    row['CE: ROI']              = ce.roi ? `${ce.roi}${String(ce.roi).includes('%') ? '' : '%'}` : '';
+    row['CE: Multiplier']       = ce.multiplier || '';
+    row['Loan Eligibility Status'] = ce.loan_eligibility_status || '';
+
+    // Eligibility Calculation Summary
+    row['Total Income (Elig.)']        = fmtINR(elig.totalIncome)           || '';
+    row['FOIR Amount (Elig.)']         = fmtINR(elig.foirAmount)            || '';
+    row['Total Obligations (Elig.)']   = fmtINR(elig.totalObligations)      || '';
+    row['Final Eligibility']           = fmtINR(elig.finalEligibility)      || '';
+    row['Multiplier Eligibility']      = fmtINR(elig.multiplierEligibility) || '';
+    row['FOIR Eligibility']            = fmtINR(elig.foirEligibility)       || '';
 
     return row;
 };
@@ -168,10 +227,12 @@ const buildLeadWorksheet = (rows) => {
     // Set column widths — wider for key columns
     const cols = Object.keys(rows[0] || {});
     ws['!cols'] = cols.map(col => {
-        if (col === 'Obligation Details') return { wch: 95 };
-        if (col.includes('Address')) return { wch: 35 };
+        if (col === 'Obligation Details')       return { wch: 110 };
+        if (col.includes('Address'))            return { wch: 35 };
+        if (col.includes('Eligibility'))        return { wch: 22 };
         if (col.includes('Name') || col.includes('Email')) return { wch: 25 };
         if (col.includes('Lead ID') || col.includes('Date')) return { wch: 22 };
+        if (col.startsWith('CE:'))              return { wch: 20 };
         return { wch: 20 };
     });
     // Set row heights for obligation column (enable multiline viewing)
