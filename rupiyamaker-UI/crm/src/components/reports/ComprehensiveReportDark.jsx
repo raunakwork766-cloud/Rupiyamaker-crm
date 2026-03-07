@@ -275,8 +275,9 @@ const exportLeadsToExcel = async (rows, filename) => {
     // Find obligation column index (1-based)
     const oblColIdx = cols.indexOf('Obligation Details') + 1;
 
-    // Add data rows — track max line length in obligation cells
-    let maxOblLineLen = 90; // minimum fallback (wider base)
+    // Add data rows — track max chars per line and max line count across all rows
+    let maxOblLineLen = 80; // minimum floor
+    let maxLineCount  = 3;  // minimum floor
     rows.forEach(rowData => {
         const exRow = ws.addRow(rowData);
 
@@ -292,24 +293,30 @@ const exportLeadsToExcel = async (rows, filename) => {
                 const lines = oblVal.split('\n');
                 const lineCount = lines.length;
 
-                // Track the longest line to correctly size the column
+                // Track longest line and max line count across all data rows
                 lines.forEach(l => { if (l.length > maxOblLineLen) maxOblLineLen = l.length; });
+                if (lineCount > maxLineCount) maxLineCount = lineCount;
 
-                // Row height: 16pt per line + 8pt padding buffer so all rows are fully visible
-                exRow.height = Math.max(32, Math.ceil(lineCount * 16) + 8);
+                // Row height:
+                //   Courier New 9pt in Excel = 9pt font × 1.44 line-spacing = 12.96pt/line
+                //   Use 13pt per line + 10pt top/bottom padding to ensure all lines are visible
+                exRow.height = Math.max(30, lineCount * 13 + 10);
 
                 const oblCell = exRow.getCell(oblColIdx);
-                // wrapText: true so \n renders as real line breaks in Excel
+                // wrapText: true so each \n becomes a real line break in Excel
                 oblCell.alignment = { wrapText: true, vertical: 'top' };
                 oblCell.font = { name: 'Courier New', size: 9 };
             }
         }
     });
 
-    // Now set obligation column width based on actual longest line.
-    // Use 1.15x multiplier (generous) so Courier New chars never get clipped.
+    // Column width:
+    //   ExcelJS width unit ≈ width of one character in the Normal/default font (Calibri 11pt).
+    //   Courier New 9pt chars are narrower than Calibri 11pt, so setting width = char count
+    //   of the longest line guarantees the column is always wide enough — no line ever wraps.
+    //   Add 8 as a safety margin.
     if (oblColIdx > 0) {
-        ws.getColumn(oblColIdx).width = Math.ceil(maxOblLineLen * 1.15) + 6;
+        ws.getColumn(oblColIdx).width = maxOblLineLen + 8;
     }
 
     const buffer = await wb.xlsx.writeBuffer();
