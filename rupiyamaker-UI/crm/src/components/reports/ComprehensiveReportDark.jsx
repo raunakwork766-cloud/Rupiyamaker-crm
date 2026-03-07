@@ -12,6 +12,7 @@ import {
     BarChartOutlined
 } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -222,48 +223,79 @@ const buildLeadExportRow = (lead, getUserNameFn) => {
     return row;
 };
 
-// Build Excel worksheet with proper column widths for lead export
-const buildLeadWorksheet = (rows) => {
-    const ws = XLSX.utils.json_to_sheet(rows);
-    // Set column widths — wider for key columns
-    const cols = Object.keys(rows[0] || {});
-    ws['!cols'] = cols.map(col => {
-        if (col === 'Obligation Details')       return { wch: 110 };
-        if (col.includes('Address'))            return { wch: 35 };
-        if (col.includes('Eligibility'))        return { wch: 22 };
-        if (col.includes('Name') || col.includes('Email')) return { wch: 25 };
-        if (col.includes('Lead ID') || col.includes('Date')) return { wch: 22 };
-        if (col.startsWith('CE:'))              return { wch: 20 };
-        return { wch: 20 };
+// Download a buffer as a .xlsx file
+const downloadBuffer = (buffer, filename) => {
+    const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    // Set row heights + wrapText + monospace font for obligation column
-    if (rows.length > 0) {
-        const oblIdx = cols.indexOf('Obligation Details');
-        if (oblIdx >= 0) {
-            // Style the header cell too
-            const headerRef = XLSX.utils.encode_cell({ c: oblIdx, r: 0 });
-            if (ws[headerRef]) {
-                ws[headerRef].s = {
-                    font: { name: 'Courier New', sz: 9, bold: true },
-                    alignment: { wrapText: true, vertical: 'top' },
-                };
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
+// Get column width based on column name
+const getColWidth = (col) => {
+    if (col === 'Obligation Details')  return 85;
+    if (col.includes('Address'))       return 35;
+    if (col.includes('Eligibility'))   return 22;
+    if (col.includes('Name') || col.includes('Email')) return 25;
+    if (col.includes('Lead ID') || col.includes('Date')) return 22;
+    if (col.startsWith('CE:'))         return 20;
+    return 20;
+};
+
+// Export lead rows to Excel using ExcelJS (supports wrapText, fonts, row heights)
+const exportLeadsToExcel = async (rows, filename) => {
+    if (!rows.length) return;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'RupiyaMe CRM';
+    const ws = wb.addWorksheet('Leads');
+
+    const cols = Object.keys(rows[0]);
+
+    // Define columns with widths
+    ws.columns = cols.map(col => ({ header: col, key: col, width: getColWidth(col) }));
+
+    // Style header row
+    ws.getRow(1).eachCell(cell => {
+        cell.font = { bold: true, size: 10 };
+        cell.alignment = { vertical: 'middle', wrapText: false };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+    });
+    ws.getRow(1).height = 22;
+
+    // Find obligation column index (1-based)
+    const oblColIdx = cols.indexOf('Obligation Details') + 1;
+
+    // Add data rows
+    rows.forEach(rowData => {
+        const row = ws.addRow(rowData);
+
+        // Default alignment for all cells in this row
+        row.eachCell({ includeEmpty: true }, cell => {
+            cell.alignment = { vertical: 'top', wrapText: false };
+        });
+
+        // Special handling for Obligation Details cell
+        if (oblColIdx > 0) {
+            const oblVal = rowData['Obligation Details'];
+            if (oblVal && typeof oblVal === 'string' && oblVal.trim()) {
+                const lineCount = oblVal.split('\n').length;
+                row.height = Math.max(22, lineCount * 13.5);
+                const oblCell = row.getCell(oblColIdx);
+                oblCell.alignment = { wrapText: true, vertical: 'top' };
+                oblCell.font   = { name: 'Courier New', size: 9 };
             }
-            rows.forEach((r, i) => {
-                const cellRef = XLSX.utils.encode_cell({ c: oblIdx, r: i + 1 });
-                if (ws[cellRef] && ws[cellRef].v && typeof ws[cellRef].v === 'string') {
-                    const lineCount = ws[cellRef].v.split('\n').length;
-                    if (!ws['!rows']) ws['!rows'] = [];
-                    ws['!rows'][i + 1] = { hpt: Math.max(20, lineCount * 14) };
-                    // Apply wrapText + monospace font so newlines render as line breaks and columns align
-                    ws[cellRef].s = {
-                        font: { name: 'Courier New', sz: 9 },
-                        alignment: { wrapText: true, vertical: 'top' },
-                    };
-                }
-            });
         }
-    }
-    return ws;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    downloadBuffer(buffer, filename);
 };
 
 const SECTIONS = [
@@ -445,45 +477,47 @@ const ComprehensiveReportDark = () => {
     const fmtLabel = (k) => k.replace(/_/g,' ').replace(/([A-Z])/g,' $1').trim();
     const isLeadSection = ['plod-leads', 'login-leads'].includes(selectedSection);
 
-    const exportAllToExcel = () => {
+    const exportAllToExcel = async () => {
         if (!filteredData.length) { message.warning('No data to export'); return; }
-        const wb = XLSX.utils.book_new();
-        let ws;
         if (isLeadSection) {
             const rows = filteredData.map(r => buildLeadExportRow(r, getUserName));
-            ws = buildLeadWorksheet(rows);
+            await exportLeadsToExcel(rows, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+            message.success(`${filteredData.length} records export ho gayi!`);
         } else {
-            ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
+            XLSX.utils.book_append_sheet(wb, ws, selectedSection);
+            XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+            message.success(`${filteredData.length} records export ho gayi!`);
         }
-        XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-        XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`, { cellStyles: true });
-        message.success(`${filteredData.length} records export ho gayi!`);
     };
-    const exportBulkToExcel = () => {
+    const exportBulkToExcel = async () => {
         if (!selectedRows.length) { message.warning('Pehle records select karo'); return; }
-        const wb = XLSX.utils.book_new();
-        let ws;
         if (isLeadSection) {
             const rows = selectedRows.map(r => buildLeadExportRow(r, getUserName));
-            ws = buildLeadWorksheet(rows);
+            await exportLeadsToExcel(rows, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+            message.success(`${selectedRows.length} selected records exported!`);
         } else {
-            ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
+            XLSX.utils.book_append_sheet(wb, ws, selectedSection);
+            XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+            message.success(`${selectedRows.length} selected records exported!`);
         }
-        XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-        XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`, { cellStyles: true });
-        message.success(`${selectedRows.length} selected records exported!`);
     };
-    const exportRowExcel = (record) => {
-        const wb = XLSX.utils.book_new();
-        let ws;
+    const exportRowExcel = async (record) => {
         if (isLeadSection) {
-            ws = buildLeadWorksheet([buildLeadExportRow(record, getUserName)]);
+            await exportLeadsToExcel(
+                [buildLeadExportRow(record, getUserName)],
+                `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`
+            );
         } else {
+            const wb = XLSX.utils.book_new();
             const o = {}; Object.keys(record).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof record[k] === 'object' ? JSON.stringify(record[k]) : record[k]; });
-            ws = XLSX.utils.json_to_sheet([o]);
+            const ws = XLSX.utils.json_to_sheet([o]);
+            XLSX.utils.book_append_sheet(wb, ws, 'Record');
+            XLSX.writeFile(wb, `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`);
         }
-        XLSX.utils.book_append_sheet(wb, ws, 'Record');
-        XLSX.writeFile(wb, `record-${dayjs().format('YYYY-MM-DD-HHmm')}.xlsx`, { cellStyles: true });
     };
 
     const getStatusColor = (s) => {
