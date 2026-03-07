@@ -380,8 +380,8 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                         return (
                                             <div className="rounded-md border-2 bg-[#052a0e] border-[#22c55e] text-white font-['Arial_Black',Arial,sans-serif] cursor-pointer"
                                                 style={{ padding: '5px 8px' }}
-                                                onDoubleClick={() => setJustDetailPopup({ ext: a.ext, name: a.name, date: a.date })}
-                                                title="Double-click to view details">
+                                                onClick={() => setJustDetailPopup({ ext: a.ext, name: a.name, date: a.date })}
+                                                title="Click to view details">
                                                 {/* Header: single row — count + total + add button */}
                                                 <div className="flex items-center justify-between gap-1 mb-1.5">
                                                     <span className="text-[11px] font-black text-[#22c55e] whitespace-nowrap leading-none">
@@ -645,38 +645,56 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
             )}
             {/* ── Remark Popup Modal — add justification for waste time ── */}
             {remarkPopup && (
-                <div className="fixed inset-0 z-[950] flex items-center justify-center" onClick={() => setRemarkPopup(null)}>
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                    <div className="relative bg-[#0d0d0d] border-2 border-[#a78bfa] rounded-2xl shadow-[0_20px_60px_rgba(167,139,250,.2)] w-[420px] max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-3 bg-gradient-to-r from-[#0d0020] to-[#0d0d0d] border-b border-[#2a1a40] flex items-center justify-between flex-shrink-0">
-                            <div>
-                                <div className="text-[12px] font-black text-[#22c55e] uppercase tracking-wider">⏱ Time Justification</div>
-                                <div className="text-[10px] text-[#888] font-bold mt-0.5">{remarkPopup.name} · Ext: {remarkPopup.ext} · {fmtDate(remarkPopup.date)}</div>
+                <div className="fixed inset-0 z-[950] flex items-center justify-center p-4" onClick={() => setRemarkPopup(null)}>
+                    <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
+                    <div className="relative bg-gradient-to-b from-[#0d001a] to-[#0d0d0d] border border-[#a78bfa]/40 rounded-3xl shadow-[0_30px_80px_rgba(167,139,250,.22),0_0_0_1px_rgba(167,139,250,.12)] w-[500px] max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Glow strip */}
+                        <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#a78bfa] to-transparent shrink-0" />
+                        {/* Header */}
+                        <div className="px-6 pt-5 pb-4 flex items-start gap-4 shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-[#a78bfa]/20 border border-[#a78bfa]/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(167,139,250,.2)]">
+                                <span className="text-[22px]">⏱</span>
                             </div>
-                            <button onClick={() => setRemarkPopup(null)} className="w-[22px] h-[22px] rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[11px] text-[#aaa] hover:border-[#a78bfa] hover:text-white transition-all">✕</button>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[15px] font-black text-white leading-tight">Time Justification</div>
+                                <div className="text-[11px] text-[#a78bfa]/80 font-bold mt-0.5">Add or view time justifications for waste time</div>
+                            </div>
+                            <button onClick={() => setRemarkPopup(null)} className="w-8 h-8 rounded-xl bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[12px] text-[#888] hover:border-[#a78bfa]/50 hover:text-white hover:bg-[#a78bfa]/10 transition-all flex-shrink-0">✕</button>
                         </div>
-                        <div className="px-5 py-4 space-y-3 overflow-y-auto">
+                        {/* Agent info chip */}
+                        <div className="mx-6 mb-4 px-4 py-2.5 bg-[#a78bfa]/10 border border-[#a78bfa]/25 rounded-xl flex items-center gap-3 shrink-0">
+                            <div className="w-8 h-8 rounded-xl bg-[#a78bfa]/20 border border-[#a78bfa]/30 flex items-center justify-center text-[11px] font-black text-[#a78bfa] shrink-0">
+                                {(remarkPopup.name || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-[12px] font-black text-white truncate">{remarkPopup.name}</div>
+                                <div className="text-[10px] text-[#888] font-semibold">Ext: {remarkPopup.ext} &nbsp;·&nbsp; {fmtDate(remarkPopup.date)}</div>
+                            </div>
+                        </div>
+                        {/* Body */}
+                        <div className="px-6 pb-6 space-y-3 overflow-y-auto">
                             {/* Add new remark */}
-                            <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-3 space-y-2.5">
-                                <div className="text-[10px] font-black text-[#a78bfa] uppercase tracking-wider">+ Add Justification</div>
+                            <div className="bg-[#0a0a0a] border border-[#a78bfa]/20 rounded-2xl p-4 space-y-3">
+                                <div className="text-[11px] font-black text-[#a78bfa] uppercase tracking-wider">+ Add Justification</div>
                                 <div className="flex gap-1.5 flex-wrap">
                                     {remarkTypes.map(t => (
                                         <button key={t} onClick={() => setRemarkType(t)}
-                                            className={`px-2 py-0.5 text-[9px] font-black rounded-full border transition-all ${remarkType === t ? 'bg-[#a78bfa] text-black border-[#a78bfa]' : 'border-[#333] text-[#888] hover:border-[#a78bfa]/50'}`}>{t}</button>
+                                            className={`px-2.5 py-1 text-[10px] font-black rounded-full border transition-all ${remarkType === t ? 'bg-[#a78bfa] text-black border-[#a78bfa]' : 'border-[#333] text-[#888] hover:border-[#a78bfa]/50 hover:text-[#a78bfa]'}`}>{t}</button>
                                     ))}
                                 </div>
                                 <div className="flex gap-2">
                                     <div className="flex-1">
                                         <input type="text" value={remarkText} onChange={e => setRemarkText(e.target.value)}
                                             placeholder="What was the reason..."
-                                            className="w-full bg-[#0a0a0a] border border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-white font-bold focus:outline-none focus:border-[#a78bfa] placeholder:text-[#444]" />
+                                            autoFocus
+                                            className="w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-xl px-3.5 py-2 text-[12px] text-white font-bold focus:outline-none focus:border-[#a78bfa]/60 focus:shadow-[0_0_0_3px_rgba(167,139,250,.1)] placeholder:text-[#444] transition-all" />
                                     </div>
                                     <div className="w-20">
                                         <input type="number" value={remarkMins} onChange={e => setRemarkMins(e.target.value)}
                                             placeholder="Min"
                                             min="1" max="600"
-                                            className="w-full bg-[#0a0a0a] border border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-white font-bold focus:outline-none focus:border-[#a78bfa] placeholder:text-[#444] text-center" />
-                                        <div className="text-[8px] text-[#555] text-center mt-0.5">minutes</div>
+                                            className="w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-xl px-2 py-2 text-[12px] text-white font-bold focus:outline-none focus:border-[#a78bfa]/60 focus:shadow-[0_0_0_3px_rgba(167,139,250,.1)] placeholder:text-[#444] transition-all text-center" />
+                                        <div className="text-[9px] text-[#555] text-center mt-0.5">minutes</div>
                                     </div>
                                 </div>
                                 <button onClick={() => {
@@ -692,7 +710,7 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                     setRemarkText('');
                                     setRemarkMins('');
                                 }} disabled={!remarkText.trim() || !remarkMins || parseInt(remarkMins) < 1}
-                                    className="px-3 py-1.5 bg-[#a78bfa] text-black text-[10px] font-black rounded-md hover:bg-[#c4b5fd] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                                    className="w-full px-4 py-2.5 bg-gradient-to-r from-[#a78bfa] to-[#7c3aed] text-black text-[11px] font-black rounded-xl hover:from-[#c4b5fd] hover:to-[#a78bfa] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4px_16px_rgba(167,139,250,.3)] flex items-center justify-center gap-1.5">
                                     📝 Add Remark
                                 </button>
                             </div>
@@ -704,24 +722,24 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                     <div className="space-y-1.5">
                                         <div className="text-[10px] font-black text-[#888] uppercase tracking-wider">{myRemarks.length} Existing Remark{myRemarks.length !== 1 ? 's' : ''}</div>
                                         {myRemarks.map((r, ri) => (
-                                            <div key={ri} className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-lg px-3 py-2 flex items-start gap-2">
+                                            <div key={ri} className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-2xl px-4 py-3 flex items-start gap-2.5 hover:border-[#a78bfa]/20 transition-all">
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#a78bfa]/20 text-[#a78bfa] border border-[#a78bfa]/30">{r.remark_type}</span>
-                                                        <span className="text-[10px] font-black text-white">{r.time_minutes}m</span>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-[#a78bfa]/20 text-[#a78bfa] border border-[#a78bfa]/30">{r.remark_type}</span>
+                                                        <span className="text-[11px] font-black text-[#a78bfa]">{r.time_minutes}m</span>
                                                     </div>
-                                                    <div className="text-[10px] text-[#ccc] font-bold mt-0.5">{r.remark_text}</div>
+                                                    <div className="text-[11px] text-[#ccc] font-bold mt-1">{r.remark_text}</div>
                                                     <div className="text-[9px] text-[#555] font-bold mt-0.5">
                                                         by {r.added_by_name || '—'}{r.added_by_employee_id ? ` (${r.added_by_employee_id})` : ''} · {fmtIST(r.created_at)}
                                                     </div>
                                                 </div>
                                                 <button onClick={() => onDeleteRemark && onDeleteRemark(r._id, remarkPopup.ext, remarkPopup.date)}
-                                                    className="text-[#c0392b] text-[10px] hover:text-red-400 font-black flex-shrink-0 mt-0.5" title="Delete">🗑</button>
+                                                    className="text-[#c0392b] text-[13px] hover:text-red-400 transition-all flex-shrink-0 mt-0.5" title="Delete">🗑</button>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="text-center py-4 text-[11px] text-[#444] font-bold">No remarks yet for this agent on this date.</div>
+                                    <div className="text-center py-5 text-[11px] text-[#444] font-bold">No remarks yet for this agent on this date.</div>
                                 );
                             })()}
                         </div>
@@ -2256,41 +2274,56 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
 
     useEffect(() => {
         if (!show) return;
-        const allExtsMap = {};
-        
-        if (uploadedAgents) {
-            uploadedAgents.forEach(a => {
-                if (!allExtsMap[a.ext]) allExtsMap[a.ext] = { ext: a.ext, dialer_name: a.name, mapped_name: '', designation: '', team: '' };
-            });
-        }
-        
-        Object.entries(agentMappings).forEach(([ext, m]) => {
-            if (allExtsMap[ext]) {
-                allExtsMap[ext].mapped_name = m.mapped_name || '';
-                allExtsMap[ext].designation = m.designation || '';
-                allExtsMap[ext].team = m.team || '';
-            } else {
-                allExtsMap[ext] = { ext, dialer_name: m.dialer_name || '', mapped_name: m.mapped_name || '', designation: m.designation || '', team: m.team || '' };
+        const loadAll = async () => {
+            const allExtsMap = {};
+            
+            if (uploadedAgents) {
+                uploadedAgents.forEach(a => {
+                    if (!allExtsMap[a.ext]) allExtsMap[a.ext] = { ext: a.ext, dialer_name: a.name, mapped_name: '', designation: '', team: '' };
+                });
             }
-        });
-
-        const grouped = {};
-        const unmappedList = [];
-        
-        Object.values(allExtsMap).forEach(item => {
-            if (item.mapped_name && item.mapped_name.trim()) {
-                const key = item.mapped_name.trim();
-                if (!grouped[key]) {
-                    grouped[key] = { id: key, mapped_name: key, designation: item.designation || '', team: item.team || '', exts: [] };
+            
+            Object.entries(agentMappings).forEach(([ext, m]) => {
+                if (allExtsMap[ext]) {
+                    allExtsMap[ext].mapped_name = m.mapped_name || '';
+                    allExtsMap[ext].designation = m.designation || '';
+                    allExtsMap[ext].team = m.team || '';
+                } else {
+                    allExtsMap[ext] = { ext, dialer_name: m.dialer_name || '', mapped_name: m.mapped_name || '', designation: m.designation || '', team: m.team || '' };
                 }
-                grouped[key].exts.push({ ext: item.ext, dialer_name: item.dialer_name });
-            } else {
-                unmappedList.push({ ext: item.ext, dialer_name: item.dialer_name });
-            }
-        });
+            });
 
-        setAgents(Object.values(grouped).sort((a,b)=> a.mapped_name.localeCompare(b.mapped_name)));
-        setUnmappedExts(unmappedList.sort((a,b)=> a.ext.localeCompare(b.ext)));
+            const grouped = {};
+            const unmappedList = [];
+            
+            Object.values(allExtsMap).forEach(item => {
+                if (item.mapped_name && item.mapped_name.trim()) {
+                    const key = item.mapped_name.trim();
+                    if (!grouped[key]) {
+                        grouped[key] = { id: key, mapped_name: key, designation: item.designation || '', team: item.team || '', exts: [] };
+                    }
+                    grouped[key].exts.push({ ext: item.ext, dialer_name: item.dialer_name });
+                } else {
+                    unmappedList.push({ ext: item.ext, dialer_name: item.dialer_name });
+                }
+            });
+
+            // Also load saved profiles (no-ext profiles from backend)
+            try {
+                const pr = await fetchWithAuth('/api/dialer/agent-profiles');
+                const pd = await pr.json();
+                (pd.profiles || []).forEach(p => {
+                    const key = p.mapped_name || p.profile_name;
+                    if (key && !grouped[key]) {
+                        grouped[key] = { id: key, mapped_name: key, designation: p.designation || '', team: p.team || '', exts: [] };
+                    }
+                });
+            } catch(e) { /* silently ignore */ }
+
+            setAgents(Object.values(grouped).sort((a,b)=> a.mapped_name.localeCompare(b.mapped_name)));
+            setUnmappedExts(unmappedList.sort((a,b)=> a.ext.localeCompare(b.ext)));
+        };
+        loadAll();
     }, [show, agentMappings, uploadedAgents]);
 
     const handleCreateAgent = () => {
@@ -2354,7 +2387,16 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                 });
             });
 
+            // Save extension mappings
             await fetchWithAuth('/api/dialer/agent-mapping/bulk', { method: 'POST', body: JSON.stringify({ mappings: bulkMappings, user_id: uid }) });
+
+            // Save all agent profiles (including profiles without extensions)
+            const profilesPayload = agents.map(ag => ({
+                mapped_name: ag.mapped_name,
+                designation: ag.designation || '',
+                team: ag.team || '',
+            }));
+            await fetchWithAuth('/api/dialer/agent-profiles/bulk', { method: 'POST', body: JSON.stringify({ profiles: profilesPayload, user_id: uid }) });
 
             const originallyMapped = Object.keys(agentMappings);
             const nowUnmapped = unmappedExts.map(e => e.ext).filter(e => originallyMapped.includes(e));
@@ -2638,9 +2680,9 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
 
                                                 {/* Mapped Extensions as Chips */}
                                                 <div className="flex flex-wrap gap-2 min-h-[32px] items-center pl-1">
-                                                    {ag.exts.length === 0 && (
+                                                    {ag.exts.length === 0 && unmappedExts.length === 0 && (
                                                         <span className="text-[12px] text-gray-400 font-semibold italic">
-                                                            No extensions yet — go to "Unmapped" tab to assign
+                                                            No extensions available to assign
                                                         </span>
                                                     )}
                                                     {ag.exts.map(e => (
@@ -2655,6 +2697,27 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
                                                         </div>
                                                     ))}
                                                 </div>
+
+                                                {/* Direct Assign from Unmapped — shown inline on Mapped tab */}
+                                                {unmappedExts.length > 0 && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-700/40">
+                                                        <p className="text-[10px] text-emerald-400/70 font-bold mb-1.5 uppercase tracking-wider">+ Assign extension:</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {unmappedExts.slice(0, 8).map(ue => (
+                                                                <button key={ue.ext}
+                                                                    onClick={() => handleAssignExt(ag.id, ue)}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/35 hover:bg-emerald-500/25 hover:border-emerald-400/70 text-emerald-300 text-[10px] font-bold transition-all">
+                                                                    <span>+</span>
+                                                                    <span>{ue.ext}</span>
+                                                                    {ue.dialer_name && <span className="opacity-60 truncate max-w-[55px] text-[9px]">{ue.dialer_name}</span>}
+                                                                </button>
+                                                            ))}
+                                                            {unmappedExts.length > 8 && (
+                                                                <span className="text-[10px] text-gray-500 italic self-center">+{unmappedExts.length - 8} more in Unmapped tab</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

@@ -21,6 +21,7 @@ class DialerDB:
         self.uploads = self.db.dialer_upload_history
         self.remarks = self.db.dialer_remarks
         self.agent_mappings = self.db.dialer_agent_mappings
+        self.agent_profiles = self.db.dialer_agent_profiles
         self.login_entries = self.db.dialer_login_entries
         self.lead_entries = self.db.dialer_lead_entries
 
@@ -31,6 +32,7 @@ class DialerDB:
             await self.uploads.create_index([("uploaded_by_id", ASCENDING), ("uploaded_at", DESCENDING)])
             await self.remarks.create_index([("ext", ASCENDING), ("date", ASCENDING)])
             await self.agent_mappings.create_index([("ext", ASCENDING)], unique=True)
+            await self.agent_profiles.create_index([("profile_name", ASCENDING)], unique=True)
             await self.login_entries.create_index([("ext", ASCENDING), ("date", ASCENDING)])
             await self.lead_entries.create_index([("ext", ASCENDING), ("date", ASCENDING)])
             logger.info("Dialer indexes created successfully")
@@ -276,6 +278,51 @@ class DialerDB:
     async def delete_agent_mapping(self, ext: str) -> bool:
         result = await self.agent_mappings.delete_one({"ext": ext})
         return result.deleted_count > 0
+
+    # ── Agent Profiles (name/designation/team, independent of extensions) ─────
+
+    async def bulk_save_agent_profiles(self, profiles: List[Dict],
+                                        user_id: str = "", user_name: str = "") -> int:
+        """Save/update agent profiles (name, designation, team) independently."""
+        if not profiles:
+            return 0
+        from pymongo import UpdateOne
+        ops = []
+        for p in profiles:
+            name = p.get("mapped_name", "").strip()
+            if not name:
+                continue
+            ops.append(UpdateOne(
+                {"profile_name": name},
+                {"$set": {
+                    "profile_name": name,
+                    "designation": p.get("designation", ""),
+                    "team": p.get("team", ""),
+                    "updated_by_id": user_id,
+                    "updated_by_name": user_name,
+                    "updated_at": get_ist_now(),
+                }, "$setOnInsert": {"created_at": get_ist_now()}},
+                upsert=True
+            ))
+        if not ops:
+            return 0
+        result = await self.agent_profiles.bulk_write(ops)
+        # Also delete profiles no longer in the list
+        names = [p.get("mapped_name", "").strip() for p in profiles if p.get("mapped_name", "").strip()]
+        await self.agent_profiles.delete_many({"profile_name": {"$nin": names}})
+        return result.upserted_count + result.modified_count
+
+    async def get_all_agent_profiles(self) -> List[Dict]:
+        """Get all saved agent profiles."""
+        cursor = self.agent_profiles.find({}).sort("profile_name", ASCENDING)
+        results = []
+        async for doc in cursor:
+            doc["_id"] = str(doc["_id"])
+            for k in ("created_at", "updated_at"):
+                if isinstance(doc.get(k), datetime):
+                    doc[k] = doc[k].isoformat()
+            results.append(doc)
+        return results
 
     # ── Login Entries ─────────────────────────────────────────────────────────
 
