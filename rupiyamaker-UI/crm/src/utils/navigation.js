@@ -148,8 +148,7 @@ export const ROUTES = {
   ADD_TASK: '/add-task',
   SETTINGS: '/settings',
   REPORTS: '/reports',
-  DIALER_REPORT: '/dialer-report',
-  KNOWLEDGE_BASE: '/knowledge-base'
+  DIALER_REPORT: '/dialer-report'
 };
 
 // Label to route mapping for sidebar
@@ -183,8 +182,7 @@ export const LABEL_TO_ROUTE = {
   'Add Task': ROUTES.ADD_TASK,
   'Settings': ROUTES.SETTINGS,
   'Reports': ROUTES.REPORTS,
-  'Dialer Report': ROUTES.DIALER_REPORT,
-  'Knowledge Base': ROUTES.KNOWLEDGE_BASE
+  'Dialer Report': ROUTES.DIALER_REPORT
 };
 
 // Get route path by label with dynamic loan type support

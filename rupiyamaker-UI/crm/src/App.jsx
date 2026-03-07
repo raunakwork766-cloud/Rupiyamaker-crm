@@ -152,8 +152,7 @@ function App() {
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
-      'All Notifications': '/notifications',
-      'Knowledge Base': '/knowledge-base'
+      'All Notifications': '/notifications'
     }).find(([_, path]) => path === currentPath)
     
     if (matchingLabel) {
@@ -338,8 +337,7 @@ function App() {
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
-      'All Notifications': '/notifications',
-      'Knowledge Base': '/knowledge-base'
+      'All Notifications': '/notifications'
     }
     
     // Check if current selectedLabel already maps to the current path
