@@ -389,6 +389,32 @@ async def delete_agent_mapping(ext: str):
     return {"success": True}
 
 
+# ── Agent Profile Endpoints ────────────────────────────────────────────────────
+
+class AgentProfilesRequest(BaseModel):
+    profiles: List[Dict[str, Any]]
+    user_id: str = ""
+
+@router.get("/agent-profiles")
+async def get_all_agent_profiles():
+    """Return all saved agent profiles."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    profiles = await db.get_all_agent_profiles()
+    return {"success": True, "profiles": profiles}
+
+@router.post("/agent-profiles/bulk")
+async def bulk_save_agent_profiles(body: AgentProfilesRequest):
+    """Bulk upsert agent profiles (by mapped_name). Removes profiles not in list."""
+    db = get_dialer_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Dialer DB not available")
+    user_details = await _resolve_user_details(body.user_id)
+    count = await db.bulk_save_agent_profiles(body.profiles, body.user_id, user_details.get("name", ""))
+    return {"success": True, "count": count}
+
+
 # ── Login Entry Endpoints ──────────────────────────────────────────────────────
 
 class LoginEntryRequest(BaseModel):
