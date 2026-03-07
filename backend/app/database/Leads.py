@@ -411,15 +411,33 @@ class LeadsDB:
                 "reference": 1,
                 "whatsapp_number": 1,
                 
-                # ⚡ CRITICAL: Include dynamic_fields for table columns
-                # These fields are displayed in TOTAL INCOME, FOIR, CIBIL SCORE, etc. columns
+                # ⚡ CRITICAL: Include dynamic_fields for table columns + full export support
                 "dynamic_fields.eligibility_details": 1,
                 "dynamic_fields.financial_details": 1,
                 "dynamic_fields.obligation_data": 1,
-                "dynamic_fields.process": 1,  # ⚡ ADDED: Include process data for "How to Process" section
+                "dynamic_fields.obligations": 1,       # ⚡ ADDED: Obligation table rows for export
+                "dynamic_fields.process": 1,           # ⚡ ADDED: How to Process section
+                "dynamic_fields.applicant_form": 1,    # ⚡ ADDED: Applicant Form section for export
+                
+                # Root-level obligation summary fields
+                "totalBtPos": 1,
+                "total_bt_pos": 1,
+                "totalObligation": 1,
+                "total_obligation": 1,
+                "cibilScore": 1,
+                "cibil_score": 1,
+                "partnerSalary": 1,
+                
+                # About section extra fields
+                "team_name": 1,
+                "product_name": 1,
+                "mobile_number": 1,
+                "alternate_phone": 1,
+                "alternative_phone": 1,
+                "processing_bank": 1,
                 
                 # Also include root-level fields (legacy support + direct access)
-                "process": 1,  # ⚡ ADDED: Include root-level process field
+                "process": 1,
                 "eligibility_details": 1,
                 "financial_details": 1,
                 "obligation_data": 1,

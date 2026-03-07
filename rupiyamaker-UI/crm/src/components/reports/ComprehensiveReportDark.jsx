@@ -218,8 +218,6 @@ const ComprehensiveReportDark = () => {
     const [detailLoading, setDetailLoading] = useState(false);
     const [filters, setFilters] = useState({ dateRange: null, searchText: '', status: null });
     const [statistics, setStatistics]   = useState({ total: 0, active: 0, completed: 0, pending: 0 });
-    const [exportLoading, setExportLoading] = useState(false);
-    const [exportProgress, setExportProgress] = useState('');
 
     useEffect(() => { fetchUsers(); }, []);
     useEffect(() => { fetchSectionData(); }, [selectedSection]);
@@ -372,107 +370,39 @@ const ComprehensiveReportDark = () => {
     const fmtLabel = (k) => k.replace(/_/g,' ').replace(/([A-Z])/g,' $1').trim();
     const isLeadSection = ['plod-leads', 'login-leads'].includes(selectedSection);
 
-    // Batch-fetch full lead details for export (needed because list API uses aggressive projection)
-    const fetchFullLeadsForExport = async (leads) => {
-        const BATCH_SIZE = 15;
-        const fullLeads = [];
-        for (let i = 0; i < leads.length; i += BATCH_SIZE) {
-            const batch = leads.slice(i, i + BATCH_SIZE);
-            setExportProgress(`Fetching lead details... ${Math.min(i + BATCH_SIZE, leads.length)}/${leads.length}`);
-            const results = await Promise.allSettled(
-                batch.map(lead => {
-                    const leadId = lead._id?.$oid || lead._id;
-                    return leadId ? leadsService.getLeadById(leadId) : Promise.resolve({ success: false });
-                })
-            );
-            results.forEach((result, idx) => {
-                if (result.status === 'fulfilled' && result.value?.success && result.value.data) {
-                    fullLeads.push(result.value.data);
-                } else {
-                    // Fallback to list data if detail fetch fails
-                    fullLeads.push(batch[idx]);
-                }
-            });
-        }
-        return fullLeads;
-    };
-
-    const exportAllToExcel = async () => {
-        if (!filteredData.length) { message.warning('No data'); return; }
+    const exportAllToExcel = () => {
+        if (!filteredData.length) { message.warning('No data to export'); return; }
         const wb = XLSX.utils.book_new();
         let ws;
         if (isLeadSection) {
-            setExportLoading(true);
-            setExportProgress('Preparing export...');
-            try {
-                const fullLeads = await fetchFullLeadsForExport(filteredData);
-                setExportProgress('Building Excel file...');
-                const rows = fullLeads.map(r => buildLeadExportRow(r, getUserName));
-                ws = buildLeadWorksheet(rows);
-                XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-                XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
-                message.success(`Exported ${fullLeads.length} leads with complete data`);
-            } catch (err) {
-                console.error('Export error:', err);
-                message.error('Export failed. Please try again.');
-            } finally {
-                setExportLoading(false);
-                setExportProgress('');
-            }
-            return;
+            const rows = filteredData.map(r => buildLeadExportRow(r, getUserName));
+            ws = buildLeadWorksheet(rows);
+        } else {
+            ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         }
-        ws = XLSX.utils.json_to_sheet(filteredData.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
         XLSX.writeFile(wb, `${selectedSection}-${dayjs().format('YYYY-MM-DD')}.xlsx`);
-        message.success(`Exported ${filteredData.length} records`);
+        message.success(`${filteredData.length} records export ho gayi!`);
     };
-    const exportBulkToExcel = async () => {
-        if (!selectedRows.length) { message.warning('Select records'); return; }
+    const exportBulkToExcel = () => {
+        if (!selectedRows.length) { message.warning('Pehle records select karo'); return; }
         const wb = XLSX.utils.book_new();
         let ws;
         if (isLeadSection) {
-            setExportLoading(true);
-            setExportProgress('Preparing export...');
-            try {
-                const fullLeads = await fetchFullLeadsForExport(selectedRows);
-                setExportProgress('Building Excel file...');
-                const rows = fullLeads.map(r => buildLeadExportRow(r, getUserName));
-                ws = buildLeadWorksheet(rows);
-                XLSX.utils.book_append_sheet(wb, ws, selectedSection);
-                XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
-                message.success(`Exported ${fullLeads.length} leads with complete data`);
-            } catch (err) {
-                console.error('Export error:', err);
-                message.error('Export failed. Please try again.');
-            } finally {
-                setExportLoading(false);
-                setExportProgress('');
-            }
-            return;
+            const rows = selectedRows.map(r => buildLeadExportRow(r, getUserName));
+            ws = buildLeadWorksheet(rows);
+        } else {
+            ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         }
-        ws = XLSX.utils.json_to_sheet(selectedRows.map(r => { const o = {}; Object.keys(r).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]; }); return o; }));
         XLSX.utils.book_append_sheet(wb, ws, selectedSection);
         XLSX.writeFile(wb, `${selectedSection}-selected-${dayjs().format('YYYY-MM-DD')}.xlsx`);
-        message.success(`Exported ${selectedRows.length} records`);
+        message.success(`${selectedRows.length} selected records exported!`);
     };
-    const exportRowExcel = async (record) => {
+    const exportRowExcel = (record) => {
         const wb = XLSX.utils.book_new();
         let ws;
         if (isLeadSection) {
-            try {
-                const leadId = record._id?.$oid || record._id;
-                let fullLead = record;
-                if (leadId) {
-                    const res = await leadsService.getLeadById(leadId);
-                    if (res?.success && res.data) fullLead = res.data;
-                }
-                const rows = [buildLeadExportRow(fullLead, getUserName)];
-                ws = buildLeadWorksheet(rows);
-            } catch (err) {
-                console.error('Single row export error:', err);
-                const rows = [buildLeadExportRow(record, getUserName)];
-                ws = buildLeadWorksheet(rows);
-            }
+            ws = buildLeadWorksheet([buildLeadExportRow(record, getUserName)]);
         } else {
             const o = {}; Object.keys(record).forEach(k => { if (!k.startsWith('_')) o[fmtLabel(k)] = typeof record[k] === 'object' ? JSON.stringify(record[k]) : record[k]; });
             ws = XLSX.utils.json_to_sheet([o]);
@@ -729,20 +659,20 @@ const ComprehensiveReportDark = () => {
                             onSearch={v => setFilters(p=>({...p,searchText:v}))}
                             onChange={e => !e.target.value && setFilters(p=>({...p,searchText:''}))} />
                         <Button size="small" icon={<ReloadOutlined />} onClick={resetFilters}>Reset</Button>
-                        <Button size="small" icon={<FileExcelOutlined />} onClick={exportBulkToExcel} disabled={!selectedRows.length || exportLoading}
+                        <Button size="small" icon={<FileExcelOutlined />} onClick={exportBulkToExcel} disabled={!selectedRows.length}
                             style={{ background:selectedRows.length?'rgba(99,102,241,0.15)':undefined, border:selectedRows.length?'1px solid #6366f1':undefined, color:selectedRows.length?'#a5b4fc':undefined }}>
                             Export ({selectedRows.length})
                         </Button>
-                        <Button size="small" icon={<DownloadOutlined />} onClick={exportAllToExcel} disabled={!filteredData.length || exportLoading}
+                        <Button size="small" icon={<DownloadOutlined />} onClick={exportAllToExcel} disabled={!filteredData.length}
                             style={{ background:filteredData.length?'rgba(16,185,129,0.12)':undefined, border:filteredData.length?'1px solid #10b981':undefined, color:filteredData.length?'#10b981':undefined }}>
-                            {exportLoading ? exportProgress : 'Export All'}
+                            Export All
                         </Button>
                     </Space>
                 </div>
 
                 {/* Table */}
                 <div style={{ flex:1, overflow:'auto', padding:'4px 6px 8px' }}>
-                    <Spin spinning={loading || exportLoading} tip={exportLoading ? exportProgress : "Loading…"} size="large">
+                    <Spin spinning={loading} tip="Loading…" size="large">
                         <Table
                             rowSelection={{ selectedRowKeys, onChange:(keys,rows)=>{setSelectedRowKeys(keys);setSelectedRows(rows);} }}
                             columns={getColumns()}
