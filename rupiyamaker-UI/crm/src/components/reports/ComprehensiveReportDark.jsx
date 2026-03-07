@@ -240,7 +240,6 @@ const downloadBuffer = (buffer, filename) => {
 
 // Get column width based on column name
 const getColWidth = (col) => {
-    if (col === 'Obligation Details')  return 85;
     if (col.includes('Address'))       return 35;
     if (col.includes('Eligibility'))   return 22;
     if (col.includes('Name') || col.includes('Email')) return 25;
@@ -258,8 +257,12 @@ const exportLeadsToExcel = async (rows, filename) => {
 
     const cols = Object.keys(rows[0]);
 
-    // Define columns with widths
-    ws.columns = cols.map(col => ({ header: col, key: col, width: getColWidth(col) }));
+    // Set a placeholder width for Obligation Details — will be recalculated after rows are added
+    ws.columns = cols.map(col => ({
+        header: col,
+        key: col,
+        width: col === 'Obligation Details' ? 20 : getColWidth(col),
+    }));
 
     // Style header row
     ws.getRow(1).eachCell(cell => {
@@ -272,12 +275,13 @@ const exportLeadsToExcel = async (rows, filename) => {
     // Find obligation column index (1-based)
     const oblColIdx = cols.indexOf('Obligation Details') + 1;
 
-    // Add data rows
+    // Add data rows — track max line length in obligation cells
+    let maxOblLineLen = 60; // minimum fallback
     rows.forEach(rowData => {
-        const row = ws.addRow(rowData);
+        const exRow = ws.addRow(rowData);
 
-        // Default alignment for all cells in this row
-        row.eachCell({ includeEmpty: true }, cell => {
+        // Default alignment for all cells
+        exRow.eachCell({ includeEmpty: true }, cell => {
             cell.alignment = { vertical: 'top', wrapText: false };
         });
 
@@ -285,14 +289,28 @@ const exportLeadsToExcel = async (rows, filename) => {
         if (oblColIdx > 0) {
             const oblVal = rowData['Obligation Details'];
             if (oblVal && typeof oblVal === 'string' && oblVal.trim()) {
-                const lineCount = oblVal.split('\n').length;
-                row.height = Math.max(22, lineCount * 13.5);
-                const oblCell = row.getCell(oblColIdx);
+                const lines = oblVal.split('\n');
+                const lineCount = lines.length;
+
+                // Track the longest line to correctly size the column
+                lines.forEach(l => { if (l.length > maxOblLineLen) maxOblLineLen = l.length; });
+
+                // Row height: each logical line = 13.5pt; add 10% buffer
+                exRow.height = Math.max(22, Math.ceil(lineCount * 14));
+
+                const oblCell = exRow.getCell(oblColIdx);
+                // wrapText: true so \n renders as real line breaks in Excel
                 oblCell.alignment = { wrapText: true, vertical: 'top' };
-                oblCell.font   = { name: 'Courier New', size: 9 };
+                oblCell.font = { name: 'Courier New', size: 9 };
             }
         }
     });
+
+    // Now set obligation column width based on actual longest line
+    // Courier New 9pt chars ≈ 0.875x default Excel column width unit
+    if (oblColIdx > 0) {
+        ws.getColumn(oblColIdx).width = Math.ceil(maxOblLineLen * 0.875) + 4;
+    }
 
     const buffer = await wb.xlsx.writeBuffer();
     downloadBuffer(buffer, filename);
