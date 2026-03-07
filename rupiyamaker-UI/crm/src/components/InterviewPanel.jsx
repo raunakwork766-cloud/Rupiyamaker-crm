@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock } from 'lucide-react';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
@@ -14,13 +14,72 @@ import { hasPermission, getUserPermissions } from '../utils/permissions';
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
-// Tab configuration
+// Tab configuration - Pipeline stages matching interview module.html
 const TABS = [
-  { id: 'all', label: 'All', count: 0 },
-  { id: 'today', label: 'Today Interview', count: 0 },
-  { id: 'upcoming', label: 'Upcoming Interview', count: 0 },
-  { id: 'result', label: 'Complete Interview', count: 0 }
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'interview', label: 'Interview', count: 0 },
+  { id: 'job_offered', label: 'Job Offered', count: 0 },
+  { id: 'training', label: 'Training', count: 0 },
+  { id: 'hired', label: 'Hired', count: 0 },
+  { id: 'rejected', label: 'Rejected', count: 0 },
+  { id: 'audit_logs', label: 'Audit Logs', icon: '📋' }
 ];
+
+const INTERVIEW_SUB_TABS = [
+  { id: 'today', label: 'Today' },
+  { id: 'upcoming', label: 'Upcoming' },
+  { id: 'no_show', label: 'No-Show' },
+  { id: 'round2', label: 'Round 2 Qualified' }
+];
+
+// Map backend status to pipeline stage
+const getStageFromStatus = (status) => {
+  if (!status) return 'Interview';
+  const s = status.toLowerCase().replace(/[:\s]/g, '_');
+  if (s.includes('hired') || s.includes('confirmed_hired') || s.includes('final_select')) return 'Hired';
+  if (s.includes('reject') || s.includes('denied') || s.includes('declined') || s.includes('cancelled') || s.includes('not_interested') || s.includes('not_relevant')) return 'Rejected';
+  if (s.includes('training') || s.includes('onboard')) return 'Training';
+  if (s.includes('offer') || s.includes('job_offered')) return 'Job Offered';
+  if (s.includes('round_2') || s.includes('round2') || s.includes('second_round')) return 'Round 2';
+  if (s.includes('no_show') || s.includes('noshow') || s.includes('no-show')) return 'No-Show';
+  return 'Interview';
+};
+
+// Get forward button config for a given stage
+const getForwardButton = (stage) => {
+  switch (stage) {
+    case 'Interview': return { text: 'Move to Round 2', targetStage: 'Round 2' };
+    case 'Round 2': return { text: 'Offer Job', targetStage: 'Job Offered' };
+    case 'Job Offered': return { text: 'Start Training', targetStage: 'Training' };
+    case 'Training': return { text: 'Hire Candidate', targetStage: 'Hired' };
+    default: return null;
+  }
+};
+
+// Map pipeline stage to a backend status string
+const getStatusForStage = (stage) => {
+  switch (stage) {
+    case 'Interview': return 'interview';
+    case 'Round 2': return 'round_2';
+    case 'Job Offered': return 'job_offered';
+    case 'Training': return 'training';
+    case 'Hired': return 'hired';
+    case 'Rejected': return 'rejected';
+    case 'No-Show': return 'no_show';
+    default: return stage.toLowerCase().replace(/\s/g, '_');
+  }
+};
+
+// Parse date strings like "16 Feb 2026" or ISO dates
+const parseFormattedDate = (str) => {
+  if (!str) return null;
+  const d = new Date(str);
+  if (!isNaN(d)) return d;
+  const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+  const parts = str.match(/(\d{1,2})\s+(\w{3})\s+(\d{4})/);
+  if (parts) return new Date(+parts[3], months[parts[2]] || 0, +parts[1]);
+  return null;
+};
 
 const InterviewPanel = () => {
   // CSS styles for sticky headers
@@ -58,8 +117,10 @@ const InterviewPanel = () => {
   const [interviews, setInterviews] = useState([]);
   const [filteredInterviews, setFilteredInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('interview');
+  const [activeSubTab, setActiveSubTab] = useState('today');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isGlobalSearch, setIsGlobalSearch] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [statusCounts, setStatusCounts] = useState([]);
   const [tabCounts, setTabCounts] = useState(TABS);
@@ -79,6 +140,34 @@ const InterviewPanel = () => {
   const [showReassignmentPanel, setShowReassignmentPanel] = useState(false);
   const [reassignmentRequests, setReassignmentRequests] = useState([]);
   const [loadingReassignments, setLoadingReassignments] = useState(false);
+
+  // Pipeline action modals state
+  const [isForwardRemarkOpen, setIsForwardRemarkOpen] = useState(false);
+  const [forwardTarget, setForwardTarget] = useState(null);
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyModalTab, setHistoryModalTab] = useState('full');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isRound1ModalOpen, setIsRound1ModalOpen] = useState(false);
+  const [auditSubTab, setAuditSubTab] = useState('Pending');
+  const [reasonFilter, setReasonFilter] = useState('All');
+
+  // Company settings for WhatsApp messages
+  const [companySettings, setCompanySettings] = useState({
+    companyName: '', jobDescription: '', officeTiming: '', workingDays: '',
+    interviewTiming: '', officeAddress: '', officeNearby: '',
+    hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: ''
+  });
+
+  // Decline reason options
+  const [declineReasons, setDeclineReasons] = useState([
+    'Not Qualified', 'No Show', 'Salary Mismatch', 'Location Issue',
+    'Poor Communication', 'Overqualified', 'Underqualified', 'Position Filled',
+    'Candidate Withdrew', 'Failed Assessment', 'Background Check Failed', 'Other'
+  ]);
 
   // Filter popup state
   const [showFilterPopup, setShowFilterPopup] = useState(false);
@@ -854,69 +943,38 @@ const InterviewPanel = () => {
 
     const today = new Date().toDateString();
     
-    // Function to get status-specific colors
-    const getStatusColor = (status) => {
-      const statusLower = status.toLowerCase();
-      
-      // Specific color assignments based on status keywords
-      if (statusLower.includes('reject') || statusLower.includes('denied') || statusLower.includes('cancelled')) {
-        return 'bg-red-500';
-      } else if (statusLower.includes('select') || statusLower.includes('hired') || statusLower.includes('approved') || statusLower.includes('confirmed')) {
-        return 'bg-green-500';
-      } else if (statusLower.includes('reschedule') || statusLower.includes('postpone') || statusLower.includes('delay')) {
-        return 'bg-purple-500';
-      } else if (statusLower.includes('pending') || statusLower.includes('waiting') || statusLower.includes('hold')) {
-        return 'bg-yellow-500';
-      } else if (statusLower.includes('new') || statusLower.includes('created') || statusLower.includes('initial')) {
-        return 'bg-blue-500';
-      } else if (statusLower.includes('process') || statusLower.includes('progress') || statusLower.includes('ongoing')) {
-        return 'bg-indigo-500';
-      } else if (statusLower.includes('review') || statusLower.includes('evaluation')) {
-        return 'bg-orange-500';
-      } else {
-        // Default colors for other statuses - cycle through remaining colors
-        const defaultColors = ['bg-gray-500', 'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-emerald-500', 'bg-violet-500'];
-        const hash = status.split('').reduce((a, b) => {
-          a = ((a << 5) - a) + b.charCodeAt(0);
-          return a & a;
-        }, 0);
-        return defaultColors[Math.abs(hash) % defaultColors.length];
-      }
-    };
-    
-    // Update status counts based on dynamic status options using ALL interviews
-    const newStatusCounts = statusOptions.map((status, index) => {
-      const matchingInterviews = interviewsToCount.filter(interview => interview.status === status);
-      
-      const statusCard = {
-        label: status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()), // Convert to title case
-        count: matchingInterviews.length,
-        color: getStatusColor(status) // Use intelligent color assignment
-      };
-      
-      return statusCard;
+    // Count by pipeline stages
+    const stageCounts = {};
+    interviewsToCount.forEach(interview => {
+      const stage = getStageFromStatus(interview.status);
+      stageCounts[stage] = (stageCounts[stage] || 0) + 1;
     });
     
+    // Status counts for legacy compatibility
+    const newStatusCounts = Object.entries(stageCounts).map(([stage, count]) => ({
+      label: stage,
+      count,
+      color: stage === 'Hired' ? 'bg-green-500' : stage === 'Rejected' ? 'bg-red-500' : stage === 'Interview' ? 'bg-blue-500' : stage === 'Round 2' ? 'bg-indigo-500' : stage === 'Job Offered' ? 'bg-orange-500' : stage === 'Training' ? 'bg-yellow-500' : 'bg-gray-500'
+    }));
     setStatusCounts(newStatusCounts);
 
-    // Update tab counts using ALL interviews (not filtered)
+    // Update tab counts using pipeline stages
     const newTabCounts = TABS.map(tab => {
       let count = 0;
-      if (tab.id === 'today') {
-        count = interviewsToCount.filter(interview => 
-          new Date(interview.interview_date).toDateString() === today &&
-          getStatusType(interview.status) === 'Open'
-        ).length;
-      } else if (tab.id === 'upcoming') {
-        count = interviewsToCount.filter(interview => 
-          new Date(interview.interview_date) > new Date() &&
-          getStatusType(interview.status) === 'Open'
-        ).length;
-      } else if (tab.id === 'result') {
-        count = interviewsToCount.filter(interview => 
-          getStatusType(interview.status) === 'Complete'
-        ).length;
-      } else if (tab.id === 'all') {
+      if (tab.id === 'dashboard') {
+        count = interviewsToCount.length;
+      } else if (tab.id === 'interview') {
+        // Interview tab includes: Interview + Round 2 + No-Show
+        count = (stageCounts['Interview'] || 0) + (stageCounts['Round 2'] || 0) + (stageCounts['No-Show'] || 0);
+      } else if (tab.id === 'job_offered') {
+        count = stageCounts['Job Offered'] || 0;
+      } else if (tab.id === 'training') {
+        count = stageCounts['Training'] || 0;
+      } else if (tab.id === 'hired') {
+        count = stageCounts['Hired'] || 0;
+      } else if (tab.id === 'rejected') {
+        count = stageCounts['Rejected'] || 0;
+      } else if (tab.id === 'audit_logs') {
         count = interviewsToCount.length;
       }
       return { ...tab, count };
@@ -980,78 +1038,53 @@ const InterviewPanel = () => {
       });
     }
 
-    // Filter by active tab
-    console.log('🔍 Tab Filter Debug: Applying tab filter for', activeTab);
+    // Filter by active pipeline tab
+    console.log('🔍 Tab Filter Debug: Applying pipeline tab filter for', activeTab, 'sub:', activeSubTab);
     
-    if (activeTab === 'today') {
-      // Today tab: Only Open status types with today's date
-      const beforeCount = filtered.length;
+    if (activeTab === 'dashboard') {
+      // Dashboard shows all — no filtering
+      console.log('🔍 Dashboard tab: No filtering applied');
+    } else if (activeTab === 'interview') {
+      // Interview tab: filter by sub-tab (today / upcoming / no_show / round2)
       filtered = filtered.filter(interview => {
-        const interviewDate = new Date(interview.interview_date);
-        const isToday = interviewDate.toDateString() === today;
-        const statusType = getStatusType(interview.status);
-        const isOpen = statusType === 'Open';
-        
-        console.log('🔍 Today Filter:', {
-          candidate: interview.candidate_name,
-          date: interview.interview_date,
-          parsedDate: interviewDate.toDateString(),
-          isToday,
-          status: interview.status,
-          statusType,
-          isOpen,
-          passes: isToday && isOpen
-        });
-        
-        return isToday && isOpen;
+        const stage = getStageFromStatus(interview.status);
+        if (activeSubTab === 'today') {
+          const interviewDate = new Date(interview.interview_date);
+          return interviewDate.toDateString() === today && stage === 'Interview';
+        } else if (activeSubTab === 'upcoming') {
+          const interviewDate = new Date(interview.interview_date);
+          return interviewDate > new Date() && stage === 'Interview';
+        } else if (activeSubTab === 'no_show') {
+          return stage === 'No-Show';
+        } else if (activeSubTab === 'round2') {
+          return stage === 'Round 2';
+        }
+        return stage === 'Interview' || stage === 'Round 2' || stage === 'No-Show';
       });
-      console.log(`🔍 Today tab filtered: ${beforeCount} -> ${filtered.length} interviews`);
-    } else if (activeTab === 'upcoming') {
-      // Upcoming tab: Only Open status types with future dates
-      const beforeCount = filtered.length;
-      const now = new Date();
-      filtered = filtered.filter(interview => {
-        const interviewDate = new Date(interview.interview_date);
-        const isFuture = interviewDate > now;
-        const statusType = getStatusType(interview.status);
-        const isOpen = statusType === 'Open';
-        
-        console.log('🔍 Upcoming Filter:', {
-          candidate: interview.candidate_name,
-          date: interview.interview_date,
-          parsedDate: interviewDate,
-          now: now,
-          isFuture,
-          status: interview.status,
-          statusType,
-          isOpen,
-          passes: isFuture && isOpen
-        });
-        
-        return isFuture && isOpen;
-      });
-      console.log(`🔍 Upcoming tab filtered: ${beforeCount} -> ${filtered.length} interviews`);
-    } else if (activeTab === 'result') {
-      // Complete tab: Only Complete status types (any date)
-      const beforeCount = filtered.length;
-      filtered = filtered.filter(interview => {
-        const statusType = getStatusType(interview.status);
-        const isComplete = statusType === 'Complete';
-        
-        console.log('🔍 Result Filter:', {
-          candidate: interview.candidate_name,
-          status: interview.status,
-          statusType,
-          isComplete,
-          passes: isComplete
-        });
-        
-        return isComplete;
-      });
-      console.log(`🔍 Result tab filtered: ${beforeCount} -> ${filtered.length} interviews`);
-    } else if (activeTab === 'all') {
-      // All tab: Show everything (Open + Complete, all dates including overdue)
-      console.log('🔍 All tab: No filtering applied, showing all interviews');
+    } else if (activeTab === 'job_offered') {
+      filtered = filtered.filter(i => getStageFromStatus(i.status) === 'Job Offered');
+    } else if (activeTab === 'training') {
+      filtered = filtered.filter(i => getStageFromStatus(i.status) === 'Training');
+    } else if (activeTab === 'hired') {
+      filtered = filtered.filter(i => getStageFromStatus(i.status) === 'Hired');
+    } else if (activeTab === 'rejected') {
+      filtered = filtered.filter(i => getStageFromStatus(i.status) === 'Rejected');
+      // Apply rejection reason filter
+      if (reasonFilter && reasonFilter !== 'All') {
+        filtered = filtered.filter(i => i.decline_reason === reasonFilter || i.sub_status === reasonFilter);
+      }
+    } else if (activeTab === 'audit_logs') {
+      // Audit logs: filter by audit sub-tab
+      if (auditSubTab === 'Pending') {
+        filtered = filtered.filter(i => !i.is_audited);
+      } else if (auditSubTab === 'Audited') {
+        filtered = filtered.filter(i => !!i.is_audited);
+      }
+    }
+    
+    // Global search mode: if isGlobalSearch, override tab filtering — show all matching search
+    if (isGlobalSearch && searchTerm) {
+      filtered = [...interviews]; // reset to all, search filter below will apply
     }
 
     // Filter by status (from filter popup) - supports hierarchical status values
@@ -1156,7 +1189,7 @@ const InterviewPanel = () => {
     });
     
     setFilteredInterviews(filtered);
-  }, [interviews, activeTab, searchTerm, filterOptions, getStatusType, filterRefreshTrigger, statusOptionsWithSubs]);
+  }, [interviews, activeTab, activeSubTab, auditSubTab, reasonFilter, isGlobalSearch, searchTerm, filterOptions, getStatusType, filterRefreshTrigger, statusOptionsWithSubs]);
 
   const handleCreateInterview = async () => {
     try {
@@ -1186,9 +1219,8 @@ const InterviewPanel = () => {
       console.log("Refreshing dropdown options after interview creation...");
       await loadDropdownOptions();
       
-      // Switch to 'all' tab to ensure the new interview is visible
-      // (in case user was on a filtered tab that might not show the new interview)
-      setActiveTab('all');
+      // Switch to 'interview' tab to ensure the new interview is visible
+      setActiveTab('interview');
       
       // Clear any search filters that might hide the new interview
       setSearchTerm('');
@@ -1879,10 +1911,125 @@ const InterviewPanel = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showStatusDropdown]);
 
+  // === PIPELINE STAGE HANDLERS (matching interview module.html) ===
+
+  // Forward action - opens remark modal
+  const handleForwardAction = (interview, targetStage) => {
+    const stage = getStageFromStatus(interview.status);
+    setForwardTarget({
+      candidateId: interview._id,
+      currentStage: stage,
+      targetStage: targetStage,
+      interview: interview
+    });
+    setIsForwardRemarkOpen(true);
+  };
+
+  // Forward with remark confirmed
+  const handleForwardWithRemark = async (candidateId, currentStage, remark) => {
+    try {
+      const targetStage = forwardTarget?.targetStage;
+      if (!targetStage) return;
+      const newStatus = getStatusForStage(targetStage);
+      await API.interviews.updateInterview(candidateId, { 
+        status: newStatus,
+        forward_remark: remark,
+        previous_stage: currentStage 
+      });
+      setIsForwardRemarkOpen(false);
+      setForwardTarget(null);
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to forward candidate: ' + (error.message || error));
+    }
+  };
+
+  // Direct job offer (skip Round 2)
+  const handleForwardToJobOffer = async (candidateId, currentStage, remark) => {
+    try {
+      await API.interviews.updateInterview(candidateId, { 
+        status: 'job_offered',
+        forward_remark: remark,
+        previous_stage: currentStage 
+      });
+      setIsForwardRemarkOpen(false);
+      setForwardTarget(null);
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to offer job: ' + (error.message || error));
+    }
+  };
+
+  // Decline/Reject
+  const handleDeclineSubmit = async (candidateId, reason, remarks) => {
+    try {
+      await API.interviews.updateInterview(candidateId, { 
+        status: 'rejected',
+        decline_reason: reason,
+        decline_remarks: remarks 
+      });
+      setIsDeclineModalOpen(false);
+      setSelectedCandidate(null);
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to decline candidate: ' + (error.message || error));
+    }
+  };
+
+  // Reschedule
+  const handleRescheduleSubmit = async (candidateId, newDate, reason) => {
+    try {
+      await API.interviews.updateInterview(candidateId, { 
+        interview_date: newDate,
+        reschedule_reason: reason,
+        status: interview?.status || 'rescheduled'
+      });
+      setIsRescheduleOpen(false);
+      setSelectedCandidate(null);
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to reschedule: ' + (error.message || error));
+    }
+  };
+
+  // Mark No-Show
+  const handleMarkNoShow = async (interview) => {
+    if (!window.confirm(`Mark ${interview.candidate_name} as No-Show?`)) return;
+    try {
+      await API.interviews.updateInterview(interview._id, { status: 'no_show' });
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to mark no-show: ' + (error.message || error));
+    }
+  };
+
+  // WhatsApp handler
+  const handleWhatsApp = (interview) => {
+    const msg = encodeURIComponent(
+      `*INTERVIEW INVITATION*\n\nHi *${interview.candidate_name || ''}*,\n\nYour interview has been scheduled with our company.\n\n*Company Name:* ${companySettings.companyName}\n*Position:* ${interview.job_opening || ''}\n\n*Job Description:*\n${companySettings.jobDescription}\n\n*Office Timing:* ${companySettings.officeTiming}\n*Working Days:* ${companySettings.workingDays}\n\n*INTERVIEW DETAILS*\n\n*Interview Date:* ${interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}\n*Interview Timing:* ${companySettings.interviewTiming}\n*Please do not be late. Be on time.*\n\n*Office Address:*\n${companySettings.officeAddress}\nNearby: ${companySettings.officeNearby}\n\nFor any query:\n*${companySettings.hrName}*\nMobile: ${companySettings.hrMobile}\n${companySettings.hrDesignation}`
+    );
+    const phone = (interview.mobile_number || '').replace(/\D/g, '');
+    const url = `https://wa.me/91${phone}?text=${msg}`;
+    window.open(url, '_blank');
+    // Mark as sent
+    API.interviews.updateInterview(interview._id, { wa_sent: true }).catch(() => {});
+  };
+
+  const handleToggleAudit = async (interview) => {
+    try {
+      const newAuditState = !interview.is_audited;
+      await API.interviews.updateInterview(interview._id, { is_audited: newAuditState });
+      // Update local state
+      setInterviews(prev => prev.map(i => i._id === interview._id ? { ...i, is_audited: newAuditState } : i));
+    } catch (err) {
+      console.error('Failed to toggle audit status:', err);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading interviews...</div>
+      <div className="flex items-center justify-center h-64 bg-slate-50 min-h-screen">
+        <div className="text-lg text-slate-600">Loading interviews...</div>
       </div>
     );
   }
@@ -1890,251 +2037,281 @@ const InterviewPanel = () => {
   return (
     <>
       <style>{stickyHeaderStyles}</style>
-      <div className="p-6 bg-black min-h-screen">
-      {/* Header with Create Button and Settings */}
-      <div className="flex justify-end items-center mb-6 gap-3">
-        {canAccessSettings() && (
-          <>
-            <button
-              onClick={() => navigate('/interview-settings')}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-              title="Manage Job Opening Options"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-              Settings
-            </button>
-            <button
-              onClick={async () => {
-                setShowReassignmentPanel(true);
-                await loadReassignmentRequests();
-              }}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-              title="View Reassignment Requests"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-              </svg>
-              Reassignments
-            </button>
-          </>
-        )}
-        <button
-          onClick={handleCreateInterview}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          Create Interview
-        </button>
-      </div>
-
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-6">
-        {statusCounts.map((status, index) => (
-          <div
-            key={index}
-            className={cn(
-              "p-3 sm:p-4 rounded-lg text-white shadow-lg",
-              status.color
-            )}
-          >
-            <h3 className="text-sm sm:text-base lg:text-lg font-semibold truncate">{status.label}</h3>
-            <p className="text-xl sm:text-2xl font-bold">{status.count}</p>
+      <div className="bg-slate-50 min-h-screen">
+      
+      {/* Header - Light theme matching interview module.html */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Interview Panel
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">Manage candidates through the hiring pipeline</p>
           </div>
-        ))}
-      </div>
-
-      {/* Filters and Search Row - Matching LeadCRM styling */}
-      <div className="flex flex-wrap gap-4 mb-6 items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Select Button - Show for users with delete permission or Super Admin */}
-          {(() => {
-            console.log('🎯 ========== SELECT BUTTON DEBUG ==========');
-            console.log('🎯 permissions object:', permissions);
-            console.log('🎯 permissions.can_delete:', permissions?.can_delete);
-            console.log('🎯 typeof permissions:', typeof permissions);
-            console.log('🎯 Object.keys(permissions):', Object.keys(permissions || {}));
-            console.log('🎯 checkboxVisible:', checkboxVisible);
-            console.log('🎯 isSuperAdmin():', isSuperAdmin());
-            console.log('🎯 FINAL CONDITION (permissions?.can_delete || isSuperAdmin()):', (permissions?.can_delete || isSuperAdmin()));
-            console.log('🎯 ==========================================');
-            return null;
-          })()}
-          
-          {/* Show button if user has delete permission OR is super admin */}
-          {(permissions?.can_delete || isSuperAdmin()) && (
-            !checkboxVisible ? (
-              <button
-                className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                onClick={handleShowCheckboxes}
-              >
-                Select
-              </button>
-            ) : (
-              <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                  <input
-                    type="checkbox"
-                    className="accent-blue-500 mr-2 cursor-pointer"
-                    checked={selectAll}
-                    onChange={handleSelectAll}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  Select All
-                </label>
-                <span className="text-white font-semibold">
-                  {selectedInterviews.length} interview{selectedInterviews.length !== 1 ? "s" : ""} selected
-                </span>
-                <button
-                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                  onClick={handleBulkDelete}
-                  disabled={selectedInterviews.length === 0}
-                >
-                  Delete ({selectedInterviews.length})
-                </button>
-                <button
-                  className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                  onClick={handleCancelSelection}
-                >
-                  Cancel
-                </button>
+          <div className="flex items-center gap-3">
+            {/* Global Search */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search size={14} className="text-slate-400" />
               </div>
-            )
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Filter Button - Matching LeadCRM exactly */}
-          <button
-            className={`px-5 py-3 rounded-lg font-bold shadow transition relative flex items-center gap-3 text-base ${getActiveFilterCount() > 0
-              ? 'bg-orange-500 text-white hover:bg-orange-600'
-              : 'bg-gray-600 text-white hover:bg-gray-700'
-              }`}
-            onClick={() => {
-              setShowFilterPopup(true);
-              // Reset filter navigation state when opening popup
-              setFilterShowMainStatuses(true);
-              setFilterSelectedMainStatus(null);
-              setFilterStatusSearchTerm('');
-            }}
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              <input
+                type="text"
+                placeholder="Search all candidates..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setIsGlobalSearch(e.target.value.length > 0);
+                }}
+                className="w-64 pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               />
-            </svg>
-            Filter
-            {getActiveFilterCount() > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-sm rounded-full h-6 w-6 flex items-center justify-center">
-                {getActiveFilterCount()}
-              </span>
-            )}
-          </button>
-
-          {/* Search Box - Matching LeadCRM styling */}
-          <div className="relative w-[320px]">
-            <input
-              type="text"
-              placeholder="Search interviews..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full py-3 pl-10 pr-4 bg-[#1b2230] text-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-base placeholder-gray-500"
-            />
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg
-                className="w-5 h-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                ></path>
-              </svg>
+              {searchTerm && (
+                <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                  <X size={14} />
+                </button>
+              )}
             </div>
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300"
+            {activeTab === 'rejected' && (
+              <select
+                value={reasonFilter}
+                onChange={(e) => setReasonFilter(e.target.value)}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
+                <option value="All">All Rejection Reasons</option>
+                {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
             )}
+            {canAccessSettings() && (
+              <>
+                <button
+                  onClick={() => navigate('/interview-settings')}
+                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
+                  title="Settings"
+                >
+                  <Settings size={14} className="text-blue-600" /> Settings
+                </button>
+                <button
+                  onClick={async () => { setShowReassignmentPanel(true); await loadReassignmentRequests(); }}
+                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  <RefreshCw size={14} className="text-purple-600" /> Reassignments
+                </button>
+              </>
+            )}
+            <button
+              onClick={handleCreateInterview}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-sm transition-colors shadow-md shadow-blue-600/20 flex items-center gap-2"
+            >
+              <Plus size={14} /> Add Candidate
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-4 mb-6 border-b border-gray-600">
-        {tabCounts.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              console.log(`🔥 TAB CLICKED: ${tab.id} (was: ${activeTab})`);
-              setActiveTab(tab.id);
-            }}
-            className={cn(
-              "px-4 py-2 font-medium transition-colors border-b-2",
-              activeTab === tab.id
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-gray-400 hover:text-gray-200"
-            )}
-          >
-            {tab.label} ({tab.count})
-          </button>
-        ))}
+      {/* Pipeline Tabs - Horizontal scroll */}
+      <div className="bg-white border-b border-slate-200 px-6">
+        <div className="flex items-center gap-1 overflow-x-auto py-0 -mb-px" style={{ scrollbarWidth: 'none' }}>
+          {TABS.map((tab) => {
+            const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
+            const isActive = activeTab === tab.id;
+            const tabColors = {
+              dashboard: 'border-slate-500 text-slate-700',
+              interview: 'border-blue-500 text-blue-700',
+              job_offered: 'border-orange-500 text-orange-700',
+              training: 'border-yellow-500 text-yellow-700',
+              hired: 'border-emerald-500 text-emerald-700',
+              rejected: 'border-red-500 text-red-700',
+              audit_logs: 'border-indigo-500 text-indigo-700'
+            };
+            const activeColor = tabColors[tab.id] || 'border-blue-500 text-blue-700';
+            return (
+              <button
+                key={tab.id}
+                onClick={() => { 
+                  setActiveTab(tab.id);
+                  if (tab.id === 'interview') setActiveSubTab('today');
+                  if (tab.id === 'audit_logs') setAuditSubTab('Pending');
+                  setReasonFilter('All');
+                  setIsGlobalSearch(false);
+                  setSearchTerm('');
+                }}
+                className={`pb-3 px-3 text-sm font-bold transition-all relative whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                  isActive ? activeColor : 'border-transparent text-slate-500 hover:text-slate-800'
+                } ${isActive ? '' : ''}`}
+                style={isActive ? {} : {}}
+              >
+                {tab.id === 'audit_logs' && <ShieldAlert size={14} className="inline mr-0.5" />}
+                {tab.icon && <span>{tab.icon}</span>}
+                {tab.label} {tab.id !== 'interview' && tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined ? `(${tabCount})` : ''}
+                {isActive && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Interview Table */}
-      <InterviewTable 
-        interviews={filteredInterviews} 
-        onRowClick={handleRowClick}
-        showStatusDropdown={showStatusDropdown}
-        handleStatusDropdownClick={handleStatusDropdownClick}
-        dropdownPosition={dropdownPosition}
-        statusSearchTerm={statusSearchTerm}
-        setStatusSearchTerm={setStatusSearchTerm}
-        handleStatusChange={handleStatusChange}
-        getFilteredStatusOptions={getFilteredStatusOptions}
-        formatStatusDisplay={formatStatusDisplay}
-        showMainStatuses={showMainStatuses}
-        selectedMainStatus={selectedMainStatus}
-        handleBackToMainStatuses={handleBackToMainStatuses}
-        getSubStatusesForMainStatus={getSubStatusesForMainStatus}
-        clickedStatusOption={clickedStatusOption}
-        setClickedStatusOption={setClickedStatusOption}
-        selectedInterviews={selectedInterviews}
-        selectAll={selectAll}
-        onSelectInterview={handleSelectInterview}
-        onSelectAll={handleSelectAll}
-        checkboxVisible={checkboxVisible}
-        scrollTable={scrollTable}
-        updateScrollButtons={updateScrollButtons}
-        tableScrollRef={tableScrollRef}
-        canScrollLeft={canScrollLeft}
-        canScrollRight={canScrollRight}
-      />
+      {/* Interview Sub-tabs (only when Interview tab is active) */}
+      {activeTab === 'interview' && !isGlobalSearch && (
+        <div className="bg-white border-b border-slate-100 px-6">
+          <div className="flex overflow-x-auto tabs-scroll space-x-2 py-2 pb-1">
+            {INTERVIEW_SUB_TABS.map(sub => {
+              // Calculate sub-tab counts
+              const today = new Date().toDateString();
+              const subCount = (interviews || []).filter(interview => {
+                const stage = getStageFromStatus(interview.status);
+                if (sub.id === 'today') {
+                  const interviewDate = new Date(interview.interview_date);
+                  return interviewDate.toDateString() === today && stage === 'Interview';
+                } else if (sub.id === 'upcoming') {
+                  const interviewDate = new Date(interview.interview_date);
+                  return interviewDate > new Date() && stage === 'Interview';
+                } else if (sub.id === 'no_show') {
+                  return stage === 'No-Show';
+                } else if (sub.id === 'round2') {
+                  return stage === 'Round 2';
+                }
+                return false;
+              }).length;
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                    activeSubTab === sub.id
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {sub.label} <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-xs text-slate-700">{subCount}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Audit Logs Sub-tabs (Pending / Audited) */}
+      {activeTab === 'audit_logs' && !isGlobalSearch && (
+        <div className="bg-white border-b border-slate-100 px-6">
+          <div className="flex space-x-4 py-2">
+            {['Pending', 'Audited'].map(item => {
+              const count = (interviews || []).filter(i => {
+                if (item === 'Pending') return !i.is_audited;
+                return !!i.is_audited;
+              }).length;
+              return (
+                <button
+                  key={item}
+                  onClick={() => setAuditSubTab(item)}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                    auditSubTab === item
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {item} <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-xs text-slate-700">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Global Search Indicator */}
+      {isGlobalSearch && searchTerm && (
+        <div className="mx-6 mt-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Search size={14} className="text-orange-600" />
+            <span className="text-sm font-bold text-orange-800">
+              Searching across ALL pipeline stages for "{searchTerm}"
+            </span>
+            <span className="text-xs text-orange-600">({filteredInterviews.length} results)</span>
+          </div>
+          <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="text-orange-600 hover:text-orange-800 text-xs font-bold flex items-center gap-1">
+            <X size={12} /> Clear
+          </button>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className="p-6">
+        
+        {/* Dashboard Tab */}
+        {activeTab === 'dashboard' && (
+          <DashboardView interviews={interviews} />
+        )}
+
+        {/* Pipeline Table View for all non-dashboard tabs */}
+        {activeTab !== 'dashboard' && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            {filteredInterviews.length === 0 ? (
+              <div className="py-20 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                  <Search size={24} className="text-slate-400" />
+                </div>
+                <p className="text-lg font-bold text-slate-700">No candidates found</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  {isGlobalSearch ? 'Try a different search term' : `No candidates in ${activeTab.replace('_', ' ')} stage`}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto" ref={tableScrollRef} onScroll={updateScrollButtons}>
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">#</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Created</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Owner</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Candidate</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Exp & Gender</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Role & Source</th>
+                      <th className="px-5 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Interview Date & Alerts</th>
+                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredInterviews.map((interview, index) => {
+                      const stage = getStageFromStatus(interview.status);
+                      const primaryBtn = getForwardButton(stage);
+                      const isNoShow = stage === 'No-Show';
+                      return (
+                        <CandidateTableRow
+                          key={interview._id || index}
+                          interview={interview}
+                          index={index + 1}
+                          stage={stage}
+                          primaryBtn={primaryBtn}
+                          isNoShow={isNoShow}
+                          activeTab={activeTab}
+                          isGlobalSearch={isGlobalSearch}
+                          onForward={(targetStage) => handleForwardAction(interview, targetStage)}
+                          onDecline={() => { setSelectedCandidate(interview); setIsDeclineModalOpen(true); }}
+                          onReschedule={() => { setSelectedCandidate(interview); setIsRescheduleOpen(true); }}
+                          onMarkNoShow={() => handleMarkNoShow(interview)}
+                          onViewHistory={() => { setSelectedCandidate(interview); setHistoryModalTab('full'); setIsHistoryModalOpen(true); }}
+                          onViewReassignHistory={() => { setSelectedCandidate(interview); setHistoryModalTab('reassign'); setIsHistoryModalOpen(true); }}
+                          onViewRescheduleHistory={() => { setSelectedCandidate(interview); setHistoryModalTab('reschedule'); setIsHistoryModalOpen(true); }}
+                          onViewDetails={() => { setSelectedCandidate(interview); setIsDetailModalOpen(true); }}
+                          onWhatsApp={() => handleWhatsApp(interview)}
+                          onRowClick={() => handleRowClick(interview)}
+                          onToggleAudit={() => handleToggleAudit && handleToggleAudit(interview)}
+                          onViewRound1={() => { setSelectedCandidate(interview); setIsRound1ModalOpen(true); }}
+                        />
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Create Interview Modal */}
       {showCreateModal && (
         <React.Suspense fallback={<div>Loading modal...</div>}>
           <CreateInterviewModal
-            onClose={() => {
-              setShowCreateModal(false);
-            }}
+            onClose={() => setShowCreateModal(false)}
             onInterviewCreated={handleInterviewCreated}
             jobOpeningOptions={jobOpeningOptions}
             interviewTypeOptions={interviewTypeOptions}
@@ -2162,592 +2339,133 @@ const InterviewPanel = () => {
         </div>
       )}
 
-      {/* Filter Popup - Matching LeadCRM Style */}
-      {showFilterPopup && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-[1000]">
-          <div className="bg-[#1b2230] border border-gray-600 rounded-lg p-6 w-[700px] max-w-[90vw] h-[560px] flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-white">Filter Interviews</h2>
-              <button
-                onClick={() => setShowFilterPopup(false)}
-                className="text-gray-400 hover:text-white text-2xl"
-              >
-                ×
-              </button>
-            </div>
+      {/* Forward Remark Modal */}
+      {isForwardRemarkOpen && forwardTarget && (
+        <ForwardRemarkModal
+          target={forwardTarget}
+          onClose={() => { setIsForwardRemarkOpen(false); setForwardTarget(null); }}
+          onConfirmForward={handleForwardWithRemark}
+          onConfirmJobOffer={handleForwardToJobOffer}
+        />
+      )}
 
-            <div className="grid grid-cols-3 gap-6 flex-1 overflow-hidden">
-              {/* Left side - Filter Categories */}
-              <div className="col-span-1 border-r border-gray-600 pr-4">
-                <h3 className="text-base font-medium text-gray-300 mb-4">Filter Categories</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => {
-                      setSelectedFilterCategory('status');
-                      // Reset navigation state when switching to status category
-                      setFilterShowMainStatuses(true);
-                      setFilterSelectedMainStatus(null);
-                      setFilterStatusSearchTerm('');
-                    }}
-                    className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${selectedFilterCategory === 'status'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-[#2a3441]'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span className="text-base">Status</span>
-                      </div>
-                      {getFilterCategoryCount('status') > 0 && (
-                        <span className="bg-red-500 text-white text-sm rounded-full h-6 w-6 flex items-center justify-center">
-                          {getFilterCategoryCount('status')}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedFilterCategory('date')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedFilterCategory === 'date'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-[#2a3441]'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                        </svg>
-                        Interview Date
-                      </div>
-                      {getFilterCategoryCount('date') > 0 && (
-                        <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                          {getFilterCategoryCount('date')}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedFilterCategory('hrManagerAdmin')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedFilterCategory === 'hrManagerAdmin'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-[#2a3441]'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                        </svg>
-                        Interview Creator
-                      </div>
-                      {getFilterCategoryCount('hrManagerAdmin') > 0 && (
-                        <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                          {getFilterCategoryCount('hrManagerAdmin')}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedFilterCategory('interviewType')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedFilterCategory === 'interviewType'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-[#2a3441]'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                        </svg>
-                        Interview Type
-                      </div>
-                      {getFilterCategoryCount('interviewType') > 0 && (
-                        <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                          {getFilterCategoryCount('interviewType')}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedFilterCategory('jobOpening')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedFilterCategory === 'jobOpening'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-[#2a3441]'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 01-2 2H10a2 2 0 01-2-2V6"></path>
-                        </svg>
-                        Job Opening
-                      </div>
-                      {getFilterCategoryCount('jobOpening') > 0 && (
-                        <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                          {getFilterCategoryCount('jobOpening')}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                </div>
-              </div>
+      {/* Decline Modal */}
+      {isDeclineModalOpen && selectedCandidate && (
+        <DeclineModal
+          candidate={selectedCandidate}
+          options={declineReasons}
+          onClose={() => { setIsDeclineModalOpen(false); setSelectedCandidate(null); }}
+          onSubmit={handleDeclineSubmit}
+        />
+      )}
 
-              {/* Right side - Filter Options */}
-              <div className="col-span-2 pl-4 overflow-y-auto">
-                <h3 className="text-base font-medium text-gray-300 mb-4">
-                  {selectedFilterCategory === 'status' && 'Interview Status'}
-                  {selectedFilterCategory === 'date' && 'Interview Date Range'}
-                  {selectedFilterCategory === 'hrManagerAdmin' && 'Interview Creator'}
-                  {selectedFilterCategory === 'interviewType' && 'Interview Type'}
-                  {selectedFilterCategory === 'jobOpening' && 'Job Opening'}
-                </h3>
-                
-                <div className="space-y-4">
-                  {/* Status Filter Options */}
-                  {selectedFilterCategory === 'status' && (
-                    <div className="space-y-3">
-                      {/* Navigation header for hierarchical navigation */}
-                      {!filterShowMainStatuses && filterSelectedMainStatus && (
-                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-600">
-                          <button
-                            onClick={handleFilterBackToMainStatuses}
-                            className="flex items-center text-blue-400 hover:text-blue-300 text-sm font-medium"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                            </svg>
-                            Back to Main Statuses
-                          </button>
-                          <span className="text-xs text-gray-400 font-medium">
-                            {filterSelectedMainStatus.replace('_', ' ').toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {/* Search input for status filter */}
-                      <div className="relative mb-4">
-                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input
-                          type="text"
-                          className="w-full pl-10 pr-3 py-2 bg-[#2a3441] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                          placeholder={
-                            filterShowMainStatuses ? "Search statuses and sub-statuses..." : "Search sub-statuses..."
-                          }
-                          value={filterStatusSearchTerm}
-                          onChange={(e) => setFilterStatusSearchTerm(e.target.value)}
-                        />
-                      </div>
+      {/* Reschedule Modal */}
+      {isRescheduleOpen && selectedCandidate && (
+        <RescheduleModal
+          candidate={selectedCandidate}
+          onClose={() => { setIsRescheduleOpen(false); setSelectedCandidate(null); }}
+          onSubmit={handleRescheduleSubmit}
+        />
+      )}
 
-                      {/* Status options list */}
-                      {getFilterStatusOptions().map((statusOption) => {
-                        const isMainStatusView = filterShowMainStatuses && !filterStatusSearchTerm;
-                        const shouldTreatAsNavigation = statusOption.type === 'main' && statusOption.isHierarchical && isMainStatusView;
-                        
-                        return (
-                          <div
-                            key={statusOption.value}
-                            className={`flex items-center space-x-3 cursor-pointer hover:bg-[#2a3441] p-2 rounded-lg transition-colors ${
-                              shouldTreatAsNavigation ? 'hover:bg-blue-900/20' : ''
-                            }`}
-                            onClick={() => handleFilterStatusSelection(statusOption)}
-                          >
-                            {!shouldTreatAsNavigation && (
-                              <input
-                                type="checkbox"
-                                checked={filterOptions.status.includes(statusOption.value)}
-                                onChange={() => {}} // Handled by parent div click
-                                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 pointer-events-none"
-                              />
-                            )}
-                            <div className="flex items-center justify-between w-full">
-                              <span className={`text-gray-300 ${statusOption.type === 'sub' ? 'text-sm' : ''}`}>
-                                {statusOption.type === 'main' && statusOption.isHierarchical && '📋 '}
-                                {statusOption.type === 'sub' && '↳ '}
-                                {statusOption.label}
-                                {statusOption.type === 'sub' && !filterShowMainStatuses && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    Main Status: {statusOption.mainStatus.replace('_', ' ').toUpperCase()}
-                                  </div>
-                                )}
-                              </span>
-                              {/* Show arrow for main statuses with sub-statuses */}
-                              {shouldTreatAsNavigation && (
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                </svg>
-                              )}
-                            </div>
-                            {/* Show sub-status count for main statuses */}
-                            {shouldTreatAsNavigation && getSubStatusesForMainStatus(statusOption.value).length > 0 && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                {getSubStatusesForMainStatus(statusOption.value).length} sub-status{getSubStatusesForMainStatus(statusOption.value).length !== 1 ? 'es' : ''}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      
-                      {getFilterStatusOptions().length === 0 && (
-                        <p className="text-gray-400 text-sm text-center py-4">
-                          {filterStatusSearchTerm ? 
-                            `No results found for "${filterStatusSearchTerm}"` : 
-                            'No status options available'
-                          }
-                        </p>
-                      )}
-                    </div>
-                  )}
+      {/* Candidate Detail Modal */}
+      {isDetailModalOpen && selectedCandidate && (
+        <CandidateDetailModal
+          candidate={selectedCandidate}
+          onClose={() => { setIsDetailModalOpen(false); setSelectedCandidate(null); }}
+        />
+      )}
 
-                  {/* Date Filter Options */}
-                  {selectedFilterCategory === 'date' && (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">From Date</label>
-                        <input
-                          type="date"
-                          value={filterOptions.dateFrom}
-                          onChange={(e) => setFilterOptions(prev => ({
-                            ...prev,
-                            dateFrom: e.target.value
-                          }))}
-                          className="w-full px-3 py-2 bg-[#2a3441] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">To Date</label>
-                        <input
-                          type="date"
-                          value={filterOptions.dateTo}
-                          onChange={(e) => setFilterOptions(prev => ({
-                            ...prev,
-                            dateTo: e.target.value
-                          }))}
-                          className="w-full px-3 py-2 bg-[#2a3441] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-                  )}
+      {/* Audit History Modal */}
+      {isHistoryModalOpen && selectedCandidate && (
+        <AuditHistoryModal
+          candidate={selectedCandidate}
+          initialTab={historyModalTab}
+          onClose={() => { setIsHistoryModalOpen(false); setSelectedCandidate(null); }}
+        />
+      )}
 
-                  {/* HR Manager/Admin Filter Options */}
-                  {selectedFilterCategory === 'hrManagerAdmin' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Select Interview Creator</label>
-                      <select
-                        value={filterOptions.hrManagerAdmin}
-                        onChange={(e) => setFilterOptions(prev => ({
-                          ...prev,
-                          hrManagerAdmin: e.target.value
-                        }))}
-                        className="w-full px-3 py-2 bg-[#2a3441] border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="">All Interview Creators</option>
-                        {hrManagersAndAdmins.map((user) => (
-                          <option key={user.username} value={user.username}>
-                            {user.username}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Interview Type Filter Options */}
-                  {selectedFilterCategory === 'interviewType' && (
-                    <div className="space-y-3">
-                      {getDynamicFilterOptions().interviewType.map((interviewType) => (
-                        <label key={interviewType} className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            checked={filterOptions.interviewType.includes && filterOptions.interviewType.includes(interviewType)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFilterOptions(prev => ({
-                                  ...prev,
-                                  interviewType: Array.isArray(prev.interviewType) 
-                                    ? [...prev.interviewType, interviewType]
-                                    : [interviewType]
-                                }));
-                              } else {
-                                setFilterOptions(prev => ({
-                                  ...prev,
-                                  interviewType: Array.isArray(prev.interviewType)
-                                    ? prev.interviewType.filter(t => t !== interviewType)
-                                    : []
-                                }));
-                              }
-                            }}
-                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                          />
-                          <span className="text-gray-300">
-                            {interviewType}
-                          </span>
-                        </label>
-                      ))}
-                      {getDynamicFilterOptions().interviewType.length === 0 && (
-                        <p className="text-gray-400 text-sm">No interview types available. Add them in settings.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Job Opening Filter Options */}
-                  {selectedFilterCategory === 'jobOpening' && (
-                    <div className="space-y-3">
-                      {jobOpeningOptions.length === 0 ? (
-                        <div className="text-center py-4">
-                          <p className="text-gray-400 text-sm">Loading job openings...</p>
-                        </div>
-                      ) : (
-                        jobOpeningOptions.map((jobOpening) => (
-                          <label key={jobOpening} className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              checked={filterOptions.jobOpening && Array.isArray(filterOptions.jobOpening) && filterOptions.jobOpening.includes(jobOpening)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setFilterOptions(prev => ({
-                                    ...prev,
-                                    jobOpening: Array.isArray(prev.jobOpening) 
-                                      ? [...prev.jobOpening, jobOpening]
-                                      : [jobOpening]
-                                  }));
-                                } else {
-                                  setFilterOptions(prev => ({
-                                    ...prev,
-                                    jobOpening: Array.isArray(prev.jobOpening)
-                                      ? prev.jobOpening.filter(j => j !== jobOpening)
-                                      : []
-                                  }));
-                                }
-                              }}
-                              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                            />
-                            <span className="text-gray-300">
-                              {jobOpening}
-                            </span>
-                          </label>
-                        ))
-                      )}
-                      {jobOpeningOptions.length === 0 && (
-                        <div className="text-center py-4">
-                          <p className="text-gray-400 text-sm">No job openings available.</p>
-                          <p className="text-gray-500 text-xs mt-1">Add job openings in settings to see them here.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="flex justify-between mt-6 pt-4 border-t border-gray-600">
-              <button
-                onClick={() => {
-                  setFilterOptions({
-                    status: [],
-                    dateFrom: '',
-                    dateTo: '',
-                    hrManagerAdmin: '',
-                    interviewType: [],
-                    jobOpening: []
-                  });
-                }}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-              >
-                Clear All Filters
-              </button>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowFilterPopup(false)}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowFilterPopup(false);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  Apply Filters
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Round 1 Info Modal */}
+      {isRound1ModalOpen && selectedCandidate && (
+        <Round1InfoModal
+          candidate={selectedCandidate}
+          onClose={() => { setIsRound1ModalOpen(false); setSelectedCandidate(null); }}
+        />
       )}
 
       {/* Reassignment Modal */}
       {showReassignmentPanel && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a2332] rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-purple-600 text-white flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Interview Reassignment Requests</h2>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between">
+              <h2 className="text-lg font-black">Interview Reassignment Requests</h2>
               <div className="flex gap-3">
-                <button
-                  onClick={loadReassignmentRequests}
-                  className="px-4 py-2 bg-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors font-medium"
-                  disabled={loadingReassignments}
-                >
+                <button onClick={loadReassignmentRequests} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-bold border border-white/20" disabled={loadingReassignments}>
                   {loadingReassignments ? 'Refreshing...' : 'Refresh'}
                 </button>
-                <button
-                  onClick={() => setShowReassignmentPanel(false)}
-                  className="text-white hover:text-gray-200 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                <button onClick={() => setShowReassignmentPanel(false)} className="text-white/80 hover:text-white p-1">
+                  <X size={20} />
                 </button>
               </div>
             </div>
-
-            {/* Modal Body */}
             <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 80px)' }}>
               {loadingReassignments ? (
-                <div className="text-center py-12 text-gray-400">
-                  <div className="text-lg">Loading reassignment requests...</div>
-                </div>
+                <div className="text-center py-12 text-slate-400"><div className="text-lg">Loading...</div></div>
               ) : reassignmentRequests.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6M9 16h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v14a2 2 0 01-2 2z"></path>
-                  </svg>
-                  <p className="text-lg">No reassignment requests found</p>
-                  <p className="text-sm">Reassignment requests will appear here when users request interview reassignments.</p>
+                <div className="text-center py-12 text-slate-400">
+                  <RefreshCw size={36} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-lg font-medium">No reassignment requests</p>
                 </div>
               ) : (
-                <div className="bg-[#2a3441] rounded-lg border border-gray-600 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-white">
-                      <thead className="bg-gray-800">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Interview</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Current Assignee</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Requested By</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Target User</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Reason</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Requested At</th>
-                          <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Status</th>
-                          <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-700">
-                        {reassignmentRequests.map((request, index) => (
-                          <tr key={request._id} className="hover:bg-gray-800/50 transition-colors">
-                            <td className="px-4 py-4">
-                              <div>
-                                <div className="font-medium text-white">{request.candidate_name}</div>
-                                <div className="text-sm text-gray-400">{request.mobile_number}</div>
-                                <div className="text-xs text-gray-500">
-                                  {request.job_opening} • {request.status}
-                                  {request.sub_status && ` • ${request.sub_status}`}
-                                </div>
-                                {request.interview_date && (
-                                  <div className="text-xs text-blue-400">
-                                    {new Date(request.interview_date).toLocaleDateString('en-IN', {
-                                      day: '2-digit',
-                                      month: 'short',
-                                      year: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-white">{request.current_assignee}</div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-white">{request.requested_by}</div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-white">{request.target_user}</div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-300 max-w-xs">
-                                {request.reason || 'No reason provided'}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-400">
-                                {request.requested_at ? new Date(request.requested_at).toLocaleDateString('en-IN', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                }) : 'Unknown'}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-center">
-                                {request.reassignment_status === 'pending' ? (
-                                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">
-                                    Pending
-                                  </span>
-                                ) : request.reassignment_status === 'approved' ? (
-                                  <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full">
-                                    Approved
-                                  </span>
-                                ) : request.reassignment_status === 'rejected' ? (
-                                  <span className="px-2 py-1 bg-red-600 text-white text-xs rounded-full">
-                                    Rejected
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">
-                                    {request.reassignment_status || 'Pending'}
-                                  </span>
-                                )}
-                                {request.reassignment_remarks && (
-                                  <div className="text-xs text-gray-400 mt-1" title={request.reassignment_remarks}>
-                                    {request.reassignment_remarks.length > 20 
-                                      ? `${request.reassignment_remarks.substring(0, 20)}...` 
-                                      : request.reassignment_remarks}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-700 text-xs uppercase">
+                      <tr>
+                        <th className="px-4 py-3">Interview</th>
+                        <th className="px-4 py-3">Current Assignee</th>
+                        <th className="px-4 py-3">Requested By</th>
+                        <th className="px-4 py-3">Target</th>
+                        <th className="px-4 py-3">Reason</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {reassignmentRequests.map((request) => (
+                        <tr key={request._id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-slate-900">{request.candidate_name}</div>
+                            <div className="text-xs text-slate-500">{request.mobile_number}</div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">{request.current_assignee}</td>
+                          <td className="px-4 py-3 text-slate-700">{request.requested_by}</td>
+                          <td className="px-4 py-3 text-slate-700">{request.target_user}</td>
+                          <td className="px-4 py-3 text-slate-600 max-w-xs text-xs">{request.reason || 'N/A'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {request.requested_at ? new Date(request.requested_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                              request.reassignment_status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                              request.reassignment_status === 'rejected' ? 'bg-red-100 text-red-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>{request.reassignment_status || 'Pending'}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {request.reassignment_status === 'pending' ? (
                               <div className="flex justify-center gap-2">
-                                {request.reassignment_status === 'pending' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleApproveReassignment(request._id)}
-                                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
-                                      title="Approve reassignment"
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      onClick={() => handleRejectReassignment(request._id)}
-                                      className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
-                                      title="Reject reassignment"
-                                    >
-                                      Reject
-                                    </button>
-                                  </>
-                                )}
-                                {request.reassignment_status !== 'pending' && (
-                                  <span className="text-xs text-gray-500">
-                                    {request.reassignment_status === 'approved' ? 'Already Approved' : 'Already Rejected'}
-                                  </span>
-                                )}
+                                <button onClick={() => handleApproveReassignment(request._id)} className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Approve</button>
+                                <button onClick={() => handleRejectReassignment(request._id)} className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700">Reject</button>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">{request.reassignment_status === 'approved' ? 'Approved' : 'Rejected'}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -2758,465 +2476,813 @@ const InterviewPanel = () => {
     </>
   );
 };
-
 // Interview Table Component
-const InterviewTable = ({ 
-  interviews, 
-  onRowClick, 
-  showStatusDropdown, 
-  handleStatusDropdownClick, 
-  dropdownPosition, 
-  statusSearchTerm, 
-  setStatusSearchTerm, 
-  handleStatusChange, 
-  getFilteredStatusOptions,
-  formatStatusDisplay,
-  showMainStatuses,
-  selectedMainStatus,
-  handleBackToMainStatuses,
-  getSubStatusesForMainStatus,
-  clickedStatusOption,
-  setClickedStatusOption,
-  selectedInterviews,
-  selectAll,
-  onSelectInterview,
-  onSelectAll,
-  checkboxVisible,
-  scrollTable,
-  updateScrollButtons,
-  tableScrollRef,
-  canScrollLeft,
-  canScrollRight
-}) => {
-  if (interviews.length === 0) {
+// --- Tag helper ---
+const Tag = ({ icon, text, color }) => {
+  const colors = { blue: "bg-blue-100 text-blue-700", pink: "bg-pink-100 text-pink-700", purple: "bg-purple-100 text-purple-700", green: "bg-emerald-100 text-emerald-700", orange: "bg-orange-100 text-orange-700", red: "bg-red-100 text-red-700" };
+  return <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${colors[color] || "bg-slate-100 text-slate-700"}`}>{icon && icon}<span>{text}</span></span>;
+};
+
+// --- CANDIDATE TABLE ROW (matching interview module.html) ---
+const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsDropdownOpen(false); }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dropdownRef]);
+
+  const formatInterviewDate = (date) => {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  // Audit Log view
+  if (activeTab === 'audit_logs') {
     return (
-      <div className="overflow-x-auto bg-black rounded-lg">
-        <div className="py-20 text-center text-gray-400 text-lg bg-black">
-          <p className="text-xl font-semibold">No interviews found</p>
-        </div>
-      </div>
+      <tr className="hover:bg-slate-50/80 transition-colors group">
+        <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
+        <td className="px-4 py-3 border-r border-slate-100">
+          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        </td>
+        <td className="px-4 py-3 border-r border-slate-100">
+          <div className="text-sm font-semibold text-slate-900">{interview.created_by || '-'}</div>
+          <div className="text-xs text-slate-500">{interview.hr_address || 'Desk N/A'}</div>
+        </td>
+        <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
+            <div>
+              <div className="font-bold text-slate-900 text-sm">{interview.candidate_name || '-'}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-3 border-r border-slate-100">
+          <div className="text-sm font-medium text-slate-700">{interview.job_opening || '-'}</div>
+          <div className="text-xs text-slate-500">{interview.source_portal || '-'}</div>
+        </td>
+        <td className="px-5 py-3 border-r border-slate-100">
+          <button onClick={onViewHistory} className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5 shadow-sm">
+            <History size={12} className="text-blue-600"/> Full Track
+          </button>
+        </td>
+        <td className="px-4 py-3 text-right">
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={onWhatsApp} title={interview.wa_sent ? 'WhatsApp Sent' : 'Send WhatsApp Invite'} className={`p-1.5 rounded-lg border transition-all ${interview.wa_sent ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'}`}>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill={interview.wa_sent ? '#16a34a' : '#64748b'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+            </button>
+            <button onClick={onToggleAudit} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 transition-all group/audit" style={interview.is_audited ? {background:'#d1fae5',borderColor:'#6ee7b7'} : {background:'#f8fafc',borderColor:'#e2e8f0'}}>
+              {interview.is_audited ? (
+                <><CheckCircle size={15} className="text-emerald-600" /> <span className="text-emerald-700 font-black text-xs">Audited</span></>
+              ) : (
+                <><Circle size={15} className="text-slate-400 group-hover/audit:text-emerald-500 transition-colors" /> <span className="text-slate-500 text-xs group-hover/audit:text-slate-800">Pending</span></>
+              )}
+            </button>
+          </div>
+        </td>
+      </tr>
     );
   }
 
-  // Format date in IST timezone format
-  const formatDate = (date) => {
-    if (!date) return '-';
-    return formatDateUtil(date);
+  // Standard Pipeline Row
+  return (
+    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''}`}>
+      <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
+
+      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
+      </td>
+
+      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="text-xs font-bold text-slate-900">{interview.created_by || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5">{interview.hr_address || 'Desk N/A'}</div>
+      </td>
+
+      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
+          <div>
+            <button onClick={(e) => { e.stopPropagation(); onViewDetails(); }} className="font-bold text-slate-900 text-xs hover:text-blue-700 transition-colors text-left leading-tight">{interview.candidate_name || '-'}</button>
+            <div className="text-[10px] text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+          </div>
+        </div>
+        {isGlobalSearch && <Tag text={stage} color="orange" />}
+      </td>
+
+      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="flex flex-col gap-1">
+          <Tag icon={<Briefcase size={9} />} text={interview.experience_type || 'Fresher'} color={(!interview.experience_type || interview.experience_type === 'Fresher') ? 'green' : 'purple'} />
+          <Tag icon={<User size={9} />} text={interview.gender || '-'} color={interview.gender === 'Female' ? 'pink' : 'blue'} />
+        </div>
+      </td>
+
+      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="text-xs font-semibold text-slate-800">{interview.job_opening || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5">{interview.source_portal || '-'}</div>
+      </td>
+
+      <td className="px-5 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="text-xs font-bold text-blue-700 mb-1.5">{formatInterviewDate(interview.interview_date)}</div>
+        <div className="flex flex-col gap-1 items-start">
+          {(stage === 'Round 2' && interview.round1_feedback) && (
+            <button onClick={(e) => { e.stopPropagation(); onViewRound1 && onViewRound1(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-colors">
+              <Info size={11}/> R1 Notes
+            </button>
+          )}
+          {activeTab === 'rejected' && interview.decline_reason && <span className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">{interview.decline_reason}</span>}
+          {interview.reassign_count > 0 && (
+            <button onClick={(e) => { e.stopPropagation(); onViewReassignHistory && onViewReassignHistory(); }} className="bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-md px-2 py-0.5 text-[11px] text-orange-600 font-semibold flex items-center gap-1 transition-colors">
+              <RefreshCw size={9}/> Reassigned: {interview.reassign_count}x
+            </button>
+          )}
+          {interview.reschedule_count > 0 && (
+            <button onClick={(e) => { e.stopPropagation(); onViewRescheduleHistory && onViewRescheduleHistory(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md px-2 py-0.5 text-[11px] text-indigo-600 font-semibold flex items-center gap-1 transition-colors">
+              <Calendar size={9}/> Rescheduled: {interview.reschedule_count}x
+            </button>
+          )}
+          {(!interview.reassign_count && !interview.reschedule_count && activeTab !== 'rejected' && stage !== 'Round 2') && (
+            <span className="text-[10px] text-slate-400 italic">No alerts</span>
+          )}
+        </div>
+      </td>
+
+      <td className="px-4 py-3 text-right relative" ref={dropdownRef}>
+        <div className="flex items-center justify-end gap-1.5">
+          
+          {activeTab !== 'rejected' && activeTab !== 'hired' && !isNoShow && primaryBtn && (
+            <button onClick={(e) => { e.stopPropagation(); onForward(primaryBtn.targetStage); }} className="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-sm shadow-blue-600/20 transition-all flex items-center gap-1.5 whitespace-nowrap">
+              <ChevronRight size={14} /> {primaryBtn.text}
+            </button>
+          )}
+          
+          {isNoShow && (
+            <button onClick={(e) => { e.stopPropagation(); onReschedule(); }} className="bg-amber-500/20 text-amber-700 border border-amber-300 text-[11px] font-bold px-3 py-2 rounded-lg transition-all">
+              Revive Lead
+            </button>
+          )}
+
+          {activeTab !== 'rejected' && activeTab !== 'hired' && (
+            <div className="relative">
+              <button onClick={(e) => { e.stopPropagation(); setIsDropdownOpen(!isDropdownOpen); }} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+                <MoreVertical size={15} />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute right-0 top-10 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden text-left animate-in fade-in zoom-in-95">
+                  {(stage === 'Interview' || stage === 'Round 2') && (
+                    <>
+                      <button onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Calendar size={14}/> Reschedule Date</button>
+                      {!isNoShow && stage === 'Interview' && (
+                        <button onClick={() => { onMarkNoShow(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"><PhoneOff size={14}/> Mark No-Show</button>
+                      )}
+                    </>
+                  )}
+                  <button onClick={() => { onViewDetails(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><FileText size={14}/> View Details</button>
+                  <div className="my-1 border-t border-slate-100"/>
+                  <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Decline / Reject</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={(e) => { e.stopPropagation(); onWhatsApp(); }} title={interview.wa_sent ? 'WhatsApp Invite Sent' : 'Send WhatsApp Invite'} className={`p-2 rounded-lg border transition-all flex-shrink-0 ${interview.wa_sent ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'}`}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill={interview.wa_sent ? '#16a34a' : '#94a3b8'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+          </button>
+
+          {(activeTab === 'hired' || activeTab === 'rejected') && (
+            <button onClick={(e) => { e.stopPropagation(); onViewHistory(); }} className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1.5">
+              <History size={12}/> Full Track
+            </button>
+          )}
+          {activeTab === 'hired' && <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-2 rounded-lg">✅ Hired</span>}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
+// --- DASHBOARD VIEW ---
+const DashboardView = ({ interviews }) => {
+  const [dateFilter, setDateFilter] = useState('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
+  const today = new Date();
+
+  const getRange = () => {
+    const now = new Date(today); now.setHours(0,0,0,0);
+    if (dateFilter === 'today') return { start: now, end: now };
+    if (dateFilter === 'week') {
+      const start = new Date(now); start.setDate(now.getDate() - now.getDay());
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      return { start, end };
+    }
+    if (dateFilter === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { start, end };
+    }
+    if (dateFilter === 'custom' && customFrom && customTo) {
+      return { start: new Date(customFrom), end: new Date(customTo) };
+    }
+    return { start: now, end: now };
   };
 
-  // Calculate days old from current date (matching LeadCRM)
-  const calculateDaysOld = (date) => {
-    if (!date) return 0;
-    const currentDate = new Date();
-    const interviewDate = new Date(date);
-    const timeDifference = currentDate.getTime() - interviewDate.getTime();
-    const daysDifference = Math.floor(timeDifference / (1000 * 3600 * 24));
-    return daysDifference;
+  const inRange = (dateStr, range) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d)) return false;
+    const s = new Date(range.start); s.setHours(0,0,0,0);
+    const e = new Date(range.end); e.setHours(23,59,59,999);
+    return d >= s && d <= e;
   };
 
-  // Format date with days old (matching LeadCRM)
-  const formatDateWithAge = (date) => {
-    if (!date) return '-';
-    const formattedDate = formatDate(date);
-    const daysOld = calculateDaysOld(date);
-    return (
-      <div className="text-left">
-        <div>{formattedDate}</div>
-        <div className="text-sm text-gray-400">
-          {daysOld === 0 ? 'Today' :
-            daysOld === 1 ? '1 day old' :
-              `${daysOld} days old`}
+  const range = getRange();
+  const hrList = [...new Set((interviews || []).map(c => c.created_by).filter(Boolean))].sort();
+
+  const getMetrics = (hrName) => {
+    const h = (interviews || []).filter(c => c.created_by === hrName);
+    return {
+      created: h.filter(c => inRange(c.created_at, range)).length,
+      conducted: h.filter(c => inRange(c.interview_date, range)).length,
+      round2: h.filter(c => getStageFromStatus(c.status) === 'Round 2').length,
+      jobOffered: h.filter(c => getStageFromStatus(c.status) === 'Job Offered').length,
+      training: h.filter(c => getStageFromStatus(c.status) === 'Training').length,
+      hired: h.filter(c => getStageFromStatus(c.status) === 'Hired').length,
+      rejected: h.filter(c => getStageFromStatus(c.status) === 'Rejected').length,
+      rescheduled: h.reduce((s, c) => s + (c.reschedule_count || 0), 0),
+      reassigned: h.filter(c => c.reassign_count > 0).length,
+      total: h.length
+    };
+  };
+
+  const allMetrics = hrList.map(hr => ({ hr, ...getMetrics(hr) }));
+  const T = (key) => allMetrics.reduce((s, m) => s + (m[key] || 0), 0);
+
+  const MC = ({ v, cls }) => (
+    <td className={`px-3 py-3.5 text-center text-sm font-bold ${v > 0 ? cls : 'text-slate-300'}`}>{v}</td>
+  );
+
+  const stages = ['Interview', 'Round 2', 'Job Offered', 'Training', 'Hired', 'Rejected'];
+  const stageColors = {
+    Interview: 'bg-blue-50 border-blue-200 text-blue-700',
+    'Round 2': 'bg-indigo-50 border-indigo-200 text-indigo-700',
+    'Job Offered': 'bg-orange-50 border-orange-200 text-orange-700',
+    Training: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+    Hired: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+    Rejected: 'bg-red-50 border-red-200 text-red-700'
+  };
+
+  const stageCounts = {};
+  stages.forEach(s => { stageCounts[s] = 0; });
+  (interviews || []).forEach(i => {
+    const s = getStageFromStatus(i.status);
+    if (stageCounts[s] !== undefined) stageCounts[s]++;
+    else stageCounts['Interview']++;
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">HR Performance Dashboard</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Real-time hiring pipeline overview by recruiter</p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+            {[['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['custom', 'Custom']].map(([val, label]) => (
+              <button key={val} onClick={() => setDateFilter(val)}
+                className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all ${dateFilter === val ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2 bg-white border border-blue-200 rounded-xl px-3 py-1.5">
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="text-xs border-0 outline-none text-slate-700 bg-transparent"/>
+              <span className="text-slate-400 text-xs">→</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="text-xs border-0 outline-none text-slate-700 bg-transparent"/>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Pipeline', value: (interviews || []).length, bg: 'from-blue-500 to-blue-700', icon: Users },
+          { label: `Created (${dateFilter === 'today' ? 'Today' : dateFilter === 'week' ? 'Week' : 'Month'})`, value: T('created'), bg: 'from-indigo-500 to-indigo-700', icon: Plus },
+          { label: 'Total Hired', value: T('hired'), bg: 'from-emerald-500 to-emerald-700', icon: CheckCircle },
+          { label: 'Total Rejected', value: T('rejected'), bg: 'from-red-500 to-red-700', icon: XCircle }
+        ].map(({ label, value, bg, icon: Icon }) => (
+          <div key={label} className={`bg-gradient-to-br ${bg} rounded-xl p-5 text-white shadow-lg shadow-slate-900/10`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider opacity-80">{label}</span>
+              <Icon size={18} className="opacity-70" />
+            </div>
+            <div className="text-4xl font-black">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Performance Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+          <BarChart3 size={20} className="text-blue-600" />
+          <div>
+            <h3 className="font-black text-slate-900">HR-wise Performance</h3>
+            <p className="text-xs text-slate-500">Stage counts = current pipeline totals; Created & Conducted = date range filtered</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b-2 border-slate-200 bg-slate-50">
+                <th className="px-5 py-3 text-xs font-black text-slate-700 uppercase tracking-wider sticky left-0 bg-slate-50 z-10">Recruiter</th>
+                <th className="px-3 py-3 text-xs font-black text-blue-700 uppercase tracking-wider text-center whitespace-nowrap">📥 Created</th>
+                <th className="px-3 py-3 text-xs font-black text-indigo-700 uppercase tracking-wider text-center whitespace-nowrap">🎯 Conducted</th>
+                <th className="px-3 py-3 text-xs font-black text-purple-700 uppercase tracking-wider text-center">R2</th>
+                <th className="px-3 py-3 text-xs font-black text-orange-700 uppercase tracking-wider text-center whitespace-nowrap">Job Offer</th>
+                <th className="px-3 py-3 text-xs font-black text-yellow-700 uppercase tracking-wider text-center">Train</th>
+                <th className="px-3 py-3 text-xs font-black text-emerald-700 uppercase tracking-wider text-center">✅ Hired</th>
+                <th className="px-3 py-3 text-xs font-black text-red-700 uppercase tracking-wider text-center">❌ Rejected</th>
+                <th className="px-3 py-3 text-xs font-black text-cyan-700 uppercase tracking-wider text-center">↩ Resched</th>
+                <th className="px-3 py-3 text-xs font-black text-rose-700 uppercase tracking-wider text-center">🔄 Reassign</th>
+                <th className="px-3 py-3 text-xs font-black text-slate-600 uppercase tracking-wider text-center">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {allMetrics.map((m, i) => (
+                <tr key={m.hr} className={`hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                  <td className="px-5 py-4 sticky left-0 bg-inherit z-10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-md">
+                        {m.hr.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm">{m.hr}</div>
+                        <div className="text-xs text-slate-500">HR Desk</div>
+                      </div>
+                    </div>
+                  </td>
+                  <MC v={m.created} cls="text-blue-700 bg-blue-50 rounded px-1" />
+                  <MC v={m.conducted} cls="text-indigo-700" />
+                  <MC v={m.round2} cls="text-purple-700" />
+                  <MC v={m.jobOffered} cls="text-orange-700" />
+                  <MC v={m.training} cls="text-yellow-700" />
+                  <MC v={m.hired} cls="text-emerald-700 font-black" />
+                  <MC v={m.rejected} cls="text-red-700" />
+                  <MC v={m.rescheduled} cls="text-cyan-700" />
+                  <MC v={m.reassigned} cls="text-rose-700" />
+                  <td className="px-3 py-4 text-center text-sm font-black text-slate-800">{m.total}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 border-t-2 border-slate-300">
+                <td className="px-5 py-3.5 text-xs font-black text-slate-800 uppercase tracking-wider">All HRs</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-blue-800">{T('created')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-indigo-800">{T('conducted')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-purple-800">{T('round2')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-orange-800">{T('jobOffered')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-yellow-800">{T('training')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-emerald-800">{T('hired')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-red-800">{T('rejected')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-cyan-800">{T('rescheduled')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-rose-800">{T('reassigned')}</td>
+                <td className="px-3 py-3.5 text-center text-sm font-black text-slate-900">{(interviews || []).length}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* Pipeline Funnel */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
+          <TrendingUp size={18} className="text-blue-600" /> Current Pipeline Snapshot
+        </h3>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          {stages.map(stage => (
+            <div key={stage} className={`border rounded-xl p-4 text-center ${stageColors[stage]}`}>
+              <div className="text-3xl font-black">{stageCounts[stage]}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider opacity-70 mt-1">{stage}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- FORWARD REMARK MODAL ---
+const ForwardRemarkModal = ({ target, onClose, onConfirmForward, onConfirmJobOffer }) => {
+  const [remark, setRemark] = useState('');
+  const stageLabels = { 'Round 2': 'Round 2', 'Job Offered': 'Job Offered', 'Training': 'Training', 'Hired': 'Hired' };
+  const nextLabel = stageLabels[target.targetStage] || target.targetStage;
+  const canJobOffer = target.currentStage === 'Interview';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <ChevronRight size={18} className="text-blue-600" /> Forward Candidate
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">Moving to: <span className="font-bold text-blue-700">{nextLabel}</span></p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1 rounded-lg hover:bg-white/80 transition-colors"><X size={18}/></button>
+        </div>
+        <div className="p-5">
+          <label className="block text-sm font-bold text-slate-700 mb-2">
+            Remark / Note <span className="text-red-500">*</span>
+            <span className="text-slate-400 font-normal ml-1 text-xs">(mandatory — reason for forwarding)</span>
+          </label>
+          <textarea value={remark} onChange={e => setRemark(e.target.value)} placeholder="e.g. Candidate performed well in Round 1. Communication is strong." className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-xl p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400" />
+          <div className="flex justify-end mt-1 mb-4">
+            <span className={`text-xs ${remark.trim().length < 10 ? 'text-red-400' : 'text-emerald-600'}`}>{remark.trim().length} chars {remark.trim().length < 10 ? '(min 10)' : '✓'}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button disabled={remark.trim().length < 10} onClick={() => { onConfirmForward(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+              <ChevronRight size={16} /> Move to {nextLabel}
+            </button>
+            {canJobOffer && (
+              <button disabled={remark.trim().length < 10} onClick={() => { onConfirmJobOffer(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                <CheckCircle size={16} /> Direct Job Offer (Skip Round 2)
+              </button>
+            )}
+            <button onClick={onClose} className="w-full py-2.5 text-sm text-slate-500 hover:text-slate-800 font-medium transition-colors">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- DECLINE MODAL ---
+const DeclineModal = ({ candidate, options, onClose, onSubmit }) => {
+  const [reason, setReason] = useState('');
+  const [remarks, setRemarks] = useState('');
+  if (!candidate) return null;
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-2xl">
+        <h2 className="text-lg font-bold text-red-600 mb-5">Decline Candidate</h2>
+        <p className="text-xs text-slate-600 mb-4">Declining: <span className="font-bold">{candidate.candidate_name}</span></p>
+        <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-3 text-slate-900 mb-4 outline-none focus:border-red-500">
+          <option value="" disabled>Select Reason...</option>
+          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+        <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Mandatory Remarks..." className="w-full h-24 bg-white border border-slate-300 rounded-md p-3 text-slate-900 mb-6 outline-none focus:border-red-500 resize-none text-sm" />
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-md text-sm">Cancel</button>
+          <button disabled={!reason || !remarks} onClick={() => onSubmit(candidate._id, reason, remarks)} className={`flex-1 py-2.5 rounded-md text-sm font-bold ${reason && remarks ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm Reject</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- RESCHEDULE MODAL ---
+const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
+  const [customDate, setCustomDate] = useState('');
+  const [reason, setReason] = useState('');
+  if (!candidate) return null;
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 shadow-2xl">
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Reschedule Date</h2>
+        <p className="text-xs text-slate-600 mb-5">For {candidate.candidate_name}</p>
+        <label className="block text-sm text-slate-700 mb-1">New Date</label>
+        <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-900 mb-4 outline-none focus:border-blue-500" />
+        <label className="block text-sm text-slate-700 mb-1">Reason <span className="text-red-600">*</span></label>
+        <input type="text" placeholder="Mandatory reschedule reason" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-900 mb-6 text-sm outline-none focus:border-blue-500" />
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 bg-slate-100 border border-slate-300 text-slate-700 rounded-md text-sm">Cancel</button>
+          <button disabled={!customDate || !reason.trim()} onClick={() => onSubmit(candidate._id, new Date(customDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), reason.trim())} className={`flex-1 py-2 rounded-md text-sm font-bold ${customDate && reason.trim() ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- CANDIDATE DETAIL MODAL ---
+const CandidateDetailModal = ({ candidate, onClose }) => {
+  if (!candidate) return null;
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden">
+        <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Candidate Profile Details</h2>
+            <p className="text-xs text-slate-600 mt-1">Complete data for {candidate.candidate_name}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-1"><X size={20}/></button>
+        </div>
+        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Name</div><div className="text-sm font-semibold text-slate-900">{candidate.candidate_name || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.mobile_number || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Alt Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.alt_phone || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Status</div><div className="text-sm font-semibold text-slate-900">{candidate.status || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Created By</div><div className="text-sm font-semibold text-slate-900">{candidate.created_by || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Job Applied</div><div className="text-sm font-semibold text-slate-900">{candidate.job_opening || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Gender</div><div className="text-sm font-semibold text-slate-900">{candidate.gender || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Experience</div><div className="text-sm font-semibold text-slate-900">{candidate.experience_type || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Source</div><div className="text-sm font-semibold text-slate-900">{candidate.source_portal || '-'}</div></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Qualification</div><div className="text-sm text-slate-800">{candidate.qualification || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Age</div><div className="text-sm text-slate-800">{candidate.age || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">City</div><div className="text-sm text-slate-800">{candidate.city || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Marital Status</div><div className="text-sm text-slate-800">{candidate.marital_status || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Living Arrangement</div><div className="text-sm text-slate-800">{candidate.living_arrangement || '-'}</div></div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Salary Offered</div><div className="text-sm text-slate-800">{candidate.monthly_salary_offered || '-'}</div></div>
+          </div>
+          {candidate.interview_date && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-sm font-bold text-blue-800 mb-2">Interview Schedule</h3>
+              <div className="text-sm text-blue-700">Date: {new Date(candidate.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+              {candidate.interview_time && <div className="text-sm text-blue-700">Time: {candidate.interview_time}</div>}
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-white text-sm font-bold">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- ROUND 1 CONTEXT MODAL ---
+const Round1InfoModal = ({ candidate, onClose }) => {
+  if (!candidate) return null;
+  const fb = candidate.round1_feedback || candidate.round1Feedback;
+  if (!fb) return null;
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="p-5 border-b border-slate-200 flex justify-between bg-slate-50">
+          <div>
+            <h2 className="text-lg font-bold text-indigo-700 flex items-center gap-2"><Info size={18}/> Round 1 Context</h2>
+            <p className="text-xs text-slate-600 mt-1">Previous interview feedback for {candidate.candidate_name}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-1"><X size={20}/></button>
+        </div>
+        <div className="p-6">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+            <div className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-bold">Interviewer</div>
+            <div className="text-sm text-slate-900 font-medium flex items-center gap-2"><User size={14} className="text-indigo-600"/> {fb.hrName || fb.hr_name || candidate.created_by || 'N/A'}</div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+            <div className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-bold">Interview Date</div>
+            <div className="text-sm text-slate-900 font-medium flex items-center gap-2"><Calendar size={14} className="text-indigo-600"/> {fb.date || candidate.interview_date || 'N/A'}</div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider font-bold">HR Feedback / Remarks</div>
+            <div className="text-sm text-slate-700 italic leading-relaxed">"{fb.notes || fb.feedback || 'No feedback recorded'}"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- AUDIT HISTORY MODAL ---
+const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
+  const [activeHistTab, setActiveHistTab] = useState(initialTab);
+  if (!candidate) return null;
+
+  const reassigns = candidate.reassign_history || candidate.reassignHistory || [];
+  const reschedules = candidate.reschedule_history || candidate.rescheduleHistory || [];
+  const activities = (candidate.activity_history || candidate.activityHistory || []).length > 0
+    ? (candidate.activity_history || candidate.activityHistory)
+    : [
+        { date: candidate.created_at || 'N/A', action: 'Profile Created', details: 'Candidate added to pipeline' },
+        { date: candidate.interview_date || 'N/A', action: 'Current Status', details: `${getStageFromStatus(candidate.status)}` }
+      ];
+
+  const stageColorMap = { Interview:'bg-blue-600', 'Round 2':'bg-indigo-600', 'Job Offered':'bg-orange-500', Training:'bg-yellow-500', Hired:'bg-emerald-600', Rejected:'bg-red-600' };
+  const currentStage = getStageFromStatus(candidate.status);
+  const stageBg = stageColorMap[currentStage] || 'bg-slate-600';
+
+  const tabs = [
+    { id: 'reassign', label: 'Reassignments', count: reassigns.length, color: 'orange' },
+    { id: 'reschedule', label: 'Reschedules', count: reschedules.length, color: 'indigo' },
+    { id: 'full', label: 'Full Track', count: activities.length + reassigns.length + reschedules.length, color: 'blue' }
+  ];
+
+  const tabColors = { orange: 'bg-orange-100 text-orange-700 border-orange-300', indigo: 'bg-indigo-100 text-indigo-700 border-indigo-300', blue: 'bg-blue-100 text-blue-700 border-blue-300' };
+
+  // Build full chronological timeline
+  const fullTimeline = [
+    ...activities.map(a => ({ type: 'activity', ...a, sortDate: parseFormattedDate(a.date) || new Date(0) })),
+    ...reassigns.map(r => ({ type: 'reassign', date: r.date, fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr, reason: r.reason, sortDate: parseFormattedDate(r.date) || new Date(0) })),
+    ...reschedules.map(r => ({ type: 'reschedule', date: r.date, from: r.from, to: r.to, reason: r.reason, sortDate: parseFormattedDate(r.date) || new Date(0) }))
+  ].sort((a, b) => a.sortDate - b.sortDate);
+
+  const TimelineItem = ({ item }) => {
+    if (item.type === 'activity') return (
+      <div className="relative pl-7">
+        <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-blue-500 shadow-sm"></div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-1"><History size={10}/>{item.action}</span>
+            <span className="text-[11px] text-slate-500">{item.date}</span>
+          </div>
+          <p className="text-xs text-slate-700">{item.details}</p>
         </div>
       </div>
     );
+    if (item.type === 'reassign') return (
+      <div className="relative pl-7">
+        <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-orange-500 shadow-sm"></div>
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3.5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-black text-orange-700 uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10}/> Reassigned</span>
+            <span className="text-[11px] text-slate-500">{item.date}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm mb-2 bg-white rounded-lg p-2 border border-orange-200">
+            <span className="text-slate-500 font-medium">{item.fromHr}</span>
+            <ArrowRightLeft size={14} className="text-orange-400 shrink-0"/>
+            <span className="text-emerald-700 font-bold">{item.toHr}</span>
+          </div>
+          <div className="text-xs text-slate-600 italic bg-white rounded-lg px-3 py-2 border border-orange-100">"{item.reason}"</div>
+        </div>
+      </div>
+    );
+    if (item.type === 'reschedule') return (
+      <div className="relative pl-7">
+        <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-indigo-500 shadow-sm"></div>
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1"><Calendar size={10}/> Rescheduled</span>
+            <span className="text-[11px] text-slate-500">{item.date}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs mb-2">
+            <span className="bg-white border border-indigo-200 px-2 py-1 rounded font-semibold text-slate-700">{item.from}</span>
+            <span className="text-indigo-400">→</span>
+            <span className="bg-indigo-600 text-white px-2 py-1 rounded font-bold">{item.to}</span>
+          </div>
+          <div className="text-xs text-slate-600 italic bg-white rounded-lg px-3 py-2 border border-indigo-100">"{item.reason}"</div>
+        </div>
+      </div>
+    );
+    return null;
   };
 
   return (
-    <div className="w-full bg-black" style={{ marginLeft: 0 }}>
-      <div className="relative">
-        {/* Horizontal scroll buttons */}
-        {canScrollLeft && (
-          <button
-            onClick={() => scrollTable('left')}
-            className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-            style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-            aria-label="Scroll left"
-          >
-            <ChevronLeft className="w-9 h-9" />
-          </button>
-        )}
-        
-        {canScrollRight && (
-          <button
-            onClick={() => scrollTable('right')}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-            style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-            aria-label="Scroll right"
-          >
-            <ChevronRight className="w-9 h-9" />
-          </button>
-        )}
-        
-        <div 
-          ref={tableScrollRef}
-          className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto"
-          onScroll={updateScrollButtons}
-        >
-          <table className="min-w-[2400px] w-full bg-black relative">
-        <thead className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200">
-          <tr>
-            {checkboxVisible && (
-              <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={onSelectAll}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                />
-              </th>
-            )}
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              #
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Date & Time
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Created By
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Candidate Name
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Status
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Gender
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Qualification
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Job Applied
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Age
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Experience Type
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Source/Portal
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Monthly Salary Offered
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Interview Date
-            </th>
-            <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200">
-              Interview Time
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-black">
-          {interviews.map((interview, index) => (
-            <tr 
-              key={interview._id || index} 
-              className="border-b border-gray-800 hover:bg-gray-900/50 transition bg-black cursor-pointer"
-              onClick={() => onRowClick(interview)}
-            >
-              {checkboxVisible && (
-                <td 
-                  className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white" 
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedInterviews.includes(interview._id)}
-                    onChange={() => onSelectInterview(interview._id)}
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                </td>
-              )}
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {index + 1}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.created_at ? formatDateTime(interview.created_at) : 'N/A'}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
-                    {interview.created_by ? interview.created_by.charAt(0).toUpperCase() : "?"}
-                  </div>
-                  <span className='text-md'>{interview.created_by || "-"}</span>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-lg font-black shadow-md">
+              {(candidate.candidate_name || '?').charAt(0)}
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-slate-900">{candidate.candidate_name}</h2>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-[11px] font-bold text-white px-2 py-0.5 rounded-full ${stageBg}`}>{currentStage}</span>
+                <span className="text-xs text-slate-500">#{candidate.mobile_number}</span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs text-slate-600">{candidate.created_by}</span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-lg transition-colors"><X size={20}/></button>
+        </div>
+
+        {/* Summary Badges */}
+        <div className="px-6 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Summary:</span>
+          <span className="bg-orange-100 text-orange-700 border border-orange-200 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1"><RefreshCw size={10}/> {reassigns.length} Reassignment{reassigns.length !== 1 ? 's' : ''}</span>
+          <span className="bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1"><Calendar size={10}/> {reschedules.length} Reschedule{reschedules.length !== 1 ? 's' : ''}</span>
+          <span className="bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1"><History size={10}/> {activities.length} Events</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 px-6 bg-white">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveHistTab(t.id)}
+              className={`py-3 px-1 mr-6 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeHistTab === t.id ? 'border-current' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              style={activeHistTab === t.id ? {borderColor: t.color === 'orange' ? '#f97316' : t.color === 'indigo' ? '#6366f1' : '#3b82f6', color: t.color === 'orange' ? '#c2410c' : t.color === 'indigo' ? '#4338ca' : '#1d4ed8'} : {}}>
+              {t.label}
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${tabColors[t.color] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6 overflow-y-auto flex-1">
+
+          {/* REASSIGN TAB */}
+          {activeHistTab === 'reassign' && (
+            <div className="space-y-4">
+              {reassigns.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <RefreshCw size={36} className="mx-auto mb-3 opacity-30"/>
+                  <p className="font-medium">No reassignments recorded</p>
                 </div>
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                    {interview.candidate_name ? interview.candidate_name.charAt(0).toUpperCase() : "?"}
-                  </div>
-                  <div>
-                    <div className="text-md font-semibold">{interview.candidate_name || "-"}</div>
-                  </div>
-                </div>
-              </td>
-              <td 
-                className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white relative"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="relative status-dropdown-container">
-                  <button
-                    className="bg-gray-800 text-white py-2 px-3 rounded-md border border-gray-600 hover:bg-gray-700 transition-colors w-full min-w-[150px] flex justify-between items-center status-dropdown-button"
-                    onClick={(e) => handleStatusDropdownClick(index, e)}
-                  >
-                    <div className="font-medium text-white truncate w-full text-sm text-left">
-                      {(() => {
-                        // Check if interview has hierarchical status (MainStatus:SubStatus)
-                        if (interview.status && interview.status.includes(':')) {
-                          const [mainStatus, subStatus] = interview.status.split(':');
-                          return (
-                            <div>
-                              <div>{subStatus}</div>
-                              <div className="text-xs text-gray-400">
-                                {mainStatus.replace('_', ' ').toUpperCase()}
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          // Regular status display
-                          return interview.status ? interview.status.replace('_', ' ').toUpperCase() : 'Select Status';
-                        }
-                      })()}
+              ) : reassigns.map((log, i) => (
+                <div key={i} className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="bg-orange-50 px-4 py-2.5 flex items-center justify-between border-b border-orange-100">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={14} className="text-orange-600"/>
+                      <span className="text-xs font-black text-orange-700 uppercase tracking-wider">Reassignment #{i+1}</span>
                     </div>
-                    <svg
-                      className={`w-5 h-5 transition-transform ${showStatusDropdown === index ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-                
-                {showStatusDropdown === index && (
-                  <div
-                    className="fixed bg-white border border-gray-300 rounded-lg shadow-xl z-[9999] status-dropdown-menu flex flex-col"
-                    style={{
-                      top: `${dropdownPosition.top}px`,
-                      left: `${dropdownPosition.left}px`,
-                      minWidth: '280px',
-                      maxWidth: '400px',
-                      maxHeight: `${dropdownPosition.maxHeight}px`,
-                      backgroundColor: 'white',
-                      zIndex: 9999,
-                      overflowY: 'hidden'
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                    }}
-                  >
-                    {/* Header with search */}
-                    <div className="p-3 border-b border-gray-200 bg-white sticky top-0 z-10 rounded-t-lg">
-                      {/* Navigation header for hierarchical navigation */}
-                      {!showMainStatuses && selectedMainStatus && (
-                        <div className="flex items-center justify-between mb-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleBackToMainStatuses();
-                            }}
-                            className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                            </svg>
-                            Back to Main Statuses
-                          </button>
-                          <span className="text-xs text-gray-600 font-medium">
-                            {selectedMainStatus.replace('_', ' ').toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input
-                          type="text"
-                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:border-sky-400"
-                          placeholder={
-                            showMainStatuses ? "Search statuses and sub-statuses..." : "Search sub-statuses..."
-                          }
-                          value={statusSearchTerm}
-                          onChange={(e) => setStatusSearchTerm(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                        />
+                    <span className="text-xs text-slate-500 font-medium">{log.date}</span>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-3 mb-3 border border-slate-200">
+                      <div className="text-center flex-1">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Previous Owner</div>
+                        <div className="text-sm font-bold text-slate-700">{log.fromHr || log.from_hr}</div>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 text-slate-400">
+                        <ArrowRightLeft size={18} className="text-orange-500"/>
+                        <span className="text-[10px] text-slate-400">Transferred</span>
+                      </div>
+                      <div className="text-center flex-1">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">New Owner</div>
+                        <div className="text-sm font-black text-emerald-700">{log.toHr || log.to_hr}</div>
                       </div>
                     </div>
-
-                    {/* Options list */}
-                    <div 
-                      className="overflow-y-auto bg-white rounded-b-lg flex-1"
-                      style={{ 
-                        overflowY: 'auto',
-                        maxHeight: 'calc(100% - 80px)',
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: '#888 transparent'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {getFilteredStatusOptions().length > 0 ? (
-                        getFilteredStatusOptions().map((status, statusIndex) => {
-                          const statusName = typeof status === 'object' ? status.name : status;
-                          
-                          // Enhanced logic to detect navigation state
-                          const isMainStatusView = showMainStatuses && !statusSearchTerm;
-                          const isSubStatusView = !showMainStatuses || statusSearchTerm;
-                          const isDirectSearchResult = statusSearchTerm;
-                          
-                          // Check if this status is a main status (has sub-statuses)
-                          const isActualMainStatus = getSubStatusesForMainStatus(statusName).length > 0;
-                          
-                          // Check if current status matches interview's status
-                          const isCurrentStatus = (
-                            interview.status === statusName ||
-                            (interview.status && interview.status.includes(':') && (
-                              interview.status.split(':')[0] === statusName ||
-                              interview.status.split(':')[1] === statusName
-                            ))
-                          );
-                          
-                          // Determine if this should be treated as a main status click
-                          const shouldTreatAsMainStatus = isMainStatusView && !isDirectSearchResult && isActualMainStatus;
-                          
-                          
-                          return (
-                            <div
-                              key={`status-${statusIndex}-${statusName}`}
-                              className={`px-4 py-3 cursor-pointer text-black hover:bg-blue-200 transition-colors border-b border-gray-100 last:border-b-0 text-left ${
-                                clickedStatusOption === statusName ? 'font-bold shadow-lg' : ''
-                              }`}
-                              style={{
-                                backgroundColor: clickedStatusOption === statusName ? '#FFFF00' : (isCurrentStatus ? '#FFFF00' : ''),
-                                color: clickedStatusOption === statusName ? '#000000' : (isCurrentStatus ? '#000000' : '#000000'),
-                                fontWeight: isCurrentStatus ? 'bold' : 'normal'
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                e.nativeEvent.stopImmediatePropagation();
-                                
-                                // Set the clicked status option for visual feedback
-                                setClickedStatusOption(statusName);
-                                
-                                // Use setTimeout to allow the visual feedback to show before processing
-                                setTimeout(() => {
-                                  // For sub-statuses, create hierarchical value; for main statuses use statusName
-                                  let statusValue = statusName;
-                                  if (isSubStatusView && selectedMainStatus && !shouldTreatAsMainStatus) {
-                                    statusValue = `${selectedMainStatus}:${statusName}`;
-                                  }
-                                  handleStatusChange(index, statusValue, shouldTreatAsMainStatus);
-                                  // Clear the clicked status option after processing
-                                  setTimeout(() => {
-                                    setClickedStatusOption(null);
-                                  }, 100);
-                                }, 150);
-                              }}
-                              onMouseDown={(e) => e.preventDefault()}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="text-sm font-medium text-left select-none">
-                                  {statusName.replace('_', ' ').toUpperCase()}
-                                  {isSubStatusView && selectedMainStatus && (
-                                    <div className="text-xs text-gray-500 mt-1">
-                                      Main Status: {selectedMainStatus.replace('_', ' ').toUpperCase()}
-                                    </div>
-                                  )}
-                                </div>
-                                {/* Show arrow for main statuses with sub-statuses */}
-                                {shouldTreatAsMainStatus && (
-                                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                  </svg>
-                                )}
-                              </div>
-                              {/* Show sub-status count for main statuses */}
-                              {shouldTreatAsMainStatus && getSubStatusesForMainStatus(statusName).length > 0 && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {getSubStatusesForMainStatus(statusName).length} sub-status{getSubStatusesForMainStatus(statusName).length !== 1 ? 'es' : ''}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="px-4 py-6 text-gray-500 text-center text-sm">
-                          {statusSearchTerm ? (
-                            <div>
-                              <div className="mb-2">No results found for "<span className="font-semibold text-gray-700">{statusSearchTerm}</span>"</div>
-                              <div className="text-xs text-gray-400">
-                                Try searching with different terms or clear the search
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="mb-2">No status options available</div>
-                              <div className="text-xs text-gray-400">
-                                Status data may still be loading...
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    <div className="bg-orange-50 border border-orange-100 rounded-lg px-4 py-3">
+                      <div className="text-[10px] text-orange-600 font-black uppercase tracking-wider mb-1">Reason for Transfer</div>
+                      <p className="text-sm text-slate-700 italic">"{log.reason}"</p>
                     </div>
                   </div>
-                )}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.gender || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.qualification || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.job_opening || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.age || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.experience_type || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.source_portal || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.monthly_salary_offered || "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.interview_date ? new Date(interview.interview_date).toLocaleDateString() : "-"}
-              </td>
-              <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                {interview.interview_time || "-"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* RESCHEDULE TAB */}
+          {activeHistTab === 'reschedule' && (
+            <div className="space-y-4">
+              {reschedules.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Calendar size={36} className="mx-auto mb-3 opacity-30"/>
+                  <p className="font-medium">No reschedules recorded</p>
+                </div>
+              ) : reschedules.map((log, i) => (
+                <div key={i} className="bg-white border border-indigo-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="bg-indigo-50 px-4 py-2.5 flex items-center justify-between border-b border-indigo-100">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-indigo-600"/>
+                      <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Reschedule #{i+1}</span>
+                    </div>
+                    <span className="text-xs text-slate-500 font-medium">Changed on: {log.date}</span>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-center gap-4 bg-slate-50 rounded-xl p-4 mb-3 border border-slate-200">
+                      <div className="text-center">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Original Date</div>
+                        <div className="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm font-bold text-slate-700">{log.from}</div>
+                      </div>
+                      <div className="text-indigo-400 text-xl">→</div>
+                      <div className="text-center">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">New Date</div>
+                        <div className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md">{log.to}</div>
+                      </div>
+                    </div>
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
+                      <div className="text-[10px] text-indigo-600 font-black uppercase tracking-wider mb-1">Reason for Reschedule</div>
+                      <p className="text-sm text-slate-700 italic">"{log.reason}"</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* FULL TRACK TAB */}
+          {activeHistTab === 'full' && (
+            <div>
+              {fullTimeline.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <History size={36} className="mx-auto mb-3 opacity-30"/>
+                  <p className="font-medium">No history available</p>
+                </div>
+              ) : (
+                <div className="relative border-l-2 border-slate-200 ml-2.5 space-y-4 py-1">
+                  {fullTimeline.map((item, i) => <TimelineItem key={i} item={item}/>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <button onClick={onClose} className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-lg transition-colors">Close</button>
         </div>
       </div>
     </div>

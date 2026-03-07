@@ -102,6 +102,11 @@ const icons = {
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1h-.09a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h.09a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.09a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
     </svg>
+  ),
+  "Knowledge Base": (
+    <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+    </svg>
   )
 };
 
@@ -122,7 +127,8 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
       (label === 'Reports' && currentPath.includes('/report')) ||
       (label === 'Settings' && currentPath.includes('/setting')) ||
       (label === 'Feed' && (currentPath === '/feed' || currentPath === '/')) ||
-      (label === 'Interview Panel' && currentPath.includes('/interview-panel'));
+      (label === 'Interview Panel' && currentPath.includes('/interview-panel')) ||
+      (label === 'Knowledge Base' && currentPath.includes('/knowledge-base'));
     
     return selectedLabel === label || stored === label || urlBasedSelection;
   }, [selectedLabel, label, internalUpdate]);
@@ -461,7 +467,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       return cached ? JSON.parse(cached) : {
         loanTypes: [],
         permissions: {},
-        staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Apps', 'Settings', 'Reports'],
+        staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Knowledge Base', 'Apps', 'Settings', 'Reports'],
         dynamicDropdowns: ['LEAD CRM', 'Login CRM', 'HRMS', 'Warning'],
         lastUpdated: null
       };
@@ -469,7 +475,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       return {
         loanTypes: [],
         permissions: {},
-        staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Apps', 'Settings', 'Reports'],
+        staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Knowledge Base', 'Apps', 'Settings', 'Reports'],
         dynamicDropdowns: ['LEAD CRM', 'Login CRM', 'HRMS', 'Warning'],
         lastUpdated: null
       };
@@ -970,7 +976,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         const completeMenuData = {
           loanTypes: loanTypesData,
           permissions: permissionsResponse,
-          staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Apps', 'Settings', 'Reports'],
+          staticItems: ['Feed', 'Task', 'Ticket', 'Notifications', 'Interview Panel', 'Knowledge Base', 'Apps', 'Settings', 'Reports'],
           dynamicDropdowns: ['LEAD CRM', 'Login CRM', 'HRMS', 'Warning'],
           lastUpdated: Date.now()
         };
@@ -1139,6 +1145,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     }
     else if (currentPath.includes('/report')) {
       targetLabel = 'Reports';
+    }
+    else if (currentPath.includes('/knowledge-base')) {
+      targetLabel = 'Knowledge Base';
     }
     
     // Apply the selection if found
@@ -1639,7 +1648,10 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('notification', 'show') ||
                             checkPermission('announcement', 'show') ||
                             checkPermission('Announcement', 'show') ||
-                            isSuperAdmin(userPermissions)
+                            isSuperAdmin(userPermissions),
+
+      // Knowledge Base - visible to all authenticated users
+      canShowKnowledgeBase: true
     };
     
     console.log('🔐 ========================================');
@@ -1871,6 +1883,17 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               />
             )}
             
+            {/* Knowledge Base */}
+            {permissions.canShowKnowledgeBase && (
+              <MenuItem
+                icon={icons["Knowledge Base"]}
+                label="Knowledge Base"
+                isOpen={isOpen}
+                selectedLabel={selectedLabel}
+                onSelect={handleSelection}
+              />
+            )}
+
             {/* Apps */}
             {permissions.canShowApps && (
               <MenuItem 
