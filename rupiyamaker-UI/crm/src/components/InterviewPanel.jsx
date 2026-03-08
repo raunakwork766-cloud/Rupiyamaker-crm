@@ -4003,7 +4003,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               </div>
 
               {/* ── Education & Background ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
                   <span className="text-base">🎓</span>
                   <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
@@ -4029,7 +4029,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                     <div className="relative" ref={qualRef}>
                       <input
                         value={qualSearch !== '' ? qualSearch : formData.qualification}
-                        onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }}
+                        onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
                         onFocus={() => { setQualSearch(''); setQualOpen(true); }}
                         placeholder="Type to search e.g. MBA, BA, ITI..."
                         className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
