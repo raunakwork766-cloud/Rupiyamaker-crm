@@ -68,14 +68,14 @@ const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
 // Success Modal Component
 const SuccessModal = ({ successInfo, onClose }) => {
   if (!successInfo) return null;
-  
+
   const configs = {
     full_day: {
       emoji: '🎉',
       color: '#16a34a',
-      bg: '#f0fdf4',
-      border: '#86efac',
-      statusLabel: 'Full Day - On Time',
+      glow: 'rgba(22,163,74,0.5)',
+      statusLabel: '✅ On Time',
+      accent: '#4ade80',
       messages: [
         'Great start to the day! Keep it up! 💪',
         'You\'re on time! Productive day ahead! 🚀',
@@ -86,9 +86,9 @@ const SuccessModal = ({ successInfo, onClose }) => {
     half_day: {
       emoji: '🌤️',
       color: '#d97706',
-      bg: '#fffbeb',
-      border: '#fcd34d',
-      statusLabel: 'Half Day',
+      glow: 'rgba(217,119,6,0.5)',
+      statusLabel: '🌤️ Half Day',
+      accent: '#fbbf24',
       messages: [
         'Half day marked! Make the most of it! 😊',
         'Short day today, still counts! 👍',
@@ -98,9 +98,9 @@ const SuccessModal = ({ successInfo, onClose }) => {
     late: {
       emoji: '⏰',
       color: '#dc2626',
-      bg: '#fef2f2',
-      border: '#fca5a5',
-      statusLabel: 'Late Check-In',
+      glow: 'rgba(220,38,38,0.5)',
+      statusLabel: '⏰ Late Check-In',
+      accent: '#f87171',
       messages: [
         'You\'re a bit late today. Try to be earlier tomorrow! 😅',
         'Late check-in recorded. No worries, happens to all! 🙂',
@@ -110,29 +110,25 @@ const SuccessModal = ({ successInfo, onClose }) => {
     absent: {
       emoji: '❌',
       color: '#dc2626',
-      bg: '#fef2f2',
-      border: '#fca5a5',
-      statusLabel: 'Absent',
-      messages: [
-        'Marked as absent for today.',
-      ],
+      glow: 'rgba(220,38,38,0.4)',
+      statusLabel: '❌ Absent',
+      accent: '#f87171',
+      messages: ['Marked as absent for today.'],
     },
     absconding: {
       emoji: '🚫',
       color: '#991b1b',
-      bg: '#fef2f2',
-      border: '#f87171',
-      statusLabel: 'Absconding',
-      messages: [
-        'Marked as absconding. Please contact HR.',
-      ],
+      glow: 'rgba(153,27,27,0.4)',
+      statusLabel: '🚫 Absconding',
+      accent: '#ef4444',
+      messages: ['Marked as absconding. Please contact HR.'],
     },
     checked_out: {
       emoji: '👋',
       color: '#2563eb',
-      bg: '#eff6ff',
-      border: '#93c5fd',
-      statusLabel: 'Checked Out',
+      glow: 'rgba(37,99,235,0.5)',
+      statusLabel: '👋 Checked Out',
+      accent: '#60a5fa',
       messages: [
         'Great work today! See you tomorrow! 😊',
         'Another productive day done! Rest well! 🌙',
@@ -141,58 +137,142 @@ const SuccessModal = ({ successInfo, onClose }) => {
       ],
     },
   };
-  
+
   const cfg = configs[successInfo.type] || configs.full_day;
   const randomMsg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
-  
-  // Format time display
-  const formatTime = (timeStr) => {
-    if (!timeStr) return 'N/A';
-    // If it's already in HH:MM:SS format, just return it
-    if (timeStr.match(/^\d{2}:\d{2}:\d{2}$/)) return timeStr;
-    return timeStr;
-  };
-  
+  const isCheckOut = successInfo.type === 'checked_out';
+  const displayTime = successInfo.checkInTime || successInfo.checkOutTime || null;
+  const displayDate = successInfo.date || new Date().toLocaleDateString('en-IN', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  });
+
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '16px' }}>
-      <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: '16px', padding: '32px 24px', maxWidth: '420px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'popIn 0.3s ease-out' }}>
-        <style>{`@keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
-        <div style={{ fontSize: '64px', marginBottom: '12px' }}>{cfg.emoji}</div>
-        <h2 style={{ color: cfg.color, fontSize: '22px', fontWeight: 700, marginBottom: '8px' }}>{successInfo.title}</h2>
-        
-        {/* Status Badge */}
-        <div style={{ display: 'inline-block', background: cfg.color, color: 'white', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
-          {cfg.statusLabel}
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '16px' }}
+    >
+      <style>{`
+        @keyframes si-popIn { from { transform: scale(0.82) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+        @keyframes si-shine { 0%,100%{opacity:0.6} 50%{opacity:1} }
+      `}</style>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#0f172a',
+          borderRadius: '24px',
+          maxWidth: '340px',
+          width: '100%',
+          overflow: 'hidden',
+          boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 30px 80px rgba(0,0,0,0.7), 0 0 60px ${cfg.glow}`,
+          animation: 'si-popIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards',
+        }}
+      >
+        {/* ── Portrait Photo Area ── */}
+        <div style={{ position: 'relative', width: '100%', height: '340px', background: '#1e293b', overflow: 'hidden' }}>
+          {successInfo.photo ? (
+            <img
+              src={successInfo.photo}
+              alt="Attendance photo"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(145deg, #1e293b 0%, #0f172a 100%)` }}>
+              <span style={{ fontSize: '96px', filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.5))' }}>{cfg.emoji}</span>
+            </div>
+          )}
+
+          {/* Status badge — top left */}
+          <div style={{
+            position: 'absolute', top: '14px', left: '14px',
+            background: cfg.color, color: 'white',
+            padding: '5px 14px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em',
+            boxShadow: `0 2px 12px ${cfg.glow}`,
+            textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+          }}>
+            {cfg.statusLabel}
+          </div>
+
+          {/* Close button — top right */}
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute', top: '12px', right: '12px',
+              background: 'rgba(0,0,0,0.55)', border: 'none', cursor: 'pointer',
+              color: 'white', borderRadius: '50%', width: '30px', height: '30px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '14px', backdropFilter: 'blur(4px)',
+            }}
+          >✕</button>
+
+          {/* Bottom gradient overlay with date + time */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 50%, transparent 100%)',
+            padding: '48px 16px 16px',
+          }}>
+            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '11px', fontWeight: 500, marginBottom: '3px', letterSpacing: '0.03em' }}>
+              {displayDate}
+            </div>
+            {displayTime && (
+              <div style={{ color: 'white', fontSize: '32px', fontWeight: 900, fontFamily: '"Courier New", monospace', letterSpacing: '0.04em', lineHeight: 1, marginBottom: '4px', textShadow: `0 0 20px ${cfg.glow}` }}>
+                {displayTime}
+              </div>
+            )}
+            <div style={{ color: cfg.accent, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              {isCheckOut ? '🕐 Check-Out Time' : '🕐 Check-In Time'}
+            </div>
+          </div>
         </div>
-        
-        {/* Attendance Details */}
-        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
-          {successInfo.checkInTime && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
-              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-In:</span>
-              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkInTime)}</span>
-            </div>
-          )}
-          {successInfo.checkOutTime && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
-              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Check-Out:</span>
-              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{formatTime(successInfo.checkOutTime)}</span>
-            </div>
-          )}
+
+        {/* ── Info Section ── */}
+        <div style={{ padding: '18px 20px 22px', background: '#0f172a' }}>
+          <h2 style={{ color: 'white', fontSize: '19px', fontWeight: 800, textAlign: 'center', marginBottom: '6px' }}>
+            {successInfo.title}
+          </h2>
+
+          {/* Work hours row (checkout) */}
           {successInfo.workHours && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f9fafb', borderRadius: '8px' }}>
-              <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500 }}>Work Hours:</span>
-              <span style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>{successInfo.workHours}</span>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 14px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 500 }}>Total Work Hours</span>
+              <span style={{ color: cfg.accent, fontSize: '15px', fontWeight: 800 }}>{successInfo.workHours}</span>
             </div>
           )}
+
+          {/* Both times row (checkout: show checkin+checkout) */}
+          {isCheckOut && successInfo.checkInTime && successInfo.checkOutTime && (
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '8px 10px', textAlign: 'center' }}>
+                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Check-In</div>
+                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, fontFamily: 'monospace' }}>{successInfo.checkInTime}</div>
+              </div>
+              <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '8px 10px', textAlign: 'center' }}>
+                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Check-Out</div>
+                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, fontFamily: 'monospace' }}>{successInfo.checkOutTime}</div>
+              </div>
+            </div>
+          )}
+
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', textAlign: 'center', fontStyle: 'italic', marginBottom: '16px', lineHeight: '1.5' }}>
+            {randomMsg}
+          </p>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: `linear-gradient(135deg, ${cfg.color}, ${cfg.accent})`,
+              color: 'white', border: 'none', borderRadius: '14px',
+              padding: '13px', fontSize: '15px', fontWeight: 800,
+              cursor: 'pointer', width: '100%', letterSpacing: '0.04em',
+              boxShadow: `0 4px 20px ${cfg.glow}`,
+              transition: 'transform 0.15s, opacity 0.15s',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.opacity = '0.88'}
+            onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+          >
+            Done ✓
+          </button>
         </div>
-        
-        <p style={{ color: '#374151', fontSize: '15px', marginBottom: '8px', fontWeight: 500 }}>{successInfo.message}</p>
-        <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', fontStyle: 'italic' }}>{randomMsg}</p>
-        
-        <button onClick={onClose} style={{ background: cfg.color, color: 'white', border: 'none', borderRadius: '10px', padding: '12px 32px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%', transition: 'all 0.2s' }} onMouseOver={(e) => e.target.style.opacity = '0.9'} onMouseOut={(e) => e.target.style.opacity = '1'}>
-          Done
-        </button>
       </div>
     </div>,
     document.body
@@ -1212,7 +1292,9 @@ export default function TopNavbar({
         const checkInTime = data.check_in_time || data.checkInTime || data.check_in || null;
         const checkOutTime = data.check_out_time || data.checkOutTime || data.check_out || null;
         const workHours = data.work_hours || data.workHours || data.total_hours || null;
-        
+        const photoForModal = capturedPhoto; // save before closeCameraModal clears it
+        const dateForModal = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
         // Show success modal based on response
         if (pendingAction === 'checkout') {
           setSuccessModal({ 
@@ -1221,7 +1303,9 @@ export default function TopNavbar({
             message: data.message || 'Check-out successful!',
             checkInTime: checkInTime,
             checkOutTime: checkOutTime,
-            workHours: workHours
+            workHours: workHours,
+            photo: photoForModal,
+            date: dateForModal,
           });
         } else {
           // Check-in logic - determine type based on API response
@@ -1243,7 +1327,9 @@ export default function TopNavbar({
               type: 'absent', 
               title: 'Absent ❌', 
               message: data.message || 'Marked as absent for today.',
-              checkInTime: checkInTime
+              checkInTime: checkInTime,
+              photo: photoForModal,
+              date: dateForModal,
             });
           }
           // Check for absconding
@@ -1252,7 +1338,9 @@ export default function TopNavbar({
               type: 'absconding', 
               title: 'Absconding 🚫', 
               message: data.message || 'Marked as absconding. Please contact HR.',
-              checkInTime: checkInTime
+              checkInTime: checkInTime,
+              photo: photoForModal,
+              date: dateForModal,
             });
           }
           // Check for late attendance
@@ -1261,7 +1349,9 @@ export default function TopNavbar({
               type: 'late', 
               title: 'Late Check In ⏰', 
               message: data.message || 'Check-in recorded (late).',
-              checkInTime: checkInTime
+              checkInTime: checkInTime,
+              photo: photoForModal,
+              date: dateForModal,
             });
           } 
           // Check for half day
@@ -1270,7 +1360,9 @@ export default function TopNavbar({
               type: 'half_day', 
               title: 'Half Day 🌤️', 
               message: data.message || 'Half day attendance marked!',
-              checkInTime: checkInTime
+              checkInTime: checkInTime,
+              photo: photoForModal,
+              date: dateForModal,
             });
           } 
           // Default to full day
@@ -1279,7 +1371,9 @@ export default function TopNavbar({
               type: 'full_day', 
               title: 'Checked In! 🎉', 
               message: data.message || 'Check-in successful!',
-              checkInTime: checkInTime
+              checkInTime: checkInTime,
+              photo: photoForModal,
+              date: dateForModal,
             });
           }
         }
