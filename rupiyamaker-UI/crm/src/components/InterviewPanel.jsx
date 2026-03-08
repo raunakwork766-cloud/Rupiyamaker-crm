@@ -1285,26 +1285,11 @@ const InterviewPanel = () => {
   // Handle row click to show EditInterview
   const handleRowClick = async (interview) => {
     try {
-      console.log("handleRowClick called with interview:", interview);
-      console.log("Interview Family & Living fields:", {
-        living_arrangement: interview.living_arrangement,
-        primary_earning_member: interview.primary_earning_member,
-        type_of_business: interview.type_of_business,
-        banking_experience: interview.banking_experience,
-        experience_type: interview.experience_type,
-        total_experience: interview.total_experience
-      });
-      
-      // Validate interview data before passing to EditInterview
-      if (!interview) {
-        throw new Error("No interview data provided");
-      }
-      
-      // Always allow opening the interview for editing
-      // The EditInterview component will handle ID generation if needed
-      setSelectedInterview(interview);
+      if (!interview) throw new Error('No interview data provided');
+      setSelectedCandidate(interview);
+      setIsDetailModalOpen(true);
     } catch (error) {
-      alert("Failed to open interview details: " + error.message);
+      alert('Failed to open interview details: ' + error.message);
     }
   };
 
@@ -3232,47 +3217,139 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
 
 // --- CANDIDATE DETAIL MODAL ---
 const CandidateDetailModal = ({ candidate, onClose }) => {
+  const [data, setData] = useState(candidate || null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const id = candidate?._id || candidate?.id;
+    if (!id) { setLoading(false); return; }
+    (async () => {
+      try {
+        const res = await API.interviewsAPI.getInterviewById(id);
+        if (res) setData(res);
+      } catch (e) {
+        console.warn('CandidateDetailModal fetch failed, using cached data', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   if (!candidate) return null;
+
+  const d = data || candidate;
+  const stage = getStageFromStatus(d.status);
+
+  // Compute sub-stage label from interview_date
+  const getSubStage = (dateStr) => {
+    if (!dateStr) return '-';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dt = new Date(dateStr); dt.setHours(0,0,0,0);
+    const diff = (dt - today) / 86400000;
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff === -1) return 'Yesterday';
+    if (diff > 1 && diff <= 7) return 'This Week';
+    if (diff < 0) return 'Past';
+    return 'Upcoming';
+  };
+
+  const Field = ({ label, value }) => (
+    <div className="p-3 rounded-lg border border-slate-200 bg-white">
+      <div className="text-xs text-slate-400 mb-0.5">{label}</div>
+      <div className="text-sm font-semibold text-slate-800">{value || '-'}</div>
+    </div>
+  );
+
+  const capFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '-';
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden">
-        <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex justify-between items-start">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Candidate Profile Details</h2>
-            <p className="text-xs text-slate-600 mt-1">Complete data for {candidate.candidate_name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Complete data for {d.candidate_name}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-1"><X size={20}/></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"><X size={20}/></button>
         </div>
-        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Name</div><div className="text-sm font-semibold text-slate-900">{candidate.candidate_name || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.mobile_number || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Alt Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.alt_phone || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Status</div><div className="text-sm font-semibold text-slate-900">{candidate.status || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Created By</div><div className="text-sm font-semibold text-slate-900">{candidate.created_by || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Job Applied</div><div className="text-sm font-semibold text-slate-900">{candidate.job_opening || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Gender</div><div className="text-sm font-semibold text-slate-900">{candidate.gender || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Experience</div><div className="text-sm font-semibold text-slate-900">{candidate.experience_type || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Source</div><div className="text-sm font-semibold text-slate-900">{candidate.source_portal || '-'}</div></div>
+
+        {/* Body */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-slate-400 text-sm py-4 justify-center">
+              <svg className="animate-spin w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Loading latest data...
+            </div>
+          )}
+
+          {/* Row 1: Name, Phone, Alt Phone */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Name" value={d.candidate_name} />
+            <Field label="Phone" value={d.mobile_number} />
+            <Field label="Alt Phone" value={d.alternate_number} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Qualification</div><div className="text-sm text-slate-800">{candidate.qualification || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Age</div><div className="text-sm text-slate-800">{candidate.age || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">City</div><div className="text-sm text-slate-800">{candidate.city || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Marital Status</div><div className="text-sm text-slate-800">{candidate.marital_status || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Living Arrangement</div><div className="text-sm text-slate-800">{candidate.living_arrangement || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Salary Offered</div><div className="text-sm text-slate-800">{candidate.monthly_salary_offered || '-'}</div></div>
+
+          {/* Row 2: Stage, Sub Stage, HR */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Stage" value={stage} />
+            <Field label="Sub Stage" value={getSubStage(d.interview_date)} />
+            <Field label="HR" value={d.created_by} />
           </div>
-          {candidate.interview_date && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-sm font-bold text-blue-800 mb-2">Interview Schedule</h3>
-              <div className="text-sm text-blue-700">Date: {new Date(candidate.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-              {candidate.interview_time && <div className="text-sm text-blue-700">Time: {candidate.interview_time}</div>}
+
+          {/* Row 3: Role, Source, Experience */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Role" value={d.job_opening} />
+            <Field label="Source" value={d.source_portal} />
+            <Field label="Experience" value={capFirst(d.experience_type)} />
+          </div>
+
+          {/* Row 4: Qualification, Age, City */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Qualification" value={d.qualification} />
+            <Field label="Age" value={d.age} />
+            <Field label="City" value={d.city} />
+          </div>
+
+          {/* Row 5: Marital Status, Living Arrangement, Banking Experience */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Marital Status" value={d.marital_status} />
+            <Field label="Living Arrangement" value={d.living_arrangement} />
+            <Field label="Banking Experience" value={d.banking_experience} />
+          </div>
+
+          {/* Documents */}
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Documents</h3>
+            <div className="flex flex-wrap gap-2">
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_salary_slip ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Salary Slip: {d.has_salary_slip ? 'Yes' : 'No'}</span>
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_bank_statement ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Bank Statement: {d.has_bank_statement ? 'Yes' : 'No'}</span>
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_experience_letter ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Experience Letter: {d.has_experience_letter ? 'Yes' : 'No'}</span>
+            </div>
+          </div>
+
+          {/* Interview date strip */}
+          {d.interview_date && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-4 text-sm">
+              <Calendar size={16} className="text-blue-500 shrink-0" />
+              <span className="text-blue-800 font-medium">
+                Interview: {new Date(d.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {d.interview_time ? ` at ${d.interview_time}` : ''}
+              </span>
             </div>
           )}
         </div>
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-white text-sm font-bold">Close</button>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-200 flex justify-end">
+          <button onClick={onClose} className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold transition-colors">Close</button>
         </div>
       </div>
     </div>
