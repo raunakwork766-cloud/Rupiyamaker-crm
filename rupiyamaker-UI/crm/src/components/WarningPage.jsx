@@ -2837,11 +2837,11 @@ const WarningPage = memo(() => {
       {/* Add Warning Modal - UI matching CreateTask popup */}
       {addDialogOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
-          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden relative border border-gray-700">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden relative flex flex-col" style={{ maxHeight: '90vh' }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80 shrink-0">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-red-400" /> Issue New Warning
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-gray-50 shrink-0">
+              <h2 className="text-base font-black text-gray-800 flex items-center gap-2 uppercase tracking-tight">
+                <Send className="w-4 h-4 text-red-500" /> Issue New Warning
               </h2>
               <button
                 onClick={() => {
@@ -2858,22 +2858,22 @@ const WarningPage = memo(() => {
                   setShowingSimilarWarnings(false);
                   resetAllSearchStates();
                 }}
-                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+                className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition w-7 h-7 flex items-center justify-center rounded-full"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 max-h-[75vh] overflow-y-auto">
-            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5">
+            <div className="p-5 overflow-y-auto flex-1">
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-0">
                 {/* Date & Time and Issued By Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300">Issue Date <span className="text-red-500">*</span></label>
-                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
-                      <Calendar className="w-4 h-4 text-gray-500 absolute left-3" />
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Issue Date</label>
+                    <div className="border border-gray-200 rounded-lg bg-gray-50 flex items-center shadow-sm">
+                      <Calendar className="w-4 h-4 text-gray-400 ml-3 shrink-0" />
                       <input
                         type="text"
-                        className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                        className="w-full text-sm text-gray-700 outline-none py-2.5 pl-2.5 pr-3 bg-transparent font-medium cursor-not-allowed"
                         value={new Date().toLocaleDateString('en-GB', { 
                           day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata'
                         })}
@@ -2881,13 +2881,13 @@ const WarningPage = memo(() => {
                       />
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300">Issued By <span className="text-red-500">*</span></label>
-                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
-                      <User className="w-4 h-4 text-gray-500 absolute left-3" />
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Issued By</label>
+                    <div className="border border-gray-200 rounded-lg bg-gray-50 flex items-center shadow-sm">
+                      <User className="w-4 h-4 text-gray-400 ml-3 shrink-0" />
                       <input
                         type="text"
-                        className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                        className="w-full text-sm text-gray-700 outline-none py-2.5 pl-2.5 pr-3 bg-transparent font-medium cursor-not-allowed"
                         value={getCurrentUserFullName()}
                         readOnly
                       />
@@ -2895,17 +2895,20 @@ const WarningPage = memo(() => {
                   </div>
                 </div>
 
-                {/* Department and Issued To Row */}
-                <div className="bg-cyan-900/10 border border-cyan-900/30 p-4 rounded-xl space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Section: Target Employee */}
+                <div className="mb-5">
+                  <div className="border-b-2 border-gray-800 pb-1 mb-3">
+                    <h4 className="font-black text-xs text-gray-900 uppercase tracking-tight">1. Target Employee</h4>
+                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="relative" ref={departmentDropdownRef}>
-                    <label className="text-sm font-semibold text-gray-300">Department <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Department <span className="text-red-500">*</span></label>
                     <div 
-                      className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 cursor-pointer flex justify-between items-center hover:border-cyan-500/50 transition-colors mt-1.5"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white cursor-pointer flex justify-between items-center hover:border-blue-400 transition-colors shadow-sm text-sm"
                       onClick={() => toggleDropdown('department')}
                     >
-                      <span className={selectedDepartmentName ? 'text-gray-200' : 'text-gray-500'}>
-                        {selectedDepartmentName || 'Select Departments'}
+                      <span className={selectedDepartmentName ? 'text-gray-800 font-medium' : 'text-gray-400'}>
+                        {selectedDepartmentName || 'Select department...'}
                       </span>
                       <svg className={`w-4 h-4 text-gray-400 transition-transform ${showDepartmentDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
@@ -2913,23 +2916,23 @@ const WarningPage = memo(() => {
                     </div>
                     
                     {showDepartmentDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg">
-                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                        <div className="p-2 border-b border-gray-100 bg-white sticky top-0">
                           <div className="relative flex items-center">
-                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
+                            <Search className="absolute left-3 w-4 h-4 text-gray-400" />
                             <input
                               type="text"
                               placeholder="Search departments..."
                               value={departmentSearchTerm}
                               onChange={(e) => setDepartmentSearchTerm(e.target.value)}
-                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
+                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 text-gray-800 outline-none focus:border-blue-400"
                               autoFocus
                             />
                           </div>
                         </div>
                         <div className="max-h-48 overflow-y-auto">
                           <div
-                            className="px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300"
+                            className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 font-medium border-b border-gray-50"
                             onClick={() => {
                               setSelectedDepartmentForAdd('');
                               setSelectedDepartmentName('All Departments');
@@ -2944,7 +2947,7 @@ const WarningPage = memo(() => {
                             .map((dept) => (
                               <div
                                 key={dept.id}
-                                className="px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300"
+                                className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-700"
                                 onClick={() => {
                                   setSelectedDepartmentForAdd(dept.id);
                                   setSelectedDepartmentName(dept.name);
@@ -2956,7 +2959,7 @@ const WarningPage = memo(() => {
                               </div>
                             ))}
                           {departments.filter(dept => dept.name.toLowerCase().includes(departmentSearchTerm.toLowerCase())).length === 0 && departmentSearchTerm && (
-                            <div className="px-4 py-2 text-gray-500">No departments found</div>
+                            <div className="px-4 py-2 text-sm text-gray-400 text-center">No departments found</div>
                           )}
                         </div>
                       </div>
@@ -2964,37 +2967,30 @@ const WarningPage = memo(() => {
                   </div>
 
                   <div className="relative" ref={employeeDropdownRef}>
-                    <label className="text-sm font-semibold text-gray-300">
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">
                       Issued To <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex flex-wrap items-center gap-1.5 border border-gray-600 rounded-lg bg-gray-800 p-1.5 min-h-[42px] cursor-text mt-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 border border-gray-300 rounded-lg bg-white p-1.5 min-h-[42px] hover:border-blue-400 transition-colors shadow-sm cursor-text">
                       {selectedEmployeeNames.length > 0 ? (
-                        selectedEmployeeNames.map((emp) => {
-                          const initials = emp.name.split(' ')
-                            .map(part => part[0])
-                            .slice(0, 2)
-                            .join('')
-                            .toUpperCase();
-                          return (
-                            <div
-                              key={emp.id}
-                              className="bg-gray-700 border border-gray-600 text-gray-200 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium"
+                        selectedEmployeeNames.map((emp) => (
+                          <div
+                            key={emp.id}
+                            className="bg-blue-50 border border-blue-200 text-blue-800 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold"
+                          >
+                            {emp.name}
+                            <button
+                              type="button"
+                              className="hover:text-red-500 transition-colors"
+                              onClick={() => handleRemoveEmployee(emp.id)}
                             >
-                              {emp.name}
-                              <button
-                                type="button"
-                                className="hover:text-red-400 transition-colors"
-                                onClick={() => handleRemoveEmployee(emp.id)}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          );
-                        })
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))
                       ) : null}
                       <button
                         type="button"
-                        className="text-cyan-400 font-medium hover:text-cyan-300 text-sm ml-auto"
+                        className="text-blue-600 font-bold hover:text-blue-700 text-xs ml-auto"
                         onClick={() => toggleDropdown('employee')}
                       >
                         {selectedEmployeeNames.length > 0 ? '+ Add more' : '+ Add employees'}
@@ -3002,21 +2998,21 @@ const WarningPage = memo(() => {
                     </div>
                     
                     {showEmployeeDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg">
-                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                        <div className="p-2 border-b border-gray-100 bg-white sticky top-0">
                           <div className="relative flex items-center">
-                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
+                            <Search className="absolute left-3 w-4 h-4 text-gray-400" />
                             <input
                               type="text"
                               placeholder="Search employees..."
                               value={employeeSearchTerm}
                               onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                              className="w-full pl-9 pr-8 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
+                              className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 text-gray-800 outline-none focus:border-blue-400"
                               autoFocus
                             />
                             {employeeSearchTerm && (
                               <button
-                                className="absolute right-3 text-gray-400 hover:text-white"
+                                className="absolute right-3 text-gray-400 hover:text-gray-600"
                                 onClick={() => setEmployeeSearchTerm("")}
                                 type="button"
                               >
@@ -3025,7 +3021,7 @@ const WarningPage = memo(() => {
                             )}
                           </div>
                         </div>
-                        <div className="max-h-60 overflow-y-auto divide-y divide-gray-700">
+                        <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
                           {getFilteredEmployees()
                             .filter(emp => 
                               emp.name && emp.name.toLowerCase().includes(employeeSearchTerm.toLowerCase())
@@ -3043,22 +3039,22 @@ const WarningPage = memo(() => {
                               return (
                                 <div
                                   key={employeeId}
-                                  className={`p-3 cursor-pointer text-gray-300 transition hover:bg-gray-700 flex items-center ${
-                                    isSelected ? 'bg-gray-700/50' : ''
+                                  className={`p-3 cursor-pointer text-gray-700 transition hover:bg-blue-50 flex items-center ${
+                                    isSelected ? 'bg-blue-50/50' : ''
                                   }`}
                                   onClick={() => handleEmployeeSelect(emp)}
                                 >
-                                  <div className="w-8 h-8 rounded-full bg-cyan-600 text-white flex items-center justify-center mr-3 flex-shrink-0 text-xs font-medium">
+                                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center mr-3 flex-shrink-0 text-xs font-bold">
                                     {initials}
                                   </div>
                                   <div className="flex flex-col flex-1">
-                                    <span className="font-medium text-sm text-gray-200">{displayName}</span>
+                                    <span className="font-bold text-sm text-gray-800">{displayName}</span>
                                     <span className="text-xs text-gray-500">
                                       {emp.department_name || emp.department || 'Unknown Department'}
                                     </span>
                                   </div>
-                                  <div className={`w-5 h-5 border rounded ${
-                                    isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-gray-500'
+                                  <div className={`w-5 h-5 border-2 rounded ${
+                                    isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
                                   } flex items-center justify-center`}>
                                     {isSelected && (
                                       <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -3072,7 +3068,7 @@ const WarningPage = memo(() => {
                           {getFilteredEmployees().filter(emp => 
                             emp.name && emp.name.toLowerCase().includes(employeeSearchTerm.toLowerCase())
                           ).length === 0 && employeeSearchTerm && (
-                            <div className="p-3 text-gray-500 text-center">No employees found</div>
+                            <div className="p-3 text-gray-400 text-center text-sm">No employees found</div>
                           )}
                         </div>
                       </div>
@@ -3081,17 +3077,23 @@ const WarningPage = memo(() => {
                 </div>
                 </div>
 
+                {/* Section: Warning Details */}
+                <div className="mb-5">
+                  <div className="border-b-2 border-gray-800 pb-1 mb-3">
+                    <h4 className="font-black text-xs text-gray-900 uppercase tracking-tight">2. Warning Details</h4>
+                  </div>
+
                 {/* Mistake Type */}
-                <div>
+                <div className="mb-4">
                   <div className="relative" ref={warningTypeDropdownRef}>
-                    <label className="text-sm font-semibold text-gray-300 flex justify-between items-center">
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">
                       <span>Mistake Type / Category <span className="text-red-500">*</span></span>
                     </label>
                     <div 
-                      className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 cursor-pointer flex justify-between items-center hover:border-cyan-500/50 transition-colors mt-1.5"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white cursor-pointer flex justify-between items-center hover:border-blue-400 transition-colors shadow-sm text-sm"
                       onClick={() => toggleDropdown('warningType')}
                     >
-                      <span className={selectedWarningTypeName ? 'text-gray-200 text-sm font-medium' : 'text-gray-500 text-sm'}>
+                      <span className={selectedWarningTypeName ? 'text-gray-800 font-medium' : 'text-gray-400'}>
                         {selectedWarningTypeName || 'Search and select the specific mistake...'}
                       </span>
                       <svg className={`w-4 h-4 text-gray-400 transition-transform ${showWarningTypeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3100,21 +3102,21 @@ const WarningPage = memo(() => {
                     </div>
                     
                     {showWarningTypeDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden">
-                        <div className="p-2 border-b border-gray-700 bg-gray-800/80 sticky top-0">
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                        <div className="p-2 border-b border-gray-100 bg-white sticky top-0">
                           <div className="relative flex items-center">
-                            <Search className="absolute left-3 w-4 h-4 text-gray-500" />
+                            <Search className="absolute left-3 w-4 h-4 text-gray-400" />
                             <input
                               type="text"
                               placeholder="Search directory..."
                               value={warningTypeSearchTerm}
                               onChange={(e) => setWarningTypeSearchTerm(e.target.value)}
-                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-600 rounded-md bg-gray-700 text-white outline-none focus:border-cyan-500"
+                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 text-gray-800 outline-none focus:border-blue-400"
                               autoFocus
                             />
                           </div>
                         </div>
-                        <div className="max-h-56 overflow-y-auto divide-y divide-gray-700/50">
+                        <div className="max-h-56 overflow-y-auto">
                           {mistakeTypes
                             .filter(type => 
                               (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
@@ -3122,7 +3124,7 @@ const WarningPage = memo(() => {
                             .map((type) => (
                               <div
                                 key={type.value}
-                                className="p-3 hover:bg-gray-700 cursor-pointer transition-colors"
+                                className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-50"
                                 onClick={() => {
                                   handleFormChange('warning_type', type.value);
                                   setSelectedWarningTypeName(type.label || type.value);
@@ -3130,7 +3132,7 @@ const WarningPage = memo(() => {
                                   setShowWarningTypeDropdown(false);
                                 }}
                               >
-                                <h4 className="text-sm font-bold text-gray-200">{type.label || type.value}</h4>
+                                <h4 className="text-sm font-bold text-gray-800">{type.label || type.value}</h4>
                                 {type.description && (
                                   <p className="text-xs text-gray-500 mt-0.5">{type.description}</p>
                                 )}
@@ -3139,7 +3141,7 @@ const WarningPage = memo(() => {
                           {mistakeTypes.filter(type => 
                             (type.label || type.value || '').toLowerCase().includes(warningTypeSearchTerm.toLowerCase())
                           ).length === 0 && warningTypeSearchTerm && (
-                            <div className="p-3 text-gray-500 text-center">No mistake types found</div>
+                            <div className="px-4 py-3 text-gray-400 text-center text-sm">No mistake types found</div>
                           )}
                         </div>
                       </div>
@@ -3148,86 +3150,192 @@ const WarningPage = memo(() => {
                 </div>
 
                 {/* Penalty Amount */}
-                <div className="w-full md:w-1/2 md:pr-2.5">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300">Penalty Amount (₹)</label>
-                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden mt-1.5">
-                      <span className="px-3 py-3 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
-                      <input
-                        type="text"
-                        value={formData.penalty_amount}
-                        onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
-                        className="w-full text-sm text-gray-200 outline-none px-3 py-3 bg-transparent font-medium"
-                        placeholder="0"
-                      />
-                    </div>
+                <div className="mb-4">
+                  <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Penalty Amount (₹)</label>
+                  <div className="border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden shadow-sm w-full md:w-1/2">
+                    <span className="px-3 py-2.5 text-gray-500 bg-gray-100 border-r border-gray-300 font-bold text-sm">₹</span>
+                    <input
+                      type="text"
+                      value={formData.penalty_amount}
+                      onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
+                      className="w-full text-sm text-gray-800 outline-none px-3 py-2.5 bg-transparent font-medium"
+                      placeholder="0"
+                    />
                   </div>
                 </div>
 
-                {/* Attachments Section */}
-                <div>
-                  <label className="text-sm font-semibold text-gray-300 mb-2 block">Attachments</label>
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('fileInput').click()}
-                    className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 transition border border-gray-600"
-                  >
-                    <FileText className="w-4 h-4" />
-                    Photo/PDF
-                  </button>
-                  <input
-                    id="fileInput"
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files);
-                      setSelectedFiles(prev => [...prev, ...files]);
-                    }}
-                    className="hidden"
-                  />
-                  
-                  {selectedFiles.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {selectedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-800 p-3 rounded-lg border border-gray-700">
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-300">{file.name}</span>
-                            <span className="text-xs text-green-400">Ready</span>
-                            <span className="text-xs text-gray-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-                            }}
-                            className="text-red-400 hover:text-red-300"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* Warning Message */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Warning Details & Expected Change <span className="text-red-500">*</span></label>
+                <div className="mb-4">
+                  <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Warning Details & Expected Change <span className="text-red-500">*</span></label>
                   <textarea
                     value={formData.warning_message}
                     onChange={(e) => handleFormChange('warning_message', e.target.value)}
                     rows={4}
-                    className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
+                    className="w-full text-sm text-gray-800 outline-none p-3 resize-none bg-white border border-gray-300 rounded-lg focus:border-blue-400 transition-all leading-relaxed shadow-sm"
                     placeholder="Explain the exact incident and what improvement you expect..."
                   />
                 </div>
+                </div>
+
+                {/* Section: Attachments */}
+                <div className="mb-2">
+                  <div className="border-b-2 border-gray-800 pb-1 mb-3">
+                    <h4 className="font-black text-xs text-gray-900 uppercase tracking-tight">3. Attachments</h4>
+                  </div>
+
+                  {/* File rows - styled like premium_document_upload.html */}
+                  {selectedFiles.length > 0 && (
+                    <div className="space-y-1.5 mb-3">
+                      {selectedFiles.map((file, index) => {
+                        const isPDF = file.name.toLowerCase().endsWith('.pdf');
+                        const fileURL = URL.createObjectURL(file);
+                        return (
+                          <div key={index} className="bg-white border border-gray-200 rounded-lg p-2 flex items-center justify-between gap-2 shadow-sm hover:border-blue-300 transition group">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <div className="text-[9px] font-black w-5 h-5 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                {index + 1}
+                              </div>
+                              <FileText className={`w-4 h-4 shrink-0 ${isPDF ? 'text-blue-500' : 'text-green-500'}`} />
+                              <span className="text-xs font-bold text-gray-800 truncate uppercase">{file.name.toUpperCase()}</span>
+                              <span className="text-[10px] text-gray-400 shrink-0">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={fileURL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-gray-50 border border-gray-200 rounded p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition shadow-sm"
+                                title="View"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </a>
+                              <div className="w-px h-4 bg-gray-200 mx-0.5"></div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                                className="bg-red-50 border border-red-100 rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-100 transition shadow-sm"
+                                title="Remove"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Attach Files button + hidden input */}
+                  <div className="relative inline-block">
+                    <input
+                      id="fileInput"
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files);
+                        setSelectedFiles(prev => [...prev, ...files]);
+                        e.target.value = '';
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                    />
+                    <button
+                      type="button"
+                      className="bg-gray-900 hover:bg-black text-white font-bold py-2 px-4 rounded-lg shadow-sm text-xs flex items-center gap-2 transition uppercase"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Attach Files
+                    </button>
+                  </div>
+                  {selectedFiles.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-2 italic">No files attached. Click "Attach Files" to add photos or PDFs.</p>
+                  )}
+                </div>
+
+                {/* Similar Warnings Panel (inside scrollable body) */}
+                {showingSimilarWarnings && similarWarnings.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm mt-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-red-200 pb-2 gap-2">
+                      <div className="flex items-center gap-2 text-red-600">
+                        <div className="p-1.5 bg-red-100 rounded-md">
+                          <AlertTriangle className="w-4 h-4 text-red-500" />
+                        </div>
+                        <h3 className="font-black text-sm uppercase tracking-tight">Same Mistake Repeated</h3>
+                      </div>
+                      <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
+                        {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
+                      </span>
+                    </div>
+
+                    {/* Stats Row */}
+                    <div className="flex items-center gap-4 mb-4 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
+                      <div className="flex-1 text-center border-r border-gray-200">
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Penalty Given</p>
+                        <p className="text-xl font-black text-red-600">
+                          ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Waived Off</p>
+                        <p className="text-xl font-black text-green-600">
+                          ₹{similarWarnings.filter(w => w.is_waived || waivedPenalties[w.id]).reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Vertical Timeline */}
+                    <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-200">
+                      {similarWarnings
+                        .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
+                        .map((warning, index) => (
+                        <div key={warning.id || index} className="relative flex gap-3 items-start">
+                          <div className="w-8 h-8 rounded-full bg-white border-2 border-red-400 flex items-center justify-center shrink-0 z-10 text-red-600 shadow-sm">
+                            <span className="text-xs font-black">{similarWarnings.length - index}</span>
+                          </div>
+                          <div className="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm p-3 hover:border-red-300 transition-all">
+                            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-2 border-b border-gray-100 pb-2">
+                              <h4 className="font-black text-gray-800 text-sm flex items-center gap-2">
+                                {warning.warning_type || 'Warning'}
+                                <span className="text-gray-400 font-medium text-xs">
+                                  {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+                                </span>
+                              </h4>
+                              <span className="bg-red-50 text-red-700 text-[11px] px-3 py-0.5 rounded-md font-black border border-red-200 mt-1.5 sm:mt-0 w-fit">
+                                ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            <div className="mb-2">
+                              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
+                                Issued by {warning.issued_by_name || 'Unknown'}:
+                              </span>
+                              <p className="text-sm text-gray-700 bg-gray-50 p-2.5 rounded-lg border border-gray-200 font-medium leading-relaxed">
+                                "{warning.warning_message || 'No message provided'}"
+                              </p>
+                            </div>
+                            {(warning.employee_remark || warning.employee_response) ? (
+                              <div className="bg-green-50 p-2.5 rounded-lg border border-green-200">
+                                <span className="font-black text-[10px] uppercase tracking-widest block mb-1 text-green-700 flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Employee Remark (Accepted):
+                                </span>
+                                <p className="italic text-sm text-green-700">
+                                  "{warning.employee_remark || warning.employee_response}"
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-700 text-sm font-bold flex items-center gap-1.5">
+                                <Clock className="w-4 h-4" /> Pending employee acknowledgement
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </form>
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
+            <div className="px-5 py-3.5 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -3239,99 +3347,18 @@ const WarningPage = memo(() => {
                   setShowingSimilarWarnings(false);
                   resetAllSearchStates();
                 }}
-                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+                className="px-5 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition-colors uppercase"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => handleSubmit()}
-                className="px-6 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-all flex items-center gap-2"
+                className="px-6 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-all flex items-center gap-2 uppercase"
               >
                 <Send className="w-4 h-4" /> Send Warning
               </button>
             </div>
-
-              {/* Smart Insights Panel - Same Mistake Repeated */}
-              {showingSimilarWarnings && similarWarnings.length > 0 && (
-                <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-5 mt-1 shadow-sm">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-red-700/30 pb-3 gap-2">
-                    <div className="flex items-center gap-2.5 text-red-400">
-                      <div className="p-1.5 bg-red-900/40 rounded-md">
-                        <AlertTriangle className="w-5 h-5 text-red-400" />
-                      </div>
-                      <h3 className="font-bold text-base">Same Mistake Repeated</h3>
-                    </div>
-                    <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
-                      {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
-                    </span>
-                  </div>
-
-                  {/* Stats Row */}
-                  <div className="flex items-center gap-4 mb-6 bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-sm">
-                    <div className="flex-1 text-center border-r border-gray-700">
-                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wide">Total Penalty Given</p>
-                      <p className="text-xl font-black text-red-400">
-                        ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div className="flex-1 text-center">
-                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wide">Total Waived Off</p>
-                      <p className="text-xl font-black text-green-400">
-                        ₹{similarWarnings.filter(w => w.is_waived || waivedPenalties[w.id]).reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Vertical Timeline */}
-                  <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-800/50">
-                    {similarWarnings
-                      .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
-                      .map((warning, index) => (
-                      <div key={warning.id || index} className="relative flex gap-4 items-start">
-                        <div className="w-8 h-8 rounded-full bg-gray-800 border border-red-700/50 flex items-center justify-center shrink-0 z-10 text-red-400 shadow-sm">
-                          <span className="text-xs font-bold">{similarWarnings.length - index}</span>
-                        </div>
-                        <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg shadow-sm p-4 hover:border-red-700/50 transition-all">
-                          <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-3 border-b border-gray-700 pb-2">
-                            <h4 className="font-bold text-gray-200 text-sm flex items-center gap-2">
-                              {warning.warning_type || 'Warning'}
-                              <span className="text-gray-500 font-medium text-xs ml-2">
-                                {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
-                              </span>
-                            </h4>
-                            <span className="bg-gray-700 text-gray-300 text-[11px] px-3 py-1 rounded-md font-bold border border-gray-600 mt-2 sm:mt-0">
-                              Penalty: ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                          <div className="mb-3">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">
-                              Issued by {warning.issued_by_name || 'Unknown'}:
-                            </span>
-                            <p className="text-sm text-gray-300 bg-gray-900/60 p-3 rounded-lg border border-gray-700 font-medium leading-relaxed">
-                              "{warning.warning_message || 'No message provided'}"
-                            </p>
-                          </div>
-                          {(warning.employee_remark || warning.employee_response) ? (
-                            <div className="bg-green-900/20 p-3 rounded-lg border border-green-700/30">
-                              <span className="font-bold text-[10px] uppercase tracking-widest block mb-1 text-green-500 flex items-center gap-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Employee Remark (Accepted):
-                              </span>
-                              <p className="italic text-sm text-green-300">
-                                "{warning.employee_remark || warning.employee_response}"
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="bg-amber-900/20 p-3 rounded-lg border border-amber-700/30 text-amber-400 text-sm font-medium flex items-center gap-1.5">
-                              <Clock className="w-4 h-4" /> Pending employee acknowledgement
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
           </div>
         </div>
       )}
