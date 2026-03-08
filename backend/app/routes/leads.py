@@ -795,11 +795,15 @@ async def view_attachment(
                 detail=f"File not found on disk. Tried paths: {abs_file_path}, {fallback_path}"
             )
     
-    # Return file for viewing
+    # Return file for viewing (inline so browser previews instead of downloading)
+    import mimetypes
+    _fname = document.get("filename", "attachment")
+    _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
     return FileResponse(
         path=abs_file_path,
-        filename=document.get("filename", "attachment"),
-        media_type=document.get("file_type", "application/octet-stream")
+        filename=_fname,
+        media_type=_mtype,
+        headers={"Content-Disposition": f"inline; filename=\"{_fname}\""}
     )
 
 @router.get("/{lead_id}/attachments/{attachment_id}/download")
