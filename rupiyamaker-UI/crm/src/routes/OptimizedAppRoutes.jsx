@@ -57,6 +57,7 @@ const LazyLeadsReport = createLazyComponent(() => import('../components/reports/
 const LazyNotificationsPage = createLazyComponent(() => import('../components/NotificationsPage.jsx'), 'NotificationsPage');
 const LazyNotificationManagementPage = createLazyComponent(() => import('../pages/NotificationManagementPage.jsx'), 'NotificationManagementPage');
 const LazyRoleCompare = createLazyComponent(() => import('../components/settings/RoleCompare.jsx'), 'RoleCompare');
+const LazyKnowledgeBase = createLazyComponent(() => import('../components/KnowledgeBase.jsx'), 'KnowledgeBase');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
@@ -625,6 +626,18 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
           <RouteWithSuspense 
             component={LazyNotificationsPage} 
             routeName="All Notifications"
+            user={user}
+          />
+        } 
+      />
+
+      {/* Knowledge Base Route */}
+      <Route 
+        path="/knowledge-base" 
+        element={
+          <RouteWithSuspense 
+            component={LazyKnowledgeBase} 
+            routeName="Knowledge Base"
             user={user}
           />
         } 

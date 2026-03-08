@@ -48,6 +48,7 @@ class WarningDB:
             warning_data['created_at'] = current_time
             warning_data['updated_at'] = current_time
             warning_data['issued_date'] = current_time  # Set issued_date to current time
+            warning_data['is_acknowledged'] = False  # Requires user acknowledgment
             
             # Convert string IDs to ObjectIds where needed
             if 'issued_to' in warning_data:
@@ -637,6 +638,31 @@ class WarningDB:
             return result.deleted_count > 0
         except Exception as e:
             logger.error(f"Error deleting warning action: {e}")
+            return False
+
+    async def get_unacknowledged_warnings(self, user_id: str) -> List[Dict[str, Any]]:
+        """Return warnings issued to user that have not been acknowledged yet"""
+        try:
+            cursor = self.collection.find({
+                "issued_to": ObjectId(user_id),
+                "is_acknowledged": {"$ne": True}
+            }).sort("created_at", ASCENDING)
+            warnings = await cursor.to_list(None)
+            return [self._convert_objectids_to_strings(w) for w in warnings]
+        except Exception as e:
+            logger.error(f"Error fetching unacknowledged warnings: {e}")
+            return []
+
+    async def acknowledge_warning(self, warning_id: str, user_id: str) -> bool:
+        """Mark a warning as acknowledged by the recipient"""
+        try:
+            result = await self.collection.update_one(
+                {"_id": ObjectId(warning_id), "issued_to": ObjectId(user_id)},
+                {"$set": {"is_acknowledged": True, "acknowledged_at": get_ist_now(), "status": "Acknowledged"}}
+            )
+            return result.modified_count > 0 or result.matched_count > 0
+        except Exception as e:
+            logger.error(f"Error acknowledging warning: {e}")
             return False
 
 # Legacy support - warning_db is now initialized in __init__.py

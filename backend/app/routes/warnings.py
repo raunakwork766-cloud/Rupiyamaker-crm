@@ -216,7 +216,12 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
                 can_add=True,
                 can_edit=True,
                 can_delete=True,
-                can_export=True
+                can_export=True,
+                can_issue_warning=True,
+                can_view_mistakes=True,
+                can_create_mistake_category=True,
+                can_edit_mistake_category=True,
+                can_delete_mistake_category=True
             )
         
         # Check for warnings admin permissions
@@ -232,7 +237,38 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
             can_add=has_warnings_admin,  # Only admin can add warnings
             can_edit=has_warnings_admin,  # Only admin can edit warnings
             can_delete=has_warnings_admin,  # Only admin can delete warnings
-            can_export=has_warnings_admin  # Only admin can export warnings
+            can_export=has_warnings_admin,  # Only admin can export warnings
+            # Granular action permissions - check specific action keys on warnings page
+            can_issue_warning=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'issue' in perm.get('actions', [])) or
+                    perm.get('actions') == 'issue'
+                ) for perm in permissions
+            ),
+            can_view_mistakes=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'view_mistakes' in perm.get('actions', [])) or
+                    perm.get('actions') == 'view_mistakes'
+                ) for perm in permissions
+            ),
+            can_create_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'create_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'create_mistake'
+                ) for perm in permissions
+            ),
+            can_edit_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'edit_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'edit_mistake'
+                ) for perm in permissions
+            ),
+            can_delete_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'delete_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'delete_mistake'
+                ) for perm in permissions
+            ),
         )
         
         return warning_permissions
@@ -742,6 +778,44 @@ async def get_warnings(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get warnings: {str(e)}")
+
+
+# ─── Warning Acknowledgment Endpoints (must be BEFORE /{warning_id} catch-all) ─
+
+@router.get("/pending-acknowledgment")
+async def get_pending_acknowledgment_warnings(
+    user_id: str = Query(..., description="User ID to fetch pending warnings for"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get all warnings issued to user that are pending acknowledgment"""
+    try:
+        warnings = await warnings_db.get_unacknowledged_warnings(user_id)
+
+        result = []
+        for w in warnings:
+            issuer = await user_db.get_user(w.get("issued_by", ""))
+            issuer_name = "Unknown"
+            if issuer:
+                first = issuer.get("first_name", "")
+                last = issuer.get("last_name", "")
+                issuer_name = f"{first} {last}".strip() or issuer.get("username", "Unknown")
+
+            result.append({
+                "id": w["id"],
+                "warning_type": w.get("warning_type", ""),
+                "warning_message": w.get("warning_message", ""),
+                "penalty_amount": w.get("penalty_amount", 0),
+                "issued_by_name": issuer_name,
+                "issued_date": str(w.get("issued_date", "")),
+                "created_at": str(w.get("created_at", ""))
+            })
+
+        return {"success": True, "warnings": result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pending warnings: {str(e)}")
+
 
 @router.get("/{warning_id}", response_model=WarningResponse)
 async def get_warning(
@@ -1959,3 +2033,22 @@ async def get_employees_for_warnings(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get employees: {str(e)}")
+
+
+# ─── Acknowledge Warning ─────────────────────────────────────────────────────
+@router.post("/{warning_id}/acknowledge")
+async def acknowledge_warning(
+    warning_id: str,
+    user_id: str = Query(..., description="User ID acknowledging the warning"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Mark a warning as acknowledged by the recipient"""
+    try:
+        success = await warnings_db.acknowledge_warning(warning_id, user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning not found or already acknowledged")
+        return {"success": True, "message": "Warning acknowledged successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to acknowledge warning: {str(e)}")

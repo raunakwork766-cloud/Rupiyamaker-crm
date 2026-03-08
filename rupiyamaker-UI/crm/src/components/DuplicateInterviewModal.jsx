@@ -222,6 +222,7 @@ const DuplicateInterviewModal = ({
                 visible={visible}
                 onCancel={onClose}
                 width={1000}
+                zIndex={9999}
                 footer={[
                     <Button key="cancel" onClick={onClose}>
                         Cancel Creation
@@ -273,6 +274,7 @@ const DuplicateInterviewModal = ({
                 confirmLoading={loading}
                 okText="Submit Request"
                 cancelText="Cancel"
+                zIndex={9999}
             >
                 {selectedInterview && (
                     <div style={{ marginBottom: 16 }}>

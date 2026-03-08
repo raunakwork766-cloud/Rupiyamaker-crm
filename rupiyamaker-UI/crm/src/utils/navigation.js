@@ -147,7 +147,8 @@ export const ROUTES = {
   WARNINGS: '/warnings',
   ADD_TASK: '/add-task',
   SETTINGS: '/settings',
-  REPORTS: '/reports'
+  REPORTS: '/reports',
+  KNOWLEDGE_BASE: '/knowledge-base'
 };
 
 // Label to route mapping for sidebar
@@ -180,7 +181,8 @@ export const LABEL_TO_ROUTE = {
   'My Warnings': ROUTES.WARNINGS,
   'Add Task': ROUTES.ADD_TASK,
   'Settings': ROUTES.SETTINGS,
-  'Reports': ROUTES.REPORTS
+  'Reports': ROUTES.REPORTS,
+  'Knowledge Base': ROUTES.KNOWLEDGE_BASE
 };
 
 // Get route path by label with dynamic loan type support

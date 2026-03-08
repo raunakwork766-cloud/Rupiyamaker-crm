@@ -7,6 +7,25 @@ import 'jspdf-autotable';
 import './attachments.css';
 import { getISTDateYMD } from '../../utils/dateUtils';
 
+// Document categories from premium_document_upload.html reference
+const DOCUMENT_CATEGORIES = [
+  {
+    id: 'kyc',
+    title: 'PERSONAL IDENTIFICATION (KYC)',
+    keywords: ['cibil', 'pan', 'aadhaar', 'aadhar', 'voter', 'driving licen', 'passport', 'kyc', 'id proof', 'identity'],
+  },
+  {
+    id: 'employment',
+    title: 'EMPLOYMENT PROOFS',
+    keywords: ['salary slip', 'offer letter', 'employment', 'form 16', 'appointment letter', 'experience letter', 'increment'],
+  },
+  {
+    id: 'financial',
+    title: 'FINANCIAL STATEMENTS',
+    keywords: ['bank statement', 'itr', 'income tax', 'financial', 'account statement'],
+  },
+];
+
 export default function Attachments({ leadId, userId }) {
   // State for notifications
   const [notification, setNotification] = useState(null);
@@ -1857,7 +1876,7 @@ export default function Attachments({ leadId, userId }) {
       </div>
 
       {/* ── Document rows ── */}
-      <div className="space-y-2" id="categories-container">
+      <div className="space-y-3" id="categories-container">
         {allDisplayTypes.length === 0 && (
           <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
             No documents active in this section. Go to Settings → Others → Attachment Types to add them.
@@ -1865,10 +1884,26 @@ export default function Attachments({ leadId, userId }) {
         )}
 
         {(() => {
-          // Global file counter across all doc types — exactly like the HTML's globalFileIndex
           let globalFileIndex = 1;
 
-          return allDisplayTypes.map((attachmentType) => {
+          // Group by DOCUMENT_CATEGORIES (from premium_document_upload.html)
+          const grouped = DOCUMENT_CATEGORIES.map(cat => ({
+            ...cat,
+            types: allDisplayTypes.filter(t =>
+              cat.keywords.some(kw => t.name.toLowerCase().includes(kw))
+            ),
+          })).filter(cat => cat.types.length > 0);
+          const matchedNames = new Set(grouped.flatMap(g => g.types.map(t => t.name)));
+          const otherTypes = allDisplayTypes.filter(t => !matchedNames.has(t.name));
+          if (otherTypes.length > 0) grouped.push({ id: 'other', title: 'OTHER DOCUMENTS', types: otherTypes });
+
+          return grouped.map((cat, catIdx) => (
+            <div key={cat.id} className="mb-3 last:mb-0">
+              <div className="border-b-2 border-gray-800 pb-1 mb-3 flex items-center justify-between">
+                <h3 className="text-base font-black text-gray-900 uppercase tracking-tight">{catIdx + 1}. {cat.title}</h3>
+              </div>
+              <div className="space-y-2.5">
+                {cat.types.map((attachmentType) => {
             const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
             const inputRef = dynamicRefs[key];
             const password = dynamicPasswords[key] || '';
@@ -1882,14 +1917,14 @@ export default function Attachments({ leadId, userId }) {
             return (
               <div
                 key={attachmentType.id || attachmentType._id}
-                className="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
+                className="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
               >
                 {/* ── LEFT: doc label ── */}
-                <div className="w-full md:w-[200px] lg:w-[220px] shrink-0 flex items-start gap-2">
-                  <div className="w-7 h-7 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-xs shrink-0 mt-0.5">
+                <div className="w-full md:w-1/4 lg:w-1/5 shrink-0 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-sm shrink-0">
                     <i className="fa-solid fa-file-invoice"></i>
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="pt-0.5 flex-1 min-w-0">
                     <h4 className="font-bold text-gray-900 text-xs leading-tight pr-1 tracking-tight">
                       {attachmentType.name.toUpperCase()}
                     </h4>
@@ -1922,7 +1957,7 @@ export default function Attachments({ leadId, userId }) {
                 </div>
 
                 {/* ── MIDDLE: draggable file list ── */}
-                <div className="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-1 flex flex-col gap-1 min-h-[44px]">
+                <div className="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-1.5 flex flex-col gap-1.5 min-h-[50px]">
                   {typeDocuments.length > 0 ? (
                     <div className="space-y-1 w-full">
                       {typeDocuments.map((doc, fileIdx) => {
@@ -1949,14 +1984,12 @@ export default function Attachments({ leadId, userId }) {
                               <div className="text-[9px] font-black w-4 h-4 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 mt-0.5 group-hover/filerow:bg-blue-100 group-hover/filerow:text-[#2563eb] transition-colors select-none">
                                 {displayNum}
                               </div>
-                              <i className="fa-solid fa-grip-vertical text-gray-300 text-[10px] mt-0.5 mr-0.5 shrink-0 cursor-grab select-none"></i>
+                              <i className="fa-solid fa-grip-vertical text-gray-300 mt-0.5 mr-0.5 text-[10px] shrink-0 cursor-grab select-none"></i>
                               <i className={`fa-solid ${isLocked ? 'fa-file-shield text-red-500' : getFileIconClass(fname)} text-base shrink-0 mt-0.5 select-none`}></i>
                               <div className="flex-1 w-full min-w-0">
-                                <div className="flex items-start gap-2 group/rn">
-                                  <span className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title={fname}>
-                                    {fname}
-                                  </span>
-                                </div>
+                                <span className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title={fname}>
+                                  {fname}
+                                </span>
                               </div>
                             </div>
 
@@ -1981,7 +2014,7 @@ export default function Attachments({ leadId, userId }) {
                                         showNotification('Enter the password or it is not stored', 'warning');
                                       }
                                     }}
-                                    className="bg-gray-800 hover:bg-black text-white text-[8px] font-bold px-2 py-0.5 rounded whitespace-nowrap transition"
+                                    className="bg-gray-800 hover:bg-black text-white text-[9px] font-bold px-2.5 py-1 rounded whitespace-nowrap"
                                   >
                                     DECRYPT
                                   </button>
@@ -2020,7 +2053,7 @@ export default function Attachments({ leadId, userId }) {
                 </div>
 
                 {/* ── RIGHT: upload + password ── */}
-                <div className="w-full md:w-[120px] shrink-0 flex flex-col gap-1 justify-center">
+                <div className="w-full md:w-32 shrink-0 flex flex-col gap-1.5 items-end justify-center">
                   <div className="relative w-full">
                     <input
                       type="file"
@@ -2031,10 +2064,10 @@ export default function Attachments({ leadId, userId }) {
                       disabled={isLoading}
                       title=""
                     />
-                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1 transition uppercase pointer-events-none">
+                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-2 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1.5 transition uppercase pointer-events-none whitespace-nowrap">
                       {isLoading
-                        ? <><i className="fa-solid fa-spinner fa-spin text-xs"></i> Uploading…</>
-                        : <><i className="fa-solid fa-cloud-arrow-up text-xs"></i> Attach Files</>
+                        ? <><i className="fa-solid fa-spinner fa-spin"></i> Uploading…</>
+                        : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach Files</>
                       }
                     </button>
                   </div>
@@ -2049,7 +2082,10 @@ export default function Attachments({ leadId, userId }) {
                 </div>
               </div>
             );
-          });
+          })}
+              </div>
+            </div>
+          ));
         })()}
       </div>
 

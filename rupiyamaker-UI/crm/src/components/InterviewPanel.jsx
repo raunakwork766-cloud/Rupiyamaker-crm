@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock } from 'lucide-react';
 import { cn } from "../lib/utils.js";
@@ -10,6 +11,7 @@ import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
 import { formatDate as formatDateUtil, formatDateTime, calculateAge } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
+import InterviewSettings from './InterviewSettings';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -152,6 +154,7 @@ const InterviewPanel = () => {
   const [historyModalTab, setHistoryModalTab] = useState('full');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRound1ModalOpen, setIsRound1ModalOpen] = useState(false);
+  const [isNumberGuideOpen, setIsNumberGuideOpen] = useState(false);
   const [auditSubTab, setAuditSubTab] = useState('Pending');
   const [reasonFilter, setReasonFilter] = useState('All');
 
@@ -168,6 +171,9 @@ const InterviewPanel = () => {
     'Poor Communication', 'Overqualified', 'Underqualified', 'Position Filled',
     'Candidate Withdrew', 'Failed Assessment', 'Background Check Failed', 'Other'
   ]);
+
+  // Pipeline cooldown days
+  const [cooldownDays, setCooldownDays] = useState(7);
 
   // Filter popup state
   const [showFilterPopup, setShowFilterPopup] = useState(false);
@@ -328,6 +334,7 @@ const InterviewPanel = () => {
   // Load job opening and interview type options from backend
   useEffect(() => {
     loadDropdownOptions();
+    loadGlobalSettingsFromDB();
   }, []);
 
   // Load permissions on mount (like Tickets/Warnings)
@@ -410,6 +417,33 @@ const InterviewPanel = () => {
     const hasSuperAdminPermission = hasPermission(userPermissions, '*', '*');
     
     return hasSpecificPermission || hasSuperAdminPermission;
+  };
+
+  // Load global settings (company info, cooldown, decline reasons) from DB
+  const loadGlobalSettingsFromDB = async () => {
+    try {
+      const res = await interviewSettingsAPI.getGlobalSettings();
+      if (res?.success && res?.data) {
+        const d = res.data;
+        setCompanySettings({
+          companyName: d.company_name || '',
+          jobDescription: d.job_description || '',
+          officeTiming: d.office_timing || '',
+          workingDays: d.working_days || '',
+          interviewTiming: d.interview_timing || '',
+          officeAddress: d.office_address || '',
+          officeNearby: d.office_nearby || '',
+          hrName: d.hr_name || '',
+          hrMobile: d.hr_mobile || '',
+          hrDesignation: d.hr_designation || '',
+          interviewFormBaseUrl: d.interview_form_base_url || '',
+        });
+        if (d.cooldown_days !== undefined) setCooldownDays(d.cooldown_days);
+        if (d.decline_reasons?.length) setDeclineReasons(d.decline_reasons);
+      }
+    } catch (e) {
+      console.warn('Could not load global settings from DB:', e);
+    }
   };
 
   const loadDropdownOptions = async () => {
@@ -1251,26 +1285,11 @@ const InterviewPanel = () => {
   // Handle row click to show EditInterview
   const handleRowClick = async (interview) => {
     try {
-      console.log("handleRowClick called with interview:", interview);
-      console.log("Interview Family & Living fields:", {
-        living_arrangement: interview.living_arrangement,
-        primary_earning_member: interview.primary_earning_member,
-        type_of_business: interview.type_of_business,
-        banking_experience: interview.banking_experience,
-        experience_type: interview.experience_type,
-        total_experience: interview.total_experience
-      });
-      
-      // Validate interview data before passing to EditInterview
-      if (!interview) {
-        throw new Error("No interview data provided");
-      }
-      
-      // Always allow opening the interview for editing
-      // The EditInterview component will handle ID generation if needed
-      setSelectedInterview(interview);
+      if (!interview) throw new Error('No interview data provided');
+      setSelectedCandidate(interview);
+      setIsDetailModalOpen(true);
     } catch (error) {
-      alert("Failed to open interview details: " + error.message);
+      alert('Failed to open interview details: ' + error.message);
     }
   };
 
@@ -2039,31 +2058,24 @@ const InterviewPanel = () => {
       <style>{stickyHeaderStyles}</style>
       <div className="bg-slate-50 min-h-screen">
       
-      {/* Header - Light theme matching interview module.html */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Interview Panel
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">Manage candidates through the hiring pipeline</p>
-          </div>
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* LEFT: Search bar */}
           <div className="flex items-center gap-3">
-            {/* Global Search */}
-            <div className="relative">
+            <div className="relative w-64">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={14} className="text-slate-400" />
+                <Search size={14} className="text-slate-500" />
               </div>
               <input
                 type="text"
-                placeholder="Search all candidates..."
+                placeholder="Search by name, mobile, owner, role..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setIsGlobalSearch(e.target.value.length > 0);
                 }}
-                className="w-64 pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
               />
               {searchTerm && (
                 <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
@@ -2081,28 +2093,28 @@ const InterviewPanel = () => {
                 {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             )}
+          </div>
+          {/* RIGHT: Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsNumberGuideOpen(true)}
+              className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <PhoneOff size={14} /> <span className="hidden sm:inline">Search Test Data</span>
+            </button>
             {canAccessSettings() && (
-              <>
-                <button
-                  onClick={() => navigate('/interview-settings')}
-                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                  title="Settings"
-                >
-                  <Settings size={14} className="text-blue-600" /> Settings
-                </button>
-                <button
-                  onClick={async () => { setShowReassignmentPanel(true); await loadReassignmentRequests(); }}
-                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                >
-                  <RefreshCw size={14} className="text-purple-600" /> Reassignments
-                </button>
-              </>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
+              </button>
             )}
             <button
               onClick={handleCreateInterview}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-sm transition-colors shadow-md shadow-blue-600/20 flex items-center gap-2"
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-900/20"
             >
-              <Plus size={14} /> Add Candidate
+              <Plus size={14} /> Create Interview
             </button>
           </div>
         </div>
@@ -2259,14 +2271,14 @@ const InterviewPanel = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">#</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Created</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Owner</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Candidate</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Exp & Gender</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Role & Source</th>
-                      <th className="px-5 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Interview Date & Alerts</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider text-right">Action</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Created</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Owner</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Exp & Gender</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Role & Source</th>
+                      <th className="px-5 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Interview Date & Alerts</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2325,7 +2337,7 @@ const InterviewPanel = () => {
 
       {/* Edit Interview Modal */}
       {selectedInterview && (
-        <div className="fixed inset-0 z-[1000] flex items-center bg-transparent justify-center" style={{ backdropFilter: "blur(3px)" }}>
+        <div className="fixed inset-0 z-[9999] flex items-center bg-transparent justify-center" style={{ backdropFilter: "blur(3px)" }}>
           <div className="w-full max-w-4xl mx-auto">
             <EditInterview
               interview={selectedInterview}
@@ -2393,89 +2405,301 @@ const InterviewPanel = () => {
         />
       )}
 
-      {/* Reassignment Modal */}
-      {showReassignmentPanel && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between">
-              <h2 className="text-lg font-black">Interview Reassignment Requests</h2>
-              <div className="flex gap-3">
-                <button onClick={loadReassignmentRequests} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-bold border border-white/20" disabled={loadingReassignments}>
-                  {loadingReassignments ? 'Refreshing...' : 'Refresh'}
-                </button>
-                <button onClick={() => setShowReassignmentPanel(false)} className="text-white/80 hover:text-white p-1">
-                  <X size={20} />
-                </button>
-              </div>
+      {/* Reassignment modal removed */}
+    </div>
+
+    {/* ── Interview Settings Modal (white, centered, like HTML reference) ── */}
+    {isSettingsOpen && (
+      <SettingsModal
+        onCompanySettingsChange={setCompanySettings}
+        onDeclineReasonsChange={setDeclineReasons}
+        onCooldownChange={setCooldownDays}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+    )}
+
+    {/* ── Search Test Data Guide Modal ── */}
+    {isNumberGuideOpen && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
+        <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden">
+          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><PhoneOff size={18} className="text-blue-600"/> Search Test Data Guide</h2>
+              <p className="text-xs text-slate-600 mt-1">Numbers ya names ko search box me daalo, result direct table me stage tag ke saath mil jayega.</p>
             </div>
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 80px)' }}>
-              {loadingReassignments ? (
-                <div className="text-center py-12 text-slate-400"><div className="text-lg">Loading...</div></div>
-              ) : reassignmentRequests.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">
-                  <RefreshCw size={36} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-lg font-medium">No reassignment requests</p>
-                </div>
-              ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-700 text-xs uppercase">
-                      <tr>
-                        <th className="px-4 py-3">Interview</th>
-                        <th className="px-4 py-3">Current Assignee</th>
-                        <th className="px-4 py-3">Requested By</th>
-                        <th className="px-4 py-3">Target</th>
-                        <th className="px-4 py-3">Reason</th>
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                        <th className="px-4 py-3 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {reassignmentRequests.map((request) => (
-                        <tr key={request._id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3">
-                            <div className="font-bold text-slate-900">{request.candidate_name}</div>
-                            <div className="text-xs text-slate-500">{request.mobile_number}</div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">{request.current_assignee}</td>
-                          <td className="px-4 py-3 text-slate-700">{request.requested_by}</td>
-                          <td className="px-4 py-3 text-slate-700">{request.target_user}</td>
-                          <td className="px-4 py-3 text-slate-600 max-w-xs text-xs">{request.reason || 'N/A'}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">
-                            {request.requested_at ? new Date(request.requested_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                              request.reassignment_status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                              request.reassignment_status === 'rejected' ? 'bg-red-100 text-red-700' :
-                              'bg-yellow-100 text-yellow-700'
-                            }`}>{request.reassignment_status || 'Pending'}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {request.reassignment_status === 'pending' ? (
-                              <div className="flex justify-center gap-2">
-                                <button onClick={() => handleApproveReassignment(request._id)} className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Approve</button>
-                                <button onClick={() => handleRejectReassignment(request._id)} className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700">Reject</button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">{request.reassignment_status === 'approved' ? 'Approved' : 'Rejected'}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <button onClick={() => setIsNumberGuideOpen(false)} className="text-slate-500 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-100 transition-colors"><X size={20} /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+              <p className="font-bold mb-1">🔍 Search kaise karein:</p>
+              <ul className="space-y-1 text-xs">
+                <li>• Candidate ka <strong>naam</strong> ya <strong>mobile number</strong> type karein</li>
+                <li>• <strong>HR ka naam</strong> ya <strong>source portal</strong> se bhi filter hoga</li>
+                <li>• Multiple words se narrow down karein, e.g. "Rahul 9876"</li>
+              </ul>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <p className="font-bold mb-1">⚠️ Duplicate Check Flow:</p>
+              <ul className="space-y-1 text-xs">
+                <li>• Agar same number bachcha already pipeline me hai → duplicate warning aayega</li>
+                <li>• Cooldown period me hai → reassign option milega</li>
+                <li>• Cooldown khatam ho gayi hai → naya interview create hoga</li>
+              </ul>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600">
+              💡 <strong>Tip:</strong> Saare stages (Interview, Round 2, Hired, Rejected) ke records ek hi search se milenge — stage tag ke saath.
             </div>
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    )}
     </>
   );
 };
+
+// ── SETTINGS MODAL (white, matches interview module.html) ──
+const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onClose }) => {
+  const [tab, setTab] = React.useState('company');
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [cs, setCs] = React.useState({ companyName: '', jobDescription: '', officeTiming: '', workingDays: '', interviewTiming: '', officeAddress: '', officeNearby: '', hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: '' });
+  const [reasons, setReasons] = React.useState([]);
+  const [newReason, setNewReason] = React.useState('');
+  const [days, setDays] = React.useState(7);
+
+  // Map backend snake_case → frontend camelCase
+  const fromBackend = (doc) => {
+    setCs({
+      companyName: doc.company_name || '',
+      jobDescription: doc.job_description || '',
+      officeTiming: doc.office_timing || '',
+      workingDays: doc.working_days || '',
+      interviewTiming: doc.interview_timing || '',
+      officeAddress: doc.office_address || '',
+      officeNearby: doc.office_nearby || '',
+      hrName: doc.hr_name || '',
+      hrMobile: doc.hr_mobile || '',
+      hrDesignation: doc.hr_designation || '',
+      interviewFormBaseUrl: doc.interview_form_base_url || '',
+    });
+    setDays(doc.cooldown_days ?? 7);
+    setReasons(doc.decline_reasons || []);
+  };
+
+  // Load on mount
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const res = await interviewSettingsAPI.getGlobalSettings();
+        if (res?.success && res?.data) fromBackend(res.data);
+      } catch (e) {
+        console.error('Failed to load global settings:', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const tabs = [
+    { id: 'company', label: '🏢 Company' },
+    { id: 'pipeline', label: '⚙️ Pipeline' },
+    { id: 'reasons', label: '📋 Reasons' },
+  ];
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        company_name: cs.companyName,
+        job_description: cs.jobDescription,
+        office_timing: cs.officeTiming,
+        working_days: cs.workingDays,
+        interview_timing: cs.interviewTiming,
+        office_address: cs.officeAddress,
+        office_nearby: cs.officeNearby,
+        hr_name: cs.hrName,
+        hr_mobile: cs.hrMobile,
+        hr_designation: cs.hrDesignation,
+        interview_form_base_url: cs.interviewFormBaseUrl,
+        cooldown_days: days,
+        decline_reasons: reasons,
+      };
+      const res = await interviewSettingsAPI.saveGlobalSettings(payload);
+      if (!res?.success) throw new Error(res?.message || 'Save failed');
+      // Propagate to parent state
+      if (onCompanySettingsChange) onCompanySettingsChange(cs);
+      if (onDeclineReasonsChange) onDeclineReasonsChange(reasons);
+      if (onCooldownChange) onCooldownChange(days);
+      onClose();
+    } catch (e) {
+      alert('❌ Failed to save settings: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex justify-between bg-gradient-to-r from-slate-50 to-blue-50/50">
+          <div>
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Settings size={18} className="text-blue-600" /> Global CRM Settings
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Company profile, pipeline rules, and interview configuration</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-5">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors ${tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <svg className="animate-spin w-6 h-6 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Loading settings...
+            </div>
+          ) : null}
+          {!loading && tab === 'company' && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Company Name</label>
+                  <input value={cs.companyName} onChange={e => setCs({...cs, companyName: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Timing</label>
+                  <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => setCs({...cs, officeTiming: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Working Days</label>
+                  <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => setCs({...cs, workingDays: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Timing</label>
+                  <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => setCs({...cs, interviewTiming: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Job Description (JD) — shown in WhatsApp invite</label>
+                <textarea value={cs.jobDescription} onChange={e => setCs({...cs, jobDescription: e.target.value})} rows={3}
+                  placeholder="Describe the job role, responsibilities, and requirements..."
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none resize-none transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Address</label>
+                <input value={cs.officeAddress} onChange={e => setCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Nearby Landmark</label>
+                <input value={cs.officeNearby} onChange={e => setCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+              </div>
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                <div className="text-xs font-black text-emerald-700 uppercase tracking-wide mb-3">HR Point of Contact</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">HR Name</label>
+                    <input value={cs.hrName} onChange={e => setCs({...cs, hrName: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Mobile</label>
+                    <input value={cs.hrMobile} onChange={e => setCs({...cs, hrMobile: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Designation</label>
+                    <input value={cs.hrDesignation} onChange={e => setCs({...cs, hrDesignation: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
+                <input value={cs.interviewFormBaseUrl} onChange={e => setCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none font-mono transition-all" />
+                <p className="text-xs text-slate-400 mt-1">This link is inserted in WhatsApp messages and shared with candidates.</p>
+              </div>
+            </div>
+          )}
+
+          {!loading && tab === 'pipeline' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Lead Hoarding Protection</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cooldown Period (Days)</label>
+                <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                  <strong className="text-slate-700">Lock-in period:</strong> If a lead is active and was updated within this many days, other HRs cannot steal or reassign it.
+                </p>
+                <input type="number" min={0} value={days} onChange={e => setDays(Number(e.target.value))}
+                  className="w-24 bg-white border border-slate-300 rounded-lg px-4 py-2 text-slate-900 font-bold outline-none focus:border-blue-500" />
+              </div>
+            </div>
+          )}
+
+          {!loading && tab === 'reasons' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Decline &amp; Drop Reasons</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs text-slate-500 mb-4">Manage reasons HRs can select when declining a candidate.</p>
+                <div className="flex gap-2 mb-4">
+                  <input value={newReason} onChange={e => setNewReason(e.target.value)}
+                    onKeyPress={e => { if (e.key === 'Enter' && newReason.trim() && !reasons.includes(newReason.trim())) { setReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                    placeholder="Add new reason..."
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" />
+                  <button onClick={() => { if (newReason.trim() && !reasons.includes(newReason.trim())) { setReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold">Add</button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                  {reasons.map(r => (
+                    <span key={r} className="bg-white border border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                      {r}
+                      <button onClick={() => setReasons(reasons.filter(item => item !== r))} className="text-slate-400 hover:text-red-500 transition-colors">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                  {reasons.length === 0 && <p className="text-slate-400 text-sm">No reasons added yet.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-5 border-t border-slate-200 bg-slate-50/80 flex justify-end gap-3">
+          <button onClick={onClose} disabled={saving} className="px-5 py-2 text-sm text-slate-500 hover:text-slate-900 font-medium disabled:opacity-50">Cancel</button>
+          <button onClick={handleSave} disabled={saving || loading} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white text-sm font-black rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-2">
+            {saving ? (
+              <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Saving...</>
+            ) : (
+              <><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Settings</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Interview Table Component
 // --- Tag helper ---
 const Tag = ({ icon, text, color }) => {
@@ -2486,13 +2710,29 @@ const Tag = ({ icon, text, color }) => {
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
 const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
+  const btnRef = useRef(null);
 
   useEffect(() => {
-    function handleClickOutside(event) { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsDropdownOpen(false); }
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+          btnRef.current && !btnRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownRef]);
+  }, []);
+
+  const handleToggleDropdown = (e) => {
+    e.stopPropagation();
+    if (!isDropdownOpen && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setIsDropdownOpen(prev => !prev);
+  };
 
   const formatInterviewDate = (date) => {
     if (!date) return 'N/A';
@@ -2508,21 +2748,21 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
           <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-sm font-semibold text-slate-900">{interview.created_by || '-'}</div>
-          <div className="text-xs text-slate-500">{interview.hr_address || 'Desk N/A'}</div>
+          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
+          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-semibold text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
             <div>
-              <div className="font-bold text-slate-900 text-sm">{interview.candidate_name || '-'}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+              <div className="font-semibold text-slate-800 text-xs whitespace-nowrap">{interview.candidate_name || '-'}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
             </div>
           </div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-sm font-medium text-slate-700">{interview.job_opening || '-'}</div>
-          <div className="text-xs text-slate-500">{interview.source_portal || '-'}</div>
+          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
+          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.source_portal || '-'}</div>
         </td>
         <td className="px-5 py-3 border-r border-slate-100">
           <button onClick={onViewHistory} className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5 shadow-sm">
@@ -2553,21 +2793,21 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
         <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-bold text-slate-900">{interview.created_by || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{interview.hr_address || 'Desk N/A'}</div>
+        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
           <div>
-            <button onClick={(e) => { e.stopPropagation(); onViewDetails(); }} className="font-bold text-slate-900 text-xs hover:text-blue-700 transition-colors text-left leading-tight">{interview.candidate_name || '-'}</button>
-            <div className="text-[10px] text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+            <button onClick={(e) => { e.stopPropagation(); onRowClick(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
+            <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
           </div>
         </div>
         {isGlobalSearch && <Tag text={stage} color="orange" />}
@@ -2581,12 +2821,12 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-semibold text-slate-800">{interview.job_opening || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{interview.source_portal || '-'}</div>
+        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.source_portal || '-'}</div>
       </td>
 
       <td className="px-5 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-bold text-blue-700 mb-1.5">{formatInterviewDate(interview.interview_date)}</div>
+        <div className="text-xs font-medium text-blue-600 mb-1.5 whitespace-nowrap">{formatInterviewDate(interview.interview_date)}</div>
         <div className="flex flex-col gap-1 items-start">
           {(stage === 'Round 2' && interview.round1_feedback) && (
             <button onClick={(e) => { e.stopPropagation(); onViewRound1 && onViewRound1(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-colors">
@@ -2627,11 +2867,15 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
           {activeTab !== 'rejected' && activeTab !== 'hired' && (
             <div className="relative">
-              <button onClick={(e) => { e.stopPropagation(); setIsDropdownOpen(!isDropdownOpen); }} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+              <button ref={btnRef} onClick={handleToggleDropdown} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
                 <MoreVertical size={15} />
               </button>
-              {isDropdownOpen && (
-                <div className="absolute right-0 top-10 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden text-left animate-in fade-in zoom-in-95">
+              {isDropdownOpen && dropdownPos && createPortal(
+                <div
+                  ref={dropdownRef}
+                  style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
+                  className="w-52 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 overflow-hidden text-left"
+                >
                   {(stage === 'Interview' || stage === 'Round 2') && (
                     <>
                       <button onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Calendar size={14}/> Reschedule Date</button>
@@ -2640,10 +2884,10 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
                       )}
                     </>
                   )}
-                  <button onClick={() => { onViewDetails(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><FileText size={14}/> View Details</button>
                   <div className="my-1 border-t border-slate-100"/>
                   <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Decline / Reject</button>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           )}
@@ -2887,7 +3131,7 @@ const ForwardRemarkModal = ({ target, onClose, onConfirmForward, onConfirmJobOff
   const canJobOffer = target.currentStage === 'Interview';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex justify-between items-center">
           <div>
@@ -2930,7 +3174,7 @@ const DeclineModal = ({ candidate, options, onClose, onSubmit }) => {
   const [remarks, setRemarks] = useState('');
   if (!candidate) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-red-600 mb-5">Decline Candidate</h2>
         <p className="text-xs text-slate-600 mb-4">Declining: <span className="font-bold">{candidate.candidate_name}</span></p>
@@ -2954,7 +3198,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
   const [reason, setReason] = useState('');
   if (!candidate) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Reschedule Date</h2>
         <p className="text-xs text-slate-600 mb-5">For {candidate.candidate_name}</p>
@@ -2973,47 +3217,139 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
 
 // --- CANDIDATE DETAIL MODAL ---
 const CandidateDetailModal = ({ candidate, onClose }) => {
+  const [data, setData] = useState(candidate || null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const id = candidate?._id || candidate?.id;
+    if (!id) { setLoading(false); return; }
+    (async () => {
+      try {
+        const res = await API.interviewsAPI.getInterviewById(id);
+        if (res) setData(res);
+      } catch (e) {
+        console.warn('CandidateDetailModal fetch failed, using cached data', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   if (!candidate) return null;
+
+  const d = data || candidate;
+  const stage = getStageFromStatus(d.status);
+
+  // Compute sub-stage label from interview_date
+  const getSubStage = (dateStr) => {
+    if (!dateStr) return '-';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dt = new Date(dateStr); dt.setHours(0,0,0,0);
+    const diff = (dt - today) / 86400000;
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff === -1) return 'Yesterday';
+    if (diff > 1 && diff <= 7) return 'This Week';
+    if (diff < 0) return 'Past';
+    return 'Upcoming';
+  };
+
+  const Field = ({ label, value }) => (
+    <div className="p-3 rounded-lg border border-slate-200 bg-white">
+      <div className="text-xs text-slate-400 mb-0.5">{label}</div>
+      <div className="text-sm font-semibold text-slate-800">{value || '-'}</div>
+    </div>
+  );
+
+  const capFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '-';
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden">
-        <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex justify-between items-start">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Candidate Profile Details</h2>
-            <p className="text-xs text-slate-600 mt-1">Complete data for {candidate.candidate_name}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Complete data for {d.candidate_name}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-1"><X size={20}/></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"><X size={20}/></button>
         </div>
-        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Name</div><div className="text-sm font-semibold text-slate-900">{candidate.candidate_name || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.mobile_number || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Alt Phone</div><div className="text-sm font-semibold text-slate-900">{candidate.alt_phone || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Status</div><div className="text-sm font-semibold text-slate-900">{candidate.status || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Created By</div><div className="text-sm font-semibold text-slate-900">{candidate.created_by || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Job Applied</div><div className="text-sm font-semibold text-slate-900">{candidate.job_opening || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Gender</div><div className="text-sm font-semibold text-slate-900">{candidate.gender || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Experience</div><div className="text-sm font-semibold text-slate-900">{candidate.experience_type || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50"><div className="text-xs text-slate-500">Source</div><div className="text-sm font-semibold text-slate-900">{candidate.source_portal || '-'}</div></div>
+
+        {/* Body */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-slate-400 text-sm py-4 justify-center">
+              <svg className="animate-spin w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Loading latest data...
+            </div>
+          )}
+
+          {/* Row 1: Name, Phone, Alt Phone */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Name" value={d.candidate_name} />
+            <Field label="Phone" value={d.mobile_number} />
+            <Field label="Alt Phone" value={d.alternate_number} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Qualification</div><div className="text-sm text-slate-800">{candidate.qualification || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Age</div><div className="text-sm text-slate-800">{candidate.age || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">City</div><div className="text-sm text-slate-800">{candidate.city || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Marital Status</div><div className="text-sm text-slate-800">{candidate.marital_status || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Living Arrangement</div><div className="text-sm text-slate-800">{candidate.living_arrangement || '-'}</div></div>
-            <div className="p-3 rounded-lg border border-slate-200 bg-white"><div className="text-xs text-slate-500">Salary Offered</div><div className="text-sm text-slate-800">{candidate.monthly_salary_offered || '-'}</div></div>
+
+          {/* Row 2: Stage, Sub Stage, HR */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Stage" value={stage} />
+            <Field label="Sub Stage" value={getSubStage(d.interview_date)} />
+            <Field label="HR" value={d.created_by} />
           </div>
-          {candidate.interview_date && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-sm font-bold text-blue-800 mb-2">Interview Schedule</h3>
-              <div className="text-sm text-blue-700">Date: {new Date(candidate.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-              {candidate.interview_time && <div className="text-sm text-blue-700">Time: {candidate.interview_time}</div>}
+
+          {/* Row 3: Role, Source, Experience */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Role" value={d.job_opening} />
+            <Field label="Source" value={d.source_portal} />
+            <Field label="Experience" value={capFirst(d.experience_type)} />
+          </div>
+
+          {/* Row 4: Qualification, Age, City */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Qualification" value={d.qualification} />
+            <Field label="Age" value={d.age} />
+            <Field label="City" value={d.city} />
+          </div>
+
+          {/* Row 5: Marital Status, Living Arrangement, Banking Experience */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Marital Status" value={d.marital_status} />
+            <Field label="Living Arrangement" value={d.living_arrangement} />
+            <Field label="Banking Experience" value={d.banking_experience} />
+          </div>
+
+          {/* Documents */}
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Documents</h3>
+            <div className="flex flex-wrap gap-2">
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_salary_slip ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Salary Slip: {d.has_salary_slip ? 'Yes' : 'No'}</span>
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_bank_statement ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Bank Statement: {d.has_bank_statement ? 'Yes' : 'No'}</span>
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                d.has_experience_letter ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>Experience Letter: {d.has_experience_letter ? 'Yes' : 'No'}</span>
+            </div>
+          </div>
+
+          {/* Interview date strip */}
+          {d.interview_date && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-4 text-sm">
+              <Calendar size={16} className="text-blue-500 shrink-0" />
+              <span className="text-blue-800 font-medium">
+                Interview: {new Date(d.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {d.interview_time ? ` at ${d.interview_time}` : ''}
+              </span>
             </div>
           )}
         </div>
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded bg-slate-800 text-white text-sm font-bold">Close</button>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-200 flex justify-end">
+          <button onClick={onClose} className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold transition-colors">Close</button>
         </div>
       </div>
     </div>
@@ -3026,7 +3362,7 @@ const Round1InfoModal = ({ candidate, onClose }) => {
   const fb = candidate.round1_feedback || candidate.round1Feedback;
   if (!fb) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex justify-between bg-slate-50">
           <div>
@@ -3138,7 +3474,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
         {/* Header */}
@@ -3844,7 +4180,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   const canSubmit = formData.mobile_number.length >= 10 && formData.interview_date && formData.candidate_name.trim();
 
   return (
-    <div className="fixed inset-0 z-[1000] flex justify-end">
+    <div className="fixed inset-0 z-[9999] flex justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
@@ -4003,7 +4339,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               </div>
 
               {/* ── Education & Background ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
                   <span className="text-base">🎓</span>
                   <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
@@ -4029,7 +4365,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                     <div className="relative" ref={qualRef}>
                       <input
                         value={qualSearch !== '' ? qualSearch : formData.qualification}
-                        onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }}
+                        onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
                         onFocus={() => { setQualSearch(''); setQualOpen(true); }}
                         placeholder="Type to search e.g. MBA, BA, ITI..."
                         className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}

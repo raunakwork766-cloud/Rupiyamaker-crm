@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom"
 import './App.css'
 import { AppProvider } from './context/AppContext'
@@ -12,11 +12,33 @@ import PublicLoginForm from "./components/PublicLoginForm"
 import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
 import PopNotificationModal from './components/PopNotificationModal'
+import PopWarningModal from './components/PopWarningModal'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor'
 import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils'
 import { API_BASE_URL } from './config/api'
+
+/**
+ * AppAuthGuard — defined OUTSIDE App so its function reference stays stable
+ * across App re-renders.  If defined inside App, React sees a new component
+ * type on every render and force-remounts the entire child tree (Sidebar,
+ * routes, etc.), which causes cascading state-update loops and eventually a
+ * "Maximum call stack size exceeded" stack overflow.
+ */
+const AppAuthGuard = ({ loading, isAuthenticated, onLogin, children }) => {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <Login onLogin={onLogin} />;
+  }
+  return children;
+};
 
 function App() {
   // Global zoom styles for 80% sizing across the application
@@ -152,7 +174,8 @@ function App() {
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
-      'All Notifications': '/notifications'
+      'All Notifications': '/notifications',
+      'Knowledge Base': '/knowledge-base'
     }).find(([_, path]) => path === currentPath)
     
     if (matchingLabel) {
@@ -337,7 +360,8 @@ function App() {
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
-      'All Notifications': '/notifications'
+      'All Notifications': '/notifications',
+      'Knowledge Base': '/knowledge-base'
     }
     
     // Check if current selectedLabel already maps to the current path
@@ -456,14 +480,14 @@ function App() {
     };
   }, [])
 
-  const handleLogin = (userData) => {
+  const handleLogin = useCallback((userData) => {
     setUser(userData)
     setIsAuthenticated(true)
     
     // Start session monitoring when user logs in
     // console.log('User logged in - starting session monitoring')
     sessionMonitor.start()
-  }
+  }, [])
 
   const handleLogout = () => {
     // Stop session monitoring before clearing data
@@ -979,22 +1003,6 @@ function App() {
     return false;
   };
 
-  const ProtectedRoute = ({ children }) => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center min-h-screen bg-black">
-          <div className="text-white text-xl">Loading...</div>
-        </div>
-      );
-    }
-
-    if (!isAuthenticated) {
-      return <Login onLogin={handleLogin} />;
-    }
-
-    return children;
-  };
-
   return (
     <AppProvider>
       <style>{globalZoomStyles}</style>
@@ -1012,7 +1020,7 @@ function App() {
 
           {/* Protected routes (requires authentication) */}
           <Route path="/*" element={
-            <ProtectedRoute>
+            <AppAuthGuard loading={loading} isAuthenticated={isAuthenticated} onLogin={handleLogin}>
               <div className="flex h-screen bg-black text-white">
                 {/* Sidebar - Hidden on mobile view, visible on desktop view */}
                 {!isMobileView && (
@@ -1043,9 +1051,12 @@ function App() {
                 {/* Global Pop Notification Modal - REMOVED: Using new announcement modal in NotificationManagementPage */}
                 {/* <PopNotificationModal user={user} /> */}
               </div>
-            </ProtectedRoute>
+            </AppAuthGuard>
           } />
         </Routes>
+
+        {/* GLOBAL WARNING MODAL - Blocks screen until user acknowledges warning */}
+        <PopWarningModal />
 
         {/* GLOBAL ANNOUNCEMENT MODAL - Shows on ALL pages */}
         {showGlobalAnnouncement && globalAnnouncementData && (

@@ -1223,7 +1223,22 @@ export const interviewSettingsAPI = {
         return apiCall(`/interview-settings/source-portals/${id}?user_id=${userId}`, {
             method: 'DELETE',
         });
-    }
+    },
+
+    // ── Global Settings (Company, Pipeline, Decline Reasons) ──
+    getGlobalSettings: async () => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/global-settings?user_id=${userId}`);
+    },
+
+    saveGlobalSettings: async (data) => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/global-settings?user_id=${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    },
 };
 
 // Helper function to get current user ID
