@@ -1833,8 +1833,8 @@ const WarningPage = memo(() => {
 
               {/* Contextual Action Buttons */}
               <div className="flex flex-wrap gap-3">
-                {/* Show Issue Warning button on warnings tabs */}
-                {permissions.can_issue_warning && (
+                {/* Show Issue Warning button on warnings tabs — hide on Mistakes Directory tab */}
+                {permissions.can_issue_warning && !(selectedTab === 1 && (isSuperAdmin() || permissions.can_view_mistakes)) && (
                   <button
                     className="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
                     onClick={openAddDialog}

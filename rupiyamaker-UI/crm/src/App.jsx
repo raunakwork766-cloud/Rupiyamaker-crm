@@ -12,6 +12,7 @@ import PublicLoginForm from "./components/PublicLoginForm"
 import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
 import PopNotificationModal from './components/PopNotificationModal'
+import PopWarningModal from './components/PopWarningModal'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor'
@@ -1053,6 +1054,9 @@ function App() {
             </AppAuthGuard>
           } />
         </Routes>
+
+        {/* GLOBAL WARNING MODAL - Blocks screen until user acknowledges warning */}
+        <PopWarningModal user={user} />
 
         {/* GLOBAL ANNOUNCEMENT MODAL - Shows on ALL pages */}
         {showGlobalAnnouncement && globalAnnouncementData && (
