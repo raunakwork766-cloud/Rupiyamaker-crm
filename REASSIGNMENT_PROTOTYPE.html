@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Lead — Reassignment Prototype</title>
+<style>
+  /* ===== ROOT VARIABLES ===== */
+  :root {
+    --bg-primary: #0d0d0d;
+    --bg-secondary: #1a1a1a;
+    --bg-card: #1e1e1e;
+    --bg-input: #2a2a2a;
+    --bg-row-even: #1c1c1c;
+    --bg-row-hover: #252525;
+    --cyan: #00bcd4;
+    --cyan-dim: #00899a;
+    --cyan-glow: rgba(0,188,212,0.15);
+    --cyan-bg: rgba(0,188,212,0.08);
+    --white: #ffffff;
+    --text-primary: #e8e8e8;
+    --text-secondary: #9e9e9e;
+    --text-muted: #616161;
+    --green: #4caf50;
+    --green-dim: rgba(76,175,80,0.15);
+    --orange: #ff9800;
+    --orange-dim: rgba(255,152,0,0.15);
+    --red: #f44336;
+    --red-dim: rgba(244,67,54,0.15);
+    --yellow: #ffc107;
+    --yellow-dim: rgba(255,193,7,0.15);
+    --blue: #2196f3;
+    --blue-dim: rgba(33,150,243,0.15);
+    --border: rgba(255,255,255,0.07);
+    --border-cyan: rgba(0,188,212,0.35);
+    --shadow: 0 4px 24px rgba(0,0,0,0.5);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --transition: all 0.2s ease;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    font-size: 13px;
+  }
+
+  /* ===== TOPBAR ===== */
+  .topbar {
+    background: #111;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-title { font-size: 16px; font-weight: 700; color: var(--white); letter-spacing: 0.3px; }
+  .topbar-right { display: flex; align-items: center; gap: 20px; }
+  .topbar-user { display: flex; flex-direction: column; align-items: flex-end; }
+  .topbar-user .name { font-size: 13px; font-weight: 600; color: var(--white); }
+  .topbar-user .role { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.8px; }
+  .topbar-avatar {
+    width: 40px; height: 40px; background: var(--cyan);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; color: #000;
+  }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main { padding: 20px 24px; max-width: 1300px; margin: 0 auto; }
+
+  /* ===== TABS (ALL / REASSIGNMENT) ===== */
+  .page-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .page-tab {
+    padding: 10px 24px; cursor: pointer; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); border-bottom: 2px solid transparent;
+    transition: var(--transition); letter-spacing: 0.3px;
+  }
+  .page-tab.active { color: var(--white); border-bottom-color: var(--cyan); background: var(--cyan-bg); }
+  .page-tab:hover:not(.active) { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+
+  /* ===== CARD ===== */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card-title { color: var(--cyan); font-size: 14px; font-weight: 700; margin-bottom: 16px; letter-spacing: 0.3px; }
+
+  /* ===== SEARCH FORM ===== */
+  .search-form { display: grid; grid-template-columns: 240px 1fr 180px; gap: 16px; align-items: end; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.7px; }
+  .form-label .req { color: var(--cyan); margin-left: 2px; }
+  .form-select, .form-input {
+    background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: var(--radius-sm);
+    padding: 10px 14px; font-size: 13px; outline: none;
+    transition: var(--transition); width: 100%;
+  }
+  .form-select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239e9e9e'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 30px; }
+  .form-select:focus, .form-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-glow); }
+  .btn-check {
+    background: var(--cyan); color: #000; border: none; border-radius: var(--radius-sm);
+    padding: 10px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: var(--transition); white-space: nowrap; letter-spacing: 0.3px;
+  }
+  .btn-check:hover { background: #00e5ff; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,188,212,0.4); }
+  .btn-check:active { transform: translateY(0); }
+
+  /* ===== SEARCH LOADING ===== */
+  .search-loading {
+    display: none; align-items: center; gap: 10px;
+    padding: 12px 0; color: var(--cyan); font-size: 13px;
+  }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--cyan); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== RESULT SECTION ===== */
+  .result-section { display: none; }
+  .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .result-title { font-size: 13px; color: var(--text-secondary); }
+  .result-count { background: var(--cyan-bg); color: var(--cyan); border: 1px solid var(--border-cyan); border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
+
+  /* ===== TABLE ===== */
+  .table-wrapper { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: #161616; }
+  thead th {
+    padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700;
+    color: var(--cyan); text-transform: uppercase; letter-spacing: 0.8px;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: var(--transition); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-row-hover); }
+  tbody tr:nth-child(even) { background: var(--bg-row-even); }
+  tbody tr:nth-child(even):hover { background: var(--bg-row-hover); }
+  tbody td { padding: 11px 14px; font-size: 12px; color: var(--text-primary); vertical-align: middle; }
+
+  /* ===== BADGE / STATUS ===== */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+  }
+  .badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,80,0.3); }
+  .badge-orange { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,152,0,0.3); }
+  .badge-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,67,54,0.3); }
+  .badge-cyan { background: var(--cyan-bg); color: var(--cyan); border: 1px solid var(--border-cyan); }
+  .badge-yellow { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,193,7,0.3); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(33,150,243,0.3); }
+  .badge-gray { background: rgba(255,255,255,0.06); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.1); }
+
+  /* ===== ACTION BUTTONS ===== */
+  .btn { padding: 6px 14px; border-radius: 5px; font-size: 11px; font-weight: 700; cursor: pointer; border: none; transition: var(--transition); letter-spacing: 0.3px; }
+  .btn-primary { background: var(--cyan); color: #000; }
+  .btn-primary:hover { background: #00e5ff; }
+  .btn-outline { background: transparent; border: 1px solid var(--border-cyan); color: var(--cyan); }
+  .btn-outline:hover { background: var(--cyan-bg); }
+  .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,67,54,0.3); }
+  .btn-danger:hover { background: rgba(244,67,54,0.25); }
+  .btn-success { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,80,0.3); }
+  .btn-success:hover { background: rgba(76,175,80,0.25); }
+  .btn-sm { padding: 5px 10px; font-size: 10px; }
+
+  /* ===== LOCK INDICATOR ===== */
+  .lock-indicator {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--red-dim); border: 1px solid rgba(244,67,54,0.3);
+    border-radius: 4px; padding: 3px 8px; font-size: 10px;
+    color: var(--red); font-weight: 600;
+  }
+  .unlock-indicator {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--green-dim); border: 1px solid rgba(76,175,80,0.3);
+    border-radius: 4px; padding: 3px 8px; font-size: 10px;
+    color: var(--green); font-weight: 600;
+  }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    z-index: 1000; align-items: center; justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1a1a1a; border: 1px solid var(--border-cyan);
+    border-radius: 14px; width: 92%; max-width: 980px;
+    max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,188,212,0.1);
+    animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+  /* ===== MODAL TOPBAR ===== */
+  .modal-topbar {
+    background: #111; border-bottom: 1px solid var(--border);
+    border-radius: 14px 14px 0 0; padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .modal-back-btn {
+    background: none; border: none; color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; gap: 6px; font-size: 13px; transition: var(--transition);
+  }
+  .modal-back-btn:hover { color: var(--white); }
+  .modal-customer-name { font-size: 16px; font-weight: 700; color: var(--white); }
+  .modal-status-badge {
+    background: var(--bg-input); border: 1px solid var(--border-cyan);
+    border-radius: 6px; padding: 5px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  }
+  .modal-status-text { font-size: 12px; font-weight: 700; color: var(--cyan); }
+  .modal-status-sub { font-size: 9px; color: var(--gray); }
+  .modal-close-btn {
+    margin-left: auto; background: rgba(244,67,54,0.15); border: 1px solid rgba(244,67,54,0.3);
+    color: var(--red); cursor: pointer; border-radius: 6px; padding: 6px 12px;
+    font-size: 12px; font-weight: 700; transition: var(--transition);
+  }
+  .modal-close-btn:hover { background: rgba(244,67,54,0.25); }
+
+  /* ===== MODAL TABS ===== */
+  .modal-tabs { display: flex; gap: 2px; padding: 10px 20px 0; border-bottom: 1px solid var(--border); background: #111; }
+  .modal-tab {
+    padding: 9px 18px; cursor: pointer; font-size: 11px; font-weight: 700;
+    color: var(--text-secondary); border-bottom: 2px solid transparent;
+    transition: var(--transition); letter-spacing: 0.8px; text-transform: uppercase;
+    border-radius: 6px 6px 0 0;
+  }
+  .modal-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); background: var(--cyan-bg); }
+  .modal-tab:hover:not(.active) { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+
+  /* ===== MODAL BODY ===== */
+  .modal-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .modal-body::-webkit-scrollbar { width: 5px; }
+  .modal-body::-webkit-scrollbar-track { background: transparent; }
+  .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ===== TAB CONTENT ===== */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ===== REASSIGNMENT BANNER ===== */
+  .reassign-banner {
+    border-radius: var(--radius-sm); padding: 14px 18px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .reassign-banner.locked {
+    background: rgba(244,67,54,0.08); border: 1px solid rgba(244,67,54,0.25);
+  }
+  .reassign-banner.available {
+    background: rgba(76,175,80,0.08); border: 1px solid rgba(76,175,80,0.25);
+  }
+  .reassign-banner.manager-required {
+    background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.25);
+  }
+  .banner-icon { font-size: 24px; flex-shrink: 0; }
+  .banner-content { flex: 1; }
+  .banner-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .banner-locked .banner-title { color: var(--red); }
+  .banner-available .banner-title { color: var(--green); }
+  .banner-description { font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+  .countdown-pill {
+    background: rgba(244,67,54,0.15); border: 1px solid rgba(244,67,54,0.3);
+    border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 700;
+    color: var(--red); white-space: nowrap; flex-shrink: 0;
+  }
+  .available-pill {
+    background: var(--green-dim); border: 1px solid rgba(76,175,80,0.3);
+    border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 700;
+    color: var(--green); white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ===== ABOUT SECTION ===== */
+  .section-card {
+    background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin-bottom: 16px; overflow: hidden;
+  }
+  .section-header {
+    padding: 12px 18px; background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border); display: flex;
+    align-items: center; justify-content: space-between; cursor: pointer;
+  }
+  .section-header-title { font-size: 13px; font-weight: 700; color: var(--cyan); }
+  .section-toggle { color: var(--text-secondary); font-size: 16px; transition: var(--transition); }
+  .section-toggle.open { transform: rotate(180deg); }
+  .section-body { padding: 18px; }
+  .fields-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .field-group { display: flex; flex-direction: column; gap: 5px; }
+  .field-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.7px; }
+  .field-value {
+    background: transparent; border: 1px solid var(--border-cyan);
+    border-radius: 5px; padding: 8px 12px; color: var(--cyan);
+    font-size: 12px; font-weight: 600; outline: none;
+    transition: var(--transition); width: 100%;
+  }
+  .field-value:focus { border-color: var(--cyan); background: var(--cyan-bg); }
+  .field-value.readonly { cursor: default; background: rgba(0,188,212,0.04); }
+  select.field-value { appearance: none; cursor: pointer; }
+
+  /* ===== CLAIM SECTION ===== */
+  .claim-section {
+    background: rgba(0,188,212,0.05); border: 1px solid var(--border-cyan);
+    border-radius: var(--radius-sm); padding: 18px; margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .claim-info { flex: 1; }
+  .claim-title { font-size: 13px; font-weight: 700; color: var(--white); margin-bottom: 4px; }
+  .claim-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+  .btn-claim {
+    background: var(--cyan); color: #000; border: none; border-radius: 7px;
+    padding: 10px 24px; font-size: 13px; font-weight: 800; cursor: pointer;
+    transition: var(--transition); white-space: nowrap; letter-spacing: 0.3px;
+  }
+  .btn-claim:hover { background: #00e5ff; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,188,212,0.4); }
+
+  /* ===== BANK LOGIN SECTION ===== */
+  .bank-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .bank-card {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px; transition: var(--transition);
+  }
+  .bank-card:hover { border-color: var(--border-cyan); }
+  .bank-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .bank-name { font-size: 13px; font-weight: 700; color: var(--white); }
+  .bank-dates { display: flex; flex-direction: column; gap: 4px; }
+  .bank-date-row { display: flex; justify-content: space-between; font-size: 10px; }
+  .bank-date-label { color: var(--text-muted); }
+  .bank-date-value { color: var(--text-secondary); font-weight: 500; }
+  .bank-card-footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+  .add-bank-btn {
+    background: transparent; border: 2px dashed var(--border-cyan);
+    border-radius: var(--radius-sm); padding: 14px; cursor: pointer;
+    color: var(--cyan); font-size: 13px; font-weight: 600; display: flex;
+    align-items: center; justify-content: center; gap: 8px; transition: var(--transition);
+    width: 100%;
+  }
+  .add-bank-btn:hover { background: var(--cyan-bg); }
+
+  /* ===== REMARK SECTION ===== */
+  .remark-item {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px; margin-bottom: 10px; transition: var(--transition);
+  }
+  .remark-item:hover { border-color: var(--border-cyan); }
+  .remark-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .remark-user { font-size: 11px; font-weight: 700; color: var(--cyan); }
+  .remark-time { font-size: 10px; color: var(--text-muted); }
+  .remark-text { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+  .remark-input-row { display: flex; gap: 10px; margin-top: 14px; }
+  .remark-textarea {
+    flex: 1; background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: var(--radius-sm); padding: 10px 14px;
+    font-size: 12px; resize: none; height: 80px; outline: none;
+    font-family: inherit; transition: var(--transition);
+  }
+  .remark-textarea:focus { border-color: var(--cyan); }
+
+  /* ===== TASK SECTION ===== */
+  .task-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 12px 14px; margin-bottom: 8px; transition: var(--transition);
+  }
+  .task-item:hover { border-color: var(--border-cyan); }
+  .task-checkbox { width: 16px; height: 16px; accent-color: var(--cyan); margin-top: 2px; cursor: pointer; flex-shrink: 0; }
+  .task-content { flex: 1; }
+  .task-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+  .task-title.done { text-decoration: line-through; color: var(--text-muted); }
+  .task-meta { display: flex; gap: 10px; }
+  .task-date { font-size: 10px; color: var(--text-muted); }
+  .task-assignee { font-size: 10px; color: var(--cyan); }
+
+  /* ===== ACTIVITY SECTION ===== */
+  .activity-timeline { position: relative; padding-left: 24px; }
+  .activity-line { position: absolute; left: 8px; top: 0; bottom: 0; width: 1px; background: var(--border); }
+  .activity-item { position: relative; margin-bottom: 18px; }
+  .activity-dot {
+    position: absolute; left: -20px; top: 3px; width: 10px; height: 10px;
+    border-radius: 50%; border: 2px solid var(--cyan); background: var(--bg-primary);
+    flex-shrink: 0;
+  }
+  .activity-dot.red { border-color: var(--red); }
+  .activity-dot.green { border-color: var(--green); }
+  .activity-dot.orange { border-color: var(--orange); }
+  .activity-content { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; }
+  .activity-action { font-size: 12px; color: var(--text-primary); margin-bottom: 3px; line-height: 1.5; }
+  .activity-action strong { color: var(--cyan); }
+  .activity-time { font-size: 10px; color: var(--text-muted); }
+
+  /* ===== OBLIGATION SECTION ===== */
+  .obligation-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .obligation-card {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px;
+  }
+  .obl-bank { font-size: 11px; font-weight: 700; color: var(--cyan); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+  .obl-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; }
+  .obl-label { color: var(--text-muted); }
+  .obl-value { color: var(--text-primary); font-weight: 600; }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state { text-align: center; padding: 48px 24px; }
+  .empty-icon { font-size: 48px; margin-bottom: 14px; opacity: 0.4; }
+  .empty-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+  .empty-desc { font-size: 12px; color: var(--text-muted); }
+
+  /* ===== NO RESULT ===== */
+  .no-duplicate-result {
+    display: none; background: rgba(76,175,80,0.06); border: 1px solid rgba(76,175,80,0.2);
+    border-radius: var(--radius-sm); padding: 20px; text-align: center;
+  }
+  .no-dup-icon { font-size: 32px; margin-bottom: 10px; }
+  .no-dup-title { font-size: 14px; font-weight: 700; color: var(--green); margin-bottom: 6px; }
+  .no-dup-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
+  .btn-proceed {
+    background: var(--cyan); color: #000; border: none; border-radius: 7px;
+    padding: 10px 28px; font-size: 13px; font-weight: 800; cursor: pointer;
+    transition: var(--transition);
+  }
+  .btn-proceed:hover { background: #00e5ff; transform: translateY(-1px); }
+
+  /* ===== REASSIGNMENT TAB CONTENT ===== */
+  .reassign-list-item {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px;
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+    transition: var(--transition);
+  }
+  .reassign-list-item:hover { border-color: var(--border-cyan); background: var(--bg-row-hover); }
+  .ri-main { display: grid; grid-template-columns: 120px 150px 130px 1fr; gap: 10px; align-items: center; }
+  .ri-id { font-size: 10px; color: var(--cyan); font-weight: 700; }
+  .ri-name { font-size: 13px; font-weight: 600; color: var(--white); }
+  .ri-mobile { font-size: 12px; color: var(--text-secondary); }
+  .ri-status { }
+  .ri-actions { display: flex; gap: 6px; align-items: center; }
+
+  /* ===== MODAL FOOTER ===== */
+  .modal-footer {
+    background: #111; border-top: 1px solid var(--border);
+    border-radius: 0 0 14px 14px; padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .footer-info { font-size: 11px; color: var(--text-muted); display: flex; gap: 16px; }
+  .footer-info span { display: flex; align-items: center; gap: 4px; }
+
+  /* ===== CREATE NEW LEAD FORM ===== */
+  .create-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .create-form-row { margin-bottom: 14px; }
+
+  /* ===== DIVIDER ===== */
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+  /* ===== TOOLTIP ===== */
+  [data-tooltip] { position: relative; cursor: help; }
+  [data-tooltip]::after {
+    content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px);
+    left: 50%; transform: translateX(-50%); background: #222; color: var(--white);
+    font-size: 10px; padding: 5px 10px; border-radius: 4px; white-space: nowrap;
+    pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 999;
+    border: 1px solid var(--border);
+  }
+  [data-tooltip]:hover::after { opacity: 1; }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+  /* ===== ATTACHMENT ===== */
+  .attachment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .attachment-item {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px; text-align: center;
+    transition: var(--transition); cursor: pointer;
+  }
+  .attachment-item:hover { border-color: var(--border-cyan); }
+  .att-icon { font-size: 28px; margin-bottom: 8px; }
+  .att-name { font-size: 10px; color: var(--text-secondary); word-break: break-all; }
+  .att-size { font-size: 9px; color: var(--text-muted); margin-top: 3px; }
+
+  /* ===== CONFIRM DIALOG ===== */
+  .confirm-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 2000;
+    align-items: center; justify-content: center; backdrop-filter: blur(4px);
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: #1e1e1e; border: 1px solid var(--border-cyan);
+    border-radius: var(--radius); padding: 28px; max-width: 420px; width: 90%;
+    text-align: center; animation: modalIn 0.2s ease;
+  }
+  .confirm-icon { font-size: 40px; margin-bottom: 14px; }
+  .confirm-title { font-size: 16px; font-weight: 700; color: var(--white); margin-bottom: 8px; }
+  .confirm-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 22px; }
+  .confirm-actions { display: flex; gap: 10px; justify-content: center; }
+
+  /* ===== SUCCESS TOAST ===== */
+  .toast {
+    position: fixed; bottom: 28px; right: 28px; z-index: 3000;
+    background: #1e1e1e; border: 1px solid var(--green); border-radius: var(--radius-sm);
+    padding: 14px 20px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6); transform: translateY(20px);
+    opacity: 0; transition: all 0.3s ease; pointer-events: none;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; pointer-events: all; }
+  .toast-icon { font-size: 20px; }
+  .toast-msg { font-size: 13px; font-weight: 600; color: var(--white); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .search-form { grid-template-columns: 1fr 1fr; }
+    .btn-check { grid-column: span 2; }
+    .fields-grid { grid-template-columns: repeat(2, 1fr); }
+    .ri-main { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== TOPBAR ===== -->
+<div class="topbar">
+  <div class="topbar-title">Create LEAD</div>
+  <div class="topbar-right">
+    <div class="topbar-user">
+      <div class="name">Raunak Kumar</div>
+      <div class="role">Director of Operations</div>
+    </div>
+    <div class="topbar-avatar">RK</div>
+  </div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div class="main">
+
+  <!-- PAGE TABS -->
+  <div class="page-tabs">
+    <div class="page-tab active" onclick="switchPageTab('all', this)">All</div>
+    <div class="page-tab" onclick="switchPageTab('reassignment', this)">Reassignment</div>
+  </div>
+
+  <!-- ===================== ALL TAB ===================== -->
+  <div id="tab-all">
+
+    <!-- SEARCH CARD -->
+    <div class="card">
+      <div class="card-title">Select Product Type</div>
+      <div class="search-form">
+        <div class="form-group">
+          <label class="form-label">Product Type <span class="req">*</span></label>
+          <select class="form-select" id="productType">
+            <option value="">Select Product</option>
+            <option value="PL & OD">PL &amp; OD</option>
+            <option value="Home Loan">Home Loan</option>
+            <option value="Business Loan">Business Loan</option>
+            <option value="LAP">LAP</option>
+            <option value="Credit Card">Credit Card</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mobile Number <span class="req">*</span></label>
+          <input type="text" class="form-input" id="mobileSearch" placeholder="Enter Mobile Number" maxlength="10" oninput="this.value=this.value.replace(/\D/g,'')">
+        </div>
+        <div class="form-group">
+          <label class="form-label">&nbsp;</label>
+          <button class="btn-check" onclick="checkAndLoad()">Check &amp; Load</button>
+        </div>
+      </div>
+
+      <!-- LOADING -->
+      <div class="search-loading" id="searchLoading">
+        <div class="spinner"></div>
+        Checking mobile number in both primary &amp; alternate fields...
+      </div>
+    </div>
+
+    <!-- NO DUPLICATE RESULT -->
+    <div class="no-duplicate-result" id="noDuplicateResult">
+      <div class="no-dup-icon">✅</div>
+      <div class="no-dup-title">Mobile Number Available!</div>
+      <div class="no-dup-desc">
+        No existing lead found with this mobile number (primary or alternate).<br>
+        You can proceed to create a new lead.
+      </div>
+      <button class="btn-proceed" onclick="showCreateForm()">+ Create New Lead</button>
+    </div>
+
+    <!-- DUPLICATE RESULT TABLE -->
+    <div class="result-section" id="duplicateResult">
+      <div class="result-header">
+        <div class="result-title">Existing leads found with this mobile number</div>
+        <div class="result-count" id="resultCount">0 leads</div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>LEAD ID</th>
+              <th>LEAD DATE</th>
+              <th>CREATED BY</th>
+              <th>CUSTOMER NAME</th>
+              <th>MOBILE</th>
+              <th>STATUS / SUB-STATUS</th>
+              <th>MATCH TYPE</th>
+              <th>LOCKING</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="duplicateTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CREATE LEAD FORM (shown after no-duplicate) -->
+    <div class="card" id="createLeadForm" style="display:none;">
+      <div class="card-title">Create New Lead</div>
+      <div class="create-form-grid">
+        <div class="form-group">
+          <label class="form-label">Customer Name <span class="req">*</span></label>
+          <input type="text" class="form-input" placeholder="Enter customer name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mobile Number <span class="req">*</span></label>
+          <input type="text" class="form-input" value="" id="createMobile" readonly style="background:var(--cyan-bg);color:var(--cyan);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Alternate Number</label>
+          <input type="text" class="form-input" placeholder="Optional">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Product Type <span class="req">*</span></label>
+          <input type="text" class="form-input" id="createProduct" readonly style="background:var(--cyan-bg);color:var(--cyan);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Campaign Name</label>
+          <select class="form-select">
+            <option value="">Select Campaign</option>
+            <option>CRM PRO</option>
+            <option>Digital</option>
+            <option>Reference</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Code</label>
+          <select class="form-select">
+            <option value="">Select</option>
+            <option>Personal Reference</option>
+            <option>Cold Call</option>
+            <option>Walk-In</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pincode &amp; City</label>
+          <input type="text" class="form-input" placeholder="Enter pincode">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Total Income</label>
+          <input type="text" class="form-input" placeholder="₹ 0" oninput="formatIncomeField(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Loan Amount Required</label>
+          <input type="text" class="form-input" placeholder="₹ 0" oninput="formatIncomeField(this)">
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;">
+        <button class="btn btn-primary" style="padding:10px 28px;font-size:13px;">Create Lead</button>
+        <button class="btn btn-outline" onclick="document.getElementById('createLeadForm').style.display='none'">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== REASSIGNMENT TAB ===================== -->
+  <div id="tab-reassignment" style="display:none;">
+    <div class="card">
+      <div class="card-title">Reassignment Requests Queue</div>
+      <div style="color:var(--text-secondary);font-size:12px;margin-bottom:16px;">
+        Leads available for reassignment based on cool-off period completion. You can view full lead details before claiming.
+      </div>
+
+      <!-- FILTER ROW -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <select class="form-select" style="width:160px;">
+          <option>All Products</option>
+          <option>PL &amp; OD</option>
+          <option>Home Loan</option>
+        </select>
+        <select class="form-select" style="width:160px;">
+          <option>All Statuses</option>
+          <option>Active Leads</option>
+          <option>Lost Lead</option>
+        </select>
+        <input type="text" class="form-input" placeholder="Search by name / mobile" style="flex:1;min-width:200px;">
+      </div>
+
+      <!-- REASSIGNMENT LIST -->
+      <div id="reassignmentList"></div>
+    </div>
+  </div>
+
+</div><!-- end main -->
+
+<!-- ===================== LEAD DETAIL MODAL ===================== -->
+<div class="modal-overlay" id="leadModal">
+  <div class="modal">
+
+    <!-- MODAL TOPBAR -->
+    <div class="modal-topbar">
+      <button class="modal-back-btn" onclick="closeLeadModal()">
+        ← Back
+      </button>
+      <div style="width:1px;height:24px;background:var(--border);"></div>
+      <div class="modal-customer-name" id="modalCustomerName">SANJAY SINGH</div>
+      <div class="modal-status-badge" onclick="toggleStatusDropdown()" id="statusBadge">
+        <div>
+          <div class="modal-status-text" id="modalStatusText">IN PROGRESS</div>
+          <div style="font-size:9px;color:var(--text-muted)" id="modalSubStatus">ACTIVE LEADS</div>
+        </div>
+        <span style="color:var(--text-muted);font-size:10px;">▾</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeLeadModal()">✕ Close</button>
+    </div>
+
+    <!-- MODAL TABS -->
+    <div class="modal-tabs">
+      <div class="modal-tab active" onclick="switchModalTab('leadDetails', this)">LEAD DETAILS</div>
+      <div class="modal-tab" onclick="switchModalTab('obligation', this)">OBLIGATION</div>
+      <div class="modal-tab" onclick="switchModalTab('remark', this)">REMARK</div>
+      <div class="modal-tab" onclick="switchModalTab('task', this)">TASK</div>
+      <div class="modal-tab" onclick="switchModalTab('attachment', this)">ATTACHMENT</div>
+      <div class="modal-tab" onclick="switchModalTab('leadsActivity', this)">LEADS ACTIVITY</div>
+    </div>
+
+    <!-- MODAL BODY -->
+    <div class="modal-body">
+
+      <!-- REASSIGNMENT BANNER (shown based on eligibility) -->
+      <div class="reassign-banner locked" id="lockBanner">
+        <div class="banner-icon">🔒</div>
+        <div class="banner-content">
+          <div class="banner-title" style="color:var(--red);">Lead is in Locking Period</div>
+          <div class="banner-description">
+            This lead's current status has a <strong id="lockPeriodText">7-day</strong> cool-off period.
+            The lead was last updated on <strong id="lockRefDate">01 March 2026</strong>.
+            You cannot reassign this lead to yourself until the cool-off period ends.
+          </div>
+        </div>
+        <div class="countdown-pill" id="lockCountdown">4 days remaining</div>
+      </div>
+
+      <div class="reassign-banner available" id="availableBanner" style="display:none;">
+        <div class="banner-icon">🔓</div>
+        <div class="banner-content">
+          <div class="banner-title" style="color:var(--green);">Available for Reassignment</div>
+          <div class="banner-description">
+            The cool-off period has passed (<strong id="availableDays">10 days</strong> ago). You can now claim this lead and start working on it.
+          </div>
+        </div>
+        <div class="available-pill">Available Now</div>
+      </div>
+
+      <!-- CLAIM SECTION (shown when available) -->
+      <div class="claim-section" id="claimSection" style="display:none;">
+        <div class="claim-info">
+          <div class="claim-title">Claim This Lead</div>
+          <div class="claim-desc">
+            By claiming, this lead will be assigned to you and removed from the previous agent's queue.<br>
+            Lead ID: <strong id="claimLeadId" style="color:var(--cyan);">LEAD-2109</strong>
+          </div>
+        </div>
+        <button class="btn-claim" onclick="claimLead()">⚡ Claim Lead</button>
+      </div>
+
+      <!-- ===== TAB: LEAD DETAILS ===== -->
+      <div class="tab-content active" id="content-leadDetails">
+        <div class="section-card">
+          <div class="section-header" onclick="toggleSection(this)">
+            <div class="section-header-title">About</div>
+            <div class="section-toggle open">⌃</div>
+          </div>
+          <div class="section-body">
+            <div class="fields-grid">
+              <div class="field-group">
+                <div class="field-label">Lead ID</div>
+                <input class="field-value readonly" readonly value="LEAD-2109">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Lead Date &amp; Time</div>
+                <input class="field-value readonly" readonly value="07 March 2026 at 01:33 pm">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Created By</div>
+                <input class="field-value readonly" readonly value="PURNIMA GAUTAM">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Team Name</div>
+                <input class="field-value readonly" readonly value="TEAM ACHIEVERS">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Product Name</div>
+                <select class="field-value">
+                  <option selected>PL &amp; OD</option>
+                  <option>Home Loan</option>
+                  <option>Business Loan</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <div class="field-label">Campaign Name</div>
+                <select class="field-value">
+                  <option selected>CRM PRO</option>
+                  <option>Digital</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <div class="field-label">Data Code</div>
+                <select class="field-value">
+                  <option selected>PERSONAL REFERENCE</option>
+                  <option>Cold Call</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <div class="field-label">Customer Name</div>
+                <input class="field-value" value="SANJAY SINGH">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Mobile Number</div>
+                <input class="field-value" value="7982211587">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Alternate Number</div>
+                <input class="field-value" value="">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Pincode &amp; City</div>
+                <input class="field-value" value="110001 — New Delhi">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Assigned TL</div>
+                <input class="field-value readonly" readonly value="RAUNAK KUMAR">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header" onclick="toggleSection(this)">
+            <div class="section-header-title">Financial Details</div>
+            <div class="section-toggle open">⌃</div>
+          </div>
+          <div class="section-body">
+            <div class="fields-grid">
+              <div class="field-group">
+                <div class="field-label">Total Income</div>
+                <input class="field-value" value="₹55,008">
+              </div>
+              <div class="field-group">
+                <div class="field-label">FOIR (Loan Eligibility)</div>
+                <input class="field-value" value="₹15,21,480">
+              </div>
+              <div class="field-group">
+                <div class="field-label">CIBIL Score</div>
+                <input class="field-value" value="742">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Company Name</div>
+                <input class="field-value" value="Infosys Ltd.">
+              </div>
+              <div class="field-group">
+                <div class="field-label">Company Category</div>
+                <select class="field-value">
+                  <option selected>Private Ltd.</option>
+                  <option>Government</option>
+                  <option>Self Employed</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <div class="field-label">Loan Amount Required</div>
+                <input class="field-value" value="₹5,00,000">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BANK LOGIN SECTION INSIDE LEAD DETAILS -->
+        <div class="section-card">
+          <div class="section-header" onclick="toggleSection(this)">
+            <div class="section-header-title">Bank Login Status</div>
+            <div class="section-toggle open">⌃</div>
+          </div>
+          <div class="section-body">
+            <div style="color:var(--text-secondary);font-size:11px;margin-bottom:14px;">
+              This lead has been submitted to the following banks for processing. Each bank login has its own cool-off period.
+            </div>
+            <div class="bank-cards-grid">
+              <!-- Bank 1: Under Process -->
+              <div class="bank-card">
+                <div class="bank-card-header">
+                  <div class="bank-name">HDFC Bank</div>
+                  <div class="badge badge-orange">Under Process</div>
+                </div>
+                <div class="bank-dates">
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Login Date</span>
+                    <span class="bank-date-value">01 Mar 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Cool-off ends</span>
+                    <span class="bank-date-value" style="color:var(--orange);">11 Mar 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Loan Amount</span>
+                    <span class="bank-date-value">₹5,00,000</span>
+                  </div>
+                </div>
+                <div class="bank-card-footer">
+                  <span class="lock-indicator">🔒 3 days left</span>
+                </div>
+              </div>
+
+              <!-- Bank 2: Sanctioned -->
+              <div class="bank-card" style="border-color:rgba(76,175,80,0.3);">
+                <div class="bank-card-header">
+                  <div class="bank-name">SBI Bank</div>
+                  <div class="badge badge-green">Sanctioned</div>
+                </div>
+                <div class="bank-dates">
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Login Date</span>
+                    <span class="bank-date-value">28 Feb 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Sanction Date</span>
+                    <span class="bank-date-value" style="color:var(--green);">05 Mar 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Sanctioned Amt</span>
+                    <span class="bank-date-value" style="color:var(--green);">₹4,50,000</span>
+                  </div>
+                </div>
+                <div class="bank-card-footer">
+                  <span class="unlock-indicator">✅ Sanctioned</span>
+                </div>
+              </div>
+
+              <!-- Bank 3: Rejected -->
+              <div class="bank-card" style="border-color:rgba(244,67,54,0.2);">
+                <div class="bank-card-header">
+                  <div class="bank-name">ICICI Bank</div>
+                  <div class="badge badge-red">Rejected</div>
+                </div>
+                <div class="bank-dates">
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Login Date</span>
+                    <span class="bank-date-value">25 Feb 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Rejection Date</span>
+                    <span class="bank-date-value" style="color:var(--red);">02 Mar 2026</span>
+                  </div>
+                  <div class="bank-date-row">
+                    <span class="bank-date-label">Reason</span>
+                    <span class="bank-date-value" style="color:var(--red);">Low CIBIL</span>
+                  </div>
+                </div>
+                <div class="bank-card-footer">
+                  <button class="btn btn-outline btn-sm">View Details</button>
+                </div>
+              </div>
+
+              <!-- Add Bank -->
+              <button class="add-bank-btn" onclick="showToast('Bank login form will open here')">
+                + Add Bank Login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: OBLIGATION ===== -->
+      <div class="tab-content" id="content-obligation">
+        <div class="section-card">
+          <div class="section-body">
+            <div style="color:var(--text-secondary);font-size:11px;margin-bottom:14px;">
+              Existing financial obligations / EMIs of the customer.
+            </div>
+            <div class="obligation-cards" id="obligationCards">
+              <div class="obligation-card">
+                <div class="obl-bank">HDFC Personal Loan</div>
+                <div class="obl-row"><span class="obl-label">EMI Amount</span><span class="obl-value">₹8,500</span></div>
+                <div class="obl-row"><span class="obl-label">Balance</span><span class="obl-value">₹1,20,000</span></div>
+                <div class="obl-row"><span class="obl-label">Tenure Left</span><span class="obl-value">14 months</span></div>
+                <div class="obl-row"><span class="obl-label">Status</span><span class="obl-value" style="color:var(--green);">Active</span></div>
+              </div>
+              <div class="obligation-card">
+                <div class="obl-bank">SBI Car Loan</div>
+                <div class="obl-row"><span class="obl-label">EMI Amount</span><span class="obl-value">₹12,200</span></div>
+                <div class="obl-row"><span class="obl-label">Balance</span><span class="obl-value">₹2,44,000</span></div>
+                <div class="obl-row"><span class="obl-label">Tenure Left</span><span class="obl-value">20 months</span></div>
+                <div class="obl-row"><span class="obl-label">Status</span><span class="obl-value" style="color:var(--green);">Active</span></div>
+              </div>
+            </div>
+            <div style="margin-top:14px;">
+              <button class="btn btn-outline btn-sm" onclick="showToast('Add obligation form will open')">+ Add Obligation</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: REMARK ===== -->
+      <div class="tab-content" id="content-remark">
+        <div class="remark-item">
+          <div class="remark-header">
+            <div class="remark-user">Purnima Gautam</div>
+            <div class="remark-time">07 Mar 2026, 1:33 PM</div>
+          </div>
+          <div class="remark-text">Customer is interested in PL 5L. Has good CIBIL 742. Follow up on 10th March for final documents.</div>
+        </div>
+        <div class="remark-item">
+          <div class="remark-header">
+            <div class="remark-user">Raunak Kumar</div>
+            <div class="remark-time">07 Mar 2026, 4:20 PM</div>
+          </div>
+          <div class="remark-text">Spoke to customer — confirmed employment at Infosys. Salary slips needed. SBI login submitted today.</div>
+        </div>
+        <div class="remark-input-row">
+          <textarea class="remark-textarea" placeholder="Add a remark..."></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="btn btn-primary" style="white-space:nowrap;" onclick="showToast('Remark saved!')">Add Remark</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: TASK ===== -->
+      <div class="tab-content" id="content-task">
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:12px;color:var(--text-secondary);">2 pending, 1 completed</div>
+          <button class="btn btn-outline btn-sm" onclick="showToast('Add task modal will open')">+ Add Task</button>
+        </div>
+        <div class="task-item">
+          <input type="checkbox" class="task-checkbox" onchange="toggleTask(this)">
+          <div class="task-content">
+            <div class="task-title">Collect last 3 months salary slips</div>
+            <div class="task-meta">
+              <span class="task-date">📅 Due: 10 Mar 2026</span>
+              <span class="task-assignee">👤 Purnima Gautam</span>
+              <span class="badge badge-orange" style="padding:2px 6px;font-size:9px;">High Priority</span>
+            </div>
+          </div>
+        </div>
+        <div class="task-item">
+          <input type="checkbox" class="task-checkbox" onchange="toggleTask(this)">
+          <div class="task-content">
+            <div class="task-title">Follow up call — final loan amount confirmation</div>
+            <div class="task-meta">
+              <span class="task-date">📅 Due: 12 Mar 2026</span>
+              <span class="task-assignee">👤 Raunak Kumar</span>
+              <span class="badge badge-cyan" style="padding:2px 6px;font-size:9px;">Normal</span>
+            </div>
+          </div>
+        </div>
+        <div class="task-item" style="opacity:0.6;">
+          <input type="checkbox" class="task-checkbox" checked onchange="toggleTask(this)">
+          <div class="task-content">
+            <div class="task-title done">Initial customer KYC verification</div>
+            <div class="task-meta">
+              <span class="task-date">✅ Completed: 07 Mar 2026</span>
+              <span class="task-assignee">👤 Purnima Gautam</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: ATTACHMENT ===== -->
+      <div class="tab-content" id="content-attachment">
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:12px;color:var(--text-secondary);">3 files uploaded</div>
+          <button class="btn btn-outline btn-sm" onclick="showToast('File upload dialog will open')">+ Upload File</button>
+        </div>
+        <div class="attachment-grid">
+          <div class="attachment-item">
+            <div class="att-icon">📄</div>
+            <div class="att-name">Salary_Slip_Jan.pdf</div>
+            <div class="att-size">245 KB</div>
+          </div>
+          <div class="attachment-item">
+            <div class="att-icon">🖼️</div>
+            <div class="att-name">Aadhar_Front.jpg</div>
+            <div class="att-size">1.2 MB</div>
+          </div>
+          <div class="attachment-item">
+            <div class="att-icon">📄</div>
+            <div class="att-name">Bank_Statement_3M.pdf</div>
+            <div class="att-size">890 KB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: LEADS ACTIVITY ===== -->
+      <div class="tab-content" id="content-leadsActivity">
+        <div class="activity-timeline">
+          <div class="activity-line"></div>
+          <div class="activity-item">
+            <div class="activity-dot"></div>
+            <div class="activity-content">
+              <div class="activity-action"><strong>Purnima Gautam</strong> created this lead and assigned status <strong>NEW LEAD / ACTIVE LEADS</strong></div>
+              <div class="activity-time">07 Mar 2026, 1:33 PM</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot green"></div>
+            <div class="activity-content">
+              <div class="activity-action">Status changed from <strong>NEW LEAD</strong> → <strong>IN PROGRESS</strong> by <strong>Raunak Kumar</strong></div>
+              <div class="activity-time">07 Mar 2026, 3:15 PM</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot"></div>
+            <div class="activity-content">
+              <div class="activity-action"><strong>Raunak Kumar</strong> sent lead to Login department → <strong>SBI Bank</strong></div>
+              <div class="activity-time">07 Mar 2026, 4:22 PM</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot red"></div>
+            <div class="activity-content">
+              <div class="activity-action"><strong>ICICI Bank</strong> login rejected — Reason: <strong>Low CIBIL Score</strong></div>
+              <div class="activity-time">02 Mar 2026, 11:00 AM</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot green"></div>
+            <div class="activity-content">
+              <div class="activity-action"><strong>SBI Bank</strong> sanctioned loan of <strong>₹4,50,000</strong></div>
+              <div class="activity-time">05 Mar 2026, 2:45 PM</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end modal-body -->
+
+    <!-- MODAL FOOTER -->
+    <div class="modal-footer">
+      <div class="footer-info">
+        <span>📋 Lead ID: <strong style="color:var(--cyan);">LEAD-2109</strong></span>
+        <span>📅 Created: <strong>07 Mar 2026</strong></span>
+        <span>👤 Assigned To: <strong>Purnima Gautam</strong></span>
+        <span>🏦 3 bank logins</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================== CONFIRM DIALOG ===================== -->
+<div class="confirm-overlay" id="confirmDialog">
+  <div class="confirm-box">
+    <div class="confirm-icon">⚡</div>
+    <div class="confirm-title">Claim This Lead?</div>
+    <div class="confirm-desc">
+      You are about to claim <strong id="confirmLeadName" style="color:var(--cyan);">LEAD-2109</strong>.<br>
+      This lead will be assigned to you and removed from the<br>previous agent's active queue.
+    </div>
+    <div class="confirm-actions">
+      <button class="btn btn-success" style="padding:10px 24px;" onclick="confirmClaim()">✅ Yes, Claim It</button>
+      <button class="btn btn-danger" style="padding:10px 24px;" onclick="document.getElementById('confirmDialog').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SUCCESS TOAST ===================== -->
+<div class="toast" id="toast">
+  <div class="toast-icon">✅</div>
+  <div class="toast-msg" id="toastMsg">Lead claimed successfully!</div>
+</div>
+
+<!-- ===================== JAVASCRIPT ===================== -->
+<script>
+// ===== MOCK DATA =====
+const MOCK_LEADS = [
+  {
+    id: 'LEAD-2109',
+    date: '07 Mar 2026',
+    createdBy: 'PURNIMA GAUTAM',
+    customerName: 'SANJAY SINGH',
+    mobile: '7982211587',
+    altMobile: null,
+    status: 'IN PROGRESS',
+    subStatus: 'ACTIVE LEADS',
+    matchType: 'primary',
+    lockingPeriod: 7,        // days
+    daysSinceUpdate: 3,      // days elapsed
+    daysRemaining: 4,        // days left
+    isLocked: true,
+    requiresManager: false,
+    totalIncome: 55008,
+    foir: 1521480,
+  },
+  {
+    id: 'LEAD-1887',
+    date: '15 Feb 2026',
+    createdBy: 'GUNJAN SAINI',
+    customerName: 'SANJAY SINGH',
+    mobile: '9876543210',
+    altMobile: '7982211587',  // alternate match
+    status: 'LOST LEAD',
+    subStatus: 'TOO MANY ENQUIRIES',
+    matchType: 'alternate',
+    lockingPeriod: 30,
+    daysSinceUpdate: 21,
+    daysRemaining: 9,
+    isLocked: true,
+    requiresManager: true,
+    totalIncome: 55008,
+    foir: 0,
+  },
+  {
+    id: 'LEAD-0934',
+    date: '01 Jan 2026',
+    createdBy: 'SAKSHAM SHARMA',
+    customerName: 'SANJAY SINGH',
+    mobile: '7982211587',
+    altMobile: null,
+    status: 'FILE SENT TO LOGIN',
+    subStatus: 'ACTIVE LEADS',
+    matchType: 'primary',
+    lockingPeriod: 10,
+    daysSinceUpdate: 67,
+    daysRemaining: 0,
+    isLocked: false,
+    requiresManager: false,
+    totalIncome: 55008,
+    foir: 1100000,
+  }
+];
+
+const REASSIGNMENT_LEADS = [
+  {
+    id: 'LEAD-1120',
+    customerName: 'ROHIT VERMA',
+    mobile: '9911223344',
+    status: 'LONG FOLLOW-UP',
+    subStatus: 'ACTIVE LEADS',
+    lockingPeriod: 15,
+    daysSinceUpdate: 20,
+    daysRemaining: 0,
+    isLocked: false,
+    requiresManager: false,
+    totalIncome: 72000,
+  },
+  {
+    id: 'LEAD-1456',
+    customerName: 'PRIYA MEHTA',
+    mobile: '8800990099',
+    status: 'NOT INTERESTED',
+    subStatus: 'LOST BY MISTAKE',
+    lockingPeriod: 30,
+    daysSinceUpdate: 12,
+    daysRemaining: 18,
+    isLocked: true,
+    requiresManager: false,
+    totalIncome: 45000,
+  },
+  {
+    id: 'LEAD-1789',
+    customerName: 'AMIT SHARMA',
+    mobile: '7700880088',
+    status: 'NEW LEAD',
+    subStatus: 'ACTIVE LEADS',
+    lockingPeriod: 5,
+    daysSinceUpdate: 8,
+    daysRemaining: 0,
+    isLocked: false,
+    requiresManager: true,
+    totalIncome: 60000,
+  },
+];
+
+// ===== FORMAT NUMBERS =====
+function formatIndian(n) {
+  const s = Math.round(n).toString();
+  if (s.length <= 3) return s;
+  const last3 = s.slice(-3);
+  const rest = s.slice(0, -3);
+  return rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3;
+}
+function parseIndian(str) { return parseInt((str || '').replace(/[,₹\s]/g, '')) || 0; }
+function formatIncomeField(inp) {
+  const raw = parseIndian(inp.value);
+  if (raw === 0) { inp.value = ''; return; }
+  inp.value = '₹' + formatIndian(raw);
+}
+
+// ===== STATUS BADGE HELPER =====
+function getStatusBadge(status, subStatus) {
+  const s = (status || '').toLowerCase();
+  let cls = 'badge-gray';
+  if (s.includes('active') || s.includes('progress')) cls = 'badge-cyan';
+  else if (s.includes('file sent') || s.includes('login')) cls = 'badge-blue';
+  else if (s.includes('lost by mistake')) cls = 'badge-orange';
+  else if (s.includes('lost')) cls = 'badge-red';
+  else if (s.includes('new')) cls = 'badge-yellow';
+  return `<div class="badge ${cls}" style="flex-direction:column;align-items:flex-start;gap:1px;">
+    <span>${status}</span>
+    ${subStatus ? `<span style="font-size:9px;opacity:0.7;">${subStatus}</span>` : ''}
+  </div>`;
+}
+
+// ===== PAGE TABS =====
+function switchPageTab(tab, el) {
+  document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-all').style.display = tab === 'all' ? 'block' : 'none';
+  document.getElementById('tab-reassignment').style.display = tab === 'reassignment' ? 'block' : 'none';
+  if (tab === 'reassignment') renderReassignmentList();
+}
+
+// ===== CHECK & LOAD =====
+function checkAndLoad() {
+  const mobile = document.getElementById('mobileSearch').value.trim();
+  const product = document.getElementById('productType').value;
+  if (!mobile || mobile.length < 10) { alert('Please enter a valid 10-digit mobile number'); return; }
+  if (!product) { alert('Please select a product type'); return; }
+
+  // Hide previous results
+  document.getElementById('duplicateResult').style.display = 'none';
+  document.getElementById('noDuplicateResult').style.display = 'none';
+  document.getElementById('createLeadForm').style.display = 'none';
+
+  // Show loading
+  const loader = document.getElementById('searchLoading');
+  loader.style.display = 'flex';
+
+  setTimeout(() => {
+    loader.style.display = 'none';
+    // Simulate finding duplicates (always show for demo)
+    const found = MOCK_LEADS;
+    if (found.length === 0) {
+      document.getElementById('noDuplicateResult').style.display = 'block';
+    } else {
+      renderDuplicates(found, mobile);
+    }
+  }, 1200);
+}
+
+// ===== RENDER DUPLICATES =====
+function renderDuplicates(leads, mobile) {
+  const tbody = document.getElementById('duplicateTableBody');
+  tbody.innerHTML = '';
+  document.getElementById('resultCount').textContent = leads.length + ' lead' + (leads.length !== 1 ? 's' : '') + ' found';
+
+  leads.forEach((lead, i) => {
+    const lockHTML = lead.isLocked
+      ? `<div class="lock-indicator" data-tooltip="Locked for ${lead.daysRemaining} more days">🔒 ${lead.daysRemaining}d left</div>`
+      : `<div class="unlock-indicator">🔓 Available</div>`;
+
+    const matchBadge = lead.matchType === 'primary'
+      ? `<span class="badge badge-cyan">Primary No.</span>`
+      : `<span class="badge badge-yellow">Alternate No.</span>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--text-muted);">${i + 1}</td>
+      <td><strong style="color:var(--cyan);">${lead.id}</strong></td>
+      <td><div style="font-size:11px;">${lead.date}</div></td>
+      <td><div style="font-size:11px;">${lead.createdBy}</div></td>
+      <td><strong>${lead.customerName}</strong></td>
+      <td>
+        <div style="font-size:12px;">${lead.mobile}</div>
+        ${lead.altMobile ? `<div style="font-size:10px;color:var(--text-muted);">Alt: ${lead.altMobile}</div>` : ''}
+      </td>
+      <td>${getStatusBadge(lead.status, lead.subStatus)}</td>
+      <td>${matchBadge}</td>
+      <td>${lockHTML}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-outline btn-sm" onclick="openLeadModal(${i})">👁 View</button>
+          ${!lead.isLocked
+            ? `<button class="btn btn-success btn-sm" onclick="openLeadModal(${i}, true)">⚡ Claim</button>`
+            : `${lead.requiresManager
+                ? `<button class="btn btn-sm" style="background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,152,0,0.3);" onclick="requestManagerApproval(${i})">📋 Request</button>`
+                : `<button class="btn btn-sm" style="background:var(--red-dim);color:var(--red);border:1px solid rgba(244,67,54,0.2);" disabled title="Locked">🔒 Locked</button>`
+            }`
+          }
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('duplicateResult').style.display = 'block';
+}
+
+// ===== OPEN LEAD MODAL =====
+function openLeadModal(index, directClaim = false) {
+  const lead = MOCK_LEADS[index] || MOCK_LEADS[0];
+  currentLead = lead;
+
+  // Set header info
+  document.getElementById('modalCustomerName').textContent = lead.customerName;
+  document.getElementById('modalStatusText').textContent = lead.status;
+  document.getElementById('modalSubStatus').textContent = lead.subStatus;
+  document.getElementById('claimLeadId').textContent = lead.id;
+
+  // Handle locking
+  const lockBanner = document.getElementById('lockBanner');
+  const availableBanner = document.getElementById('availableBanner');
+  const claimSection = document.getElementById('claimSection');
+
+  if (lead.isLocked) {
+    lockBanner.style.display = 'flex';
+    availableBanner.style.display = 'none';
+    claimSection.style.display = 'none';
+    document.getElementById('lockPeriodText').textContent = lead.lockingPeriod + '-day';
+    document.getElementById('lockCountdown').textContent = lead.daysRemaining + ' days remaining';
+    if (lead.requiresManager) {
+      lockBanner.className = 'reassign-banner manager-required';
+      lockBanner.querySelector('.banner-title').style.color = 'var(--orange)';
+      lockBanner.querySelector('.banner-title').textContent = 'Manager Approval Required';
+      lockBanner.querySelector('.banner-description').innerHTML = `This lead requires <strong>manager approval</strong> for reassignment. The ${lead.lockingPeriod}-day cool-off period is active. <strong>${lead.daysRemaining} days remaining.</strong>`;
+      document.getElementById('lockCountdown').style.background = 'rgba(255,152,0,0.15)';
+      document.getElementById('lockCountdown').style.borderColor = 'rgba(255,152,0,0.3)';
+      document.getElementById('lockCountdown').style.color = 'var(--orange)';
+    } else {
+      lockBanner.className = 'reassign-banner locked';
+      lockBanner.querySelector('.banner-title').style.color = 'var(--red)';
+      lockBanner.querySelector('.banner-title').textContent = 'Lead is in Locking Period';
+      document.getElementById('lockCountdown').style.cssText = 'background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.3);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:var(--red);white-space:nowrap;';
+    }
+    const refDate = new Date(2026, 2, 1); // Mock
+    document.getElementById('lockRefDate').textContent = refDate.toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' });
+  } else {
+    lockBanner.style.display = 'none';
+    availableBanner.style.display = 'flex';
+    claimSection.style.display = 'flex';
+    document.getElementById('availableDays').textContent = (lead.daysSinceUpdate - lead.lockingPeriod) + ' days';
+  }
+
+  // Reset to first tab
+  switchModalTab('leadDetails', document.querySelector('.modal-tab'));
+
+  document.getElementById('leadModal').classList.add('open');
+
+  if (directClaim && !lead.isLocked) {
+    setTimeout(() => claimLead(), 300);
+  }
+}
+
+let currentLead = null;
+
+function closeLeadModal() {
+  document.getElementById('leadModal').classList.remove('open');
+}
+
+// ===== MODAL TABS =====
+function switchModalTab(tab, el) {
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const content = document.getElementById('content-' + tab);
+  if (content) content.classList.add('active');
+}
+
+// ===== SECTION TOGGLE =====
+function toggleSection(header) {
+  const body = header.nextElementSibling;
+  const toggle = header.querySelector('.section-toggle');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    toggle.classList.add('open');
+  } else {
+    body.style.display = 'none';
+    toggle.classList.remove('open');
+  }
+}
+
+// ===== TASK TOGGLE =====
+function toggleTask(checkbox) {
+  const title = checkbox.parentElement.querySelector('.task-title');
+  title.classList.toggle('done', checkbox.checked);
+  checkbox.closest('.task-item').style.opacity = checkbox.checked ? '0.6' : '1';
+}
+
+// ===== CLAIM LEAD =====
+function claimLead() {
+  const name = currentLead ? currentLead.id : 'LEAD-2109';
+  document.getElementById('confirmLeadName').textContent = name;
+  document.getElementById('confirmDialog').classList.add('open');
+}
+
+function confirmClaim() {
+  document.getElementById('confirmDialog').classList.remove('open');
+  closeLeadModal();
+  showToast('Lead ' + (currentLead ? currentLead.id : '') + ' claimed successfully!');
+}
+
+// ===== REQUEST MANAGER APPROVAL =====
+function requestManagerApproval(index) {
+  showToast('Reassignment request sent to your manager for approval!');
+}
+
+// ===== SHOW CREATE FORM =====
+function showCreateForm() {
+  const mobile = document.getElementById('mobileSearch').value;
+  const product = document.getElementById('productType').value;
+  document.getElementById('createMobile').value = mobile;
+  document.getElementById('createProduct').value = product;
+  document.getElementById('createLeadForm').style.display = 'block';
+  document.getElementById('createLeadForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ===== REASSIGNMENT LIST =====
+function renderReassignmentList() {
+  const container = document.getElementById('reassignmentList');
+  if (container.innerHTML) return; // already rendered
+
+  container.innerHTML = REASSIGNMENT_LEADS.map((lead, i) => `
+    <div class="reassign-list-item">
+      <div class="ri-main">
+        <div>
+          <div class="ri-id">${lead.id}</div>
+          <div style="font-size:10px;color:var(--text-muted);">₹${formatIndian(lead.totalIncome)} / mo</div>
+        </div>
+        <div>
+          <div class="ri-name">${lead.customerName}</div>
+          <div class="ri-mobile">${lead.mobile}</div>
+        </div>
+        <div>${getStatusBadge(lead.status, lead.subStatus)}</div>
+        <div style="font-size:11px;color:var(--text-secondary);">
+          ${lead.isLocked
+            ? `<div class="lock-indicator">🔒 ${lead.daysRemaining}d remaining</div>`
+            : `<div class="unlock-indicator">🔓 Available now</div>`
+          }
+          ${lead.requiresManager ? `<div style="margin-top:4px;font-size:10px;color:var(--orange);">⚠ Manager approval required</div>` : ''}
+        </div>
+      </div>
+      <div class="ri-actions">
+        <button class="btn btn-outline btn-sm" onclick="openReassignLead(${i})">👁 View Lead</button>
+        ${!lead.isLocked
+          ? (lead.requiresManager
+              ? `<button class="btn btn-sm" style="background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,152,0,0.3);" onclick="requestManagerApproval(${i})">📋 Request Approval</button>`
+              : `<button class="btn btn-success btn-sm" onclick="openReassignLead(${i}, true)">⚡ Claim Now</button>`
+            )
+          : `<button class="btn btn-sm" style="background:rgba(255,255,255,0.04);color:var(--text-muted);border:1px solid var(--border);cursor:not-allowed;" disabled>🔒 Locked</button>`
+        }
+      </div>
+    </div>
+  `).join('');
+}
+
+function openReassignLead(index, directClaim = false) {
+  const lead = REASSIGNMENT_LEADS[index];
+  const mockIndex = MOCK_LEADS.findIndex(l => !l.isLocked) ?? 2;
+  openLeadModal(lead.isLocked ? 0 : 2, directClaim);
+}
+
+// ===== TOAST =====
+let toastTimer;
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  toast.style.borderColor = isError ? 'var(--red)' : 'var(--green)';
+  toast.querySelector('.toast-icon').textContent = isError ? '❌' : '✅';
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ===== CLOSE MODAL ON BACKDROP CLICK =====
+document.getElementById('leadModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLeadModal();
+});
+document.getElementById('confirmDialog').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+
+// ===== KEYBOARD ESC =====
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeLeadModal();
+    document.getElementById('confirmDialog').classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>

@@ -2043,31 +2043,24 @@ const InterviewPanel = () => {
       <style>{stickyHeaderStyles}</style>
       <div className="bg-slate-50 min-h-screen">
       
-      {/* Header - Light theme matching interview module.html */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Interview Panel
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">Manage candidates through the hiring pipeline</p>
-          </div>
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* LEFT: Search bar */}
           <div className="flex items-center gap-3">
-            {/* Global Search */}
-            <div className="relative">
+            <div className="relative w-64">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={14} className="text-slate-400" />
+                <Search size={14} className="text-slate-500" />
               </div>
               <input
                 type="text"
-                placeholder="Search all candidates..."
+                placeholder="Search by name, mobile, owner, role..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setIsGlobalSearch(e.target.value.length > 0);
                 }}
-                className="w-64 pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
               />
               {searchTerm && (
                 <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
@@ -2085,38 +2078,28 @@ const InterviewPanel = () => {
                 {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             )}
+          </div>
+          {/* RIGHT: Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/dialer-report')}
+              className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <PhoneOff size={14} /> <span className="hidden sm:inline">Set Dialer</span>
+            </button>
             {canAccessSettings() && (
-              <>
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                  title="Interview Settings"
-                >
-                  <Settings size={14} className="text-blue-600" /> Settings
-                </button>
-                <button
-                  onClick={async () => {
-                    await loadDropdownOptions();
-                    alert(`✅ Loaded:\n• ${jobOpeningOptions.length} Job Openings\n• ${interviewTypeOptions.length} Interview Types\n• ${sourcePortalOptions.length} Source Portals\n• ${statusOptions.length} Statuses`);
-                  }}
-                  className="px-3 py-2 bg-white hover:bg-emerald-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                  title="Reload and verify settings from database"
-                >
-                  <RefreshCw size={14} className="text-emerald-600" /> Reload Options
-                </button>
-                <button
-                  onClick={async () => { setShowReassignmentPanel(true); await loadReassignmentRequests(); }}
-                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                >
-                  <RefreshCw size={14} className="text-purple-600" /> Reassignments
-                </button>
-              </>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
+              </button>
             )}
             <button
               onClick={handleCreateInterview}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-sm transition-colors shadow-md shadow-blue-600/20 flex items-center gap-2"
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-900/20"
             >
-              <Plus size={14} /> Add Candidate
+              <Plus size={14} /> Create Interview
             </button>
           </div>
         </div>
@@ -2407,122 +2390,203 @@ const InterviewPanel = () => {
         />
       )}
 
-      {/* Reassignment Modal */}
-      {showReassignmentPanel && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between">
-              <h2 className="text-lg font-black">Interview Reassignment Requests</h2>
-              <div className="flex gap-3">
-                <button onClick={loadReassignmentRequests} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-bold border border-white/20" disabled={loadingReassignments}>
-                  {loadingReassignments ? 'Refreshing...' : 'Refresh'}
-                </button>
-                <button onClick={() => setShowReassignmentPanel(false)} className="text-white/80 hover:text-white p-1">
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 80px)' }}>
-              {loadingReassignments ? (
-                <div className="text-center py-12 text-slate-400"><div className="text-lg">Loading...</div></div>
-              ) : reassignmentRequests.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">
-                  <RefreshCw size={36} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-lg font-medium">No reassignment requests</p>
-                </div>
-              ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-700 text-xs uppercase">
-                      <tr>
-                        <th className="px-4 py-3">Interview</th>
-                        <th className="px-4 py-3">Current Assignee</th>
-                        <th className="px-4 py-3">Requested By</th>
-                        <th className="px-4 py-3">Target</th>
-                        <th className="px-4 py-3">Reason</th>
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                        <th className="px-4 py-3 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {reassignmentRequests.map((request) => (
-                        <tr key={request._id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3">
-                            <div className="font-bold text-slate-900">{request.candidate_name}</div>
-                            <div className="text-xs text-slate-500">{request.mobile_number}</div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">{request.current_assignee}</td>
-                          <td className="px-4 py-3 text-slate-700">{request.requested_by}</td>
-                          <td className="px-4 py-3 text-slate-700">{request.target_user}</td>
-                          <td className="px-4 py-3 text-slate-600 max-w-xs text-xs">{request.reason || 'N/A'}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">
-                            {request.requested_at ? new Date(request.requested_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                              request.reassignment_status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                              request.reassignment_status === 'rejected' ? 'bg-red-100 text-red-700' :
-                              'bg-yellow-100 text-yellow-700'
-                            }`}>{request.reassignment_status || 'Pending'}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {request.reassignment_status === 'pending' ? (
-                              <div className="flex justify-center gap-2">
-                                <button onClick={() => handleApproveReassignment(request._id)} className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Approve</button>
-                                <button onClick={() => handleRejectReassignment(request._id)} className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700">Reject</button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">{request.reassignment_status === 'approved' ? 'Approved' : 'Rejected'}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Reassignment modal removed */}
     </div>
 
-    {/* ── Interview Settings Modal ── */}
+    {/* ── Interview Settings Modal (white, centered, like HTML reference) ── */}
     {isSettingsOpen && (
-      <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex flex-col">
-        <div className="relative w-full h-full flex flex-col bg-[#0f1420] overflow-hidden">
-          {/* Close strip at top */}
-          <div className="shrink-0 flex items-center justify-between px-6 py-3 bg-[#1b2230] border-b border-gray-700">
-            <span className="text-white font-bold text-base flex items-center gap-2">
-              <Settings size={16} className="text-blue-400" /> Interview Settings
-            </span>
-            <button
-              onClick={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }}
-              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-              title="Close & reload options"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          {/* Embedded settings page */}
-          <div className="flex-1 overflow-y-auto">
-            <InterviewSettings
-              onClose={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }}
-              companySettings={companySettings}
-              onCompanySettingsChange={setCompanySettings}
-              declineReasons={declineReasons}
-              onDeclineReasonsChange={setDeclineReasons}
-              cooldownDays={cooldownDays}
-              onCooldownChange={setCooldownDays}
-            />
-          </div>
-        </div>
-      </div>
+      <SettingsModal
+        companySettings={companySettings}
+        onCompanySettingsChange={setCompanySettings}
+        declineReasons={declineReasons}
+        onDeclineReasonsChange={setDeclineReasons}
+        cooldownDays={cooldownDays}
+        onCooldownChange={setCooldownDays}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     )}
     </>
   );
 };
+
+// ── SETTINGS MODAL (white, matches interview module.html) ──
+const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, declineReasons: initReasons, onDeclineReasonsChange, cooldownDays: initCooldown, onCooldownChange, onClose }) => {
+  const [tab, setTab] = React.useState('company');
+  const [cs, setCs] = React.useState(initCS || { companyName: '', jobDescription: '', officeTiming: '', workingDays: '', interviewTiming: '', officeAddress: '', officeNearby: '', hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: '' });
+  const [reasons, setReasons] = React.useState(initReasons || []);
+  const [newReason, setNewReason] = React.useState('');
+  const [days, setDays] = React.useState(initCooldown || 7);
+
+  const updateCs = (val) => { setCs(val); if (onCompanySettingsChange) onCompanySettingsChange(val); };
+  const updateReasons = (val) => { setReasons(val); if (onDeclineReasonsChange) onDeclineReasonsChange(val); };
+  const updateDays = (val) => { setDays(val); if (onCooldownChange) onCooldownChange(val); };
+
+  const tabs = [
+    { id: 'company', label: '🏢 Company' },
+    { id: 'pipeline', label: '⚙️ Pipeline' },
+    { id: 'reasons', label: '📋 Reasons' },
+  ];
+
+  const handleSave = () => {
+    if (onCompanySettingsChange) onCompanySettingsChange(cs);
+    if (onDeclineReasonsChange) onDeclineReasonsChange(reasons);
+    if (onCooldownChange) onCooldownChange(days);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex justify-between bg-gradient-to-r from-slate-50 to-blue-50/50">
+          <div>
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Settings size={18} className="text-blue-600" /> Global CRM Settings
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Company profile, pipeline rules, and interview configuration</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-5">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors ${tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {tab === 'company' && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Company Name</label>
+                  <input value={cs.companyName} onChange={e => updateCs({...cs, companyName: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Timing</label>
+                  <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => updateCs({...cs, officeTiming: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Working Days</label>
+                  <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => updateCs({...cs, workingDays: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Timing</label>
+                  <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => updateCs({...cs, interviewTiming: e.target.value})}
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Job Description (JD) — shown in WhatsApp invite</label>
+                <textarea value={cs.jobDescription} onChange={e => updateCs({...cs, jobDescription: e.target.value})} rows={3}
+                  placeholder="Describe the job role, responsibilities, and requirements..."
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none resize-none transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Address</label>
+                <input value={cs.officeAddress} onChange={e => updateCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Nearby Landmark</label>
+                <input value={cs.officeNearby} onChange={e => updateCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+              </div>
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                <div className="text-xs font-black text-emerald-700 uppercase tracking-wide mb-3">HR Point of Contact</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">HR Name</label>
+                    <input value={cs.hrName} onChange={e => updateCs({...cs, hrName: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Mobile</label>
+                    <input value={cs.hrMobile} onChange={e => updateCs({...cs, hrMobile: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Designation</label>
+                    <input value={cs.hrDesignation} onChange={e => updateCs({...cs, hrDesignation: e.target.value})}
+                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
+                <input value={cs.interviewFormBaseUrl} onChange={e => updateCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none font-mono transition-all" />
+                <p className="text-xs text-slate-400 mt-1">This link is inserted in WhatsApp messages and shared with candidates.</p>
+              </div>
+            </div>
+          )}
+
+          {tab === 'pipeline' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Lead Hoarding Protection</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cooldown Period (Days)</label>
+                <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                  <strong className="text-slate-700">Lock-in period:</strong> If a lead is active and was updated within this many days, other HRs cannot steal or reassign it.
+                </p>
+                <input type="number" min={0} value={days} onChange={e => updateDays(Number(e.target.value))}
+                  className="w-24 bg-white border border-slate-300 rounded-lg px-4 py-2 text-slate-900 font-bold outline-none focus:border-blue-500" />
+              </div>
+            </div>
+          )}
+
+          {tab === 'reasons' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Decline &amp; Drop Reasons</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs text-slate-500 mb-4">Manage reasons HRs can select when declining a candidate.</p>
+                <div className="flex gap-2 mb-4">
+                  <input value={newReason} onChange={e => setNewReason(e.target.value)}
+                    onKeyPress={e => { if (e.key === 'Enter' && newReason.trim() && !reasons.includes(newReason.trim())) { updateReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                    placeholder="Add new reason..."
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" />
+                  <button onClick={() => { if (newReason.trim() && !reasons.includes(newReason.trim())) { updateReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold">Add</button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                  {reasons.map(r => (
+                    <span key={r} className="bg-white border border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                      {r}
+                      <button onClick={() => updateReasons(reasons.filter(item => item !== r))} className="text-slate-400 hover:text-red-500 transition-colors">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                  {reasons.length === 0 && <p className="text-slate-400 text-sm">No reasons added yet.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-5 border-t border-slate-200 bg-slate-50/80 flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2 text-sm text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
+          <button onClick={handleSave} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-black rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Interview Table Component
 // --- Tag helper ---
 const Tag = ({ icon, text, color }) => {
