@@ -4753,7 +4753,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; font-weight: bold;">
                   ${Array.isArray(companyCategory) && companyCategory.length > 0 ? 
                     companyCategory.map(cat => {
-                      const displayText = typeof cat === 'object' ? (cat.display_text || cat.category_name || 'Unknown') : cat;
+                      const displayText = typeof cat === 'object' ? (cat.bank_name || cat.display_text || cat.category_name || 'Unknown') : cat;
                       return `<span style="display: inline-block; background: #dcfce7; color: #166534; padding: 4px 12px; margin: 2px; border-radius: 6px; font-weight: bold;">${displayText}</span>`;
                     }).join(' ') : 
                     'N/A'
@@ -4796,8 +4796,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">#</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">PRODUCT</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">BANK NAME</th>
+                  <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">ROI</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">TENURE</th>
-                  <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">ROI %</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">TOTAL LOAN</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">OUTSTANDING</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">EMI</th>
