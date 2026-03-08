@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 from ..database.InterviewSettings import (
     create_job_opening, get_job_openings, 
@@ -10,7 +10,8 @@ from ..database.InterviewSettings import (
     update_source_portal, delete_source_portal,
     create_sub_status, get_sub_statuses_by_parent,
     get_sub_status, update_sub_status, delete_sub_status,
-    create_interview_settings_indexes, create_async_indexes
+    create_interview_settings_indexes, create_async_indexes,
+    get_global_settings, upsert_global_settings, DEFAULT_GLOBAL_SETTINGS,
 )
 from ..database.InterviewStatuses import InterviewStatuses, InterviewSubStatuses, create_interview_statuses_indexes, create_async_interview_statuses_indexes
 from app.utils.common_utils import get_current_user_id
@@ -714,4 +715,55 @@ async def delete_source_portal_route(source_portal_id: str, user_id: str = Query
         raise
     except Exception as e:
         logger.error(f"Error in delete_source_portal_route: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ── Global Settings (Company info, Pipeline cooldown, Decline Reasons) ─────────
+
+class GlobalSettingsModel(BaseModel):
+    company_name: Optional[str] = ""
+    job_description: Optional[str] = ""
+    office_timing: Optional[str] = ""
+    working_days: Optional[str] = ""
+    interview_timing: Optional[str] = ""
+    office_address: Optional[str] = ""
+    office_nearby: Optional[str] = ""
+    hr_name: Optional[str] = ""
+    hr_mobile: Optional[str] = ""
+    hr_designation: Optional[str] = ""
+    interview_form_base_url: Optional[str] = ""
+    cooldown_days: Optional[int] = 7
+    decline_reasons: Optional[List[str]] = []
+
+
+@router.get("/interview-settings/global-settings")
+async def get_global_settings_route(user_id: str = Query(...)):
+    """Get global interview settings (company info, pipeline, decline reasons)."""
+    try:
+        doc = await get_global_settings()
+        if doc is None:
+            # Return defaults if nothing saved yet
+            return {"success": True, "data": DEFAULT_GLOBAL_SETTINGS}
+        return {"success": True, "data": doc}
+    except Exception as e:
+        logger.error(f"Error in get_global_settings_route: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/interview-settings/global-settings")
+async def save_global_settings_route(
+    body: GlobalSettingsModel,
+    user_id: str = Query(...),
+):
+    """Save / update global interview settings."""
+    try:
+        data = body.dict()
+        updated = await upsert_global_settings(data)
+        if updated is None:
+            raise HTTPException(status_code=500, detail="Failed to save settings")
+        return {"success": True, "message": "Settings saved successfully", "data": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in save_global_settings_route: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

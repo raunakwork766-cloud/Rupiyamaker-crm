@@ -332,6 +332,7 @@ const InterviewPanel = () => {
   // Load job opening and interview type options from backend
   useEffect(() => {
     loadDropdownOptions();
+    loadGlobalSettingsFromDB();
   }, []);
 
   // Load permissions on mount (like Tickets/Warnings)
@@ -414,6 +415,33 @@ const InterviewPanel = () => {
     const hasSuperAdminPermission = hasPermission(userPermissions, '*', '*');
     
     return hasSpecificPermission || hasSuperAdminPermission;
+  };
+
+  // Load global settings (company info, cooldown, decline reasons) from DB
+  const loadGlobalSettingsFromDB = async () => {
+    try {
+      const res = await interviewSettingsAPI.getGlobalSettings();
+      if (res?.success && res?.data) {
+        const d = res.data;
+        setCompanySettings({
+          companyName: d.company_name || '',
+          jobDescription: d.job_description || '',
+          officeTiming: d.office_timing || '',
+          workingDays: d.working_days || '',
+          interviewTiming: d.interview_timing || '',
+          officeAddress: d.office_address || '',
+          officeNearby: d.office_nearby || '',
+          hrName: d.hr_name || '',
+          hrMobile: d.hr_mobile || '',
+          hrDesignation: d.hr_designation || '',
+          interviewFormBaseUrl: d.interview_form_base_url || '',
+        });
+        if (d.cooldown_days !== undefined) setCooldownDays(d.cooldown_days);
+        if (d.decline_reasons?.length) setDeclineReasons(d.decline_reasons);
+      }
+    } catch (e) {
+      console.warn('Could not load global settings from DB:', e);
+    }
   };
 
   const loadDropdownOptions = async () => {
@@ -2396,11 +2424,8 @@ const InterviewPanel = () => {
     {/* ── Interview Settings Modal (white, centered, like HTML reference) ── */}
     {isSettingsOpen && (
       <SettingsModal
-        companySettings={companySettings}
         onCompanySettingsChange={setCompanySettings}
-        declineReasons={declineReasons}
         onDeclineReasonsChange={setDeclineReasons}
-        cooldownDays={cooldownDays}
         onCooldownChange={setCooldownDays}
         onClose={() => setIsSettingsOpen(false)}
       />
@@ -2410,16 +2435,47 @@ const InterviewPanel = () => {
 };
 
 // ── SETTINGS MODAL (white, matches interview module.html) ──
-const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, declineReasons: initReasons, onDeclineReasonsChange, cooldownDays: initCooldown, onCooldownChange, onClose }) => {
+const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onClose }) => {
   const [tab, setTab] = React.useState('company');
-  const [cs, setCs] = React.useState(initCS || { companyName: '', jobDescription: '', officeTiming: '', workingDays: '', interviewTiming: '', officeAddress: '', officeNearby: '', hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: '' });
-  const [reasons, setReasons] = React.useState(initReasons || []);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [cs, setCs] = React.useState({ companyName: '', jobDescription: '', officeTiming: '', workingDays: '', interviewTiming: '', officeAddress: '', officeNearby: '', hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: '' });
+  const [reasons, setReasons] = React.useState([]);
   const [newReason, setNewReason] = React.useState('');
-  const [days, setDays] = React.useState(initCooldown || 7);
+  const [days, setDays] = React.useState(7);
 
-  const updateCs = (val) => { setCs(val); if (onCompanySettingsChange) onCompanySettingsChange(val); };
-  const updateReasons = (val) => { setReasons(val); if (onDeclineReasonsChange) onDeclineReasonsChange(val); };
-  const updateDays = (val) => { setDays(val); if (onCooldownChange) onCooldownChange(val); };
+  // Map backend snake_case → frontend camelCase
+  const fromBackend = (doc) => {
+    setCs({
+      companyName: doc.company_name || '',
+      jobDescription: doc.job_description || '',
+      officeTiming: doc.office_timing || '',
+      workingDays: doc.working_days || '',
+      interviewTiming: doc.interview_timing || '',
+      officeAddress: doc.office_address || '',
+      officeNearby: doc.office_nearby || '',
+      hrName: doc.hr_name || '',
+      hrMobile: doc.hr_mobile || '',
+      hrDesignation: doc.hr_designation || '',
+      interviewFormBaseUrl: doc.interview_form_base_url || '',
+    });
+    setDays(doc.cooldown_days ?? 7);
+    setReasons(doc.decline_reasons || []);
+  };
+
+  // Load on mount
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const res = await interviewSettingsAPI.getGlobalSettings();
+        if (res?.success && res?.data) fromBackend(res.data);
+      } catch (e) {
+        console.error('Failed to load global settings:', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const tabs = [
     { id: 'company', label: '🏢 Company' },
@@ -2427,11 +2483,36 @@ const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, decli
     { id: 'reasons', label: '📋 Reasons' },
   ];
 
-  const handleSave = () => {
-    if (onCompanySettingsChange) onCompanySettingsChange(cs);
-    if (onDeclineReasonsChange) onDeclineReasonsChange(reasons);
-    if (onCooldownChange) onCooldownChange(days);
-    onClose();
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        company_name: cs.companyName,
+        job_description: cs.jobDescription,
+        office_timing: cs.officeTiming,
+        working_days: cs.workingDays,
+        interview_timing: cs.interviewTiming,
+        office_address: cs.officeAddress,
+        office_nearby: cs.officeNearby,
+        hr_name: cs.hrName,
+        hr_mobile: cs.hrMobile,
+        hr_designation: cs.hrDesignation,
+        interview_form_base_url: cs.interviewFormBaseUrl,
+        cooldown_days: days,
+        decline_reasons: reasons,
+      };
+      const res = await interviewSettingsAPI.saveGlobalSettings(payload);
+      if (!res?.success) throw new Error(res?.message || 'Save failed');
+      // Propagate to parent state
+      if (onCompanySettingsChange) onCompanySettingsChange(cs);
+      if (onDeclineReasonsChange) onDeclineReasonsChange(reasons);
+      if (onCooldownChange) onCooldownChange(days);
+      onClose();
+    } catch (e) {
+      alert('❌ Failed to save settings: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -2462,44 +2543,50 @@ const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, decli
 
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1">
-          {tab === 'company' && (
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <svg className="animate-spin w-6 h-6 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Loading settings...
+            </div>
+          ) : null}
+          {!loading && tab === 'company' && (
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Company Name</label>
-                  <input value={cs.companyName} onChange={e => updateCs({...cs, companyName: e.target.value})}
+                  <input value={cs.companyName} onChange={e => setCs({...cs, companyName: e.target.value})}
                     className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Timing</label>
-                  <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => updateCs({...cs, officeTiming: e.target.value})}
+                  <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => setCs({...cs, officeTiming: e.target.value})}
                     className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Working Days</label>
-                  <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => updateCs({...cs, workingDays: e.target.value})}
+                  <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => setCs({...cs, workingDays: e.target.value})}
                     className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Timing</label>
-                  <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => updateCs({...cs, interviewTiming: e.target.value})}
+                  <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => setCs({...cs, interviewTiming: e.target.value})}
                     className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Job Description (JD) — shown in WhatsApp invite</label>
-                <textarea value={cs.jobDescription} onChange={e => updateCs({...cs, jobDescription: e.target.value})} rows={3}
+                <textarea value={cs.jobDescription} onChange={e => setCs({...cs, jobDescription: e.target.value})} rows={3}
                   placeholder="Describe the job role, responsibilities, and requirements..."
                   className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none resize-none transition-all" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Address</label>
-                <input value={cs.officeAddress} onChange={e => updateCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
+                <input value={cs.officeAddress} onChange={e => setCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
                   className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Nearby Landmark</label>
-                <input value={cs.officeNearby} onChange={e => updateCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
+                <input value={cs.officeNearby} onChange={e => setCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
                   className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
               </div>
               <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-emerald-200 rounded-2xl p-4">
@@ -2507,31 +2594,31 @@ const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, decli
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">HR Name</label>
-                    <input value={cs.hrName} onChange={e => updateCs({...cs, hrName: e.target.value})}
+                    <input value={cs.hrName} onChange={e => setCs({...cs, hrName: e.target.value})}
                       className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">Mobile</label>
-                    <input value={cs.hrMobile} onChange={e => updateCs({...cs, hrMobile: e.target.value})}
+                    <input value={cs.hrMobile} onChange={e => setCs({...cs, hrMobile: e.target.value})}
                       className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">Designation</label>
-                    <input value={cs.hrDesignation} onChange={e => updateCs({...cs, hrDesignation: e.target.value})}
+                    <input value={cs.hrDesignation} onChange={e => setCs({...cs, hrDesignation: e.target.value})}
                       className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
                   </div>
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
-                <input value={cs.interviewFormBaseUrl} onChange={e => updateCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
+                <input value={cs.interviewFormBaseUrl} onChange={e => setCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
                   className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none font-mono transition-all" />
                 <p className="text-xs text-slate-400 mt-1">This link is inserted in WhatsApp messages and shared with candidates.</p>
               </div>
             </div>
           )}
 
-          {tab === 'pipeline' && (
+          {!loading && tab === 'pipeline' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Lead Hoarding Protection</h3>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -2539,30 +2626,30 @@ const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, decli
                 <p className="text-xs text-slate-500 mb-3 leading-relaxed">
                   <strong className="text-slate-700">Lock-in period:</strong> If a lead is active and was updated within this many days, other HRs cannot steal or reassign it.
                 </p>
-                <input type="number" min={0} value={days} onChange={e => updateDays(Number(e.target.value))}
+                <input type="number" min={0} value={days} onChange={e => setDays(Number(e.target.value))}
                   className="w-24 bg-white border border-slate-300 rounded-lg px-4 py-2 text-slate-900 font-bold outline-none focus:border-blue-500" />
               </div>
             </div>
           )}
 
-          {tab === 'reasons' && (
+          {!loading && tab === 'reasons' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Decline &amp; Drop Reasons</h3>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                 <p className="text-xs text-slate-500 mb-4">Manage reasons HRs can select when declining a candidate.</p>
                 <div className="flex gap-2 mb-4">
                   <input value={newReason} onChange={e => setNewReason(e.target.value)}
-                    onKeyPress={e => { if (e.key === 'Enter' && newReason.trim() && !reasons.includes(newReason.trim())) { updateReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                    onKeyPress={e => { if (e.key === 'Enter' && newReason.trim() && !reasons.includes(newReason.trim())) { setReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
                     placeholder="Add new reason..."
                     className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" />
-                  <button onClick={() => { if (newReason.trim() && !reasons.includes(newReason.trim())) { updateReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
+                  <button onClick={() => { if (newReason.trim() && !reasons.includes(newReason.trim())) { setReasons([...reasons, newReason.trim()]); setNewReason(''); } }}
                     className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold">Add</button>
                 </div>
                 <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
                   {reasons.map(r => (
                     <span key={r} className="bg-white border border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
                       {r}
-                      <button onClick={() => updateReasons(reasons.filter(item => item !== r))} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <button onClick={() => setReasons(reasons.filter(item => item !== r))} className="text-slate-400 hover:text-red-500 transition-colors">
                         <X size={12} />
                       </button>
                     </span>
@@ -2576,10 +2663,13 @@ const SettingsModal = ({ companySettings: initCS, onCompanySettingsChange, decli
 
         {/* Footer */}
         <div className="p-5 border-t border-slate-200 bg-slate-50/80 flex justify-end gap-3">
-          <button onClick={onClose} className="px-5 py-2 text-sm text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
-          <button onClick={handleSave} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-black rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-2">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save Settings
+          <button onClick={onClose} disabled={saving} className="px-5 py-2 text-sm text-slate-500 hover:text-slate-900 font-medium disabled:opacity-50">Cancel</button>
+          <button onClick={handleSave} disabled={saving || loading} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white text-sm font-black rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-2">
+            {saving ? (
+              <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Saving...</>
+            ) : (
+              <><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Settings</>
+            )}
           </button>
         </div>
       </div>

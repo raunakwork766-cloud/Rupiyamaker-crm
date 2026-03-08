@@ -16,7 +16,8 @@ def get_collections():
             "job_openings": async_db.interview_job_openings,
             "interview_types": async_db.interview_types,
             "source_portals": async_db.interview_source_portals,
-            "sub_statuses": async_db.interview_sub_statuses
+            "sub_statuses": async_db.interview_sub_statuses,
+            "global_settings": async_db.interview_global_settings,
         }
     
     # Fall back to sync database if async not available
@@ -26,7 +27,8 @@ def get_collections():
             "job_openings": db.interview_job_openings,
             "interview_types": db.interview_types,
             "source_portals": db.interview_source_portals,
-            "sub_statuses": db.interview_sub_statuses
+            "sub_statuses": db.interview_sub_statuses,
+            "global_settings": db.interview_global_settings,
         }
     
     else:
@@ -664,3 +666,60 @@ async def delete_sub_status(sub_status_id):
     except Exception as e:
         logger.error(f"Error deleting sub-status: {e}")
         return False
+
+
+# ── Global Settings (Company, Pipeline, Decline Reasons) ──────────────────────
+
+DEFAULT_GLOBAL_SETTINGS = {
+    "company_name": "",
+    "job_description": "",
+    "office_timing": "",
+    "working_days": "",
+    "interview_timing": "",
+    "office_address": "",
+    "office_nearby": "",
+    "hr_name": "",
+    "hr_mobile": "",
+    "hr_designation": "",
+    "interview_form_base_url": "",
+    "cooldown_days": 7,
+    "decline_reasons": [
+        "Not Qualified", "No Show", "Salary Mismatch", "Location Issue",
+        "Poor Communication", "Overqualified", "Underqualified", "Position Filled",
+        "Candidate Withdrew", "Failed Assessment", "Background Check Failed", "Other"
+    ],
+}
+
+async def get_global_settings():
+    """Get the single global interview settings document."""
+    try:
+        collections = get_collections()
+        col = collections["global_settings"]
+        doc = await col.find_one({"_type": "global"})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
+    except Exception as e:
+        logger.error(f"Error fetching global settings: {e}")
+        return None
+
+
+async def upsert_global_settings(data: dict):
+    """Create or update the single global settings document."""
+    try:
+        collections = get_collections()
+        col = collections["global_settings"]
+        data["_type"] = "global"
+        data["updated_at"] = get_ist_now()
+        result = await col.find_one_and_update(
+            {"_type": "global"},
+            {"$set": data},
+            upsert=True,
+            return_document=True,
+        )
+        if result:
+            result["_id"] = str(result["_id"])
+        return result
+    except Exception as e:
+        logger.error(f"Error upserting global settings: {e}")
+        return None
