@@ -331,12 +331,41 @@ const WarningPage = memo(() => {
   const isManager = () => canUserViewJunior();
   const hasOwnPermission = () => canUserViewOwn();
 
-  // Granular warning action permission helpers (new role-based permissions)
-  const canIssueWarning = () => isSuperAdmin() || hasWarningsPermission('issue');
-  const canViewMistakeDirectory = () => isSuperAdmin() || hasWarningsPermission('view_mistakes');
-  const canCreateMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('create_mistake');
-  const canEditMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('edit_mistake');
-  const canDeleteMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('delete_mistake');
+  /**
+   * STRICT action checker for warnings granular permissions.
+   * Checks ONLY for the exact specific action in the user's permissions array.
+   * Does NOT treat 'all' (view-all scope) as a wildcard — 'all' in warnings means
+   * "view all warnings", not "all capabilities". Only a true global '*' wildcard passes.
+   */
+  const hasStrictWarningsAction = (action) => {
+    try {
+      const userPerms = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      if (!Array.isArray(userPerms)) return false;
+      // Check for global super-admin ('*') first
+      const isGlobalAdmin = userPerms.some(p =>
+        (p.page === '*' || p.page === 'any' || p.page === 'Global') &&
+        (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*')))
+      );
+      if (isGlobalAdmin) return true;
+      // Find the warnings-specific entry and check for the exact action
+      const warningPerm = userPerms.find(p => p.page?.toLowerCase() === 'warnings');
+      if (!warningPerm) return false;
+      const actions = warningPerm.actions;
+      if (Array.isArray(actions)) {
+        return actions.includes(action) || actions.includes('*');
+      }
+      return actions === action || actions === '*';
+    } catch {
+      return false;
+    }
+  };
+
+  // Granular warning action permission helpers — use strict (exact) action check only
+  const canIssueWarning = () => hasStrictWarningsAction('issue');
+  const canViewMistakeDirectory = () => hasStrictWarningsAction('view_mistakes');
+  const canCreateMistakeCategory = () => hasStrictWarningsAction('create_mistake');
+  const canEditMistakeCategory = () => hasStrictWarningsAction('edit_mistake');
+  const canDeleteMistakeCategory = () => hasStrictWarningsAction('delete_mistake');
 
   // Get auth headers
   const getAuthHeaders = () => {
@@ -374,20 +403,8 @@ const WarningPage = memo(() => {
     
     // UPDATED: Add explicit delete permission check (like Tickets)
     const hasDeletePermission = () => {
-      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
-      if (Array.isArray(userPermissions)) {
-        for (const perm of userPermissions) {
-          if (perm && (perm.page === 'warnings' || perm.page === 'Warnings')) {
-            if (Array.isArray(perm.actions)) {
-              // Check for explicit delete OR all permission
-              return perm.actions.includes('delete') || perm.actions.includes('all');
-            } else if (perm.actions === 'delete' || perm.actions === 'all') {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
+      // Use strict action check - 'all' (view scope) does NOT grant delete
+      return hasStrictWarningsAction('delete');
     };
     
     const permissions = {
@@ -395,7 +412,9 @@ const WarningPage = memo(() => {
       can_view_all: canUserViewAll(),
       can_view_team: canUserViewJunior(),
       can_add: canUserCreate(),
-      can_edit: canUserViewJunior(), // Junior and All can edit
+      // Edit requires explicit 'issue' action (same permission as issuing/creating warnings)
+      // View scope ('all'/'junior') does NOT automatically grant edit capability
+      can_edit: hasStrictWarningsAction('issue'),
       can_delete: hasDeletePermission(), // Check explicit delete permission
       can_export: canUserViewJunior(), // Junior and All can export
       permission_level: permLevel, // Store the permission level for use elsewhere
@@ -1754,7 +1773,25 @@ const WarningPage = memo(() => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
               {/* Tab Navigation */}
               <div className="flex p-1 bg-gray-800/60 rounded-lg w-fit">
-                {(isSuperAdmin() || permissions.can_view_mistakes) ? (
+                {isSuperAdmin() ? (
+                  <>
+                    <button
+                      onClick={() => setSelectedTab(0)}
+                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
+                    >
+                      Warnings Log
+                    </button>
+                    {/* Mistakes Directory tab — only when explicit view_mistakes permission */}
+                    {permissions.can_view_mistakes && (
+                      <button
+                        onClick={() => setSelectedTab(1)}
+                        className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
+                      >
+                        Mistakes Directory
+                      </button>
+                    )}
+                  </>
+                ) : permissions.can_view_mistakes ? (
                   <>
                     <button
                       onClick={() => setSelectedTab(0)}
@@ -1768,7 +1805,6 @@ const WarningPage = memo(() => {
                     >
                       Mistakes Directory
                     </button>
-
                   </>
                 ) : isManager() ? (
                   <>
@@ -1856,9 +1892,9 @@ const WarningPage = memo(() => {
                               </div>
                               <div className="flex items-center gap-3">
                                 {/* Select/Delete Controls */}
-                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
+                                {permissions?.can_delete && !showCheckboxes ? (
                                   <button onClick={handleShowCheckboxes} className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition">Select</button>
-                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
+                                ) : permissions?.can_delete && showCheckboxes ? (
                                   <div className="flex items-center gap-3 bg-gray-800 rounded-lg p-2">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold text-sm">
                                       <input type="checkbox" className="accent-blue-500 mr-2" checked={selectAll} onChange={handleSelectAll} style={{ width: 16, height: 16 }} />
@@ -1948,7 +1984,7 @@ const WarningPage = memo(() => {
                                                       <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
                                                       <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
                                                     </div>
-                                                    {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    {permissions?.can_edit && (
                                                       <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
                                                         <RotateCcw className="w-3.5 h-3.5" />
                                                       </button>
@@ -1957,7 +1993,7 @@ const WarningPage = memo(() => {
                                                 ) : (
                                                   <div className="flex items-center justify-between gap-2 group/penalty">
                                                     <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                    {(permissions?.can_edit || isSuperAdmin()) && (
+                                                    {permissions?.can_edit && (
                                                       <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
                                                         <Edit className="w-3.5 h-3.5" />
                                                       </button>
@@ -2005,8 +2041,8 @@ const WarningPage = memo(() => {
                           </div>
                         )}
 
-                        {/* Tab 1: Mistakes Directory */}
-                        {selectedTab === 1 && (
+                        {/* Tab 1: Mistakes Directory — only for users with explicit view_mistakes permission */}
+                        {selectedTab === 1 && permissions.can_view_mistakes && (
                           <div className="p-6">
                             <div className="flex justify-between items-center mb-6">
                               <div>
@@ -2078,14 +2114,14 @@ const WarningPage = memo(() => {
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
 
-                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
+                                {permissions?.can_delete && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
                                     className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                                   >
                                     Select
                                   </button>
-                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
+                                ) : permissions?.can_delete && showCheckboxes ? (
                                   <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                       <input
@@ -2245,7 +2281,7 @@ const WarningPage = memo(() => {
                                                     <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
                                                     <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
                                                   </div>
-                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                  {permissions?.can_edit && (
                                                     <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
                                                       <RotateCcw className="w-3.5 h-3.5" />
                                                     </button>
@@ -2254,7 +2290,7 @@ const WarningPage = memo(() => {
                                               ) : (
                                                 <div className="flex items-center justify-between gap-2 group/penalty">
                                                   <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                  {permissions?.can_edit && (
                                                     <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
                                                       <Edit className="w-3.5 h-3.5" />
                                                     </button>
@@ -2329,14 +2365,14 @@ const WarningPage = memo(() => {
                               <div className="flex items-center gap-3">
                                 {/* Select Button / Selection Controls */}
 
-                                {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
+                                {permissions?.can_delete && !showCheckboxes ? (
                                   <button
                                     onClick={handleShowCheckboxes}
                                     className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                                   >
                                     Select
                                   </button>
-                                ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
+                                ) : permissions?.can_delete && showCheckboxes ? (
                                   <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                     <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                       <input
@@ -2471,7 +2507,7 @@ const WarningPage = memo(() => {
                                                     <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
                                                     <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
                                                   </div>
-                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                  {permissions?.can_edit && (
                                                     <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
                                                       <RotateCcw className="w-3.5 h-3.5" />
                                                     </button>
@@ -2480,7 +2516,7 @@ const WarningPage = memo(() => {
                                               ) : (
                                                 <div className="flex items-center justify-between gap-2 group/penalty">
                                                   <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                  {(permissions?.can_edit || isSuperAdmin()) && (
+                                                  {permissions?.can_edit && (
                                                     <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
                                                       <Edit className="w-3.5 h-3.5" />
                                                     </button>
@@ -2561,14 +2597,14 @@ const WarningPage = memo(() => {
                           <div className="flex items-center gap-3">
                             {/* Select Button / Selection Controls */}
 
-                            {(permissions?.can_delete || isSuperAdmin()) && !showCheckboxes ? (
+                            {permissions?.can_delete && !showCheckboxes ? (
                               <button
                                 onClick={handleShowCheckboxes}
                                 className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
                               >
                                 Select
                               </button>
-                            ) : (permissions?.can_delete || isSuperAdmin()) && showCheckboxes ? (
+                            ) : permissions?.can_delete && showCheckboxes ? (
                               <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
                                 <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
                                   <input
@@ -2703,7 +2739,7 @@ const WarningPage = memo(() => {
                                                 <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
                                                 <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
                                               </div>
-                                              {(permissions?.can_edit || isSuperAdmin()) && (
+                                              {permissions?.can_edit && (
                                                 <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
                                                   <RotateCcw className="w-3.5 h-3.5" />
                                                 </button>
@@ -2712,7 +2748,7 @@ const WarningPage = memo(() => {
                                           ) : (
                                             <div className="flex items-center justify-between gap-2 group/penalty">
                                               <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                              {(permissions?.can_edit || isSuperAdmin()) && (
+                                              {permissions?.can_edit && (
                                                 <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
                                                   <Edit className="w-3.5 h-3.5" />
                                                 </button>
