@@ -2035,7 +2035,8 @@ async def get_employees_for_warnings(
         raise HTTPException(status_code=500, detail=f"Failed to get employees: {str(e)}")
 
 
-# ─── Employee List ───────────────────────────────────────────────────────────
+# ─── Acknowledge Warning ─────────────────────────────────────────────────────
+@router.post("/{warning_id}/acknowledge")
 async def acknowledge_warning(
     warning_id: str,
     user_id: str = Query(..., description="User ID acknowledging the warning"),
