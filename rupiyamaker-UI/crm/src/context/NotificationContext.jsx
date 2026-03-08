@@ -211,20 +211,26 @@ export const NotificationProvider = ({ children }) => {
   
   // Track if we're already fetching to prevent multiple simultaneous requests
   const [isFetching, setIsFetching] = useState(false);
+  // Ref mirror — read synchronously inside safeFetch without stale-closure or
+  // dep-array problems. Using isFetching (state) in useCallback deps caused
+  // safeFetch to be recreated on every fetch start/end, which triggered the
+  // useEffect cleanup and killed the notification interval each time.
+  const isFetchingRef = useRef(false);
   // Track if we've already done the initial fetch
   const [initialFetchDone, setInitialFetchDone] = useState(false);
   
   // Safe fetch function that prevents multiple simultaneous fetches
   const safeFetch = useCallback(async () => {
-    if (isFetching) return;
-    
+    if (isFetchingRef.current) return;   // use ref — no stale closure
+    isFetchingRef.current = true;
     setIsFetching(true);
     try {
       await fetchNotifications();
     } finally {
+      isFetchingRef.current = false;
       setIsFetching(false);
     }
-  }, [isFetching, fetchNotifications]);
+  }, [fetchNotifications]);
   
   // Check for new notifications periodically
   useEffect(() => {
