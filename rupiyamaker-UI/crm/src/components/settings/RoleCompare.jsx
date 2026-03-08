@@ -24,6 +24,12 @@ const ACTION_LABELS = {
     update:               'Mark Update',
     manage:               'Install / Manage',
     send:                 'Send Notification',
+    // Warnings granular actions
+    issue:                'Issue Warning',
+    view_mistakes:        'View Mistake Dir',
+    create_mistake:       'Create Mistake Cat',
+    edit_mistake:         'Edit Mistake Cat',
+    delete_mistake:       'Delete Mistake Cat',
 };
 
 // Human-readable labels for the module group headers
@@ -54,7 +60,7 @@ const allPermissions = {
     'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
     'tasks': ['show', 'own', 'junior', 'all', 'delete'],
     'tickets': ['show', 'own', 'junior', 'all', 'delete'],
-    'warnings': ['show', 'own', 'junior', 'all', 'delete'],
+    'warnings': ['show', 'own', 'junior', 'all', 'delete', 'issue', 'view_mistakes', 'create_mistake', 'edit_mistake', 'delete_mistake'],
     'interview': ['show', 'junior', 'all', 'settings', 'delete'],
     'hrms': ['show'],
     'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
