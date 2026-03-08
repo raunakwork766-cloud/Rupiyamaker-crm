@@ -200,19 +200,10 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
   const isSelected = 
     selectedLabel === label || 
     currentSelectedLabel === label ||
-    // Enhanced URL-based selection for loan types - check URL parameter match
-    (isLoanType && loanTypeName && (
-      (label === loanTypeName && (currentPath.includes('/lead-crm') || currentPath.includes('/leads'))) ||
-      (label === `${loanTypeName} Login` && (currentPath.includes('/login-crm') || currentPath.includes('/login')))
-    )) ||
-    // Also check stored loan type data for additional verification
-    (isLoanType && (
-      (currentPath.includes('/lead-crm') || currentPath.includes('/leads')) && 
-      (localStorage.getItem('leadCrmLoanTypeName') === label || localStorage.getItem('selectedLoanTypeName') === label)
-    )) ||
-    (isLoanType && (
-      (currentPath.includes('/login-crm') || currentPath.includes('/login')) && 
-      (localStorage.getItem('loginCrmLoanTypeName') === label || localStorage.getItem('selectedLoanTypeName') === label)
+    // URL-based loan type selection - only when no explicit selection is active
+    (!currentSelectedLabel && isLoanType && loanTypeName && (
+      (label === loanTypeName && currentPath.includes('/lead-crm')) ||
+      (label === `${loanTypeName} Login` && currentPath.includes('/login-crm'))
     )) ||
     // Check URL-based selection for HRMS items
     (label === 'Employees' && currentPath.includes('/employees')) ||
@@ -225,12 +216,7 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
     (label === 'My Warnings' && currentPath.includes('/warning/my') && !isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '{}'))) ||
   // Check URL-based selection for LEAD CRM items
   (label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) ||
-  (label === 'Create LEAD' && currentPath.includes('/create-lead')) ||
-  // Enhanced loan type detection logic
-  (isLoanType && loanTypeName && (
-    (label === loanTypeName && (currentPath.includes('/lead-crm') || currentPath.includes('/leads'))) ||
-    (label === `${loanTypeName} Login` && (currentPath.includes('/login-crm') || currentPath.includes('/login')))
-  ));  const handleClick = useCallback((e) => {
+  (label === 'Create LEAD' && currentPath.includes('/create-lead'));  const handleClick = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -308,32 +294,14 @@ const DropdownHeader = React.memo(({
         return true;
       }
       
-      // Enhanced URL-based selection for loan types with additional checks
-      if (item.isLoanType && loanTypeName) {
+      // URL-based loan type selection - only when no explicit selection is active
+      if (!currentSelectedLabel && item.isLoanType && loanTypeName) {
         // Check exact match for LEAD CRM loan types
-        if (item.label === loanTypeName && (currentPath.includes('/lead-crm') || currentPath.includes('/leads'))) {
+        if (item.label === loanTypeName && currentPath.includes('/lead-crm')) {
           return true;
         }
         // Check exact match for Login CRM loan types
-        if (item.label === `${loanTypeName} Login` && (currentPath.includes('/login-crm') || currentPath.includes('/login'))) {
-          return true;
-        }
-      }
-      
-      // Also check stored loan type data for additional verification
-      if (item.isLoanType) {
-        const leadCrmLoanTypeName = localStorage.getItem('leadCrmLoanTypeName');
-        const loginCrmLoanTypeName = localStorage.getItem('loginCrmLoanTypeName');
-        
-        // Check if this is the active loan type for LEAD CRM
-        if ((currentPath.includes('/lead-crm') || currentPath.includes('/leads')) && 
-            (item.label === leadCrmLoanTypeName || item.label === localStorage.getItem('selectedLoanTypeName'))) {
-          return true;
-        }
-        
-        // Check if this is the active loan type for Login CRM
-        if ((currentPath.includes('/login-crm') || currentPath.includes('/login')) && 
-            (item.label === loginCrmLoanTypeName || item.label === localStorage.getItem('selectedLoanTypeName'))) {
+        if (item.label === `${loanTypeName} Login` && currentPath.includes('/login-crm')) {
           return true;
         }
       }
