@@ -43,7 +43,8 @@ import {
   canEdit, 
   canDelete,
   getPermissionDisplayText,
-  getCurrentUserId
+  getCurrentUserId,
+  hasWarningsPermission
 } from '../utils/permissions';
 
 const API_URL = "/api";
@@ -330,6 +331,13 @@ const WarningPage = memo(() => {
   const isManager = () => canUserViewJunior();
   const hasOwnPermission = () => canUserViewOwn();
 
+  // Granular warning action permission helpers (new role-based permissions)
+  const canIssueWarning = () => isSuperAdmin() || hasWarningsPermission('issue');
+  const canViewMistakeDirectory = () => isSuperAdmin() || hasWarningsPermission('view_mistakes');
+  const canCreateMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('create_mistake');
+  const canEditMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('edit_mistake');
+  const canDeleteMistakeCategory = () => isSuperAdmin() || hasWarningsPermission('delete_mistake');
+
   // Get auth headers
   const getAuthHeaders = () => {
     const userData = localStorage.getItem('userData');
@@ -390,7 +398,13 @@ const WarningPage = memo(() => {
       can_edit: canUserViewJunior(), // Junior and All can edit
       can_delete: hasDeletePermission(), // Check explicit delete permission
       can_export: canUserViewJunior(), // Junior and All can export
-      permission_level: permLevel // Store the permission level for use elsewhere
+      permission_level: permLevel, // Store the permission level for use elsewhere
+      // Granular warning action permissions
+      can_issue_warning: canIssueWarning(),
+      can_view_mistakes: canViewMistakeDirectory(),
+      can_create_mistake_category: canCreateMistakeCategory(),
+      can_edit_mistake_category: canEditMistakeCategory(),
+      can_delete_mistake_category: canDeleteMistakeCategory(),
     };
     
     console.log('⚠️ Warning Permissions:', permissions);
@@ -1740,7 +1754,7 @@ const WarningPage = memo(() => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
               {/* Tab Navigation */}
               <div className="flex p-1 bg-gray-800/60 rounded-lg w-fit">
-                {isSuperAdmin() ? (
+                {(isSuperAdmin() || permissions.can_view_mistakes) ? (
                   <>
                     <button
                       onClick={() => setSelectedTab(0)}
@@ -1784,7 +1798,7 @@ const WarningPage = memo(() => {
               {/* Contextual Action Buttons */}
               <div className="flex flex-wrap gap-3">
                 {/* Show Issue Warning button on warnings tabs */}
-                {(isSuperAdmin() ? selectedTab === 0 : true) && permissions.can_add && (
+                {permissions.can_issue_warning && (
                   <button
                     className="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
                     onClick={openAddDialog}
@@ -1793,7 +1807,7 @@ const WarningPage = memo(() => {
                   </button>
                 )}
                 {/* Show Create Mistake Category button when on Mistakes Directory tab */}
-                {isSuperAdmin() && selectedTab === 1 && (
+                {permissions.can_create_mistake_category && selectedTab === 1 && (
                   <button
                     className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
                     onClick={() => setCreateMistakeOpen(true)}
@@ -1817,8 +1831,8 @@ const WarningPage = memo(() => {
                   </div>
                 ) : (
                   <>
-                    {/* Super Admin Tabs */}
-                    {isSuperAdmin() ? (
+                    {/* Super Admin / Mistake Directory Access Tabs */}
+                    {(isSuperAdmin() || permissions.can_view_mistakes) ? (
                       <>
                         {/* Tab 0: Warnings Log */}
                         {selectedTab === 0 && (
@@ -2023,13 +2037,15 @@ const WarningPage = memo(() => {
                                       <h3 className="font-bold text-white text-base mb-2">{title}</h3>
                                       <p className="text-sm text-gray-400 line-clamp-2">{description}</p>
                                       <div className="mt-4 pt-3 border-t border-gray-800 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                          onClick={() => openEditMistake(type)}
-                                          className="text-xs font-medium text-[#03b0f5] hover:underline"
-                                        >
-                                          Edit
-                                        </button>
-                                        {(type._id || type.id) && (
+                                        {permissions.can_edit_mistake_category && (
+                                          <button
+                                            onClick={() => openEditMistake(type)}
+                                            className="text-xs font-medium text-[#03b0f5] hover:underline"
+                                          >
+                                            Edit
+                                          </button>
+                                        )}
+                                        {(type._id || type.id) && permissions.can_delete_mistake_category && (
                                           <button
                                             onClick={() => handleDeleteMistakeCategory(type)}
                                             className="text-xs font-medium text-red-400 hover:underline"

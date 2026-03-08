@@ -216,7 +216,12 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
                 can_add=True,
                 can_edit=True,
                 can_delete=True,
-                can_export=True
+                can_export=True,
+                can_issue_warning=True,
+                can_view_mistakes=True,
+                can_create_mistake_category=True,
+                can_edit_mistake_category=True,
+                can_delete_mistake_category=True
             )
         
         # Check for warnings admin permissions
@@ -232,7 +237,38 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
             can_add=has_warnings_admin,  # Only admin can add warnings
             can_edit=has_warnings_admin,  # Only admin can edit warnings
             can_delete=has_warnings_admin,  # Only admin can delete warnings
-            can_export=has_warnings_admin  # Only admin can export warnings
+            can_export=has_warnings_admin,  # Only admin can export warnings
+            # Granular action permissions - check specific action keys on warnings page
+            can_issue_warning=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'issue' in perm.get('actions', [])) or
+                    perm.get('actions') == 'issue'
+                ) for perm in permissions
+            ),
+            can_view_mistakes=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'view_mistakes' in perm.get('actions', [])) or
+                    perm.get('actions') == 'view_mistakes'
+                ) for perm in permissions
+            ),
+            can_create_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'create_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'create_mistake'
+                ) for perm in permissions
+            ),
+            can_edit_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'edit_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'edit_mistake'
+                ) for perm in permissions
+            ),
+            can_delete_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'delete_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'delete_mistake'
+                ) for perm in permissions
+            ),
         )
         
         return warning_permissions

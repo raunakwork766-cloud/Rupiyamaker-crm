@@ -112,6 +112,12 @@ class WarningPermissions(BaseModel):
     can_edit: bool = Field(False, description="Can edit warnings")
     can_delete: bool = Field(False, description="Can delete warnings")
     can_export: bool = Field(False, description="Can export warning data")
+    # Granular warning action permissions
+    can_issue_warning: bool = Field(False, description="Can issue/create new warnings")
+    can_view_mistakes: bool = Field(False, description="Can view mistake categories directory")
+    can_create_mistake_category: bool = Field(False, description="Can create new mistake categories")
+    can_edit_mistake_category: bool = Field(False, description="Can edit existing mistake categories")
+    can_delete_mistake_category: bool = Field(False, description="Can delete mistake categories")
 
 class WarningRemovalRequest(BaseModel):
     warning_id: str = Field(..., description="ID of warning to request removal")
