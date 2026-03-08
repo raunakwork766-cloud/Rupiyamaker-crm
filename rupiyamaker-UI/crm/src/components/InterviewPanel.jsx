@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock } from 'lucide-react';
 import { cn } from "../lib/utils.js";
@@ -153,6 +154,7 @@ const InterviewPanel = () => {
   const [historyModalTab, setHistoryModalTab] = useState('full');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRound1ModalOpen, setIsRound1ModalOpen] = useState(false);
+  const [isNumberGuideOpen, setIsNumberGuideOpen] = useState(false);
   const [auditSubTab, setAuditSubTab] = useState('Pending');
   const [reasonFilter, setReasonFilter] = useState('All');
 
@@ -2110,10 +2112,10 @@ const InterviewPanel = () => {
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/dialer-report')}
+              onClick={() => setIsNumberGuideOpen(true)}
               className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
             >
-              <PhoneOff size={14} /> <span className="hidden sm:inline">Set Dialer</span>
+              <PhoneOff size={14} /> <span className="hidden sm:inline">Search Test Data</span>
             </button>
             {canAccessSettings() && (
               <button
@@ -2430,6 +2432,42 @@ const InterviewPanel = () => {
         onClose={() => setIsSettingsOpen(false)}
       />
     )}
+
+    {/* ── Search Test Data Guide Modal ── */}
+    {isNumberGuideOpen && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
+        <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden">
+          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><PhoneOff size={18} className="text-blue-600"/> Search Test Data Guide</h2>
+              <p className="text-xs text-slate-600 mt-1">Numbers ya names ko search box me daalo, result direct table me stage tag ke saath mil jayega.</p>
+            </div>
+            <button onClick={() => setIsNumberGuideOpen(false)} className="text-slate-500 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-100 transition-colors"><X size={20} /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+              <p className="font-bold mb-1">🔍 Search kaise karein:</p>
+              <ul className="space-y-1 text-xs">
+                <li>• Candidate ka <strong>naam</strong> ya <strong>mobile number</strong> type karein</li>
+                <li>• <strong>HR ka naam</strong> ya <strong>source portal</strong> se bhi filter hoga</li>
+                <li>• Multiple words se narrow down karein, e.g. "Rahul 9876"</li>
+              </ul>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <p className="font-bold mb-1">⚠️ Duplicate Check Flow:</p>
+              <ul className="space-y-1 text-xs">
+                <li>• Agar same number bachcha already pipeline me hai → duplicate warning aayega</li>
+                <li>• Cooldown period me hai → reassign option milega</li>
+                <li>• Cooldown khatam ho gayi hai → naya interview create hoga</li>
+              </ul>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600">
+              💡 <strong>Tip:</strong> Saare stages (Interview, Round 2, Hired, Rejected) ke records ek hi search se milenge — stage tag ke saath.
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 };
@@ -2687,13 +2725,29 @@ const Tag = ({ icon, text, color }) => {
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
 const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
+  const btnRef = useRef(null);
 
   useEffect(() => {
-    function handleClickOutside(event) { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsDropdownOpen(false); }
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+          btnRef.current && !btnRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownRef]);
+  }, []);
+
+  const handleToggleDropdown = (e) => {
+    e.stopPropagation();
+    if (!isDropdownOpen && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setIsDropdownOpen(prev => !prev);
+  };
 
   const formatInterviewDate = (date) => {
     if (!date) return 'N/A';
@@ -2767,7 +2821,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
           <div>
-            <button onClick={(e) => { e.stopPropagation(); onViewDetails(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
+            <button onClick={(e) => { e.stopPropagation(); onRowClick(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
             <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
           </div>
         </div>
@@ -2828,11 +2882,15 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
           {activeTab !== 'rejected' && activeTab !== 'hired' && (
             <div className="relative">
-              <button onClick={(e) => { e.stopPropagation(); setIsDropdownOpen(!isDropdownOpen); }} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+              <button ref={btnRef} onClick={handleToggleDropdown} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
                 <MoreVertical size={15} />
               </button>
-              {isDropdownOpen && (
-                <div className="absolute right-0 top-10 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden text-left animate-in fade-in zoom-in-95">
+              {isDropdownOpen && dropdownPos && createPortal(
+                <div
+                  ref={dropdownRef}
+                  style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
+                  className="w-52 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 overflow-hidden text-left"
+                >
                   {(stage === 'Interview' || stage === 'Round 2') && (
                     <>
                       <button onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Calendar size={14}/> Reschedule Date</button>
@@ -2841,10 +2899,10 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
                       )}
                     </>
                   )}
-                  <button onClick={() => { onViewDetails(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><FileText size={14}/> View Details</button>
                   <div className="my-1 border-t border-slate-100"/>
                   <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Decline / Reject</button>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           )}
