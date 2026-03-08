@@ -340,7 +340,14 @@ const WarningPage = memo(() => {
   const hasStrictWarningsAction = (action) => {
     try {
       const userPerms = JSON.parse(localStorage.getItem('userPermissions') || '[]');
-      if (!Array.isArray(userPerms)) return false;
+      // Handle object-format super admin permissions (e.g. {"*": "*"}, {Global: "*"})
+      if (!Array.isArray(userPerms)) {
+        if (typeof userPerms === 'object' && userPerms !== null &&
+            (userPerms['*'] === '*' || userPerms.Global === '*' || userPerms.global === '*')) {
+          return true;
+        }
+        return false;
+      }
       // Check for global super-admin ('*') first
       const isGlobalAdmin = userPerms.some(p =>
         (p.page === '*' || p.page === 'any' || p.page === 'Global') &&
