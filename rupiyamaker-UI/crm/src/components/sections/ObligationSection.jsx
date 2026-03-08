@@ -6349,16 +6349,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData);
 
   return (
-    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="min-h-screen bg-black p-6">
-      <div className="w-full">
-
-
+    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-[#0a0e14] text-slate-300 overflow-hidden" style={{height:'100%',minHeight:'100vh',fontFamily:'system-ui,-apple-system,sans-serif'}}>
+      <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
           {/* Customer Details Section with Download Button */}
-          <div className="mb-6">
-            <div className="mb-2 flex justify-between items-center">
-              <div className="text-2xl font-bold text-white">Customer Details</div>
+          <div className="p-5 pb-4">
+            <div className="mb-4 flex justify-between items-center">
+              <div className="text-lg font-bold text-white">Customer Details</div>
               {hasDownloadObligationPermission() && (
                 <button 
                   type="button"
@@ -6408,131 +6406,85 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               </button>
               )}
             </div>
-            <div className="p-4 mb-4 border rounded-lg bg-black border-gray-600">
+            <div className="space-y-4">
               {/* Row 1: Salary, Partner's Salary, Bonus */}
-              <div className="flex flex-wrap items-end gap-4 mb-6">
+              <div className="grid grid-cols-3 gap-4">
                 {/* Salary */}
-                <div className="form-group flex-1 min-w-[140px] max-w-[180px]">
-                  <label className="block mb-2 text-lg font-bold text-white">
-                    Salary
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-white bg-gray-700 border text-lg rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
-                    value={formatINR(salary)}
-                    onChange={canEdit ? handleSalaryChange : undefined}
-                    onBlur={handleObligationFieldBlur}
-                    disabled={!canEdit}
-                    placeholder="In Rupees"
-                    inputMode="numeric"
-                  />
-                </div>
-                {/* Partner's Salary */}
-                <div className="form-group flex-1 min-w-[140px] max-w-[180px]">
-                  <label className="block mb-2 text-lg font-bold text-white">Partner's Salary</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-lg text-white bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
-                    value={formatINR(partnerSalary)}
-                    onChange={canEdit ? handlePartnerSalaryChange : undefined}
-                    onBlur={handleObligationFieldBlur}
-                    disabled={!canEdit}
-                    
-                    placeholder="In Rupees"
-                    inputMode="numeric"
-                  />
-                </div>
-                {/* Bonus with Divide By dropdown on the right */}
-                <div className="form-group flex-1 min-w-[200px]">
-                  <label htmlFor="yearlyBonus" className="block mb-2 text-lg font-bold text-white">Bonus</label>
-                  <div className="flex items-center gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Salary</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      id="yearlyBonus"
-                      className="flex-1 px-3 py-2 text-lg text-white bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
-                      value={formatINR(yearlyBonus)}
-                      onChange={canEdit ? handleYearlyBonusChange : undefined}
+                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      value={formatINR(salary)}
+                      onChange={canEdit ? handleSalaryChange : undefined}
                       onBlur={handleObligationFieldBlur}
                       disabled={!canEdit}
-                      placeholder="In Rupees"
+                      placeholder="Amount"
                       inputMode="numeric"
                     />
-                    {yearlyBonus && parseINR(yearlyBonus) > 0 && (
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-bold text-white whitespace-nowrap">Divide By:</label>
-                        <select
-                          className="px-2 py-2 text-white text-lg bg-gray-700 border rounded-lg form-select border-gray-600 focus:outline-none focus:border-sky-400 font-bold"
-                          value={bonusDivision || ''}
-                          onChange={(e) => canEdit && handleBonusDivisionToggle(Number(e.target.value))}
-                          disabled={!canEdit}
-                        >
-                          <option value="" className="text-gray-400 font-bold">Select</option>
-                          {bonusDivisions.map((opt) => (
-                            <option key={opt.value} value={opt.value} className="text-white font-bold bg-gray-700">
-                              {opt.label} {opt.value === 1 ? 'Month' : 'Months'}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                  </div>
+                </div>
+                {/* Partner's Salary */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Partner's Salary</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
+                    <input
+                      type="text"
+                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      value={formatINR(partnerSalary)}
+                      onChange={canEdit ? handlePartnerSalaryChange : undefined}
+                      onBlur={handleObligationFieldBlur}
+                      disabled={!canEdit}
+                      placeholder="Amount"
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+                {/* Bonus with Divide By */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Bonus</label>
+                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
+                    <div className="relative flex-1 border-r border-slate-700/50">
+                      <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
+                      <input
+                        type="text"
+                        className="w-full bg-transparent p-2.5 pl-7 text-white font-semibold outline-none text-sm"
+                        value={formatINR(yearlyBonus)}
+                        onChange={canEdit ? handleYearlyBonusChange : undefined}
+                        onBlur={handleObligationFieldBlur}
+                        disabled={!canEdit}
+                        placeholder="Amount"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <select
+                      className={`bg-transparent font-bold px-2 py-2 outline-none cursor-pointer text-xs shrink-0 ${bonusDivision ? 'text-emerald-400' : 'text-slate-500'}`}
+                      value={bonusDivision || ''}
+                      onChange={(e) => canEdit && handleBonusDivisionToggle(Number(e.target.value))}
+                      disabled={!canEdit}
+                    >
+                      <option value="" disabled>÷ Duration</option>
+                      {bonusDivisions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>÷ {opt.label} Mo</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {/* Row 2: Loan Amount Required, Company Name */}
-              <div className="flex flex-wrap items-end gap-4 mb-4">
-                {/* Loan Amount Required */}
-                <div className="form-group flex-1 min-w-[140px]">
-                  <label className="block mb-2 text-lg font-bold text-white">Loan Amount Required</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-white text-lg bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
-                    value={formatINR(loanRequired)}
-                    onChange={(e) => {
-                      if (!canEdit) return;
-                      const value = e.target.value;
-                      
-                      console.log('💰 LOAN REQUIRED CHANGE DETECTED:', {
-                        oldValue: loanRequired,
-                        newValue: value,
-                        formattedValue: formatINR(value),
-                        leadId: leadData?._id,
-                        file_sent_to_login: leadData?.file_sent_to_login,
-                        timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
-                        stackTrace: new Error().stack.split('\n').slice(0, 5).join('\n')
-                      });
-                      
-                      setLoanRequired(value);
-                      
-                      // Mark as changed to trigger save button
-                      markAsChanged();
-                      setHasUserInteraction(true);
-                      setHasUnsavedChanges(true);
-                      
-                      // DO NOT notify parent on every keystroke - only on blur/save
-                      // if (handleChangeFunc) {
-                      //   handleChangeFunc('loanRequired', value);
-                      // }
-                      
-                      console.log("Loan required changed:", value);
-                    }}
-                    onBlur={handleObligationFieldBlur}
-                    disabled={!canEdit}
-                    placeholder="In Rupees"
-                    inputMode="numeric"
-                  />
-                </div>
-
+              {/* Row 2: Company Name + Company Category */}
+              <div className="grid grid-cols-2 gap-4">
                 {/* Company Name with searchable input */}
-                <div className="form-group flex-1 min-w-[250px] relative">
-                  <label className="block mb-2 text-lg font-bold text-white">
-                    Company Name
-                  </label>
-                  <div className="relative">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Name</label>
+                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
                     <input
                       ref={companyDropdownRef}
                       type="text"
-                      className="w-full px-3 py-2 text-lg text-white bg-gray-700 border rounded-lg border-gray-600 focus:outline-none focus:border-sky-400 font-bold placeholder-gray-400 uppercase"
+                      className="flex-1 bg-transparent p-2.5 px-3 text-white font-semibold outline-none text-sm uppercase min-w-0"
                       placeholder="Type company name..."
                       value={companyName}
                       disabled={!canEdit}
@@ -6608,290 +6560,142 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       }}
                       data-dropdown-trigger="true"
                     />
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-                      {/* Search button to open Zaubacorp website */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.open('https://www.zaubacorp.com/', '_blank', 'noopener,noreferrer');
-                        }}
-                        className="p-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-md transition-all duration-200 flex items-center justify-center"
-                        title="Search on Zaubacorp"
-                      >
-                        <svg 
-                          xmlns="http://www.w3.org/2000/svg" 
-                          className="h-4 w-4" 
-                          fill="none" 
-                          viewBox="0 0 24 24" 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.open('https://www.zaubacorp.com/', '_blank', 'noopener,noreferrer');
+                      }}
+                      className="bg-blue-600/20 text-blue-400 px-3 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors border-l border-slate-700/50 shrink-0 self-stretch"
+                      title="Search on Zaubacorp"
+                    >
+                      {isCompanyLoading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400"></div>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
                           stroke="currentColor"
                         >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                           />
                         </svg>
-                      </button>
-                      {isCompanyLoading && (
-                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-sky-400"></div>
                       )}
-                      <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                    </div>
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Row 3: Decide Bank For Case, Company Category */}
-              <div className="flex flex-wrap items-end gap-4">
-                {/* Decide Bank For Case - Updated to show multiple selected banks */}
-                <div className="form-group flex-1 min-w-[140px]">
-                  <label className="block mb-2 text-lg font-extrabold text-white">Decide Bank For Case</label>
-                  <div className="flex flex-wrap items-center gap-2 border border-gray-600 rounded-lg bg-gray-700 p-2 min-h-[42px]">
-                    {/* Display all selected banks as pills */}
-                    {companyType.map((bank, index) => {
-                      // Ensure bank is a string and handle null/undefined/object cases
-                      const bankString = bank && typeof bank === 'object' ? 
-                        (bank.name || bank.label || bank.value || String(bank)) : 
-                        String(bank || '');
-                      
-                      const bankDisplay = bankString || 'Unknown';
-                      const firstLetter = bankDisplay.length > 0 ? bankDisplay.charAt(0).toUpperCase() : 'B';
-                      
+                {/* Company Category - 2nd grid column */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
+                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
+                    {(!Array.isArray(companyCategory) || companyCategory.length === 0) && <span className="text-slate-500 text-xs px-1">Select from modal...</span>}
+                    {Array.isArray(companyCategory) && companyCategory.map((category, index) => {
+                      const displayText = typeof category === 'string' ? category : (category.display || category.display_text || category.label || category.category_name || 'Unknown');
+                      const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
                       return (
-                        <div
-                          key={`${bankDisplay}-${index}`}
-                          className="bg-blue-100 text-blue-800 py-1 px-3 rounded-md flex items-center"
-                        >
-                          {/* Profile icon with bank's first letter */}
-                          <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-2 text-xs flex-shrink-0">
-                            {firstLetter}
-                          </div>
-                          <span className="text-lg font-extrabold uppercase">{bankDisplay}</span>
-                          <button
-                            type="button"
-                            className="ml-2 h-10 w-10 text-xl text-blue-500 hover:text-blue-700 font-bold"
-                            onClick={() => canEdit && handleRemoveBank(bank)}
-                            disabled={!canEdit}
-                          >
-                            ×
-                          </button>
-                        </div>
+                        <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                          {displayText}
+                          <div onClick={e => { e.stopPropagation(); canEdit && handleRemoveCategory(category); }} className="hover:text-red-400 cursor-pointer">×</div>
+                        </span>
                       );
                     })}
-                    <button
-                      type="button"
-                      className="text-white text-lg font-medium hover:text-gray-300 ml-auto"
-                      onClick={() => canEdit && setShowBankPopup(true)}
-                      disabled={!canEdit}
-                    >
-                      + Add Bank
-                    </button>
                   </div>
                 </div>
+              </div>
 
-                {/* Company Category - Multi-select Enabled */}
-                <div className="form-group flex-1 min-w-[140px]">
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="text-lg font-extrabold text-white">Company Category</label>
-                    {isLoadingCategories && (
-                      <div className="flex items-center gap-1 text-sm text-yellow-400">
-                        <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-yellow-400"></div>
-                        Loading...
-                      </div>
-                    )}
-                    {!isLoadingCategories && dynamicCompanyCategories.length > 0 && (
-                      <span className="text-sm text-green-400">
-                        {dynamicCompanyCategories.length} found
+              {/* Decide Bank For Case - full width */}
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
+                <div className="flex flex-wrap gap-1.5 items-center bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
+                  {companyType.length === 0 && <span className="text-slate-500 text-xs">No banks selected...</span>}
+                  {companyType.map((bank, index) => {
+                    const bankDisplay = bank && typeof bank === 'object' ? (bank.name || bank.label || bank.value || String(bank)) : String(bank || '');
+                    return (
+                      <span key={`${bankDisplay}-${index}`} className="bg-emerald-500/10 text-emerald-400 font-bold text-[11px] px-2.5 py-1 rounded flex items-center gap-1 border border-emerald-500/20">
+                        {bankDisplay}
+                        <button onClick={() => canEdit && handleRemoveBank(bank)} className="hover:text-red-400 ml-1" type="button">×</button>
                       </span>
-                    )}
-                    {!isLoadingCategories && companyName && companyName.trim() && dynamicCompanyCategories.length === 0 && (
-                      <span className="text-sm text-red-400">
-                        No categories found
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 border border-gray-600 rounded-lg bg-gray-700 p-2 min-h-[42px]">
-                    {/* Display all selected categories as pills */}
-                    {Array.isArray(companyCategory) && companyCategory.length > 0 ? (
-                      companyCategory.map((category, index) => {
-                        // Handle both string (legacy) and object (new format) categories
-                        let displayText, categoryKey, initialsText;
-                        
-                        if (typeof category === 'string') {
-                          // Legacy format - just the category name
-                          displayText = category;
-                          categoryKey = category;
-                          initialsText = String(category);
-                        } else if (typeof category === 'object' && category !== null) {
-                          // New format - full category object with display text
-                          displayText = category.display || category.display_text || category.label || category.category_name || 
-                                       (category.company_name && category.bank_name && category.category_name 
-                                        ? `${category.company_name} → ${category.bank_name} → ${category.category_name}`
-                                        : category.company_name && category.category_name 
-                                        ? `${category.company_name} → ${category.category_name}`
-                                        : 'Unknown Category');
-                          categoryKey = category.key || category.display_key || category.value || category.display || `category-${index}`;
-                          // Use the category name for initials if available, otherwise use display text - ensure it's a string
-                          const rawInitialsText = category.category_name || category.display || category.display_text || category.label || 'CA';
-                          initialsText = String(rawInitialsText);
-                        } else {
-                          // Fallback for unexpected formats
-                          displayText = 'Unknown Category';
-                          categoryKey = `unknown-${index}`;
-                          initialsText = 'CA';
-                        }
-                        
-                        return (
-                          <div
-                            key={`${categoryKey}-${index}`}
-                            className="bg-green-100 text-green-800 py-1 px-3 rounded-md flex items-center"
-                          >
-                            {/* Profile icon with initials */}
-                            <div className="w-6 h-6 rounded-full bg-[#10B981] text-white flex items-center justify-center mr-2 text-xs flex-shrink-0">
-                              {(() => {
-                                try {
-                                  // Safely generate initials with error handling
-                                  const safeInitialsText = String(initialsText || 'CA');
-                                  return safeInitialsText.split(' ')
-                                    .map(part => (part && part.length > 0) ? part[0] : '')
-                                    .filter(letter => letter.trim() !== '')
-                                    .slice(0, 2)
-                                    .join('')
-                                    .toUpperCase() || 'CA';
-                                } catch (error) {
-                                  console.warn('Error generating category initials:', error);
-                                  return 'CA';
-                                }
-                              })()}
-                            </div>
-                            <span className="text-lg font-extrabold uppercase">{displayText}</span>
-                            <button
-                              type="button"
-                              className="ml-2 h-10 w-10 text-xl text-green-500 hover:text-green-700 font-bold"
-                              onClick={() => canEdit && handleRemoveCategory(category)}
-                              disabled={!canEdit}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <span className="text-gray-400 italic">No categories selected</span>
-                    )}
-                    <button
-                      type="button"
-                      className="text-white text-lg font-medium hover:text-gray-300 ml-auto"
-                      disabled={!canEdit}
-                      onClick={async () => {
-                        if (!canEdit) return;
-                        setShowCategoryPopup(true);
-                        
-                        // Load categories from API when popup opens
-                        if (dynamicCompanyCategories.length === 0) {
-                          setIsLoadingCategories(true);
-                          try {
-                            const categories = await fetchCompanyCategories();
-                            setDynamicCompanyCategories(categories);
-                            console.log('Loaded categories for popup:', categories);
-                          } catch (error) {
-                            console.error('Error loading company categories:', error);
-                          } finally {
-                            setIsLoadingCategories(false);
-                          }
-                        }
-                      }}
-                    >
-                      + Add Categories
-                    </button>
-                  </div>
+                    );
+                  })}
+                  <button onClick={() => canEdit && setShowBankPopup(true)} className="text-emerald-500 hover:text-emerald-400 text-[11px] font-bold px-2.5 py-1 ml-auto flex items-center gap-1 border border-emerald-500/30 rounded bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors" disabled={!canEdit} type="button">
+                    + Add Bank
+                  </button>
+                </div>
+              </div>
+
+              <hr className="border-slate-800/60"/>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-[#151b23] rounded-xl p-4 border border-emerald-500/20">
+                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider block mb-1.5">Total BT POS</span>
+                  <span className="text-emerald-400 font-black text-2xl tracking-tight">{totalBtPos}</span>
+                </div>
+                <div className="bg-[#151b23] rounded-xl p-4 border border-yellow-500/20">
+                  <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider block mb-1.5">Total Obligation</span>
+                  <span className="text-yellow-400 font-black text-2xl tracking-tight">{totalObligation}</span>
+                </div>
+                <div className="bg-[#151b23] rounded-xl p-4 border border-slate-700/50">
+                  <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
+                  <input
+                    type="text"
+                    className="w-full bg-white text-black font-black text-xl rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
+                    value={cibilScore}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCibilScore(value);
+                      // Notify parent component of changes immediately for unsaved changes detection
+                      if (handleChangeFunc) {
+                        handleChangeFunc('cibil_score', value);
+                      }
+                    }}
+                    placeholder="Score"
+                    inputMode="numeric"
+                  />
                 </div>
               </div>
             </div>
           </div>
-          {/* Customer Obligation Section - with enhanced styling and logic */}
-          <div className="mb-4">
-            <div className="mb-4 flex items-center justify-center gap-4">
-              <div className="text-3xl font-bold text-center text-green-400">Customer Obligations</div>
-              
-              {/* Auto-save status indicator */}
-              {autoSaveStatus && (
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${
-                  autoSaveStatus === 'saving' ? 'bg-blue-500/20 text-blue-400 border border-blue-500' :
-                  autoSaveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border border-green-500' :
-                  autoSaveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500' :
-                  ''
-                }`}>
-                  {autoSaveStatus === 'saving' && (
-                    <>
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>Auto-saving...</span>
-                    </>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                    <>
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                      </svg>
-                      <span>Auto-saved</span>
-                    </>
-                  )}
-                  {autoSaveStatus === 'error' && (
-                    <>
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                      <span>Auto-save failed</span>
-                    </>
-                  )}
-                </div>
+          {/* Auto-save status indicator */}
+          {autoSaveStatus && (
+            <div className={`flex items-center gap-2 px-5 py-2 text-sm font-semibold ${
+              autoSaveStatus === 'saving' ? 'text-blue-400' :
+              autoSaveStatus === 'saved' ? 'text-green-400' :
+              autoSaveStatus === 'error' ? 'text-red-400' :
+              ''
+            }`}>
+              {autoSaveStatus === 'saving' && (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Auto-saving...</span>
+                </>
+              )}
+              {autoSaveStatus === 'saved' && (
+                <>
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span>Auto-saved</span>
+                </>
+              )}
+              {autoSaveStatus === 'error' && (
+                <>
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                  <span>Auto-save failed</span>
+                </>
               )}
             </div>
-            
-            {/* Summary fields with enhanced styling */}
-            <div className="flex flex-wrap items-center gap-6 p-6 mb-4 bg-black/90 border-2 border-gray-600 rounded-lg shadow-lg">
-              <div className="form-group flex-1 min-w-[250px]">
-                <label className="block mb-2 text-lg font-bold text-green-400 uppercase tracking-wide">TOTAL BT POS</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 font-bold text-2xl text-center text-black bg-green-400 border-2 border-green-500 rounded-lg"
-                  value={totalBtPos}
-                  readOnly
-                />
-              </div>
-              <div className="form-group flex-1 min-w-[250px]">
-                <label className="block mb-2 text-lg font-bold text-yellow-400 uppercase tracking-wide">TOTAL OBLIGATION</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 font-bold text-2xl text-center text-black bg-yellow-400 border-2 border-yellow-500 rounded-lg"
-                  value={totalObligation}
-                  readOnly
-                />
-              </div>
-              <div className="form-group flex-1 min-w-[200px]">
-                <label className="block mb-2 text-lg font-bold text-blue-400 uppercase tracking-wide">CIBIL Score</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 text-xl text-center text-black bg-blue-100 border-2 border-blue-400 rounded-lg focus:outline-none focus:border-blue-600 font-bold placeholder-black"
-                  value={cibilScore}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setCibilScore(value);
-                    // Notify parent component of changes immediately for unsaved changes detection
-                    if (handleChangeFunc) {
-                      handleChangeFunc('cibil_score', value);
-                    }
-                  }}
-                  placeholder="Enter CIBIL Score"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-          </div>
+          )}
           
           {/* Company Name Dropdown Portal */}
           {companyDropdownOpen && (
@@ -6990,8 +6794,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-8">#</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-48">PRODUCT</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-72">BANK NAME</th>
-                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-26">TENURE</th>
-                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-16">ROI %</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">TOTAL LOAN</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">OUTSTANDING</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-28">EMI</th>
@@ -7123,160 +6925,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
                           </div>
                         </div>
-                      </td>
-
-                      {/* Tenure - Show 4% button for Credit Card */}
-                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
-                        {isCreditCard(row.product) ? (
-                          <div className="flex gap-1 justify-center">
-                            <button
-                              type="button"
-                              className={`px-2 py-1 text-sm font-bold rounded border-2 transition-colors ${
-                                (row.selectedTenurePercentage === 4 || row.selectedTenurePercentage === '4' || parseInt(row.selectedTenurePercentage) === 4)
-                                  ? 'bg-green-500 text-white border-green-600' 
-                                  : 'bg-white text-black border-gray-300 hover:bg-gray-100'
-                              } ${
-                                !row.outstanding || parseINR(row.outstanding) === 0
-                                  ? 'opacity-50 cursor-not-allowed'
-                                  : 'cursor-pointer'
-                              }`}
-                              onClick={() => {
-                                if (!canEdit) return;
-                                console.log('4% button clicked for row:', idx, 'Current selectedTenurePercentage:', row.selectedTenurePercentage, 'Type:', typeof row.selectedTenurePercentage);
-                                handleCreditCardTenure(idx);
-                              }}
-                              disabled={!canEdit || !row.outstanding || parseINR(row.outstanding) === 0}
-                            >
-                              4%
-                            </button>
-                          </div>
-                        ) : (
-                          <input
-                            type="text"
-                            className={`w-full px-2 py-2 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
-                            placeholder="months"
-                            maxLength="12"
-                            value={row.tenure}
-                            disabled={!canEdit}
-                            onFocus={e => {
-                              // Position cursor at the end of numbers when focusing
-                              const input = e.target;
-                              const rawValue = input.value.replace(/[^0-9]/g, "");
-                              if (rawValue) {
-                                setTimeout(() => {
-                                  input.setSelectionRange(rawValue.length, rawValue.length);
-                                }, 0);
-                              }
-                            }}
-                            onChange={e => {
-                              if (!canEdit) return;
-                              const input = e.target;
-                              const cursorPosition = input.selectionStart;
-                              const rawValue = e.target.value.replace(/[^0-9]/g, "");
-                              const formattedValue = rawValue ? formatTenure(rawValue) : '';
-                              handleObligationChange(idx, "tenure", formattedValue);
-                              
-                              // Restore cursor position after formatting
-                              setTimeout(() => {
-                                if (input && rawValue) {
-                                  const newPosition = Math.min(cursorPosition, rawValue.length);
-                                  input.setSelectionRange(newPosition, newPosition);
-                                }
-                              }, 0);
-                            }}
-                            onBlur={handleObligationFieldBlur}
-                          />
-                        )}
-                      </td>
-
-                      {/* ROI - Show 5% button for Credit Card */}
-                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
-                        {isCreditCard(row.product) ? (
-                          <div className="flex gap-1 justify-center">
-                            <button
-                              type="button"
-                              className={`px-2 py-1 text-sm font-bold rounded border-2 transition-colors ${(() => {
-                                const roiValue = row.selectedRoiPercentage;
-                                const isHighlighted = roiValue === 5 || roiValue === '5' || parseInt(roiValue) === 5;
-                                console.log('🔍 5% Button render state:', {
-                                  rowId: row.id,
-                                  rowIndex: idx,
-                                  selectedRoiPercentage: roiValue,
-                                  selectedRoiPercentageType: typeof roiValue,
-                                  parsedValue: parseInt(roiValue),
-                                  isHighlighted,
-                                  roiField: row.roi,
-                                  outstanding: row.outstanding,
-                                  canEdit,
-                                  timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
-                                });
-                                return isHighlighted 
-                                  ? 'bg-green-500 text-white border-green-600' 
-                                  : 'bg-white text-black border-gray-300 hover:bg-gray-100';
-                              })()} ${
-                                !row.outstanding || parseINR(row.outstanding) === 0
-                                  ? 'opacity-50 cursor-not-allowed'
-                                  : 'cursor-pointer'
-                              }`}
-                              onClick={() => {
-                                if (!canEdit) {
-                                  console.log('❌ 5% button blocked - canEdit is false');
-                                  return;
-                                }
-                                console.log('🔄 5% button clicked:', {
-                                  rowId: row.id,
-                                  rowIndex: idx,
-                                  currentSelectedRoiPercentage: row.selectedRoiPercentage,
-                                  currentSelectedRoiPercentageType: typeof row.selectedRoiPercentage,
-                                  canEdit,
-                                  outstanding: row.outstanding,
-                                  outstandingParsed: parseINR(row.outstanding),
-                                  timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
-                                });
-                                handleCreditCardRoi(idx);
-                              }}
-                              disabled={!canEdit || !row.outstanding || parseINR(row.outstanding) === 0}
-                            >
-                              5%
-                            </button>
-                          </div>
-                        ) : (
-                          <input
-                            type="text"
-                            className={`w-full px-2 py-2 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
-                            placeholder="%"
-                            maxLength="8"
-                            value={row.roi}
-                            disabled={!canEdit}
-                            onFocus={e => {
-                              // Position cursor at the end of numbers when focusing
-                              const input = e.target;
-                              const rawValue = input.value.replace(/[^0-9.]/g, "");
-                              if (rawValue) {
-                                setTimeout(() => {
-                                  input.setSelectionRange(rawValue.length, rawValue.length);
-                                }, 0);
-                              }
-                            }}
-                            onChange={e => {
-                              if (!canEdit) return;
-                              const input = e.target;
-                              const cursorPosition = input.selectionStart;
-                              const rawValue = e.target.value.replace(/[^0-9.]/g, "");
-                              const formattedValue = rawValue ? formatROI(rawValue) : '';
-                              handleObligationChange(idx, "roi", formattedValue);
-                              
-                              // Restore cursor position after formatting
-                              setTimeout(() => {
-                                if (input && rawValue) {
-                                  const newPosition = Math.min(cursorPosition, rawValue.length);
-                                  input.setSelectionRange(newPosition, newPosition);
-                                }
-                              }, 0);
-                            }}
-                            onBlur={handleObligationFieldBlur}
-                          />
-                        )}
                       </td>
 
                       {/* Total Loan */}
@@ -7433,309 +7081,224 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             </div>
           </div>
 
-          {/* --- CHECK ELIGIBILITY SECTION --- */}
-          <div className="p-4 mt-6 mb-4 border rounded-lg border-gray-600 bg-black">
-            <div className="mb-3 text-2xl font-bold text-green-400">Check Eligibility</div>
-            {/* First Row */}
-            <div className="flex flex-wrap gap-4 mb-4">
-              {/* Total Income */}
-              <div className="form-group flex-1 min-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">Total Income</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg font-bold text-white bg-black border rounded-lg form-control border-gray-600"
-                  value={eligibility.totalIncome}
-                  readOnly
-                />
+        </div>
+      </div>
+      {/* === RIGHT SIDEBAR === */}
+      <div className="w-[420px] shrink-0 bg-[#0e131b] border-l border-slate-800 shadow-2xl flex flex-col z-10">
+        <div className="flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Total Income - ReadOnly */}
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Income</label>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              {/* Company Category Dropdown */}
-              <div className="form-group flex-1 min-w-[320px]">
-                <label className="block mb-1 text-base font-bold text-white">
-                  Company Category
-                </label>
-                <select
-                  className="w-full px-2 py-1 text-lg text-white bg-gray-700 border rounded-lg form-select border-gray-600 font-bold"
-                  value={ceCompanyCategory}
-                  onChange={canEdit ? handleCeCompanyCategoryChange : undefined}
-                  disabled={!canEdit}
-                >
-                  <option value="" className="text-gray-400 font-bold">Select Category</option>
-                  {checkEligibilityCompanyCategories.map((opt) => (
-                    <option key={opt.value || opt.id} value={opt.value || opt.id} className="text-white font-bold bg-gray-700">
-                      {opt.label || opt.display_text || opt.category_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {/* FOIR % */}
-              <div className="form-group flex-1 min-w-[120px] max-w-[120px]">
-                <label className="block mb-1 text-base font-bold text-white">FOIR %</label>
-                {ceFoirPercent === 'custom' ? (
-                  <input
-                    type="text"
-                    className="w-full px-2 py-1 text-lg text-white bg-gray-700 border rounded-lg form-control border-gray-600 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-gray-400"
-                    value={ceCustomFoirPercent}
-                    placeholder="Enter %"
-                    disabled={!canEdit}
-                    onFocus={e => {
-                      // Position cursor at the end of numbers when focusing
-                      const input = e.target;
-                      const rawValue = input.value.replace(/[^0-9.]/g, "");
-                      if (rawValue) {
-                        setTimeout(() => {
-                          input.setSelectionRange(rawValue.length, rawValue.length);
-                        }, 0);
-                      }
-                    }}
-                    onChange={e => {
-                      if (!canEdit) return;
-                      const input = e.target;
-                      const cursorPosition = input.selectionStart;
-                      const rawValue = e.target.value.replace(/[^0-9.]/g, "");
-                      const formattedValue = rawValue ? formatROI(rawValue) : '';
-                      setCeCustomFoirPercent(formattedValue);
-                      
-                      // Mark as changed to trigger save button
-                      setHasUserInteraction(true);
-                      setHasUnsavedChanges(true);
-                      console.log("Custom FOIR percent changed:", formattedValue);
-                      
-                      // If custom value is cleared, switch back to dropdown
-                      if (!rawValue) {
-                        setCeFoirPercent(60); // Switch back to default dropdown value
-                      }
-                      
-                      // Restore cursor position after formatting
-                      setTimeout(() => {
-                        if (input && rawValue) {
-                          const newPosition = Math.min(cursorPosition, rawValue.length);
-                          input.setSelectionRange(newPosition, newPosition);
-                        }
-                      }, 0);
-                    }}
-                  />
-                ) : (
-                  <select
-                    className="w-full px-2 py-1 text-lg text-white bg-gray-700 border rounded-lg form-select border-gray-600 font-bold"
-                    value={ceFoirPercent}
-                    onChange={canEdit ? handleCeFoirPercentChange : undefined}
-                    disabled={!canEdit}
-                  >
-                    <option value={45} className="text-white font-bold bg-gray-700">45%</option>
-                    <option value={50} className="text-white font-bold bg-gray-700">50%</option>
-                    <option value={55} className="text-white font-bold bg-gray-700">55%</option>
-                    <option value={60} className="text-white font-bold bg-gray-700">60%</option>
-                    <option value={65} className="text-white font-bold bg-gray-700">65%</option>
-                    <option value={70} className="text-white font-bold bg-gray-700">70%</option>
-                    <option value={75} className="text-white font-bold bg-gray-700">75%</option>
-                    <option value={80} className="text-white font-bold bg-gray-700">80%</option>
-                    <option value="custom" className="text-white font-bold bg-gray-700">Custom</option>
-                  </select>
-                )}
-              </div>
-              {/* FOIR Amount */}
-              <div className="form-group flex-1 min-w-[160px]">
-                <label className="block mb-1 text-base font-bold text-white">FOIR Amount</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg font-bold text-white bg-black border rounded-lg form-control border-gray-600"
-                  value={eligibility.foirAmount}
-                  readOnly
-                />
-              </div>
-              {/* Total Obligation */}
-              <div className="form-group flex-1 min-w-[180px] max-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">Total Obligation</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg font-bold text-black bg-yellow-400 border border-yellow-600 rounded-lg form-control"
-                  value={eligibility.totalObligations}
-                  readOnly
-                />
-              </div>
+              <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
             </div>
-            {/* Second Row */}
-            <div className="flex flex-wrap gap-4 mb-4">
-              {/* Monthly EMI Can Pay - Auto Calculated */}
-              <div className="form-group flex-1 min-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">Monthly EMI Can Pay</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg font-bold text-white bg-black border rounded-lg form-control border-gray-600"
-                  value={formatINR(ceMonthlyEmiCanPay.toString())}
-                  readOnly
-                />
-              </div>
-              {/* Tenure (Months) */}
-              <div className="form-group flex-1 min-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">TENURE (Months)</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg text-white bg-gray-700 border rounded-lg form-control border-gray-600 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-gray-400"
-                  value={ceTenureMonths}
-                  placeholder="Months"
-                  disabled={!canEdit}
-                  onFocus={e => {
-                    // Position cursor at the end of numbers when focusing
-                    const input = e.target;
-                    const rawValue = input.value.replace(/[^0-9]/g, "");
-                    if (rawValue) {
-                      setTimeout(() => {
-                        input.setSelectionRange(rawValue.length, rawValue.length);
-                      }, 0);
-                    }
-                  }}
-                  onChange={canEdit ? handleCeTenureMonthsChange : undefined}
-                />
-              </div>
-              {/* Tenure (Years) */}
-              <div className="form-group flex-1 min-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">TENURE (Years)</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg text-white bg-black border rounded-lg form-control border-gray-600 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-gray-400"
-                  value={ceTenureYears}
-                  placeholder="Years"
-                  disabled
-                  onFocus={e => {
-                    // Position cursor at the end of numbers when focusing
-                    const input = e.target;
-                    const rawValue = input.value.replace(/[^0-9.]/g, "");
-                    if (rawValue) {
-                      setTimeout(() => {
-                        input.setSelectionRange(rawValue.length, rawValue.length);
-                      }, 0);
-                    }
-                  }}
-                  onChange={handleCeTenureYearsChange}
-                />
-              </div>
-              {/* ROI */}
-              <div className="form-group flex-1 min-w-[140px]">
-                <label className="block mb-1 text-base font-bold text-white">ROI</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg text-white bg-gray-700 border rounded-lg form-control border-gray-600 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-gray-400"
-                  value={ceRoi}
-                  placeholder="%"
-                  disabled={!canEdit}
-                  onFocus={e => {
-                    // Position cursor at the end of numbers when focusing
-                    const input = e.target;
-                    const rawValue = input.value.replace(/[^0-9.]/g, "");
-                    if (rawValue) {
-                      setTimeout(() => {
-                        input.setSelectionRange(rawValue.length, rawValue.length);
-                      }, 0);
-                    }
-                  }}
-                  onChange={canEdit ? handleCeRoiChange : undefined}
-                />
-              </div>
-              {/* TOTAL BT POS */}
-              <div className="form-group flex-1 min-w-[180px] max-w-[180px]">
-                <label className="block mb-1 text-base font-bold text-white">TOTAL BT POS</label>
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-lg font-bold text-black bg-green-400 border border-green-600 rounded-lg form-control"
-                  value={eligibility.totalBtPos}
-                  readOnly
-                />
-              </div>
+            {/* FOIR % - Editable select */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">FOIR %</label>
+              <select
+                value={ceFoirPercent === 'custom' ? 60 : ceFoirPercent}
+                onChange={canEdit ? handleCeFoirPercentChange : undefined}
+                disabled={!canEdit}
+                className="w-full bg-white text-black rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm border-none"
+              >
+                <option value={50}>50%</option>
+                <option value={60}>60%</option>
+                <option value={70}>70%</option>
+                <option value={80}>80%</option>
+              </select>
             </div>
-            {/* Third Row - Loan Eligibility Results */}
-            <div className="flex flex-wrap items-end gap-4 mb-2">
-              {/* Loan Eligibility As Per FOIR */}
-              <div className="form-group flex-1 min-w-[280px]">
-                <label className="block mb-1 text-base font-bold text-white">FOIR Eligibility</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-4 font-bold text-white bg-black border rounded-lg form-control border-gray-600 text-2xl"
-                  value={eligibility.finalEligibility}
-                  readOnly
-                />
+            {/* FOIR Amount - ReadOnly */}
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">FOIR Amount</label>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              {/* Loan Eligibility As Per Multiplier */}
-              <div className="form-group flex-1 min-w-[280px]">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-base font-bold text-white">Multiplier Eligibility</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-white">Multiplier:</span>
-                    <input
-                      type="text"
-                      className="w-16 px-2 py-1 text-black bg-yellow-400 border rounded-lg form-control border-yellow-600 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-black text-sm"
-                      value={ceMultiplier}
-                      onChange={canEdit ? handleCeMultiplierChange : undefined}
-                      disabled={!canEdit}
-                      placeholder="0"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-                <input
-                  type="text"
-                  className="w-full px-4 py-4 font-bold text-white bg-black border rounded-lg form-control border-gray-600 text-2xl"
-                  value={eligibility.multiplierEligibility}
-                  readOnly
-                />
-              </div>
+              <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
             </div>
-            
-            {/* Balance Transfer Eligibility Message */}
-            <div className="mt-6">
-              {(() => {
-                try {
-                  const foirEligibility = parseINR(eligibility?.finalEligibility) || 0;
-                  const totalBtPos = parseINR(eligibility?.totalBtPos) || 0;
-                  
-                  // Only show message if there's meaningful data for calculation
-                  // Check if user has provided necessary inputs for a valid calculation
-                  const hasRequiredInputs = 
-                    (salary && parseINR(salary) > 0 || partnerSalary && parseINR(partnerSalary) > 0) && // Some income
-                    (ceFoirPercent !== '' && ceFoirPercent !== null && ceFoirPercent !== undefined) && // FOIR percentage set
-                    (ceRoi && parseROI(ceRoi) > 0) && // ROI provided
-                    (ceTenureMonths && parseTenure(ceTenureMonths) > 0) && // Tenure provided
-                    totalBtPos > 0; // Some BT POS amount exists
-                  
-                  if (!hasRequiredInputs) {
-                    return null; // Don't show message if required inputs are missing
-                  }
-                  
-                  if (foirEligibility >= totalBtPos) {
-                    // Success message
-                    return (
-                      <div className="p-6 rounded-lg text-black text-center" style={{ backgroundColor: '#00FF00' }}>
-                        <div className="flex items-center justify-center mb-2">
-                          <svg className="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          <h2 className="text-3xl font-extrabold">Congratulations!</h2>
-                        </div>
-                        <p className="text-2xl font-bold">Balance Transfer is Eligible</p>
-                      </div>
-                    );
-                  } else {
-                    // Failure message with shortfall
-                    const shortfall = Math.max(0, totalBtPos - foirEligibility);
-                    return (
-                      <div className="p-6 rounded-lg text-white text-center" style={{ backgroundColor: '#FF0000' }}>
-                        <div className="flex items-center justify-center mb-2">
-                          <svg className="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                          </svg>
-                          <h2 className="text-3xl font-extrabold">Balance Transfer Not Possible</h2>
-                        </div>
-                        <p className="text-2xl font-bold">There is a shortfall of ₹{formatINR(shortfall.toString())}</p>
-                      </div>
-                    );
-                  }
-                } catch (error) {
-                  console.error('Error in eligibility calculation:', error);
-                  return null;
-                }
-              })()}
+            {/* EMI Can Pay - ReadOnly */}
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
             </div>
           </div>
+
+          {/* Total Obligation - full width yellow highlight */}
+          <div className="flex flex-col justify-end">
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
+          </div>
+
+          <hr className="border-slate-800/60"/>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Tenure (Months) - Editable white bg */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Tenure (Months)</label>
+              <input
+                type="text"
+                value={ceTenureMonths}
+                onChange={canEdit ? handleCeTenureMonthsChange : undefined}
+                disabled={!canEdit}
+                placeholder="Months"
+                className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
+              />
+            </div>
+            {/* Tenure (Years) - Editable white bg */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Tenure (Years)</label>
+              <input
+                type="text"
+                value={ceTenureYears}
+                onChange={canEdit ? handleCeTenureYearsChange : undefined}
+                disabled={!canEdit}
+                placeholder="Years"
+                className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
+              />
+            </div>
+            {/* ROI % - Editable white bg */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">ROI %</label>
+              <input
+                type="text"
+                value={ceRoi}
+                onChange={canEdit ? handleCeRoiChange : undefined}
+                disabled={!canEdit}
+                placeholder="%"
+                className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
+              />
+            </div>
+            {/* Total BT POS - ReadOnly */}
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total BT POS</label>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+            </div>
+          </div>
+
+          <hr className="border-slate-800/60"/>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Max FOIR Eligibility - large display div */}
+            <div className="flex flex-col justify-end">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Max FOIR Eligibility</label>
+              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
+            </div>
+            {/* Multiplier Limit - large display div with inline input */}
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">Multiplier Limit</label>
+                <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500">
+                  MULT
+                  <input
+                    type="number"
+                    value={ceMultiplier}
+                    onChange={canEdit ? handleCeMultiplierChange : undefined}
+                    disabled={!canEdit}
+                    className="w-9 bg-white text-black font-black px-1 rounded outline-none text-center h-[18px] focus:ring-1 focus:ring-yellow-500"
+                  />
+                </div>
+              </div>
+              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
+            </div>
+          </div>
+
+          {/* Eligibility Status Card - solid color like HTML */}
+          {(() => {
+            try {
+              const foirEligibility = parseINR(eligibility?.finalEligibility) || 0;
+              const totalBtPosVal = parseINR(eligibility?.totalBtPos) || 0;
+              const hasRequiredInputs =
+                ((salary && parseINR(salary) > 0) || (partnerSalary && parseINR(partnerSalary) > 0)) &&
+                (ceFoirPercent !== '' && ceFoirPercent !== null && ceFoirPercent !== undefined) &&
+                (ceRoi && parseROI(ceRoi) > 0) &&
+                (ceTenureMonths && parseTenure(ceTenureMonths) > 0) &&
+                totalBtPosVal > 0;
+              if (!hasRequiredInputs) return null;
+              const isEligible = foirEligibility >= totalBtPosVal;
+              return (
+                <div className={`w-full p-4 rounded-xl flex items-center gap-3 transition-all ${isEligible ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'}`}>
+                  <div>
+                    <h3 className="font-black text-base leading-tight">{isEligible ? 'Congratulations!' : 'Not Eligible'}</h3>
+                    <p className="text-xs font-bold mt-0.5 opacity-90">{isEligible ? 'Balance Transfer Eligible' : 'Obligations exceed capacity'}</p>
+                  </div>
+                </div>
+              );
+            } catch(error) { return null; }
+          })()}
+
+          {/* Loan Requirement Section */}
+          {(() => {
+            try {
+              const principal = parseINR(loanRequired);
+              const r = parseROI(ceRoi) / 100 / 12;
+              const n = parseTenure(ceTenureMonths);
+              const customEmi = (principal && r && n) ? Math.round(principal * r * Math.pow(1+r,n) / (Math.pow(1+r,n)-1)) : 0;
+              const foirElig = parseINR(eligibility?.finalEligibility) || 0;
+              const customExceedsEligibility = principal > 0 && principal > foirElig;
+              return (
+                <div className={`rounded-xl border overflow-hidden transition-all ${customExceedsEligibility ? 'border-red-500/30' : 'border-blue-500/20'}`}>
+                  <div className={`px-4 py-2.5 flex items-center justify-between ${customExceedsEligibility ? 'bg-red-500/10' : 'bg-[#0f1929]'}`}>
+                    <label className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${customExceedsEligibility ? 'text-red-400' : 'text-blue-400'}`}>
+                      ⚡ Loan Requirement
+                    </label>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">@ {ceRoi}% · {ceTenureYears} Yrs · {ceTenureMonths} Mo</span>
+                  </div>
+                  <div className="bg-[#151b23] p-3 flex gap-3 items-center">
+                    <div className="flex-1 relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
+                      <input
+                        type="text"
+                        value={principal ? new Intl.NumberFormat('en-IN').format(principal) : ''}
+                        onChange={(e) => {
+                          if (!canEdit) return;
+                          const v = e.target.value.replace(/,/g, '');
+                          setLoanRequired(v);
+                          markAsChanged();
+                          setHasUserInteraction(true);
+                          setHasUnsavedChanges(true);
+                        }}
+                        onBlur={handleObligationFieldBlur}
+                        disabled={!canEdit}
+                        className={`w-full h-[44px] bg-[#0a0e14] border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
+                        placeholder="Enter loan amount"
+                      />
+                    </div>
+                    <div className={`flex flex-col items-center justify-center h-[44px] px-4 rounded-lg border shrink-0 min-w-[110px] ${customExceedsEligibility ? 'bg-red-500/10 border-red-500/30' : 'bg-blue-500/10 border-blue-500/20'}`}>
+                      <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-0.5">EMI / Month</span>
+                      <span className={`text-lg font-black tracking-tight leading-none ${customExceedsEligibility ? 'text-red-400' : 'text-blue-400'}`}>
+                        {principal > 0 ? `₹${new Intl.NumberFormat('en-IN').format(customEmi)}` : '₹0'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`px-4 py-2 flex items-center justify-between ${customExceedsEligibility ? 'bg-[#1a0a0a]' : 'bg-emerald-500/5'}`}>
+                    {principal > 0 ? (
+                      <>
+                        <span className={`text-[10px] font-bold flex items-center gap-1.5 ${customExceedsEligibility ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {customExceedsEligibility ? '⚠ Exceeds FOIR eligibility limit' : '✓ Within FOIR eligibility'}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">Max: <span className="text-emerald-400">₹{eligibility.finalEligibility}</span></span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 font-medium">Enter a loan amount to see EMI & eligibility</span>
+                    )}
+                  </div>
+                </div>
+              );
+            } catch(e) { return null; }
+          })()}
+
         </div>
       </div>
       
