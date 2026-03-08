@@ -4836,17 +4836,19 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       break;
                   }
                   
+                  const cs = `padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px; background: ${actionBg}; color: ${actionColor};`;
+                  const bankDisplay = (obl.bankName && obl.bankName.toLowerCase() !== 'custom') ? obl.bankName : 'N/A';
                   return `
-                    <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${index + 1}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px;">${obl.product || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px;">${obl.bankName || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.tenure || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.roi || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.totalLoan ? '₹' + formatPDFValue(obl.totalLoan) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.outstanding ? '₹' + formatPDFValue(obl.outstanding) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.emi ? '₹' + formatPDFValue(obl.emi) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; background: ${actionBg}; color: ${actionColor}; font-weight: bold; font-size: 12px;">${obl.action || 'N/A'}</td>
+                    <tr>
+                      <td style="${cs} text-align: center;">${index + 1}</td>
+                      <td style="${cs}">${obl.product || 'N/A'}</td>
+                      <td style="${cs}">${bankDisplay}</td>
+                      <td style="${cs} text-align: center;">${obl.roi || 'N/A'}</td>
+                      <td style="${cs} text-align: center;">${obl.tenure || 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.totalLoan ? '₹' + formatPDFValue(obl.totalLoan) : 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.outstanding ? '₹' + formatPDFValue(obl.outstanding) : 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.emi ? '₹' + formatPDFValue(obl.emi) : 'N/A'}</td>
+                      <td style="${cs} text-align: center;">${obl.action || 'N/A'}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -6911,8 +6913,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             onClick={() => canEdit && handleBankDropdownToggle(idx)}
                             data-dropdown-trigger="true"
                           >
-                            <span className={`${(row.bankName && row.bankName !== 'Custom') ? '' : 'text-slate-500'} uppercase`}>
-                              {(row.bankName && row.bankName !== 'Custom') ? row.bankName : 'Select Bank'}
+                            <span className={`${(row.bankName && row.bankName.toLowerCase() !== 'custom') ? '' : 'text-slate-500'} uppercase`}>
+                              {(row.bankName && row.bankName.toLowerCase() !== 'custom') ? row.bankName : 'Select Bank'}
                               {row.bankName && companyType.includes(row.bankName) ? '': ''}
                             </span>
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
