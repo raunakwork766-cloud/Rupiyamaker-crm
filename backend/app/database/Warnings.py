@@ -658,7 +658,7 @@ class WarningDB:
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(warning_id), "issued_to": ObjectId(user_id)},
-                {"$set": {"is_acknowledged": True, "acknowledged_at": get_ist_now()}}
+                {"$set": {"is_acknowledged": True, "acknowledged_at": get_ist_now(), "status": "Acknowledged"}}
             )
             return result.modified_count > 0 or result.matched_count > 0
         except Exception as e:

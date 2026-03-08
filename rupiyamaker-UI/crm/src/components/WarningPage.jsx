@@ -1337,6 +1337,7 @@ const WarningPage = memo(() => {
 
   // Get warning status display
   const getWarningStatus = (warning) => {
+    if (warning.is_acknowledged) return 'Acknowledged';
     return warning.status || warning.employee_status || 'Pending';
   };
 
@@ -2015,7 +2016,7 @@ const WarningPage = memo(() => {
                                               {isPending ? (
                                                 <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
                                               ) : (
-                                                <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                                <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">{status}</span>
                                               )}
                                             </td>
                                           </tr>
@@ -2312,7 +2313,7 @@ const WarningPage = memo(() => {
                                             {isPending ? (
                                               <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
                                             ) : (
-                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">{status}</span>
                                             )}
                                           </td>
                                         </tr>
@@ -2544,7 +2545,7 @@ const WarningPage = memo(() => {
                                             {isPending ? (
                                               <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
                                             ) : (
-                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                              <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">{status}</span>
                                             )}
                                           </td>
                                         </tr>
@@ -2776,7 +2777,7 @@ const WarningPage = memo(() => {
                                         {isPending ? (
                                           <span className="bg-amber-900/30 text-amber-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-amber-700">Pending</span>
                                         ) : (
-                                          <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">Accepted</span>
+                                          <span className="bg-green-900/30 text-green-400 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-green-700">{status}</span>
                                         )}
                                       </td>
                                     </tr>
