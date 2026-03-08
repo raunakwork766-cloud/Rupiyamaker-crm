@@ -4122,7 +4122,9 @@ const WarningPage = memo(() => {
   );
   } catch (error) {
     console.error('WarningPage render error:', error);
-    setRenderError(error);
+    // NOTE: do NOT call setRenderError here — calling setState during render
+    // causes React to synchronously re-render, which re-throws the same error,
+    // which calls setRenderError again → infinite recursive re-render → stack overflow.
     return (
       <div className="min-h-screen bg-black text-white font-sans flex items-center justify-center">
         <div className="text-center">
