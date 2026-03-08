@@ -1876,7 +1876,7 @@ export default function Attachments({ leadId, userId }) {
       </div>
 
       {/* ── Document rows ── */}
-      <div className="space-y-1.5" id="categories-container">
+      <div className="space-y-3" id="categories-container">
         {allDisplayTypes.length === 0 && (
           <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
             No documents active in this section. Go to Settings → Others → Attachment Types to add them.
@@ -1898,11 +1898,11 @@ export default function Attachments({ leadId, userId }) {
           if (otherTypes.length > 0) grouped.push({ id: 'other', title: 'OTHER DOCUMENTS', types: otherTypes });
 
           return grouped.map((cat, catIdx) => (
-            <div key={cat.id} className="mb-2 last:mb-0">
-              <div className="border-b border-gray-700 pb-0.5 mb-1.5">
-                <h3 className="text-[10px] font-black text-gray-900 uppercase tracking-tight">{catIdx + 1}. {cat.title}</h3>
+            <div key={cat.id} className="mb-3 last:mb-0">
+              <div className="border-b-2 border-gray-800 pb-1 mb-3 flex items-center justify-between">
+                <h3 className="text-base font-black text-gray-900 uppercase tracking-tight">{catIdx + 1}. {cat.title}</h3>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-2.5">
                 {cat.types.map((attachmentType) => {
             const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
             const inputRef = dynamicRefs[key];
@@ -1917,15 +1917,15 @@ export default function Attachments({ leadId, userId }) {
             return (
               <div
                 key={attachmentType.id || attachmentType._id}
-                className="bg-white border border-gray-200 rounded-lg p-1.5 flex flex-col md:flex-row gap-1.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
+                className="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
               >
                 {/* ── LEFT: doc label ── */}
-                <div className="w-full md:w-[160px] lg:w-[180px] shrink-0 flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-[10px] shrink-0">
+                <div className="w-full md:w-1/4 lg:w-1/5 shrink-0 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-sm shrink-0">
                     <i className="fa-solid fa-file-invoice"></i>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-gray-900 text-[10px] leading-tight pr-1 tracking-tight">
+                  <div className="pt-0.5 flex-1 min-w-0">
+                    <h4 className="font-bold text-gray-900 text-xs leading-tight pr-1 tracking-tight">
                       {attachmentType.name.toUpperCase()}
                     </h4>
                     {attachmentType.isHistorical && (
@@ -1957,7 +1957,7 @@ export default function Attachments({ leadId, userId }) {
                 </div>
 
                 {/* ── MIDDLE: draggable file list ── */}
-                <div className="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-0.5 flex flex-col gap-0.5 min-h-[30px]">
+                <div className="flex-1 w-full bg-slate-50 border border-gray-100 rounded p-1.5 flex flex-col gap-1.5 min-h-[50px]">
                   {typeDocuments.length > 0 ? (
                     <div className="space-y-1 w-full">
                       {typeDocuments.map((doc, fileIdx) => {
@@ -1975,26 +1975,26 @@ export default function Attachments({ leadId, userId }) {
                             onDragOver={e => handleFileDragOver(e, attachmentType.name, fileIdx)}
                             onDragEnd={handleFileDragEnd}
                             onDrop={e => handleFileDrop(e, attachmentType.name, fileIdx)}
-                            className={`cursor-grab active:cursor-grabbing bg-white border rounded p-1 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition group/filerow
+                            className={`cursor-grab active:cursor-grabbing bg-white border rounded p-1.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition group/filerow
                               ${isLocked ? 'border-red-200' : 'border-gray-200'}
                               ${isDraggedOver ? 'border-t-2 border-t-[#2563eb] !border-blue-300' : 'hover:border-blue-300'}`}
                           >
                             {/* file info */}
-                            <div className="flex items-center gap-1 min-w-0 pr-1 flex-1 w-full">
-                              <div className="text-[8px] font-black w-3.5 h-3.5 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 group-hover/filerow:bg-blue-100 group-hover/filerow:text-[#2563eb] transition-colors select-none">
+                            <div className="flex items-start gap-1.5 min-w-0 pr-2 flex-1 w-full">
+                              <div className="text-[9px] font-black w-4 h-4 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0 mt-0.5 group-hover/filerow:bg-blue-100 group-hover/filerow:text-[#2563eb] transition-colors select-none">
                                 {displayNum}
                               </div>
-                              <i className="fa-solid fa-grip-vertical text-gray-300 text-[9px] shrink-0 cursor-grab select-none"></i>
-                              <i className={`fa-solid ${isLocked ? 'fa-file-shield text-red-500' : getFileIconClass(fname)} text-sm shrink-0 select-none`}></i>
+                              <i className="fa-solid fa-grip-vertical text-gray-300 mt-0.5 mr-0.5 text-[10px] shrink-0 cursor-grab select-none"></i>
+                              <i className={`fa-solid ${isLocked ? 'fa-file-shield text-red-500' : getFileIconClass(fname)} text-base shrink-0 mt-0.5 select-none`}></i>
                               <div className="flex-1 w-full min-w-0">
-                                <span className="text-[10px] font-bold text-gray-800 break-all w-full line-clamp-1 leading-tight" title={fname}>
+                                <span className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title={fname}>
                                   {fname}
                                 </span>
                               </div>
                             </div>
 
                             {/* action buttons */}
-                            <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto relative z-10">
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto relative z-10">
                               {isLocked && (
                                 <>
                                   <input
@@ -2014,7 +2014,7 @@ export default function Attachments({ leadId, userId }) {
                                         showNotification('Enter the password or it is not stored', 'warning');
                                       }
                                     }}
-                                    className="bg-gray-800 hover:bg-black text-white text-[8px] font-bold px-2 py-0.5 rounded whitespace-nowrap transition"
+                                    className="bg-gray-800 hover:bg-black text-white text-[9px] font-bold px-2.5 py-1 rounded whitespace-nowrap"
                                   >
                                     DECRYPT
                                   </button>
@@ -2022,25 +2022,25 @@ export default function Attachments({ leadId, userId }) {
                               )}
                               <button
                                 onClick={() => window.open(`${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`, '_blank')}
-                                className="bg-gray-50 border border-gray-200 rounded p-0.5 text-gray-500 hover:text-[#2563eb] hover:bg-white transition shadow-sm"
+                                className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-[#2563eb] hover:bg-white transition shadow-sm"
                                 title="View"
                               >
-                                <i className="fa-solid fa-eye text-[9px]"></i>
+                                <i className="fa-solid fa-eye text-[10px]"></i>
                               </button>
                               <button
                                 onClick={() => handleDownload(doc._id)}
-                                className="bg-gray-50 border border-gray-200 rounded p-0.5 text-gray-500 hover:text-green-600 hover:bg-white transition shadow-sm"
+                                className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-green-600 hover:bg-white transition shadow-sm"
                                 title="Download"
                               >
-                                <i className="fa-solid fa-download text-[9px]"></i>
+                                <i className="fa-solid fa-download text-[10px]"></i>
                               </button>
-                              <div className="w-px h-3 bg-gray-200 hidden sm:block"></div>
+                              <div className="w-px h-4 bg-gray-200 mx-0.5 hidden sm:block"></div>
                               <button
                                 onClick={() => handleDelete(doc._id)}
-                                className="bg-red-50 border border-red-100 rounded p-0.5 text-gray-500 hover:text-red-500 hover:bg-red-100 transition shadow-sm"
+                                className="bg-red-50 border border-red-100 rounded p-1 text-gray-500 hover:text-red-500 hover:bg-red-100 transition shadow-sm"
                                 title="Delete"
                               >
-                                <i className="fa-solid fa-trash-can text-[9px]"></i>
+                                <i className="fa-solid fa-trash-can text-[10px]"></i>
                               </button>
                             </div>
                           </div>
@@ -2048,12 +2048,12 @@ export default function Attachments({ leadId, userId }) {
                       })}
                     </div>
                   ) : (
-                    <div className="text-[9px] text-gray-400 italic py-1.5 flex items-center justify-center h-full w-full border border-dashed border-gray-200 rounded bg-gray-50/50">No files yet. Click "Attach Files".</div>
+                    <div className="text-[11px] text-gray-400 font-medium italic py-2 flex items-center justify-center h-full w-full border border-dashed border-gray-300 rounded bg-gray-50/50">No files attached yet. Click "Attach Files".</div>
                   )}
                 </div>
 
                 {/* ── RIGHT: upload + password ── */}
-                <div className="w-full md:w-[96px] shrink-0 flex flex-col gap-0.5 justify-center">
+                <div className="w-full md:w-32 shrink-0 flex flex-col gap-1.5 items-end justify-center">
                   <div className="relative w-full">
                     <input
                       type="file"
@@ -2064,7 +2064,7 @@ export default function Attachments({ leadId, userId }) {
                       disabled={isLoading}
                       title=""
                     />
-                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-0.5 px-1 rounded shadow-sm text-[9px] flex items-center justify-center gap-0.5 transition uppercase pointer-events-none whitespace-nowrap">
+                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-2 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1.5 transition uppercase pointer-events-none whitespace-nowrap">
                       {isLoading
                         ? <><i className="fa-solid fa-spinner fa-spin"></i> Uploading…</>
                         : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach Files</>
@@ -2076,7 +2076,7 @@ export default function Attachments({ leadId, userId }) {
                     placeholder="Password (opt.)"
                     value={password}
                     onChange={e => handlePasswordChange(key, e.target.value)}
-                    className="w-full text-[9px] px-1 py-0.5 border border-gray-200 rounded focus:outline-none focus:border-blue-400 text-gray-600 bg-white"
+                    className="w-full text-[10px] px-1.5 py-1 border border-gray-200 rounded focus:outline-none focus:border-blue-400 text-gray-600 bg-white"
                     disabled={isLoading}
                   />
                 </div>
