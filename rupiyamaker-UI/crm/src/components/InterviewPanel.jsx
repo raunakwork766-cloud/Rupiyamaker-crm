@@ -10,6 +10,7 @@ import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
 import { formatDate as formatDateUtil, formatDateTime, calculateAge } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
+import InterviewSettings from './InterviewSettings';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -2084,11 +2085,21 @@ const InterviewPanel = () => {
             {canAccessSettings() && (
               <>
                 <button
-                  onClick={() => navigate('/interview-settings')}
+                  onClick={() => setIsSettingsOpen(true)}
                   className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
-                  title="Settings"
+                  title="Interview Settings"
                 >
                   <Settings size={14} className="text-blue-600" /> Settings
+                </button>
+                <button
+                  onClick={async () => {
+                    await loadDropdownOptions();
+                    alert(`✅ Loaded:\n• ${jobOpeningOptions.length} Job Openings\n• ${interviewTypeOptions.length} Interview Types\n• ${sourcePortalOptions.length} Source Portals\n• ${statusOptions.length} Statuses`);
+                  }}
+                  className="px-3 py-2 bg-white hover:bg-emerald-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 transition-colors flex items-center gap-2 shadow-sm"
+                  title="Reload and verify settings from database"
+                >
+                  <RefreshCw size={14} className="text-emerald-600" /> Reload Options
                 </button>
                 <button
                   onClick={async () => { setShowReassignmentPanel(true); await loadReassignmentRequests(); }}
@@ -2473,6 +2484,31 @@ const InterviewPanel = () => {
         </div>
       )}
     </div>
+
+    {/* ── Interview Settings Modal ── */}
+    {isSettingsOpen && (
+      <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex flex-col">
+        <div className="relative w-full h-full flex flex-col bg-[#0f1420] overflow-hidden">
+          {/* Close strip at top */}
+          <div className="shrink-0 flex items-center justify-between px-6 py-3 bg-[#1b2230] border-b border-gray-700">
+            <span className="text-white font-bold text-base flex items-center gap-2">
+              <Settings size={16} className="text-blue-400" /> Interview Settings
+            </span>
+            <button
+              onClick={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }}
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+              title="Close & reload options"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          {/* Embedded settings page */}
+          <div className="flex-1 overflow-y-auto">
+            <InterviewSettings onClose={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }} />
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 };

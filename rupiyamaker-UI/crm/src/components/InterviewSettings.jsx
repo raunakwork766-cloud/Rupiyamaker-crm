@@ -4,8 +4,12 @@ import { interviewSettingsAPI } from '../services/api';
 import API from '../services/api';
 import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 
-const InterviewSettings = () => {
+const InterviewSettings = ({ onClose = null }) => {
   const navigate = useNavigate();
+  // When rendered as a modal (onClose provided), use onClose; else navigate back
+  const handleBack = () => {
+    if (onClose) { onClose(); } else { navigate('/interview-panel'); }
+  };
   
   // Job Opening State
   const [newJobOpening, setNewJobOpening] = useState('');
@@ -858,9 +862,9 @@ const InterviewSettings = () => {
   };
 
   return (
-    <div className="p-6 bg-black min-h-screen">
+    <div className={`p-6 bg-[#0f1420] ${onClose ? 'h-full overflow-y-auto' : 'min-h-screen'}`}>
       {loading ? (
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex items-center justify-center py-24">
           <div className="text-white text-lg">Loading interview settings...</div>
         </div>
       ) : (
@@ -869,13 +873,17 @@ const InterviewSettings = () => {
           <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/interview-panel')}
+            onClick={handleBack}
             className="p-2 text-gray-400 hover:text-white transition-colors"
-            title="Back to Interview Panel"
+            title={onClose ? 'Close Settings' : 'Back to Interview Panel'}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
-            </svg>
+            {onClose ? (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+              </svg>
+            )}
           </button>
           <h1 className="text-3xl font-bold text-white">Interview Settings</h1>
         </div>
@@ -1545,10 +1553,10 @@ const InterviewSettings = () => {
               Changes are saved automatically
             </div>
             <button
-              onClick={() => navigate('/interview-panel')}
+              onClick={handleBack}
               className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
             >
-              Back to Interview Panel
+              {onClose ? 'Close Settings' : 'Back to Interview Panel'}
             </button>
           </div>
         </div>
