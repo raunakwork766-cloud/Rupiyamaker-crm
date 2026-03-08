@@ -350,9 +350,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const companyDropdownRef = useRef(null);
 
   // Notify parent component when unsaved changes state updates
+  // Auto-save is always active - no tab-switch popup needed
   useEffect(() => {
     if (onUnsavedChangesUpdate && typeof onUnsavedChangesUpdate === 'function') {
-      onUnsavedChangesUpdate(hasUnsavedChanges, () => setShowUnsavedChangesModal(true));
+      onUnsavedChangesUpdate(false, () => {});
     }
   }, [hasUnsavedChanges, onUnsavedChangesUpdate]);
   
@@ -6349,7 +6350,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData);
 
   return (
-    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-[#0a0e14] text-slate-300 overflow-hidden" style={{height:'100%',minHeight:'100vh',fontFamily:'system-ui,-apple-system,sans-serif'}}>
+    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300 overflow-hidden" style={{height:'100%',minHeight:'100vh',fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
@@ -6416,7 +6417,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full bg-black border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
                       value={formatINR(salary)}
                       onChange={canEdit ? handleSalaryChange : undefined}
                       onBlur={handleObligationFieldBlur}
@@ -6433,7 +6434,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full bg-black border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
                       value={formatINR(partnerSalary)}
                       onChange={canEdit ? handlePartnerSalaryChange : undefined}
                       onBlur={handleObligationFieldBlur}
@@ -6446,7 +6447,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Bonus with Divide By */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Bonus</label>
-                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
+                  <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
                     <div className="relative flex-1 border-r border-slate-700/50">
                       <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                       <input
@@ -6466,7 +6467,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       onChange={(e) => canEdit && handleBonusDivisionToggle(Number(e.target.value))}
                       disabled={!canEdit}
                     >
-                      <option value="" disabled>÷ Duration</option>
+                      <option value="">÷ Duration</option>
                       {bonusDivisions.map((opt) => (
                         <option key={opt.value} value={opt.value}>÷ {opt.label} Mo</option>
                       ))}
@@ -6480,7 +6481,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Company Name with searchable input */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Name</label>
-                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
+                  <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
                     <input
                       ref={companyDropdownRef}
                       type="text"
@@ -6590,10 +6591,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Company Category - 2nd grid column */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
-                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
+                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
                     {(!Array.isArray(companyCategory) || companyCategory.length === 0) && <span className="text-slate-500 text-xs px-1">Select from modal...</span>}
                     {Array.isArray(companyCategory) && companyCategory.map((category, index) => {
-                      const displayText = typeof category === 'string' ? category : (category.display || category.display_text || category.label || category.category_name || 'Unknown');
+                      const displayText = typeof category === 'string' ? category : (category.bank_name || category.display || category.display_text || category.label || category.category_name || 'Unknown');
                       const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
                       return (
                         <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
@@ -6609,7 +6610,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               {/* Decide Bank For Case - full width */}
               <div>
                 <label className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
-                <div className="flex flex-wrap gap-1.5 items-center bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
+                <div className="flex flex-wrap gap-1.5 items-center bg-black border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
                   {companyType.length === 0 && <span className="text-slate-500 text-xs">No banks selected...</span>}
                   {companyType.map((bank, index) => {
                     const bankDisplay = bank && typeof bank === 'object' ? (bank.name || bank.label || bank.value || String(bank)) : String(bank || '');
@@ -6630,15 +6631,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
               {/* Summary Cards */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-[#151b23] rounded-xl p-4 border border-emerald-500/20">
+                <div className="bg-black rounded-xl p-4 border border-emerald-500/20">
                   <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider block mb-1.5">Total BT POS</span>
                   <span className="text-emerald-400 font-black text-2xl tracking-tight">{totalBtPos}</span>
                 </div>
-                <div className="bg-[#151b23] rounded-xl p-4 border border-yellow-500/20">
+                <div className="bg-black rounded-xl p-4 border border-yellow-500/20">
                   <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider block mb-1.5">Total Obligation</span>
                   <span className="text-yellow-400 font-black text-2xl tracking-tight">{totalObligation}</span>
                 </div>
-                <div className="bg-[#151b23] rounded-xl p-4 border border-slate-700/50">
+                <div className="bg-black rounded-xl p-4 border border-slate-700/50">
                   <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
                   <input
                     type="text"
@@ -6918,8 +6919,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             onClick={() => canEdit && handleBankDropdownToggle(idx)}
                             data-dropdown-trigger="true"
                           >
-                            <span className={`${row.bankName ? '' : 'text-black'} uppercase`}>
-                              {row.bankName || ''}
+                            <span className={`${row.bankName ? '' : 'text-slate-500'} uppercase`}>
+                              {row.bankName || 'Select Bank'}
                               {row.bankName && companyType.includes(row.bankName) ? '': ''}
                             </span>
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
@@ -7116,7 +7117,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         </div>
       </div>
       {/* === RIGHT SIDEBAR === */}
-      <div className="w-[420px] shrink-0 bg-[#0e131b] border-l border-slate-800 shadow-2xl flex flex-col z-10">
+      <div className="w-[420px] shrink-0 bg-black border-l border-slate-800 shadow-2xl flex flex-col z-10 sticky top-0 h-screen overflow-hidden">
         <div className="flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
           <div className="grid grid-cols-2 gap-3">
@@ -7126,7 +7127,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Income</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
             {/* FOIR % - Editable select */}
             <div className="flex flex-col justify-end">
@@ -7149,7 +7150,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">FOIR Amount</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
             {/* EMI Can Pay - ReadOnly */}
             <div className="flex flex-col justify-end">
@@ -7157,7 +7158,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
           </div>
 
@@ -7215,7 +7216,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total BT POS</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
           </div>
 
@@ -7225,7 +7226,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* Max FOIR Eligibility - large display div */}
             <div className="flex flex-col justify-end">
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Max FOIR Eligibility</label>
-              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
+              <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
             </div>
             {/* Multiplier Limit - large display div with inline input */}
             <div className="flex flex-col justify-end">
@@ -7242,7 +7243,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   />
                 </div>
               </div>
-              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
+              <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
             </div>
           </div>
 
@@ -7287,7 +7288,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     </label>
                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">@ {ceRoi}% · {ceTenureYears} Yrs · {ceTenureMonths} Mo</span>
                   </div>
-                  <div className="bg-[#151b23] p-3 flex gap-3 items-center">
+                  <div className="bg-black p-3 flex gap-3 items-center">
                     <div className="flex-1 relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
                       <input
@@ -7303,7 +7304,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                         }}
                         onBlur={handleObligationFieldBlur}
                         disabled={!canEdit}
-                        className={`w-full h-[44px] bg-[#0a0e14] border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
+                        className={`w-full h-[44px] bg-black border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
                         placeholder="Enter loan amount"
                       />
                     </div>
