@@ -87,7 +87,6 @@ import {
     CopyLeadSection,
     RemarkSection,
     FileSentToLoginSection,
-    ReassignmentPanel,
     RequestReassignmentButton,
     LazySection
 } from './LazyLeadSections';
@@ -7034,12 +7033,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         <p className="font-medium">Loading leads and preparing sections...</p>
                     </div>
                 )}
-
-                {/* Reassignment Dashboard - for managers/admins */}
-                <ReassignmentPanel 
-                    userPermissions={permissions} 
-                    onLeadAction={handleLeadAction} 
-                />
 
                 {/* Table Section */}
                 <div className="overflow-auto rounded-xl sticky-table-container">

@@ -22,7 +22,15 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction }) => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const userId = localStorage.getItem('userId');
-  const canApprove = canApproveLeadReassignment(userPermissions);
+  
+  // Get permissions from prop or fall back to localStorage
+  const resolvedPermissions = userPermissions || (() => {
+    try {
+      const raw = localStorage.getItem('userPermissions');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })();
+  const canApprove = canApproveLeadReassignment(resolvedPermissions);
 
   // Fetch stats for all statuses
   const loadStats = useCallback(async () => {

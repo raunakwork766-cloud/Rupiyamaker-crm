@@ -3047,15 +3047,28 @@ class LeadsDB:
             
             # If sub-status is specified, check if it overrides the status settings
             if sub_status_name:
-                # Find sub-status object
-                sub_statuses = await self.list_sub_statuses(str(status_obj.get("id", status_obj.get("_id"))))
-                for sub_status in sub_statuses:
-                    if sub_status.get("name") == sub_status_name:
-                        # Check if sub-status has its own reassignment period
-                        if sub_status.get("reassignment_period") is not None:
-                            reassignment_period = sub_status.get("reassignment_period")
-                            is_manager_permission_required = sub_status.get("is_manager_permission_required", False)
+                # First try embedded sub_statuses array in status document (used by StatusManagementTab)
+                embedded_sub_statuses = status_obj.get("sub_statuses", [])
+                found_in_embedded = False
+                for sub_status in embedded_sub_statuses:
+                    sub_name = sub_status.get("name") if isinstance(sub_status, dict) else sub_status
+                    if sub_name == sub_status_name:
+                        if isinstance(sub_status, dict):
+                            if sub_status.get("reassignment_period") is not None:
+                                reassignment_period = sub_status.get("reassignment_period")
+                                is_manager_permission_required = sub_status.get("is_manager_permission_required", is_manager_permission_required)
+                        found_in_embedded = True
                         break
+                
+                # Fallback: check separate sub_statuses collection
+                if not found_in_embedded:
+                    sub_statuses = await self.list_sub_statuses(str(status_obj.get("id", status_obj.get("_id"))))
+                    for sub_status in sub_statuses:
+                        if sub_status.get("name") == sub_status_name:
+                            if sub_status.get("reassignment_period") is not None:
+                                reassignment_period = sub_status.get("reassignment_period")
+                                is_manager_permission_required = sub_status.get("is_manager_permission_required", False)
+                            break
             
             # If reassignment period is None or 0, allow immediate reassignment
             if reassignment_period is None or reassignment_period == 0:

@@ -11,6 +11,7 @@ import {
 } from "../utils/leadDataHelper";
 import { leadEvents } from "../utils/auth";
 import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
+import ReassignmentPanel from './sections/ReassignmentPanel';
 
 // API base URL
 const API_BASE_URL = '/api';
@@ -1618,10 +1619,13 @@ const handleMobileNumberChange = (e) => {
       console.log('❌ User does NOT have reassignment popup permission - showing simple alert');
       setShowReassignmentOption(false);
       setShowLeadDetails(false);
-      // Show a simple message instead of the detailed popup
+      // Show a compact dark card instead of the detailed popup
       setMobileCheckResult({
         exists: true,
-        message: `⚠️ This mobile number already exists in the system and is assigned to ${leadData.assigned_to_name}.`
+        message: `This mobile number already exists and is assigned to ${leadData.assigned_to_name || 'another user'}.`,
+        leads: [leadData],
+        days_remaining: daysRemaining,
+        is_manager_permission_required: isManagerPermissionRequired
       });
       return;
     }
@@ -4834,21 +4838,78 @@ function CreateLead() {
             <div className="min-h-[100px]">
               {/* Simple message for users without reassignment popup permission */}
               {mobileCheckResult && mobileCheckResult.exists && !showReassignmentOption && (
-                <div className="p-6 mb-6 bg-yellow-50 rounded-lg shadow-md border-l-4 border-yellow-500">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <svg className="w-8 h-8 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
+                <div className="mb-6 bg-neutral-900 rounded-xl border border-neutral-700 overflow-hidden">
+                  {/* Lead row — list-view style */}
+                  <div className="px-5 py-3 bg-neutral-800 border-b border-neutral-700 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-yellow-400 font-semibold text-sm">Lead Already Exists</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+                    {/* Name */}
+                    <div className="flex items-center gap-2 min-w-[140px]">
+                      <div className="w-8 h-8 rounded-full bg-cyan-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {(mobileCheckResult?.leads?.[0]?.customer_name || mobileCheckResult?.leads?.[0]?.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-neutral-500">Customer</p>
+                        <p className="text-sm font-semibold text-white truncate max-w-[100px]">
+                          {mobileCheckResult?.leads?.[0]?.customer_name || mobileCheckResult?.leads?.[0]?.name || 'Unknown'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-yellow-800 mb-2">Lead Already Exists</h3>
-                      <p className="text-yellow-700 text-base">
-                        {mobileCheckResult.message}
+                    {/* Status */}
+                    <div className="min-w-[100px]">
+                      <p className="text-[11px] text-neutral-500">Status</p>
+                      <span className="px-2 py-0.5 bg-neutral-700 text-neutral-200 text-xs rounded font-medium">
+                        {mobileCheckResult?.leads?.[0]?.status || '—'}
+                      </span>
+                      {mobileCheckResult?.leads?.[0]?.sub_status && (
+                        <span className="ml-1 px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded font-medium">
+                          {mobileCheckResult?.leads?.[0]?.sub_status}
+                        </span>
+                      )}
+                    </div>
+                    {/* Owner */}
+                    <div className="min-w-[100px]">
+                      <p className="text-[11px] text-neutral-500">Owner</p>
+                      <p className="text-sm font-semibold text-white truncate max-w-[110px]">
+                        {mobileCheckResult?.leads?.[0]?.created_by_name || mobileCheckResult?.leads?.[0]?.assigned_to_name || 'Unknown'}
                       </p>
-                      <p className="text-yellow-600 text-sm mt-2">
-                        You do not have permission to view detailed reassignment information. Please contact your administrator if you need access.
-                      </p>
+                    </div>
+                    {/* Product */}
+                    <div className="min-w-[80px]">
+                      <p className="text-[11px] text-neutral-500">Product</p>
+                      <p className="text-xs text-neutral-300">{mobileCheckResult?.leads?.[0]?.product_type || mobileCheckResult?.leads?.[0]?.loan_type || '—'}</p>
+                    </div>
+                    {/* LOCKED / MANAGER REQUIRED badges */}
+                    <div className="flex items-center gap-2 ml-auto flex-wrap">
+                      {mobileCheckResult?.days_remaining > 0 && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold uppercase animate-pulse">
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                          </svg>
+                          LOCKED — {mobileCheckResult.days_remaining}d
+                        </span>
+                      )}
+                      {mobileCheckResult?.is_manager_permission_required && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold uppercase">
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          MGR APPROVAL
+                        </span>
+                      )}
+                      {(mobileCheckResult?.days_remaining ?? 0) === 0 && !mobileCheckResult?.is_manager_permission_required && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold uppercase">
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H5V7a5 5 0 015-5z" />
+                          </svg>
+                          UNLOCKED
+                        </span>
+                      )}
+                      <p className="text-xs text-neutral-500">No permission to reassign</p>
                     </div>
                   </div>
                 </div>
@@ -5917,11 +5978,9 @@ function CreateLead() {
         )}
 
         {activeTab === "reassignment" && (
-          <ReassignmentTable 
-            reassignmentActionLoading={reassignmentActionLoading}
-            setReassignmentActionLoading={setReassignmentActionLoading}
-            buttonAnimations={buttonAnimations}
-            animateButton={animateButton}
+          <ReassignmentPanel 
+            userPermissions={permissions}
+            onLeadAction={() => {}}
           />
         )}
       </div>

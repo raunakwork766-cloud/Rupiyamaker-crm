@@ -6562,11 +6562,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        window.open('https://www.zaubacorp.com/', '_blank', 'noopener,noreferrer');
-                      }}
+                      onClick={() => canEdit && setShowCategoryPopup(true)}
                       className="bg-blue-600/20 text-blue-400 px-3 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors border-l border-slate-700/50 shrink-0 self-stretch"
-                      title="Search on Zaubacorp"
+                      title="Search Company & Select Category"
                     >
                       {isCompanyLoading ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400"></div>
@@ -6793,7 +6791,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <tr className="bg-black border-b-2 border-gray-600 align-middle">
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-8">#</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-48">PRODUCT</th>
-                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-72">BANK NAME</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-48">BANK NAME</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-20">ROI</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-24">TENURE</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">TOTAL LOAN</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">OUTSTANDING</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-28">EMI</th>
@@ -6925,6 +6925,38 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
                           </div>
                         </div>
+                      </td>
+
+                      {/* ROI */}
+                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
+                        <input
+                          type="text"
+                          className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
+                          placeholder="ROI %"
+                          value={row.roi || ''}
+                          disabled={!canEdit}
+                          onChange={e => {
+                            if (!canEdit) return;
+                            handleObligationChange(idx, 'roi', e.target.value);
+                          }}
+                          onBlur={handleObligationFieldBlur}
+                        />
+                      </td>
+
+                      {/* Tenure */}
+                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
+                        <input
+                          type="text"
+                          className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
+                          placeholder="Months"
+                          value={row.tenure || ''}
+                          disabled={!canEdit}
+                          onChange={e => {
+                            if (!canEdit) return;
+                            handleObligationChange(idx, 'tenure', e.target.value);
+                          }}
+                          onBlur={handleObligationFieldBlur}
+                        />
                       </td>
 
                       {/* Total Loan */}
@@ -7774,148 +7806,85 @@ function BankPopup({ onClose, onSelect, onSave, companyTypes, multiSelect = true
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
-    >
-      <div className="bg-transparent backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[95%] max-w-2xl mx-auto relative">
-        <div className="flex items-center mb-4 bg-white bg-opacity-90 p-3 rounded-t-xl">
-          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white text-lg flex items-center justify-center mr-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1" />
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[88vh]">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px] text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1"/>
             </svg>
-          </div>
-          <h3 className="font-bold text-lg text-black">{multiSelect ? "Select Multiple Banks" : "Select Bank"}</h3>
-          {multiSelect && <span className="ml-2 text-sm text-gray-600">(Click multiple items to select)</span>}
-        </div>
-
-        <div className="mb-4 bg-white bg-opacity-90 p-3 rounded-md">
-          <label className="block font-bold text-gray-700 mb-2 text-lg">
-            Search Banks {multiSelect && "(Select Multiple)"}
-          </label>
-          
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 border border-cyan-400 rounded text-black font-bold text-lg"
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="Search or enter bank name"
-            />
-            {bankName && (
-              <button
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-lg text-gray-400 hover:text-gray-600"
-                onClick={() => setBankName("")}
-                type="button"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Show loading or the bank list */}
-        <div className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white bg-opacity-90">
-          {isLoadingBanks ? (
-            <div className="p-5 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 text-lg border-t-2 border-b-2 border-cyan-500"></div>
-              <span className="ml-3 text-gray-600 text-lg">Loading banks...</span>
-            </div>
-          ) : filteredBanks.length > 0 ? (
-            filteredBanks.map((bank) => {
-              // Get label value for consistency
-              const labelValue = typeof bank.label === 'string' 
-                ? bank.label 
-                : String(bank.label || bank.value || '');
-                
-              // Check if this bank is selected (using more robust check)
-              const isSelected = selectedBanks.some(b => 
-                b === labelValue || 
-                (typeof b === 'object' && b?.label === labelValue)
-              );
-              
-              return (
-                <div
-                  key={bank.value || labelValue}
-                  className={`p-3 border-b last:border-b-0 cursor-pointer text-lg text-black transition flex items-center ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
-                  onClick={() => selectBank(bank)}
-                >
-                  {/* Profile icon with initials */}
-                  <div className={`w-8 h-8 rounded-full ${isSelected ? 'bg-cyan-600' : 'bg-[#03B0F5]'} text-white flex items-center justify-center mr-3 flex-shrink-0`}>
-                    {typeof labelValue === 'string' 
-                      ? labelValue.split(' ')
-                          .map(part => part[0] || '')
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()
-                      : 'BK'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium text-lg">{labelValue}</div>
-                  </div>
-                  {/* Show checkmark if selected */}
-                  {isSelected && (
-                    <div className="ml-2 text-cyan-600">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            bankName.trim() !== "" && ( // Only show "No results" if user typed something and no results
-              <div className="p-3 text-gray-500 text-center text-lg">No matching banks found.</div>
-            )
-          )}
-        </div>
-
-        <div className="flex justify-end gap-4 mt-4 bg-white bg-opacity-90 p-3 rounded-b-xl">
-          {bankName.trim() && (
-            <button
-              className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow text-lg hover:bg-cyan-700 transition"
-              onClick={handleAssign}
-            >
-              {multiSelect ? "Add Bank" : "Add Bank"}
-            </button>
-          )}
-          {multiSelect && (
-            <button
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl shadow text-lg hover:bg-blue-700 transition"
-              onClick={() => {
-                // Keep all selections and close the popup
-                onClose();
-              }}
-            >
-              Done
-            </button>
-          )}
-          <button
-            className="px-6 py-3 bg-gray-400 text-white text-lg rounded-xl shadow hover:bg-gray-500 transition"
-            onClick={onClose}
-          >
-            Cancel
+            Select Target Banks
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
           </button>
         </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        {/* Search */}
+        <div className="px-4 pt-4 shrink-0">
+          <div className="relative">
+            <svg className="absolute left-3.5 top-3 text-slate-500 pointer-events-none h-[15px] w-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input
+              autoFocus
+              type="text"
+              value={bankName}
+              onChange={e => setBankName(e.target.value)}
+              placeholder="Search bank name..."
+              className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-emerald-500 text-sm border border-slate-700/50"
+            />
+          </div>
+        </div>
+        {/* Bank Grid */}
+        <div className="flex-1 overflow-y-auto p-4 pt-3">
+          {isLoadingBanks ? (
+            <div className="py-8 flex items-center justify-center gap-2 text-slate-500">
+              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-emerald-400"></div>
+              <span className="text-sm font-bold">Loading banks...</span>
+            </div>
+          ) : filteredBanks.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2">
+              {filteredBanks.map(bank => {
+                const labelValue = typeof bank.label === 'string' ? bank.label : String(bank.label || bank.value || '');
+                const isSelected = selectedBanks.some(b => b === labelValue || (typeof b === 'object' && b?.label === labelValue));
+                return (
+                  <div
+                    key={bank.value || labelValue}
+                    onClick={() => selectBank(bank)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                        : 'bg-[#151b23] border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-[#1e2631]'
+                    }`}
+                  >
+                    <span className="font-semibold text-xs">{labelValue}</span>
+                    {isSelected && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-[15px] w-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-slate-500 text-sm font-bold">
+              No banks found{bankName ? ` for "${bankName}"` : ''}
+            </div>
+          )}
+        </div>
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-800 bg-[#151b23] shrink-0 flex items-center justify-between">
+          <span className="text-slate-500 text-xs">{selectedBanks.length} bank{selectedBanks.length !== 1 ? 's' : ''} selected</span>
+          <button onClick={onClose} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm">Done</button>
+        </div>
       </div>
     </div>
   );
 }
-
 // 📊 REAL-TIME DATA MONITORING for Login Transfers and Gunjan Sharma Analysis
 function useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData) {
   useEffect(() => {
@@ -8184,302 +8153,129 @@ function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onA
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       data-category-popup-backdrop="true"
-      onClick={(e) => {
-        // Only close if clicking EXACTLY on the backdrop, not on the popup content
-        console.log('Backdrop clicked, checking if should close popup');
-        console.log('Event target:', e.target);
-        console.log('Current target:', e.currentTarget);
-        console.log('Are they the same?', e.target === e.currentTarget);
-        
-        if (e.target === e.currentTarget) {
-          console.log('✅ Clicked on backdrop - closing popup');
-          onClose();
-        } else {
-          console.log('❌ Clicked inside popup content - NOT closing');
-        }
-      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div 
-        className="bg-transparent backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[95%] max-w-2xl mx-auto relative"
+      <div
+        className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh]"
         data-category-popup-container="true"
-        onClick={(e) => {
-          // Prevent clicks inside the popup from bubbling up and closing it
-          e.stopPropagation();
-        }}
+        onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center mb-4 bg-white bg-opacity-90 p-3 rounded-t-xl">
-          <div className="w-10 h-10 rounded-full bg-[#10B981] text-white flex items-center justify-center mr-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px] text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1"/>
             </svg>
-          </div>
-          <h3 className="font-bold text-lg text-black">{multiSelect ? "Select Multiple Categories" : "Select Category"}</h3>
-          {multiSelect && <span className="ml-2 text-sm text-gray-600">(Select multiple, options stay open)</span>}
-        </div>
-
-        <div className="mb-4 bg-white bg-opacity-90 p-3 rounded-md">
-          <label className="block font-bold text-gray-700 mb-2 text-lg">
-            Search Categories {multiSelect && "(Options stay open for multiple selection)"}
-          </label>
-          
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 border border-green-400 rounded text-black font-bold text-lg"
-              value={companySearchInput}
-              onChange={(e) => {
-                setCompanySearchInput(e.target.value);
-                // Search will be triggered automatically by useEffect
-              }}
-              placeholder="Search by company name"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleSearch();
-                }
-              }}
-            />
-            {companySearchInput && (
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                <button
-                  className="text-gray-400 hover:text-gray-600"
-                  onClick={() => setCompanySearchInput("")}
-                  type="button"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Categories list */}
-        <div 
-          className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white bg-opacity-90"
-          data-category-list="true"
-          onClick={(e) => {
-            // Prevent clicks in the categories list from bubbling up
-            e.stopPropagation();
-          }}
-        >
-          {loading ? (
-            <div className="p-5 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-              <span className="ml-3 text-gray-600">Loading categories...</span>
-            </div>
-          ) : (
-            // Show different content based on search input
-            companySearchInput.trim() === "" ? (
-              // No search input - show instruction message
-              <div className="p-5 text-center">
-                <div className="text-gray-500 text-lg mb-2">
-                  <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                  </svg>
-                  Search company name to choose Company Category
-                </div>
-                <div className="text-sm text-gray-400">
-                  Type a company name above to see available categories
-                </div>
-              </div>
-            ) : (
-              // Has search input - show results or no results message
-              filteredCategories.length > 0 ? (
-                filteredCategories.map((category, index) => {
-                  // Handle both string and object formats
-                  let labelValue, displayText;
-                  
-                  if (typeof category === 'string') {
-                    labelValue = category;
-                    displayText = category;
-                  } else {
-                    labelValue = category.label || category.display_text || category.category_name || '';
-                    displayText = category.display_text || category.label || `${category.company_name || ''} → ${category.bank_name || ''} → ${category.category_name || ''}`;
-                  }
-
-                  // Check if this category is selected using our helper function
-                  const isSelected = isCategorySelected(category);
-                  
-                  // Generate a unique key for React
-                  const categoryKey = category.display_key || category.value || category.display_text || category.category_name || JSON.stringify(category);
-
-                  console.log(`🎨 Rendering "${displayText}" - isSelected: ${isSelected}, key: ${categoryKey}, total selected: ${selectedCategories.length}`);
-
-                  // MANUAL SELECTION ONLY - Users select options manually by clicking
-                  const shouldShowSelected = isSelected; // Only show selected if actually selected by user
-                  console.log(`🖌️ Visual Debug - shouldShowSelected: ${shouldShowSelected} for "${displayText}" (manual selection only)`);
-                  
-                  // DIRECT STYLE TEST - Let's try a different approach
-                  const itemStyles = shouldShowSelected ? {
-                    backgroundColor: '#dcfce7',
-                    borderColor: '#86efac',
-                    borderWidth: '3px',
-                    borderStyle: 'solid',
-                    boxShadow: '0 0 10px rgba(134, 239, 172, 0.5)'
-                  } : {
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e5e7eb',
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    boxShadow: 'none'
-                  };
-                  
-                  console.log(`🎨 ITEM STYLES for "${displayText}":`, itemStyles);
-                  
-                  return (
-                    <div
-                      key={`category-${categoryKey}-${index}`}
-                      className="p-3 border-b last:border-b-0 cursor-pointer text-lg text-black transition flex items-center"
-                      style={itemStyles}
-                      onClick={(e) => {
-                        // Prevent ALL event propagation
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                        
-                        console.log('🖱️ ========== CATEGORY CLICKED ==========');
-                        console.log('🖱️ Display Text:', displayText);
-                        console.log('🖱️ Current isSelected BEFORE click:', isSelected);
-                        console.log('🖱️ shouldShowSelected BEFORE click:', shouldShowSelected);
-                        console.log('🖱️ Category object:', category);
-                        console.log('🖱️ Current selectedCategories BEFORE:', selectedCategories);
-                        console.log('🖱️ selectedCategories length:', selectedCategories.length);
-                        
-                        handleCategoryClick(category);
-                        
-                        console.log('🖱️ ========== CLICK COMPLETE ==========');
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                      }}
-                      onMouseUp={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                      }}
-                      data-category-popup-item="true"
-                    >
-                      {/* Profile icon with initials */}
-                      <div 
-                        className="w-8 h-8 rounded-full text-white flex items-center justify-center mr-3 flex-shrink-0"
-                        style={{
-                          backgroundColor: shouldShowSelected ? '#16a34a' : '#10B981',
-                          border: shouldShowSelected ? '2px solid #059669' : 'none'
-                        }}>
-                        {labelValue
-                          ? labelValue.split(' ')
-                              .map(part => part[0] || '')
-                              .slice(0, 2)
-                              .join('')
-                              .toUpperCase()
-                          : 'CA'}
-                      </div>
-                      <div className="flex-1">
-                        <div 
-                          style={{
-                            color: shouldShowSelected ? '#166534' : '#111827',
-                            fontWeight: shouldShowSelected ? 'bold' : 'normal'
-                          }}
-                          className="font-medium text-lg">{displayText}</div>
-                      </div>
-                      {/* Show checkmark if selected */}
-                      {shouldShowSelected && (
-                        <div className="ml-2" style={{ color: '#16a34a' }}>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ stroke: '#16a34a', strokeWidth: '3' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                // Search input provided but no results found
-                <div className="p-5 text-center">
-                  <div className="text-red-500 text-lg mb-2">
-                    <svg className="w-12 h-12 mx-auto mb-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.47-.881-6.08-2.33"></path>
-                    </svg>
-                    No search company found
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    Try searching with a different company name
-                  </div>
-                </div>
-              )
-            )
-          )}
-        </div>
-
-        <div className="flex justify-end gap-4 mt-4 bg-white bg-opacity-90 p-3 rounded-b-xl">
-          {/* DEBUG: Show selected count */}
-          <div className="px-4 py-2 bg-gray-100 rounded text-sm">
-            Selected: {selectedCategories.length} categories
-          </div>
-          
-          {multiSelect && (
-            <button
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl shadow text-lg hover:bg-blue-700 transition"
-              onClick={() => {
-                console.log('=== DONE BUTTON CLICKED ===');
-                console.log('selectedCategories to send:', selectedCategories);
-                console.log('onAddCategory function available:', typeof onAddCategory === 'function');
-                console.log('onSelect function available:', typeof onSelect === 'function');
-                
-                // Send all selected categories to parent when Done is clicked
-                
-                // Use onAddCategory callback if available (new approach)
-                if (onAddCategory && typeof onAddCategory === 'function') {
-                  console.log('Using onAddCategory callback to process categories');
-                  onAddCategory(selectedCategories);
-                } else {
-                  console.log('Fallback: Using onSelect for each category');
-                  // Fallback to old approach
-                  selectedCategories.forEach(category => {
-                    console.log('Adding category via onSelect:', category);
-                    onSelect(category, false); // false indicates addition
-                  });
-                }
-                
-                console.log('=== CLOSING POPUP ===');
-                // Close the popup after sending categories
-                if (onSave) onSave();
-                else onClose();
-              }}
-            >
-              Done
-            </button>
-          )}
-          <button
-            className="px-6 py-3 bg-gray-400 text-white text-lg rounded-xl shadow hover:bg-gray-500 transition"
-            onClick={onClose}
-          >
-            Cancel
+            Search Company &amp; Select Category
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
           </button>
         </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        {/* Search Input */}
+        <div className="px-4 pt-4 shrink-0">
+          <div className="relative">
+            <svg className="absolute left-3.5 top-3 text-slate-500 pointer-events-none h-[15px] w-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input
+              autoFocus
+              type="text"
+              value={companySearchInput}
+              onChange={e => setCompanySearchInput(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search by company or bank name..."
+              className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-blue-500 text-sm border border-slate-700/50"
+            />
+          </div>
+        </div>
+        {/* Results Table */}
+        <div className="flex-1 overflow-y-auto p-4 pt-3">
+          <div className="border border-slate-800 rounded-xl overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#151b23] text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Company</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Bank</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Cat</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide text-center w-24">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {loading ? (
+                  <tr><td colSpan="4" className="py-8 text-center">
+                    <div className="flex items-center justify-center gap-2 text-slate-500">
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-400"></div>
+                      <span className="text-sm font-bold">Searching...</span>
+                    </div>
+                  </td></tr>
+                ) : companySearchInput.trim() === '' ? (
+                  <tr><td colSpan="4" className="py-8 text-center text-slate-500 text-sm font-bold">Type a company name to search...</td></tr>
+                ) : filteredCategories.length > 0 ? filteredCategories.map((category, index) => {
+                  const isSelected = isCategorySelected(category);
+                  const catKey = category.display_key || category.value || `cat-${index}`;
+                  return (
+                    <tr key={catKey} className={`transition-colors ${isSelected ? 'bg-emerald-500/5' : 'hover:bg-[#1a2235]'}`} data-category-popup-item="true">
+                      <td className="p-2.5 text-white font-semibold text-xs">{category.company_name || category.label}</td>
+                      <td className="p-2.5 text-emerald-400 font-bold text-xs">{category.bank_name || '—'}</td>
+                      <td className="p-2.5"><span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-black uppercase">{category.category_name || category.label}</span></td>
+                      <td className="p-2.5 text-center">
+                        {isSelected ? (
+                          <span onClick={() => handleCategoryClick(category)} className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-1 rounded-lg cursor-pointer hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-[11px] w-[11px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Added
+                          </span>
+                        ) : (
+                          <button onClick={() => handleCategoryClick(category)} className="bg-blue-600/15 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-[11px] font-black px-3 py-1 rounded-lg transition-all">+ Add</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan="4" className="py-8 text-center text-slate-500 text-sm font-bold">{errorMessage || `No results for "${companySearchInput}"`}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {/* Footer */}
+        <div className="px-4 pb-4 pt-3 border-t border-slate-800 bg-[#0f141e] shrink-0 space-y-2.5">
+          {selectedCategories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedCategories.map((cat, idx) => {
+                const displayText = typeof cat === 'string' ? cat : (cat.display || cat.display_text || cat.label || cat.category_name || 'Unknown');
+                const catKey = typeof cat === 'string' ? cat : (cat.display_key || cat.value || `sel-${idx}`);
+                const bankText = typeof cat === 'object' ? (cat.bank_name || '') : '';
+                return (
+                  <span key={`${catKey}-${idx}`} className="bg-blue-500/10 text-blue-300 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                    {bankText ? `${bankText} – ${cat.category_name || displayText}` : displayText}
+                    <button onClick={() => handleCategoryClick(cat)} className="hover:text-red-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-[10px] w-[10px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500 text-xs">{selectedCategories.length > 0 ? `${selectedCategories.length} selected` : 'None selected'}</span>
+            <button
+              onClick={() => {
+                if (onAddCategory && typeof onAddCategory === 'function') {
+                  onAddCategory(selectedCategories);
+                } else {
+                  selectedCategories.forEach(cat => onSelect && onSelect(cat, false));
+                }
+                if (onSave) onSave(); else onClose();
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm"
+            >Done</button>
+          </div>
+        </div>
       </div>
     </div>
   );
