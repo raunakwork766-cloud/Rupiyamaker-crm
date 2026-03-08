@@ -4,12 +4,39 @@ import { interviewSettingsAPI } from '../services/api';
 import API from '../services/api';
 import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 
-const InterviewSettings = ({ onClose = null }) => {
+const InterviewSettings = ({
+  onClose = null,
+  companySettings: initCS = null,
+  onCompanySettingsChange = null,
+  declineReasons: initDeclineReasons = null,
+  onDeclineReasonsChange = null,
+  cooldownDays: initCooldown = 7,
+  onCooldownChange = null,
+}) => {
   const navigate = useNavigate();
   // When rendered as a modal (onClose provided), use onClose; else navigate back
   const handleBack = () => {
     if (onClose) { onClose(); } else { navigate('/interview-panel'); }
   };
+
+  // Company & Pipeline & Decline Reasons (synced with parent when props provided)
+  const [localCS, setLocalCS] = useState(initCS || {
+    companyName: '', jobDescription: '', officeTiming: '', workingDays: '',
+    interviewTiming: '', officeAddress: '', officeNearby: '',
+    hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: ''
+  });
+  const cs = initCS !== null ? initCS : localCS;
+  const setCs = (val) => { setLocalCS(val); if (onCompanySettingsChange) onCompanySettingsChange(val); };
+
+  const [localDeclineReasons, setLocalDeclineReasons] = useState(initDeclineReasons || []);
+  const declineReasonsList = initDeclineReasons !== null ? initDeclineReasons : localDeclineReasons;
+  const setDeclineReasonsList = (val) => { setLocalDeclineReasons(val); if (onDeclineReasonsChange) onDeclineReasonsChange(val); };
+
+  const [localCooldown, setLocalCooldown] = useState(initCooldown);
+  const cooldown = onCooldownChange ? initCooldown : localCooldown;
+  const setCooldown = (val) => { setLocalCooldown(val); if (onCooldownChange) onCooldownChange(val); };
+
+  const [newDeclineReason, setNewDeclineReason] = useState('');
   
   // Job Opening State
   const [newJobOpening, setNewJobOpening] = useState('');
@@ -107,14 +134,14 @@ const InterviewSettings = ({ onClose = null }) => {
   const [sourcePortalOptions, setSourcePortalOptions] = useState([]);
 
   // Active Tab State
-  const [activeTab, setActiveTab] = useState('jobOpening');
+  const [activeTab, setActiveTab] = useState('company');
 
   // Loading State
   const [loading, setLoading] = useState(true);
 
   // Ensure first tab is always selected on component mount
   useEffect(() => {
-    setActiveTab('jobOpening');
+    setActiveTab('company');
   }, []);
 
   // Load options from backend on component mount
@@ -888,58 +915,156 @@ const InterviewSettings = ({ onClose = null }) => {
           <h1 className="text-3xl font-bold text-white">Interview Settings</h1>
         </div>
         <div className="text-sm text-gray-400">
-          Manage dropdown options for interviews
+          Company profile, pipeline rules, decline reasons &amp; dropdown options
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-800 p-1 rounded-lg mb-6">
-        <button
-          onClick={() => setActiveTab('jobOpening')}
-          className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
-            activeTab === 'jobOpening'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700'
-          }`}
-        >
-          Job Openings
-        </button>
-        <button
-          onClick={() => setActiveTab('interviewType')}
-          className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
-            activeTab === 'interviewType'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700'
-          }`}
-        >
-          Interview Types
-        </button>
-        <button
-          onClick={() => setActiveTab('status')}
-          className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
-            activeTab === 'status'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700'
-          }`}
-        >
-          Status Options
-        </button>
-        <button
-          onClick={() => setActiveTab('sourcePortal')}
-          className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
-            activeTab === 'sourcePortal'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700'
-          }`}
-        >
-          Source/Portal
-        </button>
+      <div className="flex flex-wrap gap-1 bg-gray-800 p-1 rounded-lg mb-6">
+        {[
+          { id: 'company',        label: '🏢 Company' },
+          { id: 'pipeline',       label: '⚙️ Pipeline' },
+          { id: 'declineReasons', label: '📋 Decline Reasons' },
+          { id: 'jobOpening',     label: '💼 Job Openings' },
+          { id: 'interviewType',  label: '🎯 Interview Types' },
+          { id: 'status',         label: '📊 Status Options' },
+          { id: 'sourcePortal',   label: '🌐 Source/Portal' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
+              activeTab === t.id
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Main Content */}
       <div className="w-full">
-        <div className="bg-[#1b2230] rounded-lg shadow-lg p-8">
-          {activeTab === 'jobOpening' ? (
+        <div className="bg-[#1b2230] rounded-lg shadow-lg p-6">
+
+          {/* ── COMPANY TAB ── */}
+          {activeTab === 'company' ? (
+            <div className="space-y-5">
+              <h2 className="text-xl font-semibold text-white mb-4">🏢 Company Profile</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Company Name</label>
+                  <input value={cs.companyName} onChange={e => setCs({...cs, companyName: e.target.value})}
+                    className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Office Timing</label>
+                  <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => setCs({...cs, officeTiming: e.target.value})}
+                    className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Working Days</label>
+                  <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => setCs({...cs, workingDays: e.target.value})}
+                    className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Interview Timing</label>
+                  <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => setCs({...cs, interviewTiming: e.target.value})}
+                    className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Job Description — shown in WhatsApp invite</label>
+                <textarea value={cs.jobDescription} onChange={e => setCs({...cs, jobDescription: e.target.value})} rows={3}
+                  placeholder="Describe the job role, responsibilities, and requirements..."
+                  className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Office Address</label>
+                <input value={cs.officeAddress} onChange={e => setCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
+                  className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Nearby Landmark</label>
+                <input value={cs.officeNearby} onChange={e => setCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
+                  className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+              </div>
+              <div className="p-4 bg-emerald-900/30 border border-emerald-700/50 rounded-lg">
+                <div className="text-xs font-black text-emerald-400 uppercase tracking-wide mb-3">HR Point of Contact</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">HR Name</label>
+                    <input value={cs.hrName} onChange={e => setCs({...cs, hrName: e.target.value})}
+                      className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">Mobile</label>
+                    <input value={cs.hrMobile} onChange={e => setCs({...cs, hrMobile: e.target.value})}
+                      className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">Designation</label>
+                    <input value={cs.hrDesignation} onChange={e => setCs({...cs, hrDesignation: e.target.value})}
+                      className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
+                <input value={cs.interviewFormBaseUrl} onChange={e => setCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
+                  className="w-full bg-[#2a3441] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono" />
+                <p className="text-xs text-gray-500 mt-1">This link is inserted in WhatsApp messages and shared with candidates.</p>
+              </div>
+              <p className="text-xs text-green-400">✅ Changes apply immediately — used in WhatsApp invite messages.</p>
+            </div>
+
+          ) : activeTab === 'pipeline' ? (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4">⚙️ Pipeline Settings</h2>
+              <div className="bg-[#2a3441] border border-gray-600 rounded-xl p-6">
+                <label className="block text-sm font-bold text-gray-300 mb-1">Cooldown Period (Days)</label>
+                <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                  <strong className="text-gray-400">Lock-in period:</strong> If a lead is active and was updated within this many days, other HRs cannot steal or reassign it.
+                </p>
+                <input type="number" min={0} value={cooldown}
+                  onChange={e => setCooldown(Number(e.target.value))}
+                  className="w-28 bg-[#1b2230] border border-gray-600 rounded-lg px-4 py-2 text-white font-bold outline-none focus:border-blue-500 text-lg" />
+                <p className="text-xs text-gray-500 mt-2">Set to 0 to disable cooldown protection.</p>
+              </div>
+            </div>
+
+          ) : activeTab === 'declineReasons' ? (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4">📋 Decline & Drop Reasons</h2>
+              <div className="bg-[#2a3441] border border-gray-600 rounded-xl p-6">
+                <p className="text-xs text-gray-500 mb-4">Manage reasons HRs can select when declining a candidate.</p>
+                <div className="flex gap-2 mb-4">
+                  <input value={newDeclineReason} onChange={e => setNewDeclineReason(e.target.value)}
+                    onKeyPress={e => { if (e.key === 'Enter' && newDeclineReason.trim() && !declineReasonsList.includes(newDeclineReason.trim())) { setDeclineReasonsList([...declineReasonsList, newDeclineReason.trim()]); setNewDeclineReason(''); } }}
+                    placeholder="Add new reason..."
+                    className="flex-1 bg-[#1b2230] border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-blue-500" />
+                  <button
+                    onClick={() => { if (newDeclineReason.trim() && !declineReasonsList.includes(newDeclineReason.trim())) { setDeclineReasonsList([...declineReasonsList, newDeclineReason.trim()]); setNewDeclineReason(''); } }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >Add</button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto p-1">
+                  {declineReasonsList.map(r => (
+                    <span key={r} className="bg-[#1b2230] border border-gray-600 text-gray-300 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                      {r}
+                      <button onClick={() => setDeclineReasonsList(declineReasonsList.filter(item => item !== r))}
+                        className="text-gray-500 hover:text-red-400 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  {declineReasonsList.length === 0 && <p className="text-gray-500 text-sm">No decline reasons added yet.</p>}
+                </div>
+              </div>
+            </div>
+
+          ) : activeTab === 'jobOpening' ? (
             <>
               <h2 className="text-xl font-semibold text-white mb-6">Job Opening Options</h2>
               

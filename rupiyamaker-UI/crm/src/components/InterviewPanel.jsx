@@ -170,6 +170,9 @@ const InterviewPanel = () => {
     'Candidate Withdrew', 'Failed Assessment', 'Background Check Failed', 'Other'
   ]);
 
+  // Pipeline cooldown days
+  const [cooldownDays, setCooldownDays] = useState(7);
+
   // Filter popup state
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState('status');
@@ -2504,7 +2507,15 @@ const InterviewPanel = () => {
           </div>
           {/* Embedded settings page */}
           <div className="flex-1 overflow-y-auto">
-            <InterviewSettings onClose={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }} />
+            <InterviewSettings
+              onClose={async () => { setIsSettingsOpen(false); await loadDropdownOptions(); }}
+              companySettings={companySettings}
+              onCompanySettingsChange={setCompanySettings}
+              declineReasons={declineReasons}
+              onDeclineReasonsChange={setDeclineReasons}
+              cooldownDays={cooldownDays}
+              onCooldownChange={setCooldownDays}
+            />
           </div>
         </div>
       </div>
