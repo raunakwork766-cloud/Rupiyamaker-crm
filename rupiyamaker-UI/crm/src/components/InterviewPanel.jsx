@@ -2259,14 +2259,14 @@ const InterviewPanel = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">#</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Created</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Owner</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Candidate</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Exp & Gender</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Role & Source</th>
-                      <th className="px-5 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider">Interview Date & Alerts</th>
-                      <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-wider text-right">Action</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Created</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Owner</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Exp & Gender</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Role & Source</th>
+                      <th className="px-5 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Interview Date & Alerts</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2508,21 +2508,21 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
           <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-sm font-semibold text-slate-900">{interview.created_by || '-'}</div>
-          <div className="text-xs text-slate-500">{interview.hr_address || 'Desk N/A'}</div>
+          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
+          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-semibold text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
             <div>
-              <div className="font-bold text-slate-900 text-sm">{interview.candidate_name || '-'}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+              <div className="font-semibold text-slate-800 text-xs whitespace-nowrap">{interview.candidate_name || '-'}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
             </div>
           </div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-sm font-medium text-slate-700">{interview.job_opening || '-'}</div>
-          <div className="text-xs text-slate-500">{interview.source_portal || '-'}</div>
+          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
+          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.source_portal || '-'}</div>
         </td>
         <td className="px-5 py-3 border-r border-slate-100">
           <button onClick={onViewHistory} className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5 shadow-sm">
@@ -2553,21 +2553,21 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
         <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-bold text-slate-900">{interview.created_by || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{interview.hr_address || 'Desk N/A'}</div>
+        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
           <div>
-            <button onClick={(e) => { e.stopPropagation(); onViewDetails(); }} className="font-bold text-slate-900 text-xs hover:text-blue-700 transition-colors text-left leading-tight">{interview.candidate_name || '-'}</button>
-            <div className="text-[10px] text-slate-500 mt-0.5">{interview.mobile_number || '-'}</div>
+            <button onClick={(e) => { e.stopPropagation(); onViewDetails(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
+            <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
           </div>
         </div>
         {isGlobalSearch && <Tag text={stage} color="orange" />}
@@ -2581,12 +2581,12 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-semibold text-slate-800">{interview.job_opening || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{interview.source_portal || '-'}</div>
+        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.source_portal || '-'}</div>
       </td>
 
       <td className="px-5 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-bold text-blue-700 mb-1.5">{formatInterviewDate(interview.interview_date)}</div>
+        <div className="text-xs font-medium text-blue-600 mb-1.5 whitespace-nowrap">{formatInterviewDate(interview.interview_date)}</div>
         <div className="flex flex-col gap-1 items-start">
           {(stage === 'Round 2' && interview.round1_feedback) && (
             <button onClick={(e) => { e.stopPropagation(); onViewRound1 && onViewRound1(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-colors">
