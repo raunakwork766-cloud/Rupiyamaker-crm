@@ -779,6 +779,44 @@ async def get_warnings(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get warnings: {str(e)}")
 
+
+# ─── Warning Acknowledgment Endpoints (must be BEFORE /{warning_id} catch-all) ─
+
+@router.get("/pending-acknowledgment")
+async def get_pending_acknowledgment_warnings(
+    user_id: str = Query(..., description="User ID to fetch pending warnings for"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get all warnings issued to user that are pending acknowledgment"""
+    try:
+        warnings = await warnings_db.get_unacknowledged_warnings(user_id)
+
+        result = []
+        for w in warnings:
+            issuer = await user_db.get_user(w.get("issued_by", ""))
+            issuer_name = "Unknown"
+            if issuer:
+                first = issuer.get("first_name", "")
+                last = issuer.get("last_name", "")
+                issuer_name = f"{first} {last}".strip() or issuer.get("username", "Unknown")
+
+            result.append({
+                "id": w["id"],
+                "warning_type": w.get("warning_type", ""),
+                "warning_message": w.get("warning_message", ""),
+                "penalty_amount": w.get("penalty_amount", 0),
+                "issued_by_name": issuer_name,
+                "issued_date": str(w.get("issued_date", "")),
+                "created_at": str(w.get("created_at", ""))
+            })
+
+        return {"success": True, "warnings": result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pending warnings: {str(e)}")
+
+
 @router.get("/{warning_id}", response_model=WarningResponse)
 async def get_warning(
     warning_id: str,
@@ -1997,44 +2035,7 @@ async def get_employees_for_warnings(
         raise HTTPException(status_code=500, detail=f"Failed to get employees: {str(e)}")
 
 
-# ─── Warning Acknowledgment Endpoints ────────────────────────────────────────
-
-@router.get("/pending-acknowledgment")
-async def get_pending_acknowledgment_warnings(
-    user_id: str = Query(..., description="User ID to fetch pending warnings for"),
-    warnings_db: WarningDB = Depends(get_warnings_db),
-    user_db: UsersDB = Depends(get_users_db)
-):
-    """Get all warnings issued to user that are pending acknowledgment"""
-    try:
-        warnings = await warnings_db.get_unacknowledged_warnings(user_id)
-
-        result = []
-        for w in warnings:
-            issuer = await user_db.get_user(w.get("issued_by", ""))
-            issuer_name = "Unknown"
-            if issuer:
-                first = issuer.get("first_name", "")
-                last = issuer.get("last_name", "")
-                issuer_name = f"{first} {last}".strip() or issuer.get("username", "Unknown")
-
-            result.append({
-                "id": w["id"],
-                "warning_type": w.get("warning_type", ""),
-                "warning_message": w.get("warning_message", ""),
-                "penalty_amount": w.get("penalty_amount", 0),
-                "issued_by_name": issuer_name,
-                "issued_date": str(w.get("issued_date", "")),
-                "created_at": str(w.get("created_at", ""))
-            })
-
-        return {"success": True, "warnings": result}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch pending warnings: {str(e)}")
-
-
-@router.post("/{warning_id}/acknowledge")
+# ─── Employee List ───────────────────────────────────────────────────────────
 async def acknowledge_warning(
     warning_id: str,
     user_id: str = Query(..., description="User ID acknowledging the warning"),

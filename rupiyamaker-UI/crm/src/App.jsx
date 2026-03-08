@@ -1056,7 +1056,7 @@ function App() {
         </Routes>
 
         {/* GLOBAL WARNING MODAL - Blocks screen until user acknowledges warning */}
-        <PopWarningModal user={user} />
+        <PopWarningModal />
 
         {/* GLOBAL ANNOUNCEMENT MODAL - Shows on ALL pages */}
         {showGlobalAnnouncement && globalAnnouncementData && (
