@@ -2325,7 +2325,7 @@ const InterviewPanel = () => {
 
       {/* Edit Interview Modal */}
       {selectedInterview && (
-        <div className="fixed inset-0 z-[1000] flex items-center bg-transparent justify-center" style={{ backdropFilter: "blur(3px)" }}>
+        <div className="fixed inset-0 z-[9999] flex items-center bg-transparent justify-center" style={{ backdropFilter: "blur(3px)" }}>
           <div className="w-full max-w-4xl mx-auto">
             <EditInterview
               interview={selectedInterview}
@@ -2395,7 +2395,7 @@ const InterviewPanel = () => {
 
       {/* Reassignment Modal */}
       {showReassignmentPanel && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between">
               <h2 className="text-lg font-black">Interview Reassignment Requests</h2>
@@ -2887,7 +2887,7 @@ const ForwardRemarkModal = ({ target, onClose, onConfirmForward, onConfirmJobOff
   const canJobOffer = target.currentStage === 'Interview';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex justify-between items-center">
           <div>
@@ -2930,7 +2930,7 @@ const DeclineModal = ({ candidate, options, onClose, onSubmit }) => {
   const [remarks, setRemarks] = useState('');
   if (!candidate) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-red-600 mb-5">Decline Candidate</h2>
         <p className="text-xs text-slate-600 mb-4">Declining: <span className="font-bold">{candidate.candidate_name}</span></p>
@@ -2954,7 +2954,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
   const [reason, setReason] = useState('');
   if (!candidate) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Reschedule Date</h2>
         <p className="text-xs text-slate-600 mb-5">For {candidate.candidate_name}</p>
@@ -2975,7 +2975,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
 const CandidateDetailModal = ({ candidate, onClose }) => {
   if (!candidate) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <div>
@@ -3026,7 +3026,7 @@ const Round1InfoModal = ({ candidate, onClose }) => {
   const fb = candidate.round1_feedback || candidate.round1Feedback;
   if (!fb) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex justify-between bg-slate-50">
           <div>
@@ -3138,7 +3138,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
         {/* Header */}
@@ -3844,7 +3844,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   const canSubmit = formData.mobile_number.length >= 10 && formData.interview_date && formData.candidate_name.trim();
 
   return (
-    <div className="fixed inset-0 z-[1000] flex justify-end">
+    <div className="fixed inset-0 z-[9999] flex justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
