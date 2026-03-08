@@ -196,7 +196,7 @@ const fetchBankNames = async () => {
     const userId = getUserId();
     if (!userId) {
       console.warn('⚠️ No user ID available for bank names API');
-      return ['Custom'];
+      return [];
     }
     
     console.log('🏦 Fetching bank names from settings API...');
@@ -233,7 +233,6 @@ const fetchBankNames = async () => {
     }
     
     const finalBankList = [
-      'Custom', // Always keep Custom as an option
       ...bankNames.map(bank => bank.name || bank)
     ];
     
@@ -241,8 +240,7 @@ const fetchBankNames = async () => {
     return finalBankList;
   } catch (error) {
     console.error('❌ Error fetching bank names:', error);
-    // Return at least Custom option in case of error
-    return ['Custom'];
+    return [];
   }
 };
 
@@ -325,7 +323,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [componentKey, setComponentKey] = useState(Date.now());
   
   // Bank list state from API
-  const [bankList, setBankList] = useState(['Custom']);
+  const [bankList, setBankList] = useState([]);
   
   // Note: companyType now stores selected banks for "Decide Bank For Case" (supports multiple selection)
 
@@ -1740,11 +1738,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               typeof bank === 'string' ? bank : (bank.name || bank.label || String(bank))
             );
             
-            // Always include 'Custom' if not already in the list
-            if (!normalizedBankNames.includes('Custom')) {
-              normalizedBankNames.unshift('Custom');
-            }
-            
             setBankList(normalizedBankNames);
             setBankListLoaded(true);
           }
@@ -1841,9 +1834,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         (shouldAlwaysUpdate ? '' : yearlyBonus);
       if (shouldAlwaysUpdate || yearlyBonusValue !== yearlyBonus) setYearlyBonus(yearlyBonusValue);
       
-      // Set bonus division - always update for login leads or new leads
-      const bonusDivisionValue = extractedBonusDivision ? Number(extractedBonusDivision) : (shouldAlwaysUpdate ? null : bonusDivision);
-      if (shouldAlwaysUpdate || bonusDivisionValue !== bonusDivision) setBonusDivision(bonusDivisionValue);
+      // Set bonus division - always reset to null so user picks manually
+      if (bonusDivision !== null) setBonusDivision(null);
       
       // Set loan required - always update for login leads or new leads
       const loanRequiredValue = extractedLoanRequired ? 
@@ -6919,8 +6911,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             onClick={() => canEdit && handleBankDropdownToggle(idx)}
                             data-dropdown-trigger="true"
                           >
-                            <span className={`${row.bankName ? '' : 'text-slate-500'} uppercase`}>
-                              {row.bankName || 'Select Bank'}
+                            <span className={`${(row.bankName && row.bankName !== 'Custom') ? '' : 'text-slate-500'} uppercase`}>
+                              {(row.bankName && row.bankName !== 'Custom') ? row.bankName : 'Select Bank'}
                               {row.bankName && companyType.includes(row.bankName) ? '': ''}
                             </span>
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
