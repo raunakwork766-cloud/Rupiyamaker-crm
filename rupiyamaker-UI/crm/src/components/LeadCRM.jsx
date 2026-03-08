@@ -7035,6 +7035,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     </div>
                 )}
 
+                {/* Reassignment Dashboard - for managers/admins */}
+                <ReassignmentPanel 
+                    userPermissions={permissions} 
+                    onLeadAction={handleLeadAction} 
+                />
+
                 {/* Table Section */}
                 <div className="overflow-auto rounded-xl sticky-table-container">
                     {/* Unified Controls Row - Select, Filter, Search and Results Indicator */}

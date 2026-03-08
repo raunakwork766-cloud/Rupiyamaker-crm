@@ -1737,10 +1737,11 @@ const handleMobileNumberChange = (e) => {
       
       // For regular reassignment requests, add comprehensive information
       if (actionString === 'request') {
-        // Add all reassignment-related data to request body for comprehensive backend processing
-        const reason = prompt('Please provide a reason for reassignment:');
+        // Use the reassignmentReason state instead of prompt()
+        const reason = reassignmentReason?.trim();
         if (!reason) {
-          return; // Cancel if no reason provided
+          alert('Please enter a reason for reassignment');
+          return;
         }
         
         requestBody.reason = reason;
@@ -1824,11 +1825,12 @@ const handleMobileNumberChange = (e) => {
         apiUrl = `${API_BASE_URL}/reassignment/${actionString}/${existingLeadData.id}?user_id=${userId}`;
         
         if (actionString === 'reject') {
-          const reason = prompt('Please provide a reason for rejection:');
-          if (reason) {
-            requestBody.rejection_reason = reason;
+          const rejReason = reassignmentReason?.trim();
+          if (rejReason) {
+            requestBody.rejection_reason = rejReason;
           } else {
-            return; // Cancel if no reason provided
+            alert('Please enter a reason for rejection');
+            return;
           }
         }
       } else {
@@ -1878,16 +1880,17 @@ const handleMobileNumberChange = (e) => {
             apiUrl += `&campaign_name=${encodeURIComponent(newCampaignName)}`;
           }
         } else {
-          // For other actions, use the old prompt method
-          const reason = prompt('Please provide a reason for reassignment:');
-          if (!reason) {
-            return; // Cancel if no reason provided
+          // For other actions, use reason from state
+          const otherReason = reassignmentReason?.trim();
+          if (!otherReason) {
+            alert('Please enter a reason for reassignment');
+            return;
           }
           
           // For reassignment requests, the target user is the requesting user themselves
           const targetUserId = userId; // Use the current user's ID as the target
           
-          apiUrl = `${API_BASE_URL}/reassignment/request?user_id=${userId}&lead_id=${existingLeadData.id}&target_user_id=${targetUserId}&reason=${encodeURIComponent(reason)}`;
+          apiUrl = `${API_BASE_URL}/reassignment/request?user_id=${userId}&lead_id=${existingLeadData.id}&target_user_id=${targetUserId}&reason=${encodeURIComponent(otherReason)}`;
         }
       }
       
@@ -4853,698 +4856,318 @@ function CreateLead() {
               
               {/* Detailed reassignment popup for users with permission */}
               {showReassignmentOption && (
-                <div className="p-6 mb-6 bg-white rounded-lg shadow-md border-l-4 border-green-500">
-                  <div className="bg-white bg-opacity-95 backdrop-blur-sm rounded-2xl shadow-2xl w-full">
-                    {/* Header Section */}
-                    <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-t-2xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                          <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                <div className="mb-6 bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-700 overflow-hidden">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-5 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                        <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-white">Lead Already Exists</h2>
+                        <p className="text-cyan-100 text-sm mt-1">
+                          Assigned to <span className="font-semibold">{existingLeadData?.created_by_name || existingLeadData?.assigned_to_name || 'Unknown'}</span>
+                        </p>
+                      </div>
+                    </div>
+                    {/* LOCKED Badge or UNLOCKED Badge */}
+                    {(() => {
+                      let actualDR = existingLeadData?.days_remaining || 0;
+                      if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                        const loginDate = new Date(existingLeadData.login_department_sent_date);
+                        const daysElapsed = Math.floor((new Date() - loginDate) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      } else if (existingLeadData?.created_date) {
+                        const createdDate = new Date(existingLeadData.created_date);
+                        const daysElapsed = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      }
+                      return actualDR > 0 ? (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-red-600 rounded-xl animate-pulse">
+                          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                           </svg>
+                          <div>
+                            <p className="text-white font-bold text-sm">LOCKED</p>
+                            <p className="text-red-100 text-xs">{actualDR} {actualDR === 1 ? 'day' : 'days'} remaining</p>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <h2 className="text-xl font-bold">Lead Check Result</h2>
-                          <p className="mt-2 text-green-100 text-sm">
-                            Lead exists as "{existingLeadData?.status || 'Not a lead'}" assigned to {
-                              (() => {
-                                // Primary: Use created_by_name as the main field for user name
-                                if (existingLeadData?.created_by_name) {
-                                  return existingLeadData.created_by_name;
-                                }
-                                // Secondary: Try assigned_to_name as fallback
-                                if (existingLeadData?.assigned_to_name) {
-                                  return existingLeadData.assigned_to_name;
-                                }
-                                
-                                // Third: Check assigned_to_user object
-                                if (existingLeadData?.assigned_to_user?.name) {
-                                  return existingLeadData.assigned_to_user.name;
-                                }
-                                
-                                // Fourth: Try to find user name from assignableUsers using created_by ID
-                                if (existingLeadData?.created_by) {
-                                  const createdBy = String(existingLeadData.created_by);
-                                  const user = assignableUsers?.find(u => u.id === createdBy || u._id === createdBy);
-                                  if (user?.name) {
-                                    return user.name;
-                                  }
-                                }
-                                
-                                // Fifth: Try to find user name from assignableUsers using assigned_to ID
-                                if (existingLeadData?.assigned_to) {
-                                  const assignedTo = Array.isArray(existingLeadData.assigned_to) 
-                                    ? existingLeadData.assigned_to[0] 
-                                    : existingLeadData.assigned_to;
-                                  const assignedToStr = String(assignedTo);
-                                  const user = assignableUsers?.find(u => u.id === assignedToStr || u._id === assignedToStr);
-                                  if (user?.name) {
-                                    return user.name;
-                                  }
-                                  
-                                  // If it's an ID format, show truncated ID
-                                  if (/^\d+$/.test(assignedToStr) || /^[a-f\d]{24}$/i.test(assignedToStr)) {
-                                    return `User ID: ${assignedToStr.substring(0, 8)}...`;
-                                  }
-                                  
-                                  return assignedToStr;
-                                }
-                                return 'Unknown';
-                              })()
-                            }. You can reassign it to yourself.
-                          </p>
-                        </div>
-                        {/* Close Button */}
-                        <button
-                          className="w-10 h-10 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-full flex items-center justify-center text-white transition-all duration-200"
-                          onClick={() => {
-                            handleReassignmentCancel();
-                          }}
-                        >
-                          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-green-600 rounded-xl">
+                          <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2h-1V7a4 4 0 00-8 0H8V7a2 2 0 114 0v2H5a2 2 0 012-2" />
                           </svg>
-                        </button>
+                          <p className="text-white font-bold text-sm">UNLOCKED</p>
+                        </div>
+                      );
+                    })()}
+                    <button
+                      className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition"
+                      onClick={() => handleReassignmentCancel()}
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-5">
+                    {/* Lead Info Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-1">Customer</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-cyan-600 flex items-center justify-center text-white text-sm font-bold">
+                            {(existingLeadData?.name || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <p className="text-white font-semibold text-sm truncate">{existingLeadData?.name || existingLeadData?.customer_name || 'Unknown'}</p>
+                        </div>
+                      </div>
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-1">Mobile</p>
+                        <p className="text-white font-semibold text-sm">{existingLeadData?.mobile_number || existingLeadData?.phone || mobileNumber || '—'}</p>
+                      </div>
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-1">Current Owner</p>
+                        <p className="text-white font-semibold text-sm truncate">{existingLeadData?.created_by_name || existingLeadData?.assigned_to_name || 'Unknown'}</p>
+                      </div>
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-1">Product</p>
+                        <p className="text-white font-semibold text-sm">{existingLeadData?.product_type || existingLeadData?.loan_type || '—'}</p>
                       </div>
                     </div>
 
-                    {/* Content Section */}
-                    <div className="p-5">
-                      {/* Customer Info */}
-                      <div className="mb-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center text-white text-lg font-bold">
-                              {existingLeadData?.name?.charAt(0)?.toUpperCase() || existingLeadData?.customer_name?.charAt(0)?.toUpperCase() || 'L'}
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-semibold text-gray-800">Customer Name</h3>
-                              <p className="text-lg font-bold text-gray-900">{existingLeadData?.name || existingLeadData?.customer_name || 'Unknown Customer'}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center text-white">
-                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                              </svg>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-semibold text-gray-800">Mobile Number</h3>
-                              <p className="text-lg font-bold text-gray-900">{existingLeadData?.mobile_number || existingLeadData?.phone || mobileNumber || 'Unknown'}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Info Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                              </svg>
-                              <span className="text-xs font-medium text-gray-600">Current Owner</span>
-                            </div>
-                            <p className="text-base font-bold text-gray-900">
-                              {(() => {
-                                console.log('Lead data for current owner (first modal):', {
-                                  created_by_name: existingLeadData?.created_by_name,
-                                  assigned_to_name: existingLeadData?.assigned_to_name,
-                                  assigned_to: existingLeadData?.assigned_to,
-                                  created_by: existingLeadData?.created_by
-                                });
-                                
-                                // Primary: Use created_by_name as the main field for displaying current owner
-                                if (existingLeadData?.created_by_name) {
-                                  return existingLeadData.created_by_name;
-                                }
-                                
-                                // Secondary: Try to find user name from assignableUsers using created_by ID
-                                if (existingLeadData?.created_by) {
-                                  const createdBy = String(existingLeadData.created_by);
-                                  const user = assignableUsers?.find(u => u.id === createdBy || u._id === createdBy);
-                                  if (user?.name) {
-                                    return user.name;
-                                  }
-                                }
-                                
-                                // Fallback: Use assigned_to_name
-                                if (existingLeadData?.assigned_to_name) {
-                                  return existingLeadData.assigned_to_name;
-                                }
-                                
-                                // Fallback: Check assigned_to_user object
-                                if (existingLeadData?.assigned_to_user?.name) {
-                                  return existingLeadData.assigned_to_user.name;
-                                }
-                                
-                                // Last resort: Try to find user name from assignableUsers using assigned_to ID
-                                if (existingLeadData?.assigned_to) {
-                                  const assignedTo = Array.isArray(existingLeadData.assigned_to) 
-                                    ? existingLeadData.assigned_to[0] 
-                                    : existingLeadData.assigned_to;
-                                  
-                                  const assignedToStr = String(assignedTo);
-                                  
-                                  // Try to find the user name from assignableUsers list
-                                  const user = assignableUsers?.find(u => u.id === assignedToStr || u._id === assignedToStr);
-                                  if (user?.name) {
-                                    return user.name;
-                                  }
-                                  
-                                  // If it's an ID format, show truncated ID
-                                  if (/^\d+$/.test(assignedToStr) || /^[a-f\d]{24}$/i.test(assignedToStr)) {
-                                    return `User ID: ${assignedToStr.substring(0, 8)}...`;
-                                  }
-                                  
-                                  return assignedToStr;
-                                }
-                                
-                                return 'Unassigned';
-                              })()}
-                            </p>
-                          </div>
-                          
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                              </svg>
-                              <span className="text-xs font-medium text-gray-600">Lead Status</span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="px-2 py-1 bg-gray-600 text-white text-xs rounded-md font-medium">
-                                {existingLeadData?.status || 'Unknown'}
-                              </span>
-                              {existingLeadData?.sub_status && (
-                                <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-md font-medium">
-                                  {existingLeadData.sub_status}
-                                </span>
-                              )}
-                              {existingLeadData?.file_sent_to_login && (
-                                <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-md font-medium flex items-center gap-1">
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                  Sent to Login
-                                </span>
-                              )}
-                            </div>
-                            {existingLeadData?.reassignment_reason && (
-                              <p className="text-xs text-gray-600 mt-1">• {existingLeadData.reassignment_reason}</p>
-                            )}
-                            {existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date && (
-                              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                                <div className="flex items-center gap-1">
-                                  <svg className="w-3 h-3 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                                  </svg>
-                                  <span className="text-xs font-medium text-yellow-800">Lock-in Date:</span>
-                                </div>
-                                <p className="text-xs text-yellow-700 font-medium mt-1">
-                                  {new Date(existingLeadData.login_department_sent_date).toLocaleDateString('en-GB', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    timeZone: 'Asia/Kolkata'
-                                  })}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                              </svg>
-                              <span className="text-xs font-medium text-gray-600">
-                                {existingLeadData?.file_sent_to_login ? 'Login Date' : 'Created Date'}
-                              </span>
-                            </div>
-                            <p className="text-base font-bold text-gray-900">
-                              {(() => {
-                                const dateToShow = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date
-                                  ? existingLeadData.login_department_sent_date
-                                  : existingLeadData?.created_date;
-                                
-                                return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', {
-                                  day: '2-digit',
-                                  month: 'long',
-                                  year: 'numeric',
-                                  timeZone: 'Asia/Kolkata'
-                                }) : 'Unknown Date';
-                              })()}
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {(() => {
-                                let ageDays = existingLeadData?.age_days || 0;
-                                
-                                // If file sent to login, calculate age from login date
-                                if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                  const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                  const currentDate = new Date();
-                                  ageDays = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                }
-                                
-                                return ;
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Additional Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                          <div>
-                            <span className="text-xs font-medium text-gray-600">Product Type:</span>
-                            <span className="ml-2 text-sm font-semibold text-gray-900">
-                              {existingLeadData?.product_type || existingLeadData?.loan_type || 'Not specified'}
-                            </span>
-                          </div>
-                          {existingLeadData?.file_sent_to_login !== undefined && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-gray-600">Login Department Status:</span>
-                              <span className={`px-2 py-1 text-xs rounded-md font-medium ${
-                                existingLeadData.file_sent_to_login 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {existingLeadData.file_sent_to_login ? 'File Sent' : 'Not Sent'}
-                              </span>
-                            </div>
+                    {/* Status & Dates Row */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-2">Lead Status</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-2 py-1 bg-neutral-700 text-neutral-200 text-xs rounded-md font-medium">{existingLeadData?.status || '—'}</span>
+                          {existingLeadData?.sub_status && (
+                            <span className="px-2 py-1 bg-blue-900/50 text-blue-300 text-xs rounded-md font-medium">{existingLeadData.sub_status}</span>
                           )}
-                          {existingLeadData?.login_department_sent_date && (
-                            <div className="col-span-2">
-                              <span className="text-xs font-medium text-gray-600">Login Department Sent Date:</span>
-                              <span className="ml-2 text-sm font-semibold text-gray-900">
-                                {new Date(existingLeadData.login_department_sent_date).toLocaleDateString('en-GB', {
-                                  day: '2-digit',
-                                  month: 'long',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  timeZone: 'Asia/Kolkata'
-                                })}
-                              </span>
-                            </div>
+                          {existingLeadData?.file_sent_to_login && (
+                            <span className="px-2 py-1 bg-green-900/50 text-green-300 text-xs rounded-md font-medium">Login Sent</span>
                           )}
                         </div>
-
-                        {/* Reassignment Status & Eligibility */}
-                        {(existingLeadData.can_reassign !== undefined || existingLeadData.reassignment_status) && (
-                          <div className="bg-blue-50 border-2 border-blue-100 rounded-xl p-5 mb-5">
-                            <h4 className="text-base font-bold text-gray-900 mb-3">Reassignment Information</h4>
-                            
-                            {/* Eligibility Status */}
-                            {existingLeadData.can_reassign !== undefined && (
-                              <div className="mb-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-xs font-medium text-gray-700">Reassignment Eligibility:</span>
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    existingLeadData.can_reassign ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {existingLeadData.can_reassign ? 'Eligible' : 'Not Eligible'}
-                                  </span>
-                                </div>
-                                {existingLeadData.reassignment_reason && (
-                                  <p className="text-xs text-gray-600 ml-4 italic">
-                                    {existingLeadData.reassignment_reason}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Waiting Period Info */}
-                            {existingLeadData.reassignment_period > 0 && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                                <div className="bg-white p-3 rounded-lg border">
-                                  <span className="text-xs font-medium text-gray-600">Waiting Period:</span>
-                                  <p className="text-sm font-bold text-gray-900">{existingLeadData.reassignment_period} days</p>
-                                </div>
-                                <div className="bg-white p-3 rounded-lg border">
-                                  <span className="text-xs font-medium text-gray-600">Days Elapsed:</span>
-                                  <p className="text-sm font-bold text-gray-900">
-                                    {(() => {
-                                      // If file sent to login, calculate days elapsed from login date
-                                      if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                        const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                        const currentDate = new Date();
-                                        const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                        return `${daysElapsed} ${daysElapsed === 1 ? 'day' : 'days'}`;
-                                      }
-                                      // Otherwise calculate from created date
-                                      const createdDate = new Date(existingLeadData.created_date);
-                                      const currentDate = new Date();
-                                      const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                      return `${daysElapsed} ${daysElapsed === 1 ? 'day' : 'days'}`;
-                                    })()}
-                                  </p>
-                                </div>
-                                
-                                {existingLeadData.days_remaining > 0 && (
-                                  <div className="col-span-2 bg-orange-50 border border-orange-200 p-3 rounded-lg">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                                      </svg>
-                                      <span className="font-bold text-orange-800 text-sm">
-                                        Days Remaining: {(() => {
-                                          // If file sent to login, calculate days remaining from login date
-                                          if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                            const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                            const currentDate = new Date();
-                                            const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                            const daysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                            return `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}`;
-                                          }
-                                          // Otherwise calculate from created date
-                                          const createdDate = new Date(existingLeadData.created_date);
-                                          const currentDate = new Date();
-                                          const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                          const daysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                          return `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}`;
-                                        })()} 
-                                      </span>
-                                      <span className="px-2 py-1 bg-orange-200 text-orange-800 rounded-full text-xs font-medium">
-                                        Waiting Period Active
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-orange-700">
-                                      Available for reassignment on: <span className="font-medium">
-                                        {(() => {
-                                          // Calculate availability date from login date if file sent to login, otherwise from current date
-                                          let baseDate = new Date();
-                                          if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                            baseDate = new Date(existingLeadData.login_department_sent_date);
-                                            baseDate.setDate(baseDate.getDate() + existingLeadData.reassignment_period);
-                                          } else {
-                                            baseDate.setDate(baseDate.getDate() + existingLeadData.days_remaining);
-                                          }
-                                          
-                                          return baseDate.toLocaleDateString('en-GB', {
-                                            day: '2-digit',
-                                            month: 'long',
-                                            year: 'numeric',
-                                            timeZone: 'Asia/Kolkata'
-                                          });
-                                        })()}
-                                      </span>
-                                    </p>
-                                  </div>
-                                )}
-                                
-                                {existingLeadData.is_manager_permission_required && (
-                                  <div className="col-span-2 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-                                    <span className="text-yellow-800 font-medium text-sm">
-                                      <svg className="w-4 h-4 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                      </svg>
-                                      Manager Permission Required
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Current Reassignment Status */}
-                            {existingLeadData.reassignment_status && existingLeadData.reassignment_status !== 'none' && (
-                              <div className="bg-white p-3 rounded-lg border">
-                                <span className="text-xs font-medium text-gray-600">Current Reassignment Status:</span>
-                                <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                                  existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-100 text-yellow-800' :
-                                  existingLeadData.reassignment_status === 'approved' ? 'bg-green-100 text-green-800' :
-                                  existingLeadData.reassignment_status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {existingLeadData.reassignment_status.charAt(0).toUpperCase() + existingLeadData.reassignment_status.slice(1)}
-                                </span>
-                              </div>
-                            )}
+                      </div>
+                      <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                        <p className="text-neutral-400 text-xs mb-2">{existingLeadData?.file_sent_to_login ? 'Login Date' : 'Created Date'}</p>
+                        <p className="text-white font-semibold text-sm">
+                          {(() => {
+                            const d = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date
+                              ? existingLeadData.login_department_sent_date : existingLeadData?.created_date;
+                            return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
+                          })()}
+                        </p>
+                      </div>
+                      {existingLeadData?.reassignment_period > 0 && (
+                        <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                          <p className="text-neutral-400 text-xs mb-2">Reassignment Period</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-white font-bold text-lg">{existingLeadData.reassignment_period}</p>
+                            <p className="text-neutral-400 text-xs">days</p>
                           </div>
-                        )}
+                          <p className="text-neutral-500 text-xs mt-1">
+                            {(() => {
+                              let elapsed = existingLeadData?.days_elapsed || 0;
+                              if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                                elapsed = Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / (1000 * 60 * 60 * 24));
+                              } else if (existingLeadData?.created_date) {
+                                elapsed = Math.floor((new Date() - new Date(existingLeadData.created_date)) / (1000 * 60 * 60 * 24));
+                              }
+                              return `${elapsed} days elapsed`;
+                            })()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
-                        {/* Pre-Reassignment Selection Options */}
-                        {(!existingLeadData.days_remaining || existingLeadData.days_remaining <= 0) && (
-                          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                            <h5 className="text-sm font-bold text-blue-900 mb-4 flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                              </svg>
-                              Reassignment Options (Optional)
-                            </h5>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {/* Data Code Selection */}
-                              <div>
-                                <label className="flex items-center space-x-2 mb-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={changeDataCode}
-                                    onChange={(e) => setChangeDataCode(e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                  />
-                                  <span className="text-sm font-medium text-gray-700">Change Data Code</span>
-                                </label>
-                                
-                                {changeDataCode && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                                      Select New Data Code
-                                    </label>
-                                    <SearchableSelect
-                                      options={dataCodes.map(dataCodeItem => ({
-                                        value: dataCodeItem.name,
-                                        label: dataCodeItem.name
-                                      }))}
-                                      value={newDataCode}
-                                      onChange={setNewDataCode}
-                                      placeholder="Select data code..."
-                                      searchPlaceholder="Search data codes..."
-                                      className="text-sm"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Campaign Name Selection */}
-                              <div>
-                                <label className="flex items-center space-x-2 mb-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={changeCampaignName}
-                                    onChange={(e) => setChangeCampaignName(e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                  />
-                                  <span className="text-sm font-medium text-gray-700">Change Campaign Name</span>
-                                </label>
-                                
-                                {changeCampaignName && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                                      Select New Campaign Name
-                                    </label>
-                                    <SearchableSelect
-                                      options={campaignNames.map(campaign => ({
-                                        value: campaign.name,
-                                        label: campaign.name
-                                      }))}
-                                      value={newCampaignName}
-                                      onChange={setNewCampaignName}
-                                      placeholder="Select campaign..."
-                                      searchPlaceholder="Search campaigns..."
-                                      className="text-sm"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <p className="text-xs text-blue-700 mt-3 italic">
-                              💡 You can optionally change the data code and/or campaign name when requesting reassignment.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Pre-Reassignment Selection Options - Waiting Period Active */}
-                        {(() => {
-                          // Calculate actual days remaining
-                          let actualDaysRemaining = existingLeadData.days_remaining;
-                          if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                            const loginDate = new Date(existingLeadData.login_department_sent_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          } else {
-                            // Calculate from created date
-                            const createdDate = new Date(existingLeadData.created_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          }
-                          return actualDaysRemaining > 0;
-                        })() && (
-                          <div className="mt-6 p-4 bg-gray-50 border border-gray-300 rounded-lg opacity-75">
-                            <h5 className="text-sm font-bold text-gray-600 mb-4 flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                              </svg>
-                              Reassignment Options (Available in {(() => {
-                                let actualDaysRemaining = existingLeadData.days_remaining;
-                                if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                  const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                  const currentDate = new Date();
-                                  const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                  actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                } else {
-                                  // Calculate from created date
-                                  const createdDate = new Date(existingLeadData.created_date);
-                                  const currentDate = new Date();
-                                  const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                  actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                }
-                                return `${actualDaysRemaining} ${actualDaysRemaining === 1 ? 'day' : 'days'}`;
-                              })()})
-                            </h5>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {/* Data Code Selection */}
-                              <div>
-                                <label className="flex items-center space-x-2 mb-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={changeDataCode}
-                                    onChange={(e) => setChangeDataCode(e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                    disabled
-                                  />
-                                  <span className="text-sm font-medium text-gray-500">Change Data Code</span>
-                                </label>
-                                
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                                    Select New Data Code
-                                  </label>
-                                  <div className="bg-gray-100 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-400">
-                                    Available after waiting period
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Campaign Name Selection */}
-                              <div>
-                                <label className="flex items-center space-x-2 mb-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={changeCampaignName}
-                                    onChange={(e) => setChangeCampaignName(e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                    disabled
-                                  />
-                                  <span className="text-sm font-medium text-gray-500">Change Campaign Name</span>
-                                </label>
-                                
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                                    Select New Campaign Name
-                                  </label>
-                                  <div className="bg-gray-100 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-400">
-                                    Available after waiting period
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <p className="text-xs text-gray-500 mt-3 italic">
-                              ⏳ These options will be available when the waiting period ends.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Action Buttons - Only show if no waiting period is active */}
-                        {(() => {
-                          // Calculate actual days remaining
-                          let actualDaysRemaining = existingLeadData.days_remaining;
-                          if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                            const loginDate = new Date(existingLeadData.login_department_sent_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          } else {
-                            // Calculate from created date
-                            const createdDate = new Date(existingLeadData.created_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          }
-                          return actualDaysRemaining <= 0;
-                        })() && (
-                          <div className="flex justify-center gap-4">
-                            <button
-                              className="flex items-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
-                              onClick={() => handleReassignmentRequest(existingLeadData)}
-                            >
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                              </svg>
-                              Request Reassignment
-                            </button>
-                            <button
-                              className="flex items-center gap-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
-                              onClick={handleReassignmentCancel}
-                            >
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* Waiting Period Message - Show when waiting period is active */}
-                        {(() => {
-                          // Calculate actual days remaining
-                          let actualDaysRemaining = existingLeadData.days_remaining;
-                          if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                            const loginDate = new Date(existingLeadData.login_department_sent_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          } else {
-                            // Calculate from created date
-                            const createdDate = new Date(existingLeadData.created_date);
-                            const currentDate = new Date();
-                            const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                            actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                          }
-                          return actualDaysRemaining > 0;
-                        })() && (
-                          <div className="flex justify-center">
-                            <div className="px-6 py-3 bg-orange-100 border border-orange-300 text-orange-800 font-medium rounded-xl text-center">
-                              <div className="flex items-center gap-2 justify-center">
-                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                </svg>
-                                <span>Reassignment available in {(() => {
-                                  let actualDaysRemaining = existingLeadData.days_remaining;
-                                  if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                    const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                    const currentDate = new Date();
-                                    const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                    actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                  } else {
-                                    // Calculate from created date
-                                    const createdDate = new Date(existingLeadData.created_date);
-                                    const currentDate = new Date();
-                                    const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                    actualDaysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                  }
-                                  return `${actualDaysRemaining} ${actualDaysRemaining === 1 ? 'day' : 'days'}`;
-                                })()} </span>
-                              </div>
-                            </div>
-                          </div>
+                    {/* Login Department Info */}
+                    {existingLeadData?.file_sent_to_login && (
+                      <div className="bg-green-900/30 border border-green-700/50 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-green-300 font-semibold text-sm">File Sent to Login Department</p>
+                        </div>
+                        {existingLeadData?.login_department_sent_date && (
+                          <p className="text-green-200/80 text-xs ml-7">
+                            Sent on: {new Date(existingLeadData.login_department_sent_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
+                          </p>
                         )}
                       </div>
+                    )}
+
+                    {/* Manager Permission Required Notice */}
+                    {existingLeadData?.is_manager_permission_required && (
+                      <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-xl p-4 flex items-center gap-3">
+                        <svg className="w-6 h-6 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <div>
+                          <p className="text-yellow-300 font-semibold text-sm">Manager Approval Required</p>
+                          <p className="text-yellow-200/70 text-xs mt-0.5">Your request will be sent to a manager for review</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reassignment Status Badge */}
+                    {existingLeadData?.reassignment_status && existingLeadData.reassignment_status !== 'none' && (
+                      <div className={`rounded-xl p-4 border ${
+                        existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-900/20 border-yellow-700/50' :
+                        existingLeadData.reassignment_status === 'approved' ? 'bg-green-900/20 border-green-700/50' :
+                        existingLeadData.reassignment_status === 'rejected' ? 'bg-red-900/20 border-red-700/50' : 'bg-neutral-800 border-neutral-700'
+                      }`}>
+                        <p className="text-neutral-400 text-xs mb-1">Current Reassignment Status</p>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-400/20 text-yellow-300' :
+                          existingLeadData.reassignment_status === 'approved' ? 'bg-green-400/20 text-green-300' :
+                          existingLeadData.reassignment_status === 'rejected' ? 'bg-red-400/20 text-red-300' : 'bg-neutral-600 text-neutral-300'
+                        }`}>
+                          {existingLeadData.reassignment_status.toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Reassignment Options - Data Code & Campaign (only when unlocked) */}
+                    {(() => {
+                      let actualDR = existingLeadData?.days_remaining || 0;
+                      if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                        const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      } else if (existingLeadData?.created_date) {
+                        const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.created_date)) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      }
+                      return actualDR <= 0;
+                    })() && (
+                      <div className="space-y-4">
+                        {/* Data Code & Campaign */}
+                        <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                          <h5 className="text-neutral-300 text-sm font-semibold mb-3">Reassignment Options (Optional)</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                                <input type="checkbox" checked={changeDataCode} onChange={(e) => setChangeDataCode(e.target.checked)}
+                                  className="h-4 w-4 text-cyan-500 border-neutral-600 rounded bg-neutral-700 focus:ring-cyan-500" />
+                                <span className="text-neutral-300 text-sm">Change Data Code</span>
+                              </label>
+                              {changeDataCode && (
+                                <SearchableSelect
+                                  options={dataCodes.map(dc => ({ value: dc.name, label: dc.name }))}
+                                  value={newDataCode} onChange={setNewDataCode}
+                                  placeholder="Select data code..." searchPlaceholder="Search..."
+                                  className="text-sm"
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                                <input type="checkbox" checked={changeCampaignName} onChange={(e) => setChangeCampaignName(e.target.checked)}
+                                  className="h-4 w-4 text-cyan-500 border-neutral-600 rounded bg-neutral-700 focus:ring-cyan-500" />
+                                <span className="text-neutral-300 text-sm">Change Campaign Name</span>
+                              </label>
+                              {changeCampaignName && (
+                                <SearchableSelect
+                                  options={campaignNames.map(c => ({ value: c.name, label: c.name }))}
+                                  value={newCampaignName} onChange={setNewCampaignName}
+                                  placeholder="Select campaign..." searchPlaceholder="Search..."
+                                  className="text-sm"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Reason Textarea */}
+                        <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
+                          <label className="block text-neutral-300 text-sm font-semibold mb-2">
+                            Reason for Reassignment <span className="text-red-400">*</span>
+                          </label>
+                          <textarea
+                            value={reassignmentReason}
+                            onChange={(e) => setReassignmentReason(e.target.value)}
+                            placeholder="Enter your reason for requesting this lead..."
+                            className="w-full px-4 py-3 bg-neutral-900 border border-neutral-600 rounded-lg text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-cyan-400 resize-none"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* LOCKED state - show waiting message */}
+                    {(() => {
+                      let actualDR = existingLeadData?.days_remaining || 0;
+                      if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                        const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      } else if (existingLeadData?.created_date) {
+                        const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.created_date)) / (1000 * 60 * 60 * 24));
+                        actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                      }
+                      return actualDR > 0 ? (
+                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-5 text-center">
+                          <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-red-300 font-bold text-lg mb-1">Lead is Locked</p>
+                          <p className="text-red-200/70 text-sm">
+                            This lead will be available for reassignment in <span className="font-bold text-red-300">{actualDR} {actualDR === 1 ? 'day' : 'days'}</span>
+                          </p>
+                          <p className="text-neutral-500 text-xs mt-2">
+                            Available on: {(() => {
+                              let baseDate;
+                              if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                                baseDate = new Date(existingLeadData.login_department_sent_date);
+                                baseDate.setDate(baseDate.getDate() + (existingLeadData.reassignment_period || 0));
+                              } else {
+                                baseDate = new Date();
+                                baseDate.setDate(baseDate.getDate() + actualDR);
+                              }
+                              return baseDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+                            })()}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 justify-center pt-2">
+                      {(() => {
+                        let actualDR = existingLeadData?.days_remaining || 0;
+                        if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                          const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / (1000 * 60 * 60 * 24));
+                          actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                        } else if (existingLeadData?.created_date) {
+                          const daysElapsed = Math.floor((new Date() - new Date(existingLeadData.created_date)) / (1000 * 60 * 60 * 24));
+                          actualDR = Math.max(0, (existingLeadData.reassignment_period || 0) - daysElapsed);
+                        }
+                        return actualDR <= 0 ? (
+                          <button
+                            className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => handleReassignmentRequest(existingLeadData)}
+                            disabled={!reassignmentReason?.trim()}
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            {existingLeadData?.is_manager_permission_required ? 'Request Manager Approval' : 'Request Reassignment'}
+                          </button>
+                        ) : null;
+                      })()}
+                      <button
+                        className="flex items-center gap-2 px-6 py-3 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 font-bold rounded-xl transition-all"
+                        onClick={handleReassignmentCancel}
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -5552,389 +5175,212 @@ function CreateLead() {
             </div>
 
             {showLeadDetails && existingLeadData && !showReassignmentOption && (
-              <div className="p-6 mb-6 bg-white rounded-lg shadow-md border-l-4 border-red-500">
-                <div className="bg-white bg-opacity-95 backdrop-blur-sm rounded-2xl shadow-2xl w-full">
-                  {/* Header Section */}
-                  <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-t-2xl">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                        <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h2 className="text-xl font-bold">
-                          {existingLeadData.reassignment_status === 'requested' ? 'Reassignment Already Requested' : 'Lead Already Exists'}
-                        </h2>
-                        <p className="mt-2 text-red-100 text-sm">
-                          {existingLeadData.reassignment_status === 'requested' ? 
-                            'You have already submitted a reassignment request for this lead. Please wait for approval.' : 
-                            existingLeadData.days_remaining > 0 ?
-                            `A lead with this mobile number already exists. This lead will be available for reassignment in ${existingLeadData.days_remaining} days.` :
-                            'A lead with this mobile number already exists. You cannot create a new lead.'}
-                        </p>
-                      </div>
-                      {/* Close Button */}
-                      <button
-                        className="w-10 h-10 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-full flex items-center justify-center text-white transition-all duration-200"
-                        onClick={() => {
-                          setShowLeadDetails(false);
-                          setExistingLeadData(null);
-                          setMobileNumber('');
-                        }}
-                      >
-                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </button>
+              <div className="p-6 mb-6 bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-700">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-11 h-11 rounded-full flex items-center justify-center ${
+                      existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-500/20' :
+                      existingLeadData.days_remaining > 0 ? 'bg-red-500/20' : 'bg-neutral-700'
+                    }`}>
+                      <svg className={`w-6 h-6 ${
+                        existingLeadData.reassignment_status === 'requested' ? 'text-yellow-400' :
+                        existingLeadData.days_remaining > 0 ? 'text-red-400' : 'text-neutral-400'
+                      }`} fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">
+                        {existingLeadData.reassignment_status === 'requested' ? 'Reassignment Already Requested' : 'Lead Already Exists'}
+                      </h2>
+                      <p className="text-sm text-neutral-400">
+                        {existingLeadData.reassignment_status === 'requested' ? 
+                          'Reassignment request submitted. Awaiting manager approval.' : 
+                          existingLeadData.days_remaining > 0 ?
+                          `This lead is locked. Available for reassignment in ${existingLeadData.days_remaining} days.` :
+                          'A lead with this mobile number already exists.'}
+                      </p>
                     </div>
                   </div>
+                  {/* LOCKED / REQUESTED Badge */}
+                  <div className="flex items-center gap-3">
+                    {existingLeadData.days_remaining > 0 && (
+                      <span className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold uppercase tracking-wider animate-pulse">
+                        LOCKED — {existingLeadData.days_remaining}d
+                      </span>
+                    )}
+                    {existingLeadData.reassignment_status === 'requested' && (
+                      <span className="px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold uppercase tracking-wider">
+                        PENDING APPROVAL
+                      </span>
+                    )}
+                    <button
+                      className="w-9 h-9 bg-neutral-800 hover:bg-neutral-700 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+                      onClick={() => { setShowLeadDetails(false); setExistingLeadData(null); setMobileNumber(''); }}
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Content Section */}
-                  <div className="p-5">
-                    {/* Customer Info */}
-                    <div className="mb-5">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center text-white text-lg font-bold">
-                            {existingLeadData?.name?.charAt(0)?.toUpperCase() || existingLeadData?.customer_name?.charAt(0)?.toUpperCase() || 'L'}
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-semibold text-gray-800">Customer Name</h3>
-                            <p className="text-lg font-bold text-gray-900">{existingLeadData?.name || existingLeadData?.customer_name || 'Unknown Customer'}</p>
-                          </div>
-                        </div>
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center text-white">
-                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                              </svg>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-semibold text-gray-800">Mobile Number</h3>
-                              <p className="text-lg font-bold text-gray-900">{existingLeadData?.mobile_number || existingLeadData?.phone || mobileNumber || 'Unknown'}</p>
-                            </div>
-                          </div>
+                {/* Customer & Lead Info Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
+                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Customer</span>
+                    <p className="text-sm font-semibold text-white mt-0.5 truncate">{existingLeadData?.name || existingLeadData?.customer_name || 'Unknown'}</p>
+                  </div>
+                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
+                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Mobile</span>
+                    <p className="text-sm font-semibold text-white mt-0.5">{existingLeadData?.mobile_number || existingLeadData?.phone || mobileNumber || 'Unknown'}</p>
+                  </div>
+                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
+                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Current Owner</span>
+                    <p className="text-sm font-semibold text-white mt-0.5 truncate">
+                      {(() => {
+                        if (existingLeadData?.created_by_name) return existingLeadData.created_by_name;
+                        if (existingLeadData?.created_by) {
+                          const user = assignableUsers?.find(u => u.id === String(existingLeadData.created_by) || u._id === String(existingLeadData.created_by));
+                          if (user?.name) return user.name;
+                        }
+                        if (existingLeadData?.assigned_to_name) return existingLeadData.assigned_to_name;
+                        if (existingLeadData?.assigned_to_user?.name) return existingLeadData.assigned_to_user.name;
+                        if (existingLeadData?.assigned_to) {
+                          const assignedTo = Array.isArray(existingLeadData.assigned_to) ? existingLeadData.assigned_to[0] : existingLeadData.assigned_to;
+                          const user = assignableUsers?.find(u => u.id === String(assignedTo) || u._id === String(assignedTo));
+                          if (user?.name) return user.name;
+                        }
+                        return 'Unassigned';
+                      })()}
+                    </p>
+                  </div>
+                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
+                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Product</span>
+                    <p className="text-sm font-semibold text-white mt-0.5 truncate">{existingLeadData?.product_type || existingLeadData?.loan_type || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {/* Status Row */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <span className="px-2.5 py-1 bg-neutral-700 text-neutral-200 text-xs rounded-md font-medium">
+                    {existingLeadData?.status || 'Unknown'}
+                  </span>
+                  {existingLeadData?.sub_status && (
+                    <span className="px-2.5 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-md font-medium">
+                      {existingLeadData.sub_status}
+                    </span>
+                  )}
+                  {existingLeadData?.file_sent_to_login && (
+                    <span className="px-2.5 py-1 bg-green-500/20 text-green-400 text-xs rounded-md font-medium">
+                      Sent to Login
+                    </span>
+                  )}
+                  <span className="text-xs text-neutral-500 ml-auto">
+                    {existingLeadData?.file_sent_to_login ? 'Login' : 'Created'}: {(() => {
+                      const dateToShow = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date
+                        ? existingLeadData.login_department_sent_date
+                        : existingLeadData?.created_date;
+                      return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
+                    })()}
+                  </span>
+                </div>
+
+                {/* Reassignment Info Panel */}
+                {(existingLeadData.can_reassign !== undefined || existingLeadData.reassignment_status) && (
+                  <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-4 mb-4">
+                    <h4 className="text-sm font-bold text-neutral-300 mb-3">Reassignment Information</h4>
+
+                    {existingLeadData.can_reassign !== undefined && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs text-neutral-400">Eligibility:</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          existingLeadData.can_reassign ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {existingLeadData.can_reassign ? 'Eligible' : 'Not Eligible'}
+                        </span>
+                        {existingLeadData.reassignment_reason && (
+                          <span className="text-xs text-neutral-500 italic">— {existingLeadData.reassignment_reason}</span>
+                        )}
                       </div>
+                    )}
 
-                      {/* Info Cards */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs font-medium text-gray-600">Current Owner</span>
-                          </div>
-                          <p className="text-base font-bold text-gray-900">
-                            {(() => {
-                              // Debug logging
-                              console.log('Lead data for current owner (second modal):', {
-                                created_by_name: existingLeadData?.created_by_name,
-                                assigned_to_name: existingLeadData?.assigned_to_name,
-                                assigned_to_user: existingLeadData?.assigned_to_user,
-                                assigned_to: existingLeadData?.assigned_to,
-                                created_by: existingLeadData?.created_by
-                              });
-                              
-                              // Primary: Use created_by_name as the main field for displaying current owner
-                              if (existingLeadData?.created_by_name) {
-                                return existingLeadData.created_by_name;
-                              }
-                              
-                              // Secondary: Try to find user name from assignableUsers using created_by ID
-                              if (existingLeadData?.created_by) {
-                                const createdBy = String(existingLeadData.created_by);
-                                const user = assignableUsers?.find(u => u.id === createdBy || u._id === createdBy);
-                                if (user?.name) {
-                                  return user.name;
-                                }
-                              }
-                              
-                              // Fallback: Use assigned_to_name
-                              if (existingLeadData?.assigned_to_name) {
-                                return existingLeadData.assigned_to_name;
-                              }
-                              
-                              // Fallback: Check assigned_to_user object
-                              if (existingLeadData?.assigned_to_user?.name) {
-                                return existingLeadData.assigned_to_user.name;
-                              }
-                              
-                              // Fourth: Try to find user name from assignableUsers using created_by ID
-                              if (existingLeadData?.created_by) {
-                                const createdBy = String(existingLeadData.created_by);
-                                const user = assignableUsers?.find(u => u.id === createdBy || u._id === createdBy);
-                                if (user?.name) {
-                                  return user.name;
-                                }
-                              }
-                              
-                              // Fifth: Try to find user name from assignableUsers using assigned_to ID
-                              if (existingLeadData?.assigned_to) {
-                                const assignedTo = Array.isArray(existingLeadData.assigned_to) 
-                                  ? existingLeadData.assigned_to[0] 
-                                  : existingLeadData.assigned_to;
-                                
-                                const assignedToStr = String(assignedTo);
-                                
-                                // Try to find the user name from assignableUsers list
-                                const user = assignableUsers?.find(u => u.id === assignedToStr || u._id === assignedToStr);
-                                if (user?.name) {
-                                  return user.name;
-                                }
-                                
-                                // If it's an ID format, show truncated ID
-                                if (/^\d+$/.test(assignedToStr) || /^[a-f\d]{24}$/i.test(assignedToStr)) {
-                                  return `User ID: ${assignedToStr.substring(0, 8)}...`;
-                                }
-                                
-                                return assignedToStr;
-                              }
-                              
-                              return 'Unassigned';
-                            })()}
-                          </p>
+                    {existingLeadData.reassignment_period > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                        <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
+                          <span className="text-[11px] text-neutral-500">Waiting Period</span>
+                          <p className="text-sm font-bold text-white">{existingLeadData.reassignment_period} days</p>
                         </div>
-                        
-                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs font-medium text-gray-600">Lead Stage</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-1 bg-gray-600 text-white text-xs rounded-md font-medium">
-                              {existingLeadData?.status || 'Unknown'}
-                            </span>
-                            {existingLeadData?.sub_status && (
-                              <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-md font-medium">
-                                {existingLeadData.sub_status}
-                              </span>
-                            )}
-                            {existingLeadData?.file_sent_to_login && (
-                              <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-md font-medium flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                                Sent to Login
-                              </span>
-                            )}
-                          </div>
-                          {existingLeadData?.reassignment_reason && (
-                            <p className="text-xs text-gray-600 mt-1">• {existingLeadData.reassignment_reason}</p>
-                          )}
-                        </div>
-                        
-                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs font-medium text-gray-600">
-                              {existingLeadData?.file_sent_to_login ? 'Login Date' : 'Created Date'}
-                            </span>
-                          </div>
-                          <p className="text-base font-bold text-gray-900">
+                        <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
+                          <span className="text-[11px] text-neutral-500">Days Elapsed</span>
+                          <p className="text-sm font-bold text-white">
                             {(() => {
-                              const dateToShow = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date
-                                ? existingLeadData.login_department_sent_date
-                                : existingLeadData?.created_date;
-                              
-                              return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', {
-                                day: '2-digit',
-                                month: 'long',
-                                year: 'numeric',
-                                timeZone: 'Asia/Kolkata'
-                              }) : 'Unknown Date';
-                            })()}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {(() => {
-                              let ageDays = existingLeadData?.age_days || 0;
-                              
-                              // If file sent to login, calculate age from login date
                               if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                const currentDate = new Date();
-                                ageDays = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
+                                return Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / 86400000);
                               }
-                              
-                              return;
+                              return existingLeadData?.created_date ? Math.floor((new Date() - new Date(existingLeadData.created_date)) / 86400000) : 0;
                             })()}
                           </p>
                         </div>
-                      </div>
-
-                      {/* Additional Details */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Product Type:</span>
-                          <span className="ml-2 text-sm font-semibold text-gray-900">
-                            {existingLeadData?.product_type || existingLeadData?.loan_type || 'Not specified'}
-                          </span>
-                        </div>
-                        {existingLeadData?.file_sent_to_login !== undefined && (
-                          <div>
-                            <span className="text-xs font-medium text-gray-600">File Sent to Login:</span>
-                            <span className="ml-2 text-sm font-semibold text-gray-900">
-                              {existingLeadData.file_sent_to_login ? 'Yes' : 'No'}
-                            </span>
+                        {existingLeadData.days_remaining > 0 && (
+                          <div className="bg-red-500/10 rounded-lg p-2.5 border border-red-500/20">
+                            <span className="text-[11px] text-red-400">Days Remaining</span>
+                            <p className="text-sm font-bold text-red-400">{existingLeadData.days_remaining}</p>
+                          </div>
+                        )}
+                        {existingLeadData.days_remaining > 0 && (
+                          <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
+                            <span className="text-[11px] text-neutral-500">Available On</span>
+                            <p className="text-xs font-bold text-white">
+                              {(() => {
+                                let d = new Date();
+                                if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
+                                  d = new Date(existingLeadData.login_department_sent_date);
+                                  d.setDate(d.getDate() + existingLeadData.reassignment_period);
+                                } else {
+                                  d.setDate(d.getDate() + existingLeadData.days_remaining);
+                                }
+                                return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+                              })()}
+                            </p>
                           </div>
                         )}
                       </div>
+                    )}
 
-                      {/* Reassignment Status & Eligibility */}
-                      {(existingLeadData.can_reassign !== undefined || existingLeadData.reassignment_status) && (
-                        <div className="bg-blue-50 border-2 border-blue-100 rounded-xl p-5 mb-5">
-                          <h4 className="text-base font-bold text-gray-900 mb-3">Reassignment Information</h4>
-                          
-                          {/* Eligibility Status */}
-                          {existingLeadData.can_reassign !== undefined && (
-                            <div className="mb-3">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-medium text-gray-700">Reassignment Eligibility:</span>
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  existingLeadData.can_reassign ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {existingLeadData.can_reassign ? 'Eligible' : 'Not Eligible'}
-                                </span>
-                              </div>
-                              {existingLeadData.reassignment_reason && (
-                                <p className="text-xs text-gray-600 ml-4 italic">
-                                  {existingLeadData.reassignment_reason}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Waiting Period Info */}
-                          {existingLeadData.reassignment_period > 0 && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                              <div className="bg-white p-3 rounded-lg border">
-                                <span className="text-xs font-medium text-gray-600">Waiting Period:</span>
-                                <p className="text-sm font-bold text-gray-900">{existingLeadData.reassignment_period} days</p>
-                              </div>
-                              <div className="bg-white p-3 rounded-lg border">
-                                <span className="text-xs font-medium text-gray-600">Days Elapsed:</span>
-                                <p className="text-sm font-bold text-gray-900">
-                                  {(() => {
-                                    // If file sent to login, calculate days elapsed from login date
-                                    if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                      const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                      const currentDate = new Date();
-                                      const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                      return `${daysElapsed} ${daysElapsed === 1 ? 'day' : 'days'}`;
-                                    }
-                                    // Otherwise calculate from created date
-                                    const createdDate = new Date(existingLeadData.created_date);
-                                    const currentDate = new Date();
-                                    const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                    return `${daysElapsed} ${daysElapsed === 1 ? 'day' : 'days'}`;
-                                  })()}
-                                </p>
-                              </div>
-                              
-                              {existingLeadData.days_remaining > 0 && (
-                                <div className="col-span-2 bg-orange-50 border border-orange-200 p-3 rounded-lg">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="font-bold text-orange-800 text-sm">
-                                      Days Remaining: {(() => {
-                                        // If file sent to login, calculate days remaining from login date
-                                        if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                          const loginDate = new Date(existingLeadData.login_department_sent_date);
-                                          const currentDate = new Date();
-                                          const daysElapsed = Math.floor((currentDate - loginDate) / (1000 * 60 * 60 * 24));
-                                          const daysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                          return `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}`;
-                                        }
-                                        // Otherwise calculate from created date
-                                        const createdDate = new Date(existingLeadData.created_date);
-                                        const currentDate = new Date();
-                                        const daysElapsed = Math.floor((currentDate - createdDate) / (1000 * 60 * 60 * 24));
-                                        const daysRemaining = Math.max(0, existingLeadData.reassignment_period - daysElapsed);
-                                        return `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}`;
-                                      })()} 
-                                    </span>
-                                    <span className="px-2 py-1 bg-orange-200 text-orange-800 rounded-full text-xs font-medium">
-                                      Waiting Period Active
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-orange-700">
-                                    Available for reassignment on: <span className="font-medium">
-                                      {(() => {
-                                        // Calculate availability date from login date if file sent to login, otherwise from current date
-                                        let baseDate = new Date();
-                                        if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                          baseDate = new Date(existingLeadData.login_department_sent_date);
-                                          baseDate.setDate(baseDate.getDate() + existingLeadData.reassignment_period);
-                                        } else {
-                                          baseDate.setDate(baseDate.getDate() + existingLeadData.days_remaining);
-                                        }
-                                        
-                                        return baseDate.toLocaleDateString('en-GB', {
-                                          day: '2-digit',
-                                          month: 'long',
-                                          year: 'numeric',
-                                          timeZone: 'Asia/Kolkata'
-                                        });
-                                      })()}
-                                    </span>
-                                  </p>
-                                </div>
-                              )}
-                              
-                              {existingLeadData.is_manager_permission_required && (
-                                <div className="col-span-2 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-                                  <span className="text-yellow-800 font-medium text-sm">
-                                    <svg className="w-4 h-4 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                    </svg>
-                                    Manager Permission Required
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Current Reassignment Status */}
-                          {existingLeadData.reassignment_status && existingLeadData.reassignment_status !== 'none' && (
-                            <div className="bg-white p-3 rounded-lg border">
-                              <span className="text-xs font-medium text-gray-600">Current Reassignment Status:</span>
-                              <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                                existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-100 text-yellow-800' :
-                                existingLeadData.reassignment_status === 'approved' ? 'bg-green-100 text-green-800' :
-                                existingLeadData.reassignment_status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {existingLeadData.reassignment_status.charAt(0).toUpperCase() + existingLeadData.reassignment_status.slice(1)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Action Button */}
-                      <div className="flex justify-center">
-                        <button
-                          className="flex items-center gap-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
-                          onClick={() => {
-                            setShowLeadDetails(false);
-                            setExistingLeadData(null);
-                            setMobileNumber('');
-                          }}
-                        >
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                          Close
-                        </button>
+                    {existingLeadData.is_manager_permission_required && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-3">
+                        <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-xs text-yellow-400 font-medium">Manager Permission Required for Reassignment</span>
                       </div>
-                    </div>
+                    )}
+
+                    {existingLeadData.reassignment_status && existingLeadData.reassignment_status !== 'none' && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-400">Current Status:</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-500/20 text-yellow-400' :
+                          existingLeadData.reassignment_status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                          existingLeadData.reassignment_status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-neutral-700 text-neutral-300'
+                        }`}>
+                          {existingLeadData.reassignment_status.charAt(0).toUpperCase() + existingLeadData.reassignment_status.slice(1)}
+                        </span>
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {/* Close Button */}
+                <div className="flex justify-center">
+                  <button
+                    className="px-6 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white font-medium rounded-lg border border-neutral-600 transition-colors"
+                    onClick={() => { setShowLeadDetails(false); setExistingLeadData(null); setMobileNumber(''); }}
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             )}

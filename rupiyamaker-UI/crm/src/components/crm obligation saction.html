@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Eligibility Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body class="bg-[#0a0e14]">
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+import React, { useState, useMemo, useRef } from 'https://esm.sh/react@18';
+import ReactDOM from 'https://esm.sh/react-dom@18/client';
+import { CheckCircle2, XCircle, Trash2, Plus, Search, Lock, Zap, X, FileDown, Building2, Landmark } from 'https://esm.sh/lucide-react@0.292.0';
+
+function App() {
+  // --- STATE ---
+  const [salary, setSalary] = useState(55000);
+  const [partnerSalary, setPartnerSalary] = useState('');
+  const [bonus, setBonus] = useState('');
+  const [bonusDivider, setBonusDivider] = useState('');
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [companyName, setCompanyName] = useState('TATA CONSULTANCY SERVICES');
+  const [selectedCompanyCategories, setSelectedCompanyCategories] = useState([
+    { id: 1, name: 'TATA CONSULTANCY SERVICES', bank: 'HDFC BANK', category: 'CAT A' }
+  ]);
+  const [targetBanks, setTargetBanks] = useState(['HDFC Bank', 'ICICI Bank']);
+  const [foirPercent, setFoirPercent] = useState(60);
+  const [tenureMonths, setTenureMonths] = useState(60);
+  const [tenureYears, setTenureYears] = useState(5);
+  const [roi, setRoi] = useState(10.9);
+  const [multiplier, setMultiplier] = useState(0);
+  const [customLoanAmount, setCustomLoanAmount] = useState('');
+  const [cibilScore, setCibilScore] = useState('');
+  const [obligations, setObligations] = useState([
+    { id: 1, product: 'PL (PERSONAL LOAN)', bank: 'AXISBANK', totalLoan: '', outStanding: 400000, emi: 12000, action: 'BT' },
+    { id: 2, product: 'PL (PERSONAL LOAN)', bank: 'KOTAK MAHINDRA BANK', totalLoan: '', outStanding: 100000, emi: 8000, action: 'BT' }
+  ]);
+
+  // --- HANDLERS ---
+  const handleMonthsChange = (val) => {
+    const months = val === '' ? '' : Number(val);
+    setTenureMonths(months);
+    setTenureYears(months === '' ? '' : Number((months / 12).toFixed(2)));
+  };
+  const handleYearsChange = (val) => {
+    const years = val === '' ? '' : Number(val);
+    setTenureYears(years);
+    setTenureMonths(years === '' ? '' : Math.round(years * 12));
+  };
+  const addObligation = () => setObligations([...obligations, { id: Date.now(), product: 'PL', bank: '', totalLoan: '', outStanding: 0, emi: 0, action: 'BT' }]);
+  const updateObligation = (id, field, value) => setObligations(obligations.map(o => o.id === id ? { ...o, [field]: value } : o));
+  const removeObligation = (id) => setObligations(obligations.filter(o => o.id !== id));
+  const toggleTargetBank = (bank) => targetBanks.includes(bank) ? setTargetBanks(targetBanks.filter(b => b !== bank)) : setTargetBanks([...targetBanks, bank]);
+  const removeTargetBank = (b) => setTargetBanks(targetBanks.filter(x => x !== b));
+  const handleCustomLoanChange = (e) => { const v = e.target.value.replace(/,/g, ''); if (!isNaN(v)) setCustomLoanAmount(v); };
+
+  // --- CALCULATIONS ---
+  const calc = useMemo(() => {
+    const calcBonus = (bonus && bonusDivider) ? (Number(bonus) / Number(bonusDivider)) : 0;
+    const totalIncome = (Number(salary) || 0) + (Number(partnerSalary) || 0) + calcBonus;
+    const foirAmount = totalIncome * (Number(foirPercent) / 100);
+    const totalObligation = obligations.reduce((s, o) => s + (Number(o.emi) || 0), 0);
+    const totalBTPos = obligations.reduce((s, o) => o.action === 'BT' ? s + (Number(o.outStanding) || 0) : s, 0);
+    const monthlyEmiCanPay = foirAmount - totalObligation;
+    const r = (Number(roi) / 12) / 100;
+    const n = Number(tenureMonths);
+    let foirEligibility = 0;
+    if (r > 0 && n > 0 && monthlyEmiCanPay > 0) foirEligibility = monthlyEmiCanPay * ((Math.pow(1+r,n)-1) / (r*Math.pow(1+r,n)));
+    const multiplierEligibility = totalIncome * (Number(multiplier) || 0);
+    const desiredLoan = Number(customLoanAmount);
+    let customEmi = 0;
+    if (desiredLoan > 0 && r > 0 && n > 0) customEmi = desiredLoan * r * (Math.pow(1+r,n) / (Math.pow(1+r,n)-1));
+    return {
+      totalIncome: Math.round(totalIncome), foirAmount: Math.round(foirAmount),
+      totalObligation, monthlyEmiCanPay: Math.max(0, monthlyEmiCanPay), totalBTPos,
+      foirEligibility: Math.round(foirEligibility), multiplierEligibility: Math.round(multiplierEligibility),
+      isEligible: foirEligibility > 0, customEmi: Math.round(customEmi),
+      customExceedsEligibility: desiredLoan > foirEligibility && desiredLoan > 0
+    };
+  }, [salary, partnerSalary, bonus, bonusDivider, foirPercent, obligations, roi, tenureMonths, customLoanAmount, multiplier]);
+
+  const fmt = (v) => new Intl.NumberFormat('en-IN').format(v || 0);
+  const fmtN = (v) => v ? new Intl.NumberFormat('en-IN').format(v) : '';
+
+  // --- PDF DOWNLOAD ---
+  const handleDownloadPDF = () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = margin;
+
+    // Header
+    doc.setFillColor(10, 14, 20);
+    doc.rect(0, 0, pageW, 18, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text('LOAN ELIGIBILITY REPORT', margin, 12);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), pageW - margin, 12, { align: 'right' });
+    y = 26;
+
+    // Client Info
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('COMPANY', margin, y);
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(11);
+    doc.text(companyName, margin, y + 5);
+    if (targetBanks.length) {
+      doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+      doc.text('TARGET BANKS', pageW / 2, y);
+      doc.setTextColor(15, 23, 42); doc.setFontSize(10);
+      doc.text(targetBanks.join(' | '), pageW / 2, y + 5);
+    }
+    y += 16;
+
+    // Income Summary Cards
+    doc.setDrawColor(226, 232, 240);
+    const cardW = (pageW - margin * 2 - 6) / 3;
+    const cards = [
+      { label: 'NET SALARY', value: `Rs. ${fmt(Number(salary) || 0)}`, color: [16, 185, 129] },
+      { label: 'TOTAL INCOME', value: `Rs. ${fmt(calc.totalIncome)}`, color: [59, 130, 246] },
+      { label: 'FOIR AMOUNT (' + foirPercent + '%)', value: `Rs. ${fmt(calc.foirAmount)}`, color: [234, 179, 8] },
+    ];
+    cards.forEach((c, i) => {
+      const cx = margin + i * (cardW + 3);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(cx, y, cardW, 18, 2, 2, 'FD');
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...c.color);
+      doc.text(c.label, cx + 4, y + 6);
+      doc.setFontSize(11); doc.setTextColor(15, 23, 42);
+      doc.text(c.value, cx + 4, y + 14);
+    });
+    y += 24;
+
+    // Eligibility Results
+    const eligCards = [
+      { label: 'MONTHLY EMI CAN PAY', value: `Rs. ${fmt(calc.monthlyEmiCanPay)}`, color: [16, 185, 129] },
+      { label: 'TOTAL OBLIGATION', value: `Rs. ${fmt(calc.totalObligation)}`, color: [239, 68, 68] },
+      { label: 'TOTAL BT POS', value: `Rs. ${fmt(calc.totalBTPos)}`, color: [139, 92, 246] },
+    ];
+    eligCards.forEach((c, i) => {
+      const cx = margin + i * (cardW + 3);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(cx, y, cardW, 18, 2, 2, 'FD');
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...c.color);
+      doc.text(c.label, cx + 4, y + 6);
+      doc.setFontSize(11); doc.setTextColor(15, 23, 42);
+      doc.text(c.value, cx + 4, y + 14);
+    });
+    y += 24;
+
+    // Loan Parameters
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+    doc.text('LOAN PARAMETERS', margin, y); y += 5;
+    doc.setFillColor(248, 250, 252); doc.roundedRect(margin, y, pageW - margin * 2, 16, 2, 2, 'FD');
+    doc.setFontSize(8); doc.setTextColor(15, 23, 42);
+    doc.text(`Tenure: ${tenureMonths} Months (${tenureYears} Yrs)`, margin + 4, y + 6);
+    doc.text(`ROI: ${roi}%`, margin + 60, y + 6);
+    doc.text(`FOIR: ${foirPercent}%`, margin + 100, y + 6);
+    if (cibilScore) doc.text(`CIBIL: ${cibilScore}`, margin + 140, y + 6);
+    y += 22;
+
+    // Eligibility Box
+    const isElig = calc.isEligible;
+    doc.setFillColor(...(isElig ? [16, 185, 129] : [239, 68, 68]));
+    doc.roundedRect(margin, y, pageW - margin * 2, 22, 3, 3, 'F');
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+    doc.text(isElig ? 'ELIGIBLE FOR BALANCE TRANSFER' : 'NOT ELIGIBLE', pageW / 2, y + 9, { align: 'center' });
+    doc.setFontSize(9);
+    doc.text(`Max FOIR Eligibility: Rs. ${fmt(calc.foirEligibility)}  |  Multiplier Limit: Rs. ${fmt(calc.multiplierEligibility)}`, pageW / 2, y + 17, { align: 'center' });
+    y += 28;
+
+    // Company Categories
+    if (selectedCompanyCategories.length > 0) {
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+      doc.text('COMPANY CATEGORIES', margin, y); y += 4;
+      doc.autoTable({
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['Company Name', 'Bank', 'Category']],
+        body: selectedCompanyCategories.map(c => [c.name || companyName, c.bank, c.category]),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [30, 41, 59], textColor: [148, 163, 184], fontStyle: 'bold', fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // Obligations Table
+    if (obligations.length > 0) {
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+      doc.text('OBLIGATIONS', margin, y); y += 4;
+      doc.autoTable({
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['#', 'Product', 'Bank', 'Total Loan', 'Outstanding', 'EMI', 'Action']],
+        body: obligations.map((o, i) => [
+          i + 1, o.product, o.bank,
+          o.totalLoan ? `Rs. ${fmt(Number(o.totalLoan))}` : '-',
+          `Rs. ${fmt(Number(o.outStanding))}`,
+          `Rs. ${fmt(Number(o.emi))}`,
+          o.action
+        ]),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [30, 41, 59], textColor: [148, 163, 184], fontStyle: 'bold', fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 6: { cellWidth: 14, halign: 'center' } }
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // Custom Requirement
+    if (customLoanAmount) {
+      const reqY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y;
+      doc.setFillColor(239, 246, 255);
+      doc.roundedRect(margin, reqY, pageW - margin * 2, 20, 2, 2, 'F');
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(59, 130, 246);
+      doc.text('REQUIREMENT ANALYSIS', margin + 4, reqY + 7);
+      doc.setTextColor(15, 23, 42); doc.setFontSize(9);
+      doc.text(`Required: Rs. ${fmt(Number(customLoanAmount))}  |  Expected EMI: Rs. ${fmt(calc.customEmi)}  |  ${calc.customExceedsEligibility ? '⚠ Exceeds Eligibility' : '✓ Within Eligibility'}`, margin + 4, reqY + 15);
+    }
+
+    // Footer
+    const pgH = doc.internal.pageSize.getHeight();
+    doc.setFillColor(241, 245, 249);
+    doc.rect(0, pgH - 10, pageW, 10, 'F');
+    doc.setFontSize(7); doc.setTextColor(148, 163, 184);
+    doc.text('This is a computer-generated document. All calculations are indicative and subject to bank approval.', pageW / 2, pgH - 4, { align: 'center' });
+
+    doc.save(`Eligibility_${companyName.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
+  // --- REUSABLE UI ---
+  const ReadOnlyInput = ({ label, value, isHighlight = false }) => (
+    <div className="flex flex-col justify-end">
+      <div className="flex justify-between items-center mb-1.5">
+        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{label}</label>
+        <Lock size={9} className="text-slate-700" />
+      </div>
+      <input type="text" readOnly value={value} className={`w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border ${isHighlight ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'bg-[#151b23] text-slate-300 border-slate-700/50'}`} />
+    </div>
+  );
+  const EditableInput = ({ label, type = "number", value, onChange, placeholder }) => (
+    <div className="flex flex-col justify-end">
+      <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">{label}</label>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm" placeholder={placeholder} />
+    </div>
+  );
+
+  // --- COMPANY MODAL ---
+  const CompanyModal = () => {
+    const [searchQ, setSearchQ] = useState('');
+    const allBanks = [
+      { id: 1, name: 'TATA CONSULTANCY SERVICES', bank: 'HDFC BANK', category: 'CAT A' },
+      { id: 2, name: 'TATA CONSULTANCY SERVICES', bank: 'ICICI BANK', category: 'CAT B' },
+      { id: 3, name: 'TATA CONSULTANCY SERVICES', bank: 'AXIS BANK', category: 'SUPER CAT' },
+      { id: 4, name: 'PNB METLIFE INDIA INSURANCE', bank: 'HDFC BANK', category: 'CAT B' },
+      { id: 5, name: 'PNB METLIFE INDIA INSURANCE', bank: 'SBI', category: 'CAT C' },
+      { id: 6, name: 'RELIANCE INDUSTRIES', bank: 'HDFC BANK', category: 'CAT A' },
+      { id: 7, name: 'RELIANCE INDUSTRIES', bank: 'ICICI BANK', category: 'CAT A' },
+      { id: 8, name: 'INFOSYS LIMITED', bank: 'HDFC BANK', category: 'CAT A' },
+      { id: 9, name: 'INFOSYS LIMITED', bank: 'ICICI BANK', category: 'SUPER CAT' },
+      { id: 10, name: 'WIPRO TECHNOLOGIES', bank: 'SBI', category: 'CAT B' },
+      { id: 11, name: 'WIPRO TECHNOLOGIES', bank: 'KOTAK MAHINDRA BANK', category: 'CAT A' },
+      { id: 12, name: 'HCL TECHNOLOGIES', bank: 'AXIS BANK', category: 'CAT C' },
+    ];
+    const filtered = allBanks.filter(d => d.name.toLowerCase().includes(searchQ.toLowerCase()) || d.bank.toLowerCase().includes(searchQ.toLowerCase()));
+    const isAdded = (id) => !!selectedCompanyCategories.find(c => c.id === id);
+    const handleSelect = (item) => { if (!isAdded(item.id)) { setCompanyName(item.name); setSelectedCompanyCategories(p => [...p, item]); } };
+    const handleRemove = (id) => setSelectedCompanyCategories(p => p.filter(c => c.id !== id));
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+            <h3 className="text-base font-bold text-white flex items-center gap-2"><Building2 size={18} className="text-blue-400"/> Search Company &amp; Select Category</h3>
+            <button onClick={() => setIsCompanyModalOpen(false)} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all"><X size={18}/></button>
+          </div>
+          <div className="px-4 pt-4 shrink-0">
+            <div className="relative">
+              <Search size={15} className="absolute left-3.5 top-3 text-slate-500 pointer-events-none"/>
+              <input autoFocus type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by company or bank name..." className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-blue-500 text-sm border border-slate-700/50"/>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 pt-3">
+            <div className="border border-slate-800 rounded-xl overflow-hidden">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#151b23] text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Company</th>
+                    <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Bank</th>
+                    <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Cat</th>
+                    <th className="p-3 font-bold text-[10px] uppercase tracking-wide text-center w-24">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/40">
+                  {filtered.map(item => {
+                    const added = isAdded(item.id);
+                    return (
+                      <tr key={item.id} className={`transition-colors ${added ? 'bg-emerald-500/5' : 'hover:bg-[#1a2235]'}`}>
+                        <td className="p-2.5 text-white font-semibold text-xs">{item.name}</td>
+                        <td className="p-2.5 text-emerald-400 font-bold text-xs">{item.bank}</td>
+                        <td className="p-2.5"><span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-black uppercase">{item.category}</span></td>
+                        <td className="p-2.5 text-center">
+                          {added ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-1 rounded-lg"><CheckCircle2 size={11}/> Added</span>
+                          ) : (
+                            <button onClick={() => handleSelect(item)} className="bg-blue-600/15 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-[11px] font-black px-3 py-1 rounded-lg transition-all">+ Add</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && <tr><td colSpan="4" className="py-8 text-center text-slate-500 text-sm font-bold">No results for "{searchQ}"</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="px-4 pb-4 pt-3 border-t border-slate-800 bg-[#0f141e] shrink-0 space-y-2.5">
+            {selectedCompanyCategories.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCompanyCategories.map(cat => (
+                  <span key={cat.id} className="bg-blue-500/10 text-blue-300 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                    {cat.bank} – {cat.category}
+                    <button onClick={() => handleRemove(cat.id)} className="hover:text-red-400 transition-colors"><X size={10}/></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 text-xs">{selectedCompanyCategories.length > 0 ? `${selectedCompanyCategories.length} selected` : 'None selected'}</span>
+              <button onClick={() => setIsCompanyModalOpen(false)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- BANK MODAL (with search) ---
+  const BankModal = () => {
+    const [bankSearch, setBankSearch] = useState('');
+    const allBanksList = [
+      'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak Mahindra Bank', 'SBI',
+      'IndusInd Bank', 'Yes Bank', 'IDFC First Bank', 'Punjab National Bank',
+      'Bank of Baroda', 'Canara Bank', 'Union Bank', 'Federal Bank',
+      'RBL Bank', 'Bandhan Bank', 'South Indian Bank', 'Karur Vysya Bank',
+      'Tamilnad Mercantile Bank', 'DCB Bank', 'HSBC', 'Standard Chartered',
+      'Citibank', 'Deutsche Bank', 'Bajaj Finserv', 'Fullerton India',
+      'Poonawalla Fincorp', 'HDB Financial', 'Tata Capital',
+    ];
+    const filtered = allBanksList.filter(b => b.toLowerCase().includes(bankSearch.toLowerCase()));
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[88vh]">
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+            <h3 className="text-base font-bold text-white flex items-center gap-2"><Landmark size={18} className="text-emerald-400"/> Select Target Banks</h3>
+            <button onClick={() => setIsBankModalOpen(false)} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all"><X size={18}/></button>
+          </div>
+          <div className="px-4 pt-4 shrink-0">
+            <div className="relative">
+              <Search size={15} className="absolute left-3.5 top-3 text-slate-500 pointer-events-none"/>
+              <input autoFocus type="text" value={bankSearch} onChange={e => setBankSearch(e.target.value)} placeholder="Search bank name..." className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-emerald-500 text-sm border border-slate-700/50"/>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 pt-3">
+            {filtered.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {filtered.map(bank => (
+                  <div key={bank} onClick={() => toggleTargetBank(bank)} className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${targetBanks.includes(bank) ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400' : 'bg-[#151b23] border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-[#1e2631]'}`}>
+                    <span className="font-semibold text-xs">{bank}</span>
+                    {targetBanks.includes(bank) && <CheckCircle2 size={15} className="shrink-0"/>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-500 text-sm font-bold">No banks found for "{bankSearch}"</div>
+            )}
+          </div>
+          <div className="p-4 border-t border-slate-800 bg-[#151b23] shrink-0 flex items-center justify-between">
+            <span className="text-slate-500 text-xs">{targetBanks.length} bank{targetBanks.length !== 1 ? 's' : ''} selected</span>
+            <button onClick={() => setIsBankModalOpen(false)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm">Done</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex h-screen w-full bg-[#0a0e14] text-slate-300 overflow-hidden" style={{fontFamily: 'system-ui, -apple-system, sans-serif'}}>
+      {isCompanyModalOpen && <CompanyModal />}
+      {isBankModalOpen && <BankModal />}
+
+      {/* === LEFT SECTION === */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
+        <div className="p-5 space-y-5 pb-10">
+
+
+
+          {/* Salary Row */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Salary</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
+                <input type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"/>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Partner's Salary</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
+                <input type="number" value={partnerSalary} onChange={e => setPartnerSalary(e.target.value)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"/>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Bonus</label>
+              <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
+                <div className="relative flex-1 border-r border-slate-700/50">
+                  <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
+                  <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} className="w-full bg-transparent p-2.5 pl-7 text-white font-semibold outline-none text-sm" placeholder="Amount"/>
+                </div>
+                <select value={bonusDivider} onChange={e => setBonusDivider(e.target.value)} className={`bg-transparent font-bold px-2 py-2 outline-none cursor-pointer text-xs shrink-0 ${bonusDivider ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <option value="" disabled>÷ Duration</option>
+                  <option value="1">÷ 1 Mo</option>
+                  <option value="3">÷ 3 Mo</option>
+                  <option value="6">÷ 6 Mo</option>
+                  <option value="12">÷ 12 Mo</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Company + Category */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Name</label>
+              <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
+                <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="w-full bg-transparent p-2.5 px-3 text-white font-semibold outline-none text-sm"/>
+                <button onClick={() => setIsCompanyModalOpen(true)} className="bg-blue-600/20 text-blue-400 px-4 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors border-l border-slate-700/50 shrink-0">
+                  <Search size={14}/>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
+              <div onClick={() => setIsCompanyModalOpen(true)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
+                {selectedCompanyCategories.length === 0 ? <span className="text-slate-500 text-xs px-1">Select from modal...</span> : null}
+                {selectedCompanyCategories.map(cat => (
+                  <span key={cat.id} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                    {cat.bank} - {cat.category}
+                    <div onClick={e => { e.stopPropagation(); setSelectedCompanyCategories(p => p.filter(c => c.id !== cat.id)); }} className="hover:text-red-400 bg-black/20 rounded-full p-0.5"><X size={10}/></div>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Target Banks */}
+          <div>
+            <label className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
+            <div className="flex flex-wrap gap-1.5 items-center bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
+              {targetBanks.length === 0 ? <span className="text-slate-500 text-xs">No banks selected...</span> : null}
+              {targetBanks.map(bank => (
+                <span key={bank} className="bg-emerald-500/10 text-emerald-400 font-bold text-[11px] px-2.5 py-1 rounded flex items-center gap-1 border border-emerald-500/20">
+                  {bank}
+                  <button onClick={() => removeTargetBank(bank)} className="hover:text-red-400"><X size={12}/></button>
+                </span>
+              ))}
+              <button onClick={() => setIsBankModalOpen(true)} className="text-emerald-500 hover:text-emerald-400 text-[11px] font-bold px-2.5 py-1 ml-auto flex items-center gap-1 border border-emerald-500/30 rounded bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
+                <Plus size={12}/> Add Bank
+              </button>
+            </div>
+          </div>
+
+          <hr className="border-slate-800/60"/>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-[#151b23] rounded-xl p-4 border border-emerald-500/20">
+              <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider block mb-1.5">Total BT POS</span>
+              <span className="text-emerald-400 font-black text-2xl tracking-tight">{fmt(calc.totalBTPos)}</span>
+            </div>
+            <div className="bg-[#151b23] rounded-xl p-4 border border-yellow-500/20">
+              <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider block mb-1.5">Total Obligation</span>
+              <span className="text-yellow-400 font-black text-2xl tracking-tight">{fmt(calc.totalObligation)}</span>
+            </div>
+            <div className="bg-[#151b23] rounded-xl p-4 border border-slate-700/50">
+              <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
+              <input type="text" value={cibilScore} onChange={e => setCibilScore(e.target.value)} className="w-full bg-white text-black font-black text-xl rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400" placeholder="Score"/>
+            </div>
+          </div>
+
+          {/* Obligations Table - OPTIMIZED COLUMNS */}
+          <div className="w-full overflow-hidden border border-slate-800 rounded-xl">
+            <table className="w-full text-left text-xs table-fixed">
+              <thead className="bg-[#151b23] text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="p-2.5 w-[30px] text-center font-bold text-[10px]">#</th>
+                  <th className="p-2.5 w-[18%] font-bold text-[10px] uppercase">Product</th>
+                  <th className="p-2.5 w-[24%] font-bold text-[10px] uppercase">Bank Name</th>
+                  <th className="p-2.5 w-[13%] font-bold text-[10px] uppercase">Total Loan</th>
+                  <th className="p-2.5 w-[13%] font-bold text-[10px] uppercase">Outstanding</th>
+                  <th className="p-2.5 w-[11%] font-bold text-[10px] uppercase">EMI</th>
+                  <th className="p-2.5 font-bold text-[10px] uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {obligations.map((obs, i) => (
+                  <tr key={obs.id} className="hover:bg-[#151b23]/50 transition-colors group">
+                    <td className="p-1.5 text-center text-slate-500 font-bold">{i + 1}</td>
+                    <td className="p-1.5"><input type="text" value={obs.product} onChange={e => updateObligation(obs.id,'product',e.target.value)} className="w-full bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[11px]"/></td>
+                    <td className="p-1.5"><input type="text" value={obs.bank} onChange={e => updateObligation(obs.id,'bank',e.target.value)} className="w-full bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[11px] placeholder-black/50" placeholder="Bank Name"/></td>
+                    <td className="p-1.5"><input type="number" value={obs.totalLoan} onChange={e => updateObligation(obs.id,'totalLoan',e.target.value)} className="w-full bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[11px] placeholder-black/50" placeholder="0"/></td>
+                    <td className="p-1.5"><input type="number" value={obs.outStanding} onChange={e => updateObligation(obs.id,'outStanding',e.target.value)} className="w-full bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[11px] placeholder-black/50" placeholder="0"/></td>
+                    <td className="p-1.5"><input type="number" value={obs.emi} onChange={e => updateObligation(obs.id,'emi',e.target.value)} className="w-full bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[11px] placeholder-black/50" placeholder="0"/></td>
+                    <td className="p-1.5">
+                      <div className="flex items-center gap-1">
+                        <select value={obs.action} onChange={e => updateObligation(obs.id,'action',e.target.value)} className="bg-[#10b981] text-black font-bold rounded p-1.5 outline-none text-[10px] flex-1">
+                          <option value="BT">BT ✓</option>
+                          <option value="NO_BT">No BT</option>
+                        </select>
+                        <button onClick={() => removeObligation(obs.id)} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0"><Trash2 size={14}/></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="p-2.5 bg-[#151b23] flex justify-center border-t border-slate-800">
+              <button onClick={addObligation} className="text-blue-400 hover:text-blue-300 text-[10px] font-bold py-1.5 px-4 rounded border border-blue-500/30 hover:border-blue-400 uppercase tracking-wider flex items-center gap-1"><Plus size={13}/> Add Row</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* === RIGHT SECTION === */}
+      <div className="w-[420px] shrink-0 bg-[#0e131b] border-l border-slate-800 shadow-2xl flex flex-col z-10">
+        <div className="flex-1 p-5 overflow-y-auto scrollbar-hide space-y-4">
+
+          <div className="grid grid-cols-2 gap-3">
+            <ReadOnlyInput label="Total Income" value={fmt(calc.totalIncome)}/>
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">FOIR %</label>
+              <select value={foirPercent} onChange={e => setFoirPercent(e.target.value)} className="w-full bg-white text-black rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm">
+                <option value="50">50%</option><option value="60">60%</option><option value="70">70%</option><option value="80">80%</option>
+              </select>
+            </div>
+            <ReadOnlyInput label="FOIR Amount" value={fmt(calc.foirAmount)}/>
+            <ReadOnlyInput label="EMI Can Pay" value={fmt(calc.monthlyEmiCanPay)}/>
+          </div>
+
+          <ReadOnlyInput label="Total Obligation" value={fmt(calc.totalObligation)} isHighlight={true}/>
+          <hr className="border-slate-800/60"/>
+
+          <div className="grid grid-cols-2 gap-3">
+            <EditableInput label="Tenure (Months)" value={tenureMonths} onChange={handleMonthsChange}/>
+            <EditableInput label="Tenure (Years)" value={tenureYears} onChange={handleYearsChange}/>
+            <EditableInput label="ROI %" value={roi} onChange={setRoi}/>
+            <ReadOnlyInput label="Total BT POS" value={fmt(calc.totalBTPos)}/>
+          </div>
+
+          <hr className="border-slate-800/60"/>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col justify-end">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Max FOIR Eligibility</label>
+              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{fmt(calc.foirEligibility)}</div>
+            </div>
+            <div className="flex flex-col justify-end">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">Multiplier Limit</label>
+                <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500">MULT <input type="number" value={multiplier} onChange={e => setMultiplier(e.target.value)} className="w-9 bg-white text-black font-black px-1 rounded outline-none text-center h-[18px] focus:ring-1 focus:ring-yellow-500"/></div>
+              </div>
+              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{fmt(calc.multiplierEligibility)}</div>
+            </div>
+          </div>
+
+          <div className={`w-full p-4 rounded-xl flex items-center gap-3 transition-all ${calc.isEligible ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'}`}>
+            {calc.isEligible ? <CheckCircle2 size={24} className="text-black shrink-0"/> : <XCircle size={24} className="shrink-0"/>}
+            <div>
+              <h3 className="font-black text-base leading-tight">{calc.isEligible ? 'Congratulations!' : 'Not Eligible'}</h3>
+              <p className="text-xs font-bold mt-0.5 opacity-90">{calc.isEligible ? 'Balance Transfer Eligible' : 'Obligations exceed capacity'}</p>
+            </div>
+          </div>
+
+          {/* === REQUIREMENT SECTION - REDESIGNED === */}
+          <div className={`rounded-xl border overflow-hidden transition-all ${calc.customExceedsEligibility ? 'border-red-500/30' : 'border-blue-500/20'}`}>
+            {/* Header */}
+            <div className={`px-4 py-2.5 flex items-center justify-between ${calc.customExceedsEligibility ? 'bg-red-500/10' : 'bg-blue-500/8 bg-[#0f1929]'}`}>
+              <label className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${calc.customExceedsEligibility ? 'text-red-400' : 'text-blue-400'}`}>
+                <Zap size={12}/> Loan Requirement
+              </label>
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">
+                @ {roi}% · {tenureYears} Yrs · {tenureMonths} Mo
+              </span>
+            </div>
+
+            {/* Input + EMI Row */}
+            <div className="bg-[#151b23] p-3 flex gap-3 items-center">
+              <div className="flex-1 relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
+                <input
+                  type="text"
+                  value={fmtN(customLoanAmount)}
+                  onChange={handleCustomLoanChange}
+                  className={`w-full h-[44px] bg-[#0a0e14] border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${
+                    calc.customExceedsEligibility
+                      ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300'
+                      : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'
+                  }`}
+                  placeholder="Enter loan amount"
+                />
+              </div>
+              <div className={`flex flex-col items-center justify-center h-[44px] px-4 rounded-lg border shrink-0 min-w-[110px] ${
+                calc.customExceedsEligibility
+                  ? 'bg-red-500/10 border-red-500/30'
+                  : 'bg-blue-500/10 border-blue-500/20'
+              }`}>
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-0.5">EMI / Month</span>
+                <span className={`text-lg font-black tracking-tight leading-none ${
+                  calc.customExceedsEligibility ? 'text-red-400' : 'text-blue-400'
+                }`}>
+                  {customLoanAmount ? `₹${fmt(calc.customEmi)}` : '₹0'}
+                </span>
+              </div>
+            </div>
+
+            {/* Status bar */}
+            <div className={`px-4 py-2 flex items-center justify-between ${
+              calc.customExceedsEligibility ? 'bg-red-500/8 bg-[#1a0a0a]' : 'bg-emerald-500/5'
+            }`}>
+              {customLoanAmount ? (
+                <>  
+                  <span className={`text-[10px] font-bold flex items-center gap-1.5 ${
+                    calc.customExceedsEligibility ? 'text-red-400' : 'text-emerald-400'
+                  }`}>
+                    {calc.customExceedsEligibility ? '⚠ Exceeds FOIR eligibility limit' : '✓ Within FOIR eligibility'}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    Max: <span className="text-emerald-400">₹{fmt(calc.foirEligibility)}</span>
+                  </span>
+                </>
+              ) : (
+                <span className="text-[10px] text-slate-500 font-medium">Enter a loan amount to see EMI & eligibility</span>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      `}}/>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+    </script>
+</body>
+</html>
