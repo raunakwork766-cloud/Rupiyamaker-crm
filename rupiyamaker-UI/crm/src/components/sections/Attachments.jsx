@@ -7,6 +7,25 @@ import 'jspdf-autotable';
 import './attachments.css';
 import { getISTDateYMD } from '../../utils/dateUtils';
 
+// Document categories from premium_document_upload.html reference
+const DOCUMENT_CATEGORIES = [
+  {
+    id: 'kyc',
+    title: 'PERSONAL IDENTIFICATION (KYC)',
+    keywords: ['cibil', 'pan', 'aadhaar', 'aadhar', 'voter', 'driving licen', 'passport', 'kyc', 'id proof', 'identity'],
+  },
+  {
+    id: 'employment',
+    title: 'EMPLOYMENT PROOFS',
+    keywords: ['salary slip', 'offer letter', 'employment', 'form 16', 'appointment letter', 'experience letter', 'increment'],
+  },
+  {
+    id: 'financial',
+    title: 'FINANCIAL STATEMENTS',
+    keywords: ['bank statement', 'itr', 'income tax', 'financial', 'account statement'],
+  },
+];
+
 export default function Attachments({ leadId, userId }) {
   // State for notifications
   const [notification, setNotification] = useState(null);
@@ -1865,10 +1884,26 @@ export default function Attachments({ leadId, userId }) {
         )}
 
         {(() => {
-          // Global file counter across all doc types — exactly like the HTML's globalFileIndex
           let globalFileIndex = 1;
 
-          return allDisplayTypes.map((attachmentType) => {
+          // Group by DOCUMENT_CATEGORIES (from premium_document_upload.html)
+          const grouped = DOCUMENT_CATEGORIES.map(cat => ({
+            ...cat,
+            types: allDisplayTypes.filter(t =>
+              cat.keywords.some(kw => t.name.toLowerCase().includes(kw))
+            ),
+          })).filter(cat => cat.types.length > 0);
+          const matchedNames = new Set(grouped.flatMap(g => g.types.map(t => t.name)));
+          const otherTypes = allDisplayTypes.filter(t => !matchedNames.has(t.name));
+          if (otherTypes.length > 0) grouped.push({ id: 'other', title: 'OTHER DOCUMENTS', types: otherTypes });
+
+          return grouped.map((cat, catIdx) => (
+            <div key={cat.id} className="mb-3 last:mb-0">
+              <div className="border-b-2 border-gray-800 pb-0.5 mb-2">
+                <h3 className="text-[11px] font-black text-gray-900 uppercase tracking-tight">{catIdx + 1}. {cat.title}</h3>
+              </div>
+              <div className="space-y-1.5">
+                {cat.types.map((attachmentType) => {
             const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
             const inputRef = dynamicRefs[key];
             const password = dynamicPasswords[key] || '';
@@ -2031,10 +2066,10 @@ export default function Attachments({ leadId, userId }) {
                       disabled={isLoading}
                       title=""
                     />
-                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1 transition uppercase pointer-events-none">
+                    <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-1 px-1.5 rounded shadow-sm text-[10px] flex items-center justify-center gap-1 transition uppercase pointer-events-none whitespace-nowrap">
                       {isLoading
-                        ? <><i className="fa-solid fa-spinner fa-spin text-xs"></i> Uploading…</>
-                        : <><i className="fa-solid fa-cloud-arrow-up text-xs"></i> Attach Files</>
+                        ? <><i className="fa-solid fa-spinner fa-spin"></i> Uploading…</>
+                        : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach Files</>
                       }
                     </button>
                   </div>
@@ -2049,7 +2084,10 @@ export default function Attachments({ leadId, userId }) {
                 </div>
               </div>
             );
-          });
+          })}
+              </div>
+            </div>
+          ));
         })()}
       </div>
 
