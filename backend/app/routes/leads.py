@@ -3363,24 +3363,23 @@ async def update_status(
     #     )
     
     # Check if status exists
-    status = await leads_db.get_status_by_id(status_id)
-    if not status:
+    status_doc = await leads_db.get_status_by_id(status_id)
+    if not status_doc:
         raise HTTPException(
             status_code=404,
             detail=f"Status with ID {status_id} not found"
         )
     
-    # Update status
+    # Update status — include all fields (even False/0/None explicitly set)
     update_dict = {k: v for k, v in status_update.dict().items() if v is not None}
     
     update_dict['updated_at'] = get_ist_now()
     print(update_dict)
     success = await leads_db.update_status(status_id, update_dict)
     
-    
     if not success:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail="Failed to update status"
         )
     

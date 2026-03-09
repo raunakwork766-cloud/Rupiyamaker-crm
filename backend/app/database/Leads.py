@@ -2256,7 +2256,7 @@ class LeadsDB:
             
             print(f"DEBUG: Update result - matched: {result.matched_count}, modified: {result.modified_count}")
             if result.matched_count > 0:
-                return result.modified_count > 0
+                return True  # success even if nothing changed (same values)
         
         # If no match by ObjectId, try by string ID field
         print("DEBUG: No match by ObjectId, trying by string ID field")
