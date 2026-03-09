@@ -477,6 +477,17 @@ const WarningPage = memo(() => {
     loadRankings();
   }, [filters, page, rowsPerPage, selectedTab]);
 
+  // Resolve department names once departments have loaded
+  useEffect(() => {
+    if (departments.length > 0) {
+      setEmployees(prev => prev.map(emp => {
+        if (emp.department_name && emp.department_name !== 'Unknown Department') return emp;
+        const dept = departments.find(d => d.id === emp.department_id || d._id === emp.department_id);
+        return dept ? { ...emp, department_name: dept.name } : emp;
+      }));
+    }
+  }, [departments]);
+
   useEffect(() => {
   }, [stats]);
 
@@ -1524,7 +1535,7 @@ const WarningPage = memo(() => {
     if (selectAll) {
       setSelectedRows([]);
     } else {
-      setSelectedRows(paginatedWarnings.map(warning => warning.id));
+      setSelectedRows(filteredWarnings.map(warning => warning.id));
     }
     setSelectAll(!selectAll);
   };
@@ -3149,6 +3160,83 @@ const WarningPage = memo(() => {
                   </div>
                 </div>
 
+                {/* Similar Warnings - shows below Mistake Type when employee + type both selected */}
+                {showingSimilarWarnings && similarWarnings.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-red-200 pb-2 gap-2">
+                      <div className="flex items-center gap-2 text-red-600">
+                        <div className="p-1.5 bg-red-100 rounded-md">
+                          <AlertTriangle className="w-4 h-4 text-red-500" />
+                        </div>
+                        <h3 className="font-black text-sm uppercase tracking-tight">Same Mistake Repeated</h3>
+                      </div>
+                      <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
+                        {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 mb-4 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
+                      <div className="flex-1 text-center border-r border-gray-200">
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Penalty Given</p>
+                        <p className="text-xl font-black text-red-600">
+                          ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Waived Off</p>
+                        <p className="text-xl font-black text-green-600">
+                          ₹{similarWarnings.filter(w => w.is_waived || waivedPenalties[w.id]).reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-200">
+                      {similarWarnings
+                        .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
+                        .map((warning, index) => (
+                        <div key={warning.id || index} className="relative flex gap-3 items-start">
+                          <div className="w-8 h-8 rounded-full bg-white border-2 border-red-400 flex items-center justify-center shrink-0 z-10 text-red-600 shadow-sm">
+                            <span className="text-xs font-black">{similarWarnings.length - index}</span>
+                          </div>
+                          <div className="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm p-3 hover:border-red-300 transition-all">
+                            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-2 border-b border-gray-100 pb-2">
+                              <h4 className="font-black text-gray-800 text-sm flex items-center gap-2">
+                                {warning.warning_type || 'Warning'}
+                                <span className="text-gray-400 font-medium text-xs">
+                                  {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+                                </span>
+                              </h4>
+                              <span className="bg-red-50 text-red-700 text-[11px] px-3 py-0.5 rounded-md font-black border border-red-200 mt-1.5 sm:mt-0 w-fit">
+                                ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            <div className="mb-2">
+                              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
+                                Issued by {warning.issued_by_name || 'Unknown'}:
+                              </span>
+                              <p className="text-sm text-gray-700 bg-gray-50 p-2.5 rounded-lg border border-gray-200 font-medium leading-relaxed">
+                                "{warning.warning_message || 'No message provided'}"
+                              </p>
+                            </div>
+                            {(warning.employee_remark || warning.employee_response) ? (
+                              <div className="bg-green-50 p-2.5 rounded-lg border border-green-200">
+                                <span className="font-black text-[10px] uppercase tracking-widest block mb-1 text-green-700 flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Employee Remark (Accepted):
+                                </span>
+                                <p className="italic text-sm text-green-700">
+                                  "{warning.employee_remark || warning.employee_response}"
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-700 text-sm font-bold flex items-center gap-1.5">
+                                <Clock className="w-4 h-4" /> Pending employee acknowledgement
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Penalty Amount */}
                 <div className="mb-4">
                   <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">Penalty Amount (₹)</label>
@@ -3251,86 +3339,6 @@ const WarningPage = memo(() => {
                   )}
                 </div>
 
-                {/* Similar Warnings Panel (inside scrollable body) */}
-                {showingSimilarWarnings && similarWarnings.length > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm mt-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-red-200 pb-2 gap-2">
-                      <div className="flex items-center gap-2 text-red-600">
-                        <div className="p-1.5 bg-red-100 rounded-md">
-                          <AlertTriangle className="w-4 h-4 text-red-500" />
-                        </div>
-                        <h3 className="font-black text-sm uppercase tracking-tight">Same Mistake Repeated</h3>
-                      </div>
-                      <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
-                        {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
-                      </span>
-                    </div>
-
-                    {/* Stats Row */}
-                    <div className="flex items-center gap-4 mb-4 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                      <div className="flex-1 text-center border-r border-gray-200">
-                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Penalty Given</p>
-                        <p className="text-xl font-black text-red-600">
-                          ₹{similarWarnings.reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      <div className="flex-1 text-center">
-                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-wide">Total Waived Off</p>
-                        <p className="text-xl font-black text-green-600">
-                          ₹{similarWarnings.filter(w => w.is_waived || waivedPenalties[w.id]).reduce((total, w) => total + (parseFloat(w.penalty_amount) || 0), 0).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Vertical Timeline */}
-                    <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[15px] before:w-0.5 before:bg-red-200">
-                      {similarWarnings
-                        .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date))
-                        .map((warning, index) => (
-                        <div key={warning.id || index} className="relative flex gap-3 items-start">
-                          <div className="w-8 h-8 rounded-full bg-white border-2 border-red-400 flex items-center justify-center shrink-0 z-10 text-red-600 shadow-sm">
-                            <span className="text-xs font-black">{similarWarnings.length - index}</span>
-                          </div>
-                          <div className="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm p-3 hover:border-red-300 transition-all">
-                            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-2 border-b border-gray-100 pb-2">
-                              <h4 className="font-black text-gray-800 text-sm flex items-center gap-2">
-                                {warning.warning_type || 'Warning'}
-                                <span className="text-gray-400 font-medium text-xs">
-                                  {new Date(warning.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
-                                </span>
-                              </h4>
-                              <span className="bg-red-50 text-red-700 text-[11px] px-3 py-0.5 rounded-md font-black border border-red-200 mt-1.5 sm:mt-0 w-fit">
-                                ₹{Number(warning.penalty_amount || 0).toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                            <div className="mb-2">
-                              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
-                                Issued by {warning.issued_by_name || 'Unknown'}:
-                              </span>
-                              <p className="text-sm text-gray-700 bg-gray-50 p-2.5 rounded-lg border border-gray-200 font-medium leading-relaxed">
-                                "{warning.warning_message || 'No message provided'}"
-                              </p>
-                            </div>
-                            {(warning.employee_remark || warning.employee_response) ? (
-                              <div className="bg-green-50 p-2.5 rounded-lg border border-green-200">
-                                <span className="font-black text-[10px] uppercase tracking-widest block mb-1 text-green-700 flex items-center gap-1.5">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Employee Remark (Accepted):
-                                </span>
-                                <p className="italic text-sm text-green-700">
-                                  "{warning.employee_remark || warning.employee_response}"
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-700 text-sm font-bold flex items-center gap-1.5">
-                                <Clock className="w-4 h-4" /> Pending employee acknowledgement
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </form>
             </div>
 
