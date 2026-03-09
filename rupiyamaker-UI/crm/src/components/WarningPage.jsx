@@ -628,31 +628,26 @@ const WarningPage = memo(() => {
       const queryParams = new URLSearchParams();
       if (userId) queryParams.append('user_id', userId);
 
-      // Use users API endpoint to get complete user data with designation
-      const response = await fetch(`${API_URL}/users/?${queryParams}`, {
+      // Use warnings employees endpoint which already resolves department names
+      const response = await fetch(`${API_URL}/warnings/employees/list?${queryParams}`, {
         headers: getAuthHeaders(),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const usersList = data || [];
+        const usersList = data.employees || [];
         
-        // Map user data to employee format for dropdown
+        // Map employee data to dropdown format
         const employeesList = usersList
-          .filter(user => 
-            user.employee_status === 'active' || 
-            user.is_active === true || 
-            user.employee_status === undefined
-          )
           .map(user => ({
-            id: user._id,
+            id: user.id || user._id,
             employee_id: user.employee_id,
-            user_id: user._id,
-            name: `${user.first_name} ${user.last_name}`.trim(),
+            user_id: user.id || user._id,
+            name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
             email: user.email,
             designation: user.designation,
             department_id: user.department_id,
-            department_name: user.department_name || 'Unknown Department'
+            department_name: user.department_name || 'No Department'
           }));
         
         setEmployees(employeesList);
