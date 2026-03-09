@@ -422,10 +422,10 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white p-6">
-            <div className="w-full">
+        <div className={activeTab === 'obligations' ? 'h-screen overflow-hidden bg-black text-white flex flex-col pt-2 px-2 pb-0' : 'min-h-screen bg-black text-white p-6'}>
+            <div className={`w-full${activeTab === 'obligations' ? ' flex flex-col flex-1 min-h-0' : ''}`}>
                 {/* Header */}
-                <div className=" rounded-lg p-6 mb-6">
+                <div className={activeTab === 'obligations' ? 'py-1 px-1 mb-0' : ' rounded-lg p-6 mb-6'}>
                     <div className="flex items-center justify-between">
                     <div className="flex items-center">
                         <button
@@ -435,12 +435,14 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div>
-                            <h1 className="text-2xl font-bold text-white">
+                            <h1 className={`${activeTab === 'obligations' ? 'text-sm font-semibold' : 'text-2xl font-bold'} text-white`}>
                                 {leadData.first_name} {leadData.last_name}
                             </h1>
+                            {activeTab !== 'obligations' && (
                             <p className="text-gray-400">
                                 Lead ID: {leadData.custom_lead_id || leadData._id?.slice(-8)} | {leadData.phone} | {leadData.email}
                             </p>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
@@ -503,6 +505,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                 Share
                             </button>
                         )}
+                        {activeTab !== 'obligations' && (
                         <div className="text-right">
                             <div className="text-sm text-gray-400">Status</div>
                             <div className="space-y-1">
@@ -516,6 +519,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                                 )}
                             </div>
                         </div>
+                        )}
                     </div>
                 </div>
                 </div>
@@ -585,8 +589,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 </div>
                 
                 {/* Tab Content Container */}
-                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : ''}`}>
-                    <div className="w-full">
+                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : ' flex-1 min-h-0'}`}>
+                    <div className={`w-full${activeTab === 'obligations' ? ' h-full' : ''}`}>
                         {activeTab === 'details' && (
                             <div className="space-y-6">
                                 {/* About Section */}
