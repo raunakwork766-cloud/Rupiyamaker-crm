@@ -6344,8 +6344,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData);
 
   return (
+    <>
+    <style>{`
+      .obligation-no-scrollbar::-webkit-scrollbar { display: none; }
+      .obligation-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+    `}</style>
     <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-      <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+      <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
           {/* Customer Details Section with Download Button */}
@@ -7111,7 +7116,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       </div>
       {/* === RIGHT SIDEBAR === */}
       <div className="w-[420px] shrink-0 bg-black border-l border-slate-800 shadow-2xl flex flex-col z-10">
-        <div className="flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+        <div className="obligation-no-scrollbar flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none',WebkitOverflowScrolling:'touch'}}>
 
           <div className="grid grid-cols-2 gap-3">
             {/* Total Income - ReadOnly */}
@@ -7654,6 +7659,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         </div>
       )}
     </div>
+  </>
   );
 }
 
