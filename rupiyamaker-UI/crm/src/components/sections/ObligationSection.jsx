@@ -6345,10 +6345,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   return (
     <>
-    <style>{`
-      .obligation-no-scrollbar::-webkit-scrollbar { display: none; }
-      .obligation-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-    `}</style>
     <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
