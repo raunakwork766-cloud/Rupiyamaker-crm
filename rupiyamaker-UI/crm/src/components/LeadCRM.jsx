@@ -6406,19 +6406,19 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         );
 
         return (
-            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-base flex flex-col' : 'min-h-screen bg-black text-white text-base'}>
+            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-base flex flex-col' : 'min-h-screen bg-black text-white text-base'} style={activeTab === 1 ? {fontSize:'90%'} : {}}>
                 {/* Header */}
-                <div className="flex items-center gap-3 px-2 sm:px-4 lg:px-6 py-2 bg-black border-b-4 border-cyan-400/70 shadow-lg w-full">
+                <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-0.5 bg-black border-b-2 border-cyan-400/70 shadow-lg w-full">
                     <button
                         onClick={handleBackToTable}
-                        className="text-cyan-300 mr-2 px-2 py-1 text-xl font-bold rounded hover:bg-cyan-900/20 transition"
+                        className="text-cyan-300 mr-1 px-1.5 py-0.5 text-base font-bold rounded hover:bg-cyan-900/20 transition"
                         aria-label="Back"
                     >
                         {"←"}
                     </button>
-                    <User className="text-cyan-300 w-8 h-6 sm:w-10 sm:h-8 drop-shadow" />
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <h1 className="text-sm font-bold text-cyan-300 tracking-wide">
+                    <User className="text-cyan-300 w-5 h-4 drop-shadow" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <h1 className="text-xs font-bold text-cyan-300 tracking-wide">
                             {`${selectedLead.first_name || ''} ${selectedLead.last_name || ''}`.trim() || 
                              selectedLead.customer_name || 
                              selectedLead.name || 
