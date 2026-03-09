@@ -2380,8 +2380,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             getContent: (leadData, handleChangeFunc) => [
                 {
                     content: (
-                        <div>
-                            <LazySection height="500px">
+                        <div style={{height:'100%'}}>
+                            <LazySection height="100%">
                                 <ObligationSection
                                 leadData={leadData}
                                 handleChangeFunc={(field, value) => {
@@ -6406,9 +6406,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         );
 
         return (
-            <div className="min-h-screen bg-black text-white text-base">
+            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-base flex flex-col' : 'min-h-screen bg-black text-white text-base'}>
                 {/* Header */}
-                <div className="flex items-center gap-3 px-2 sm:px-4 lg:px-6 py-6 bg-[#0c1019] border-b-4 border-cyan-400/70 shadow-lg w-full">
+                <div className="flex items-center gap-3 px-2 sm:px-4 lg:px-6 py-2 bg-black border-b-4 border-cyan-400/70 shadow-lg w-full">
                     <button
                         onClick={handleBackToTable}
                         className="text-cyan-300 mr-2 px-2 py-1 text-xl font-bold rounded hover:bg-cyan-900/20 transition"
@@ -6418,70 +6418,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     </button>
                     <User className="text-cyan-300 w-8 h-6 sm:w-10 sm:h-8 drop-shadow" />
                     <div className="flex items-center gap-2 flex-wrap">
-                        <h1 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-cyan-300 tracking-wide drop-shadow">
+                        <h1 className="text-sm font-bold text-cyan-300 tracking-wide">
                             {`${selectedLead.first_name || ''} ${selectedLead.last_name || ''}`.trim() || 
                              selectedLead.customer_name || 
                              selectedLead.name || 
                              'Lead Details'}
                         </h1>
-                        
-                        {/* Status Dropdown - Same as table */}
-                        {canUpdateStatus() && (
-                            <div 
-                                className="relative status-dropdown-container"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <button
-                                    className="bg-gray-800 text-white py-2 px-3 rounded-md border border-gray-600 hover:bg-gray-700 transition-colors min-w-[180px] max-w-[280px] flex justify-between items-center gap-2 status-dropdown-button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        // Use a special identifier for header dropdown
-                                        handleStatusDropdownClick('header', e);
-                                    }}
-                                >
-                                    <div className="font-medium text-white text-sm text-left flex-1 overflow-hidden">
-                                        {(() => {
-                                            if (selectedLead.sub_status) {
-                                                const subStatusName = typeof selectedLead.sub_status === 'object' 
-                                                    ? (selectedLead.sub_status.name || 'Unknown Sub-Status') 
-                                                    : (selectedLead.sub_status || 'Unknown Sub-Status');
-                                                const statusName = typeof selectedLead.status === 'object' 
-                                                    ? (selectedLead.status.name || 'Unknown Status') 
-                                                    : (selectedLead.status || 'Unknown Status');
-                                                    
-                                                return (
-                                                    <div className="leading-tight">
-                                                        <div className="font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                                                            {subStatusName}
-                                                        </div>
-                                                        <div className="text-xs text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">
-                                                            {statusName}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            } else {
-                                                const statusName = typeof selectedLead.status === 'object' 
-                                                    ? (selectedLead.status.name || 'Select Status') 
-                                                    : (selectedLead.status || 'Select Status');
-                                                return (
-                                                    <div className="whitespace-nowrap overflow-hidden text-ellipsis">
-                                                        {statusName}
-                                                    </div>
-                                                );
-                                            }
-                                        })()}
-                                    </div>
-                                    <svg
-                                        className={`w-5 h-5 flex-shrink-0 transition-transform ${showStatusDropdown === 'header' ? 'rotate-180' : ''}`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            </div>
-                        )}
                         
                         {selectedLead?.file_sent_to_login && (
                             <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center">
@@ -6777,10 +6719,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 </div>
 
                 {/* Section Content */}
-                <div className="px-2 sm:px-4 lg:px-6 py-6 w-full">
-                    <div className="w-full">
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 w-full overflow-hidden' : 'px-2 sm:px-4 lg:px-6 py-6 w-full'}>
+                    <div className={activeTab === 1 ? 'w-full h-full' : 'w-full'}>
                         {sectionData.map((section, idx) => (
-                            <div key={idx} className="mb-6 w-full">
+                            <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
                                 {section.label && (
                                     <>
                                         {activeTab === 0 ? (
@@ -6819,7 +6761,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     )
                                 ) : (
                                     // Always show content for all tabs with full width styling and no background
-                                    <div className="w-full">
+                                    <div className={activeTab === 1 ? 'w-full h-full' : 'w-full'}>
                                         {section.content}
                                     </div>
                                 )}
