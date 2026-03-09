@@ -4610,11 +4610,6 @@ function CreateLead() {
                                  checkUserHasAssignPermissionGlobal() || 
                                  checkReassignmentPermissions(userPermissions);
 
-  // Local UI state: controls visibility of inline reassignment form
-  const [showReassignForm, setShowReassignForm] = React.useState(false);
-  // Reset form whenever a new duplicate lead is loaded
-  React.useEffect(() => { setShowReassignForm(false); }, [existingLeadData?.id]);
-
   // Use the lead logic hook
   const {
     // Basic info
@@ -4685,6 +4680,11 @@ function CreateLead() {
     hasAddLeadPermission,
     hasReassignmentPopupPermission
   } = useCreateLeadLogic();
+
+  // Local UI state: controls visibility of inline reassignment form
+  const [showReassignForm, setShowReassignForm] = useState(false);
+  // Reset form whenever a new duplicate lead is loaded
+  useEffect(() => { setShowReassignForm(false); }, [existingLeadData?.id]);
 
   // Handle section change
   const handleSectionChange = (section) => {
@@ -5009,43 +5009,6 @@ function CreateLead() {
                             </div>
                           </div>
                         )}
-
-                        {/* Optional: Data Code & Campaign */}
-                        <div className="bg-neutral-800 rounded-xl p-4 border border-neutral-700">
-                          <h5 className="text-neutral-300 text-sm font-semibold mb-3">Options <span className="text-neutral-500 font-normal">(Optional)</span></h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                                <input type="checkbox" checked={changeDataCode} onChange={(e) => setChangeDataCode(e.target.checked)}
-                                  className="h-4 w-4 text-cyan-500 border-neutral-600 rounded bg-neutral-700 focus:ring-cyan-500" />
-                                <span className="text-neutral-300 text-sm">Change Data Code</span>
-                              </label>
-                              {changeDataCode && (
-                                <SearchableSelect
-                                  options={dataCodes.map(dc => ({ value: dc.name, label: dc.name }))}
-                                  value={newDataCode} onChange={setNewDataCode}
-                                  placeholder="Select data code..." searchPlaceholder="Search..."
-                                  className="text-sm"
-                                />
-                              )}
-                            </div>
-                            <div>
-                              <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                                <input type="checkbox" checked={changeCampaignName} onChange={(e) => setChangeCampaignName(e.target.checked)}
-                                  className="h-4 w-4 text-cyan-500 border-neutral-600 rounded bg-neutral-700 focus:ring-cyan-500" />
-                                <span className="text-neutral-300 text-sm">Change Campaign Name</span>
-                              </label>
-                              {changeCampaignName && (
-                                <SearchableSelect
-                                  options={campaignNames.map(c => ({ value: c.name, label: c.name }))}
-                                  value={newCampaignName} onChange={setNewCampaignName}
-                                  placeholder="Select campaign..." searchPlaceholder="Search..."
-                                  className="text-sm"
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </div>
 
                         {/* Reason */}
                         <div>
