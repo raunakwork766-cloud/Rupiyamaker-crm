@@ -585,7 +585,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate }) {
                 </div>
                 
                 {/* Tab Content Container */}
-                <div className="px-2 sm:px-4 lg:px-6 py-6 w-full">
+                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : ''}`}>
                     <div className="w-full">
                         {activeTab === 'details' && (
                             <div className="space-y-6">
