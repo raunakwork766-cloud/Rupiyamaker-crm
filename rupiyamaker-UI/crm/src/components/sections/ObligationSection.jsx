@@ -7146,23 +7146,23 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               </div>
               <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
-            {/* EMI Can Pay - ReadOnly */}
+            {/* Total Obligation - ReadOnly (in grid) */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
           </div>
 
-          {/* Total Obligation - full width yellow highlight */}
+          {/* EMI Can Pay - full width yellow highlight (result of FOIR Amount - Total Obligation) */}
           <div className="flex flex-col justify-end">
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
+            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
           </div>
 
           <hr className="border-slate-800/60"/>
