@@ -6936,6 +6936,20 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                           }}
                           onBlur={handleObligationFieldBlur}
                         />
+                        {isCreditCard(row.product) && (
+                          <div className="flex gap-1 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => canEdit && handleCreditCardTenure(idx)}
+                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedTenurePercentage === 4 ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                            >4%</button>
+                            <button
+                              type="button"
+                              onClick={() => canEdit && handleCreditCardRoi(idx)}
+                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedRoiPercentage === 5 ? 'bg-purple-500 text-white border-purple-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                            >5%</button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Tenure */}
@@ -7007,20 +7021,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                           readOnly={isCreditCard(row.product)}
                           inputMode="numeric"
                         />
-                        {isCreditCard(row.product) && (
-                          <div className="flex gap-1 mt-1">
-                            <button
-                              type="button"
-                              onClick={() => canEdit && handleCreditCardTenure(idx)}
-                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedTenurePercentage === 4 ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
-                            >4%</button>
-                            <button
-                              type="button"
-                              onClick={() => canEdit && handleCreditCardRoi(idx)}
-                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedRoiPercentage === 5 ? 'bg-purple-500 text-white border-purple-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
-                            >5%</button>
-                          </div>
-                        )}
                       </td>
 
                       {/* Action Select with Enhanced Color Coding */}
@@ -7176,7 +7176,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-white text-black border-gray-300" />
+            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-white border-slate-700/50" />
           </div>
 
           <hr className="border-slate-800/60"/>
