@@ -1112,6 +1112,22 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [checkedRows, setCheckedRows] = useState([]);
     const [activeTab, setActiveTab] = useState(0);
     const [openSections, setOpenSections] = useState([]); // Changed to array to allow multiple sections open
+
+    // Lock body scroll when OBLIGATION tab is active (prevents page-level scrollbar)
+    useEffect(() => {
+        if (selectedLead && activeTab === 1) {
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+        };
+    }, [activeTab, selectedLead]);
+
     const rowRefs = useRef({});
 
     // Filter popup states with animation

@@ -673,6 +673,21 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const [showLeadDetails, setShowLeadDetails] = useState(false);
     const [activeTab, setActiveTab] = useState(0);
     const [openSection, setOpenSection] = useState(0);
+
+    // Lock body scroll when OBLIGATION tab is active (prevents page-level scrollbar)
+    useEffect(() => {
+        if (selectedLead && activeTab === 1) {
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+        };
+    }, [activeTab, selectedLead]);
     
     // Bank options state for dynamic dropdown
     const [bankOptions, setBankOptions] = useState(["HDFC Bank", "ICICI Bank", "SBI Bank", "Axis Bank"]); // Default banks, will be fetched from backend
