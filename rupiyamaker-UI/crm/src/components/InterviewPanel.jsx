@@ -1253,8 +1253,9 @@ const InterviewPanel = () => {
       console.log("Refreshing dropdown options after interview creation...");
       await loadDropdownOptions();
       
-      // Switch to 'interview' tab to ensure the new interview is visible
+      // Switch to 'interview' tab + reset to 'today' subtab so the new interview is always visible
       setActiveTab('interview');
+      setActiveSubTab('today');
       
       // Clear any search filters that might hide the new interview
       setSearchTerm('');
@@ -1269,16 +1270,29 @@ const InterviewPanel = () => {
         jobOpening: []
       });
       
+      // Ensure the newly created interview is always visible even if API reload was slow
+      if (newInterview) {
+        setInterviews(prev => {
+          const newId = newInterview._id || newInterview.id;
+          const alreadyExists = prev.some(i => (i._id || i.id) === newId);
+          return alreadyExists ? prev : [newInterview, ...prev];
+        });
+      }
+      
       console.log("✅ Interview creation completed and view reset to show all interviews");
       
     } catch (error) {
       console.error("❌ Error in handleInterviewCreated:", error);
-      // If reloading fails, still try to add the interview locally
-      setInterviews(prev => {
-        const updated = [...prev, newInterview];
-        console.log("Fallback: Updated interviews list after creation:", updated);
-        return updated;
-      });
+      // If reloading fails, still add the interview locally so it's immediately visible
+      if (newInterview) {
+        setInterviews(prev => {
+          const updated = [newInterview, ...prev];
+          console.log("Fallback: Updated interviews list after creation:", updated);
+          return updated;
+        });
+      }
+      setActiveTab('interview');
+      setActiveSubTab('today');
     }
   };
 
@@ -2001,7 +2015,7 @@ const InterviewPanel = () => {
       await API.interviews.updateInterview(candidateId, { 
         interview_date: newDate,
         reschedule_reason: reason,
-        status: interview?.status || 'rescheduled'
+        status: selectedCandidate?.status || 'rescheduled'
       });
       setIsRescheduleOpen(false);
       setSelectedCandidate(null);
@@ -2025,7 +2039,7 @@ const InterviewPanel = () => {
   // WhatsApp handler
   const handleWhatsApp = (interview) => {
     const msg = encodeURIComponent(
-      `*INTERVIEW INVITATION*\n\nHi *${interview.candidate_name || ''}*,\n\nYour interview has been scheduled with our company.\n\n*Company Name:* ${companySettings.companyName}\n*Position:* ${interview.job_opening || ''}\n\n*Job Description:*\n${companySettings.jobDescription}\n\n*Office Timing:* ${companySettings.officeTiming}\n*Working Days:* ${companySettings.workingDays}\n\n*INTERVIEW DETAILS*\n\n*Interview Date:* ${interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}\n*Interview Timing:* ${companySettings.interviewTiming}\n*Please do not be late. Be on time.*\n\n*Office Address:*\n${companySettings.officeAddress}\nNearby: ${companySettings.officeNearby}\n\nFor any query:\n*${companySettings.hrName}*\nMobile: ${companySettings.hrMobile}\n${companySettings.hrDesignation}`
+      `*INTERVIEW INVITATION*\n\nHi *${interview.candidate_name || ''}*,\n\nYour interview has been scheduled with our company.\n\n*Company Name:* ${companySettings.companyName}\n*Position:* ${interview.job_opening || ''}\n\n*Job Description:*\n${companySettings.jobDescription}\n\n*Office Timing:* ${companySettings.officeTiming}\n*Working Days:* ${companySettings.workingDays}\n\n*INTERVIEW DETAILS*\n\n*Interview Date:* ${interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : ''}\n*Interview Timing:* ${companySettings.interviewTiming}\n*Please do not be late. Be on time.*\n\n*Office Address:*\n${companySettings.officeAddress}\nNearby: ${companySettings.officeNearby}\n\nFor any query:\n*${companySettings.hrName}*\nMobile: ${companySettings.hrMobile}\n${companySettings.hrDesignation}`
     );
     const phone = (interview.mobile_number || '').replace(/\D/g, '');
     const url = `https://wa.me/91${phone}?text=${msg}`;
@@ -2736,7 +2750,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
   const formatInterviewDate = (date) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   };
 
   // Audit Log view
@@ -2745,7 +2759,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <tr className="hover:bg-slate-50/80 transition-colors group">
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
           <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
@@ -2793,7 +2807,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
         <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
       </td>
 
@@ -3208,7 +3222,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
         <input type="text" placeholder="Mandatory reschedule reason" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-900 mb-6 text-sm outline-none focus:border-blue-500" />
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 bg-slate-100 border border-slate-300 text-slate-700 rounded-md text-sm">Cancel</button>
-          <button disabled={!customDate || !reason.trim()} onClick={() => onSubmit(candidate._id, new Date(customDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), reason.trim())} className={`flex-1 py-2 rounded-md text-sm font-bold ${customDate && reason.trim() ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm</button>
+          <button disabled={!customDate || !reason.trim()} onClick={() => onSubmit(candidate._id, customDate, reason.trim())} className={`flex-1 py-2 rounded-md text-sm font-bold ${customDate && reason.trim() ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm</button>
         </div>
       </div>
     </div>
@@ -3340,7 +3354,7 @@ const CandidateDetailModal = ({ candidate, onClose }) => {
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-4 text-sm">
               <Calendar size={16} className="text-blue-500 shrink-0" />
               <span className="text-blue-800 font-medium">
-                Interview: {new Date(d.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                Interview: {new Date(d.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                 {d.interview_time ? ` at ${d.interview_time}` : ''}
               </span>
             </div>
@@ -4035,8 +4049,8 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         type_of_business: formData.type_of_business || '',
         banking_experience: formData.banking_experience || '',
         
-        // Interview scheduling
-        interview_date: new Date(formData.date_time).toISOString().split('T')[0],
+        // Interview scheduling — use local date directly to avoid UTC timezone shift
+        interview_date: formData.date_time.split('T')[0],
         interview_time: formData.date_time.split('T')[1] || '10:00',
         date_time: formData.date_time,
         
@@ -4141,11 +4155,14 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       // Use API service instead of direct fetch to ensure proper history creation
       const newInterview = await API.interviews.createInterview(interviewData);
       
-      // Show success message - using the same pattern as the main component
+      console.log('✅ Interview created in DB:', newInterview?._id || newInterview?.id, newInterview);
+      
+      // Show success message
       alert(`Interview created successfully for ${interviewData.candidate_name}!`);
       
-      onInterviewCreated(newInterview);
-      onClose(); // Close modal after success
+      // Await so the list reload + tab switch complete before closing the modal
+      await onInterviewCreated(newInterview);
+      onClose();
     } catch (error) {
       alert('Error creating interview: ' + error.message);
       throw error;

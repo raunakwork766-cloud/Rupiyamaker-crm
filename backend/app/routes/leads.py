@@ -407,7 +407,30 @@ async def check_phone_number(
         
         # Display loan type from either loan_type_name, loan_type, or loan_type_id
         loan_type_display = lead.get("loan_type_name") or lead.get("loan_type") or ""
-        
+
+        # Resolve created_by_name
+        created_by_name = lead.get("created_by_name", "")
+        if not created_by_name and lead.get("created_by"):
+            try:
+                creator = await users_db.get_user(str(lead["created_by"]))
+                if creator:
+                    created_by_name = f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip() or creator.get("username", "")
+            except Exception:
+                pass
+
+        # Resolve department_name (may already be a string in the lead doc)
+        dept_name = lead.get("department_name", "")
+        if isinstance(dept_name, dict):
+            dept_name = dept_name.get("name", "")
+
+        # Bank name (from direct field or financial_details)
+        bank_name = lead.get("bank_name", "") or ""
+        if not bank_name:
+            fin = lead.get("financial_details", {}) or {}
+            bank_name = fin.get("bank_name", "") or ""
+        if isinstance(bank_name, list):
+            bank_name = bank_name[0] if bank_name else ""
+
         lead_info = {
             "id": str(lead.get("_id", "")),
             "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),
@@ -424,7 +447,11 @@ async def check_phone_number(
             "assign_report_to": lead.get("assign_report_to"),
             "age_days": lead_age_days,
             "action": action,
-            "can_reassign": can_reassign
+            "can_reassign": can_reassign,
+            "created_by_name": created_by_name,
+            "department_name": dept_name,
+            "bank_name": bank_name,
+            "file_sent_to_login": lead.get("file_sent_to_login", False),
         }
         lead_results.append(lead_info)
     
