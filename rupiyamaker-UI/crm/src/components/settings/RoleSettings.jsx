@@ -86,6 +86,7 @@ const RoleSettings = () => {
         'apps': ['show', 'manage'],
         "notification":['show', 'delete', 'send'],
         'reports': ['show'],
+        'knowledge_base': ['show'],
         'settings': ['show'],
     };
 
@@ -109,6 +110,7 @@ const RoleSettings = () => {
             'apps': { show:'Sidebar', manage:'Manage Apps' },
             'notification': { show:'View', delete:'Delete', send:'Send Notification' },
             'reports': { show:'Access Reports' },
+            'knowledge_base': { show:'Sidebar Access' },
             'settings': { show:'Access Settings' },
         };
         return (map[key] && map[key][action]) || action;

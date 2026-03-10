@@ -1249,7 +1249,7 @@ const updateStatus = async (statusId, statusData) => {
         
         // Use the same URL format as other status calls
         const response = await axios.put(
-            `/leads/admin/statuses/${statusId}?user_id=${correctUserId}`, 
+            `${API_BASE_URL}/leads/admin/statuses/${statusId}?user_id=${correctUserId}`, 
             statusData
         );
         
@@ -1280,7 +1280,7 @@ const updateStatus = async (statusId, statusData) => {
         console.log("Deleting status:", statusId);
 
         try {
-            const response = await axios.delete(`/leads/admin/statuses/${statusId}?user_id=${localStorage.getItem('user_id')}`);
+            const response = await axios.delete(`${API_BASE_URL}/leads/admin/statuses/${statusId}?user_id=${localStorage.getItem('user_id')}`);
             if (response.status === 200) {
                 await loadStatuses(); // Reload statuses
                 return true;
@@ -1316,7 +1316,7 @@ const updateStatus = async (statusId, statusData) => {
     const createSubStatus = async (subStatusData) => {
         console.log("Creating sub-status with data:", subStatusData);
         try {
-            const response = await axios.post(`/leads/admin/sub-statuses?user_id=${user_id}`, subStatusData);
+            const response = await axios.post(`${API_BASE_URL}/leads/admin/sub-statuses?user_id=${user_id}`, subStatusData);
             if (response.status === 201) {
                 await loadStatuses(); // Reload statuses to get updated sub-statuses
                 return true;
@@ -1331,7 +1331,7 @@ const updateStatus = async (statusId, statusData) => {
     const updateSubStatus = async (subStatusId, subStatusData) => {
         console.log("Updating sub-status:", subStatusId, subStatusData);
         try {
-            const response = await axios.put(`/leads/admin/sub-statuses/${subStatusId}?user_id=${user_id}`, subStatusData);
+            const response = await axios.put(`${API_BASE_URL}/leads/admin/sub-statuses/${subStatusId}?user_id=${user_id}`, subStatusData);
             if (response.status === 200) {
                 await loadStatuses(); // Reload statuses to get updated sub-statuses
                 return true;
@@ -1346,7 +1346,7 @@ const updateStatus = async (statusId, statusData) => {
     const deleteSubStatus = async (subStatusId) => {
         console.log("Deleting sub-status with ID:", subStatusId);
         try {
-            const response = await axios.delete(`/leads/admin/sub-statuses/${subStatusId}?user_id=${user_id}`);
+            const response = await axios.delete(`${API_BASE_URL}/leads/admin/sub-statuses/${subStatusId}?user_id=${user_id}`);
             if (response.status === 200) {
                 await loadStatuses(); // Reload statuses to get updated sub-statuses
                 return true;

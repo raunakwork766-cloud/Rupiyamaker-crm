@@ -91,6 +91,8 @@ export default function Attachments({ leadId, userId }) {
   const [showPasswordFor, setShowPasswordFor] = useState({});
   const [leadData, setLeadData] = useState(null); // State to store lead data for form exports
   const [showTooltip, setShowTooltip] = useState({}); // State to manage tooltip visibility
+  const [editingFileId, setEditingFileId] = useState(null); // ID of file being renamed
+  const [editingFileName, setEditingFileName] = useState(''); // edit value (base name only)
 
   // Base URL for API calls
   const BASE_URL = '/api';
@@ -945,6 +947,20 @@ export default function Attachments({ leadId, userId }) {
     if (attachmentType) {
       console.log('Found attachment type:', attachmentType.name);
       
+      // Block duplicate filenames for this attachment type
+      const existingNames = uploadedDocuments
+        .filter(d => d.document_type === attachmentType.name)
+        .map(d => (d.filename || d.file_name || '').toLowerCase().trim());
+      const duplicates = files.filter(f => existingNames.includes(f.name.toLowerCase().trim()));
+      if (duplicates.length > 0) {
+        showNotification(
+          `Duplicate file(s) detected: ${duplicates.map(f => f.name).join(', ')}. Upload blocked.`,
+          'error'
+        );
+        e.target.value = '';
+        return;
+      }
+
       // Store files temporarily for upload
       setDynamicFiles(prev => ({
         ...prev,
@@ -1711,6 +1727,33 @@ export default function Attachments({ leadId, userId }) {
     return doc.owner_type === 'coapplicant';
   });
 
+  // Rename a file: sends new filename (base + ext) to backend, updates local state
+  const handleRenameFile = async (docId, newBase, ext) => {
+    const trimmed = newBase.trim();
+    if (!trimmed) { setEditingFileId(null); setEditingFileName(''); return; }
+    const newFilename = trimmed + ext;
+    try {
+      const res = await fetch(
+        `${BASE_URL}/leads/${leadId}/documents/${docId}?user_id=${currentUserId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: newFilename }),
+        }
+      );
+      if (!res.ok) throw new Error('Server returned ' + res.status);
+      setUploadedDocuments(prev =>
+        prev.map(d => d._id === docId ? { ...d, filename: newFilename } : d)
+      );
+      showNotification('File renamed successfully', 'success');
+    } catch (err) {
+      showNotification('Rename failed: ' + err.message, 'error');
+    } finally {
+      setEditingFileId(null);
+      setEditingFileName('');
+    }
+  };
+
   const getFileIconClass = (filename) => {
     const name = (filename || '').toLowerCase();
     if (name.endsWith('.pdf')) return 'fa-file-pdf text-blue-500';
@@ -1744,7 +1787,8 @@ export default function Attachments({ leadId, userId }) {
 
   const handleFileDragEnd = (e) => {
     if (e.target) e.target.style.opacity = '1';
-    dragFile.current = null;
+    // Delay null so drop fires first (Firefox fires dragend before drop)
+    setTimeout(() => { dragFile.current = null; }, 50);
     setDragOverKey(null);
   };
 
@@ -1762,7 +1806,7 @@ export default function Attachments({ leadId, userId }) {
       const otherDocs = prev.filter(d => !(d.document_type === docType && getProfileDocs([d]).length > 0));
       const moved = [...typeDocs];
       const item = moved.splice(fromIdx, 1)[0];
-      const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx; // adjust since we removed one
+      const insertAt = fromIdx < toIdx ? toIdx : toIdx + 1; // border-b semantics: drop after hovered element
       moved.splice(insertAt, 0, item);
       return [...otherDocs, ...moved];
     });
@@ -1847,13 +1891,6 @@ export default function Attachments({ leadId, userId }) {
               ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
               : <><i className="fa-solid fa-download mr-1 text-xs"></i> DL ALL ({getProfileDocs(uploadedDocuments).length})</>
             }
-          </button>
-          <button
-            onClick={loadUploadedDocuments}
-            disabled={isLoading}
-            className="bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-800 px-3 py-1 rounded text-[11px] font-bold transition flex items-center shadow-sm"
-          >
-            <i className="fa-solid fa-rotate-right mr-1 text-xs"></i> REFRESH
           </button>
         </div>
 
@@ -1977,7 +2014,7 @@ export default function Attachments({ leadId, userId }) {
                             onDrop={e => handleFileDrop(e, attachmentType.name, fileIdx)}
                             className={`cursor-grab active:cursor-grabbing bg-white border rounded p-1.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition group/filerow
                               ${isLocked ? 'border-red-200' : 'border-gray-200'}
-                              ${isDraggedOver ? 'border-t-2 border-t-[#2563eb] !border-blue-300' : 'hover:border-blue-300'}`}
+                              ${isDraggedOver ? 'border-b-2 border-b-[#2563eb] !border-blue-300' : 'hover:border-blue-300'}`}
                           >
                             {/* file info */}
                             <div className="flex items-start gap-1.5 min-w-0 pr-2 flex-1 w-full">
@@ -1987,9 +2024,42 @@ export default function Attachments({ leadId, userId }) {
                               <i className="fa-solid fa-grip-vertical text-gray-300 mt-0.5 mr-0.5 text-[10px] shrink-0 cursor-grab select-none"></i>
                               <i className={`fa-solid ${isLocked ? 'fa-file-shield text-red-500' : getFileIconClass(fname)} text-base shrink-0 mt-0.5 select-none`}></i>
                               <div className="flex-1 w-full min-w-0">
-                                <span className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight" title={fname}>
-                                  {fname}
-                                </span>
+                                {editingFileId === doc._id ? (() => {
+                                  const origName = doc.filename || doc.file_name || '';
+                                  const lastDot = origName.lastIndexOf('.');
+                                  const ext = lastDot >= 0 ? origName.substring(lastDot) : '';
+                                  return (
+                                    <div className="flex items-center gap-1 w-full" onClick={e => e.stopPropagation()}>
+                                      <input
+                                        autoFocus
+                                        value={editingFileName}
+                                        onChange={e => setEditingFileName(e.target.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') { e.preventDefault(); handleRenameFile(doc._id, editingFileName, ext); }
+                                          else if (e.key === 'Escape') { setEditingFileId(null); setEditingFileName(''); }
+                                        }}
+                                        onBlur={() => handleRenameFile(doc._id, editingFileName, ext)}
+                                        className="text-[11px] font-bold text-gray-800 bg-blue-50 border border-blue-400 rounded px-1 py-0.5 outline-none flex-1 min-w-0"
+                                      />
+                                      {ext && <span className="text-[11px] text-gray-500 shrink-0">{ext.toUpperCase()}</span>}
+                                    </div>
+                                  );
+                                })() : (
+                                  <span
+                                    className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight cursor-text select-none"
+                                    title={`${fname} — double-click to rename`}
+                                    onDoubleClick={e => {
+                                      e.stopPropagation();
+                                      const origName = doc.filename || doc.file_name || '';
+                                      const lastDot = origName.lastIndexOf('.');
+                                      const base = lastDot >= 0 ? origName.substring(0, lastDot) : origName;
+                                      setEditingFileId(doc._id);
+                                      setEditingFileName(base);
+                                    }}
+                                  >
+                                    {fname}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
@@ -2071,14 +2141,6 @@ export default function Attachments({ leadId, userId }) {
                       }
                     </button>
                   </div>
-                  <input
-                    type="password"
-                    placeholder="Password (opt.)"
-                    value={password}
-                    onChange={e => handlePasswordChange(key, e.target.value)}
-                    className="w-full text-[10px] px-1.5 py-1 border border-gray-200 rounded focus:outline-none focus:border-blue-400 text-gray-600 bg-white"
-                    disabled={isLoading}
-                  />
                 </div>
               </div>
             );

@@ -822,11 +822,15 @@ async def view_attachment(
                 detail=f"File not found on disk. Tried paths: {abs_file_path}, {fallback_path}"
             )
     
-    # Return file for viewing
+    # Return file for viewing (inline so browser previews instead of downloading)
+    import mimetypes
+    _fname = document.get("filename", "attachment")
+    _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
     return FileResponse(
         path=abs_file_path,
-        filename=document.get("filename", "attachment"),
-        media_type=document.get("file_type", "application/octet-stream")
+        filename=_fname,
+        media_type=_mtype,
+        headers={"Content-Disposition": f"inline; filename=\"{_fname}\""}
     )
 
 @router.get("/{lead_id}/attachments/{attachment_id}/download")
@@ -3386,24 +3390,23 @@ async def update_status(
     #     )
     
     # Check if status exists
-    status = await leads_db.get_status_by_id(status_id)
-    if not status:
+    status_doc = await leads_db.get_status_by_id(status_id)
+    if not status_doc:
         raise HTTPException(
             status_code=404,
             detail=f"Status with ID {status_id} not found"
         )
     
-    # Update status
+    # Update status — include all fields (even False/0/None explicitly set)
     update_dict = {k: v for k, v in status_update.dict().items() if v is not None}
     
     update_dict['updated_at'] = get_ist_now()
     print(update_dict)
     success = await leads_db.update_status(status_id, update_dict)
     
-    
     if not success:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail="Failed to update status"
         )
     

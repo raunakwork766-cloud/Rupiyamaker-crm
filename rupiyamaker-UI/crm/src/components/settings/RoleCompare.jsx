@@ -48,6 +48,7 @@ const MODULE_LABELS = {
     apps:         'Apps',
     notification: 'Notifications',
     reports:      'Reports',
+    knowledge_base: 'Knowledge Base',
     settings:     'Settings',
 };
 
@@ -69,6 +70,7 @@ const allPermissions = {
     'apps': ['show', 'manage'],
     'notification': ['show', 'delete', 'send'],
     'reports': ['show'],
+    'knowledge_base': ['show'],
     'settings': ['show'],
 };
 

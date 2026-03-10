@@ -196,7 +196,7 @@ const fetchBankNames = async () => {
     const userId = getUserId();
     if (!userId) {
       console.warn('⚠️ No user ID available for bank names API');
-      return ['Custom'];
+      return [];
     }
     
     console.log('🏦 Fetching bank names from settings API...');
@@ -233,7 +233,6 @@ const fetchBankNames = async () => {
     }
     
     const finalBankList = [
-      'Custom', // Always keep Custom as an option
       ...bankNames.map(bank => bank.name || bank)
     ];
     
@@ -241,8 +240,7 @@ const fetchBankNames = async () => {
     return finalBankList;
   } catch (error) {
     console.error('❌ Error fetching bank names:', error);
-    // Return at least Custom option in case of error
-    return ['Custom'];
+    return [];
   }
 };
 
@@ -325,7 +323,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [componentKey, setComponentKey] = useState(Date.now());
   
   // Bank list state from API
-  const [bankList, setBankList] = useState(['Custom']);
+  const [bankList, setBankList] = useState([]);
   
   // Note: companyType now stores selected banks for "Decide Bank For Case" (supports multiple selection)
 
@@ -350,9 +348,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const companyDropdownRef = useRef(null);
 
   // Notify parent component when unsaved changes state updates
+  // Auto-save is always active - no tab-switch popup needed
   useEffect(() => {
     if (onUnsavedChangesUpdate && typeof onUnsavedChangesUpdate === 'function') {
-      onUnsavedChangesUpdate(hasUnsavedChanges, () => setShowUnsavedChangesModal(true));
+      onUnsavedChangesUpdate(false, () => {});
     }
   }, [hasUnsavedChanges, onUnsavedChangesUpdate]);
   
@@ -1739,11 +1738,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               typeof bank === 'string' ? bank : (bank.name || bank.label || String(bank))
             );
             
-            // Always include 'Custom' if not already in the list
-            if (!normalizedBankNames.includes('Custom')) {
-              normalizedBankNames.unshift('Custom');
-            }
-            
             setBankList(normalizedBankNames);
             setBankListLoaded(true);
           }
@@ -1840,9 +1834,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         (shouldAlwaysUpdate ? '' : yearlyBonus);
       if (shouldAlwaysUpdate || yearlyBonusValue !== yearlyBonus) setYearlyBonus(yearlyBonusValue);
       
-      // Set bonus division - always update for login leads or new leads
-      const bonusDivisionValue = extractedBonusDivision ? Number(extractedBonusDivision) : (shouldAlwaysUpdate ? null : bonusDivision);
-      if (shouldAlwaysUpdate || bonusDivisionValue !== bonusDivision) setBonusDivision(bonusDivisionValue);
+      // Set bonus division - always reset to null so user picks manually
+      if (bonusDivision !== null) setBonusDivision(null);
       
       // Set loan required - always update for login leads or new leads
       const loanRequiredValue = extractedLoanRequired ? 
@@ -4760,7 +4753,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <div style="padding: 12px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; font-weight: bold;">
                   ${Array.isArray(companyCategory) && companyCategory.length > 0 ? 
                     companyCategory.map(cat => {
-                      const displayText = typeof cat === 'object' ? (cat.display_text || cat.category_name || 'Unknown') : cat;
+                      const displayText = typeof cat === 'object' ? (cat.bank_name || cat.display_text || cat.category_name || 'Unknown') : cat;
                       return `<span style="display: inline-block; background: #dcfce7; color: #166534; padding: 4px 12px; margin: 2px; border-radius: 6px; font-weight: bold;">${displayText}</span>`;
                     }).join(' ') : 
                     'N/A'
@@ -4803,8 +4796,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">#</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">PRODUCT</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">BANK NAME</th>
+                  <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">ROI</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">TENURE</th>
-                  <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">ROI %</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">TOTAL LOAN</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">OUTSTANDING</th>
                   <th style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 14px;">EMI</th>
@@ -4843,17 +4836,19 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       break;
                   }
                   
+                  const cs = `padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px; background: ${actionBg}; color: ${actionColor};`;
+                  const bankDisplay = (obl.bankName && obl.bankName.toLowerCase() !== 'custom') ? obl.bankName : 'N/A';
                   return `
-                    <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${index + 1}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px;">${obl.product || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; font-weight: bold; font-size: 12px;">${obl.bankName || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.tenure || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; font-weight: bold; font-size: 12px;">${obl.roi || 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.totalLoan ? '₹' + formatPDFValue(obl.totalLoan) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.outstanding ? '₹' + formatPDFValue(obl.outstanding) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: right; font-weight: bold; font-size: 12px;">${obl.emi ? '₹' + formatPDFValue(obl.emi) : 'N/A'}</td>
-                      <td style="padding: 12px 8px; border: 2px solid #6b7280; text-align: center; background: ${actionBg}; color: ${actionColor}; font-weight: bold; font-size: 12px;">${obl.action || 'N/A'}</td>
+                    <tr>
+                      <td style="${cs} text-align: center;">${index + 1}</td>
+                      <td style="${cs}">${obl.product || 'N/A'}</td>
+                      <td style="${cs}">${bankDisplay}</td>
+                      <td style="${cs} text-align: center;">${obl.roi || 'N/A'}</td>
+                      <td style="${cs} text-align: center;">${obl.tenure || 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.totalLoan ? '₹' + formatPDFValue(obl.totalLoan) : 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.outstanding ? '₹' + formatPDFValue(obl.outstanding) : 'N/A'}</td>
+                      <td style="${cs} text-align: right;">${obl.emi ? '₹' + formatPDFValue(obl.emi) : 'N/A'}</td>
+                      <td style="${cs} text-align: center;">${obl.action || 'N/A'}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -6349,14 +6344,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData);
 
   return (
-    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-[#0a0e14] text-slate-300 overflow-hidden" style={{height:'100%',minHeight:'100vh',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-      <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+    <>
+    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
+      <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
           {/* Customer Details Section with Download Button */}
           <div className="p-5 pb-4">
             <div className="mb-4 flex justify-between items-center">
-              <div className="text-lg font-bold text-white">Customer Details</div>
               {hasDownloadObligationPermission() && (
                 <button 
                   type="button"
@@ -6416,7 +6411,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full bg-black border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
                       value={formatINR(salary)}
                       onChange={canEdit ? handleSalaryChange : undefined}
                       onBlur={handleObligationFieldBlur}
@@ -6433,7 +6428,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full bg-black border border-slate-700/50 rounded-lg p-2.5 pl-7 text-white font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-sm"
                       value={formatINR(partnerSalary)}
                       onChange={canEdit ? handlePartnerSalaryChange : undefined}
                       onBlur={handleObligationFieldBlur}
@@ -6446,7 +6441,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Bonus with Divide By */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Bonus</label>
-                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
+                  <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
                     <div className="relative flex-1 border-r border-slate-700/50">
                       <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                       <input
@@ -6466,7 +6461,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       onChange={(e) => canEdit && handleBonusDivisionToggle(Number(e.target.value))}
                       disabled={!canEdit}
                     >
-                      <option value="" disabled>÷ Duration</option>
+                      <option value="">÷ Duration</option>
                       {bonusDivisions.map((opt) => (
                         <option key={opt.value} value={opt.value}>÷ {opt.label} Mo</option>
                       ))}
@@ -6480,7 +6475,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Company Name with searchable input */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Name</label>
-                  <div className="flex bg-[#151b23] rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
+                  <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
                     <input
                       ref={companyDropdownRef}
                       type="text"
@@ -6562,11 +6557,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        window.open('https://www.zaubacorp.com/', '_blank', 'noopener,noreferrer');
-                      }}
+                      onClick={() => canEdit && setShowCategoryPopup(true)}
                       className="bg-blue-600/20 text-blue-400 px-3 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors border-l border-slate-700/50 shrink-0 self-stretch"
-                      title="Search on Zaubacorp"
+                      title="Search Company & Select Category"
                     >
                       {isCompanyLoading ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400"></div>
@@ -6592,10 +6585,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Company Category - 2nd grid column */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
-                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-[#151b23] border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
+                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
                     {(!Array.isArray(companyCategory) || companyCategory.length === 0) && <span className="text-slate-500 text-xs px-1">Select from modal...</span>}
                     {Array.isArray(companyCategory) && companyCategory.map((category, index) => {
-                      const displayText = typeof category === 'string' ? category : (category.display || category.display_text || category.label || category.category_name || 'Unknown');
+                      const displayText = typeof category === 'string' ? category : (category.bank_name || category.display || category.display_text || category.label || category.category_name || 'Unknown');
                       const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
                       return (
                         <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
@@ -6611,7 +6604,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               {/* Decide Bank For Case - full width */}
               <div>
                 <label className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
-                <div className="flex flex-wrap gap-1.5 items-center bg-[#151b23] border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
+                <div className="flex flex-wrap gap-1.5 items-center bg-black border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
                   {companyType.length === 0 && <span className="text-slate-500 text-xs">No banks selected...</span>}
                   {companyType.map((bank, index) => {
                     const bankDisplay = bank && typeof bank === 'object' ? (bank.name || bank.label || bank.value || String(bank)) : String(bank || '');
@@ -6632,15 +6625,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
               {/* Summary Cards */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-[#151b23] rounded-xl p-4 border border-emerald-500/20">
+                <div className="bg-black rounded-xl p-4 border border-emerald-500/20">
                   <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider block mb-1.5">Total BT POS</span>
                   <span className="text-emerald-400 font-black text-2xl tracking-tight">{totalBtPos}</span>
                 </div>
-                <div className="bg-[#151b23] rounded-xl p-4 border border-yellow-500/20">
+                <div className="bg-black rounded-xl p-4 border border-yellow-500/20">
                   <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider block mb-1.5">Total Obligation</span>
                   <span className="text-yellow-400 font-black text-2xl tracking-tight">{totalObligation}</span>
                 </div>
-                <div className="bg-[#151b23] rounded-xl p-4 border border-slate-700/50">
+                <div className="bg-black rounded-xl p-4 border border-slate-700/50">
                   <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
                   <input
                     type="text"
@@ -6793,7 +6786,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <tr className="bg-black border-b-2 border-gray-600 align-middle">
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-8">#</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-48">PRODUCT</th>
-                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-72">BANK NAME</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-48">BANK NAME</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-20">ROI</th>
+                    <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-24">TENURE</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">TOTAL LOAN</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-32">OUTSTANDING</th>
                     <th className="px-2 py-2 text-sm font-bold text-white border-r-2 border-gray-600 text-center w-28">EMI</th>
@@ -6918,13 +6913,45 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             onClick={() => canEdit && handleBankDropdownToggle(idx)}
                             data-dropdown-trigger="true"
                           >
-                            <span className={`${row.bankName ? '' : 'text-black'} uppercase`}>
-                              {row.bankName || ''}
+                            <span className={`${(row.bankName && row.bankName.toLowerCase() !== 'custom') ? '' : 'text-slate-500'} uppercase`}>
+                              {(row.bankName && row.bankName.toLowerCase() !== 'custom') ? row.bankName : 'Select Bank'}
                               {row.bankName && companyType.includes(row.bankName) ? '': ''}
                             </span>
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
                           </div>
                         </div>
+                      </td>
+
+                      {/* ROI */}
+                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
+                        <input
+                          type="text"
+                          className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
+                          placeholder="ROI %"
+                          value={row.roi || ''}
+                          disabled={!canEdit}
+                          onChange={e => {
+                            if (!canEdit) return;
+                            handleObligationChange(idx, 'roi', e.target.value);
+                          }}
+                          onBlur={handleObligationFieldBlur}
+                        />
+                      </td>
+
+                      {/* Tenure */}
+                      <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
+                        <input
+                          type="text"
+                          className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
+                          placeholder="Months"
+                          value={row.tenure || ''}
+                          disabled={!canEdit}
+                          onChange={e => {
+                            if (!canEdit) return;
+                            handleObligationChange(idx, 'tenure', e.target.value);
+                          }}
+                          onBlur={handleObligationFieldBlur}
+                        />
                       </td>
 
                       {/* Total Loan */}
@@ -7084,8 +7111,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         </div>
       </div>
       {/* === RIGHT SIDEBAR === */}
-      <div className="w-[420px] shrink-0 bg-[#0e131b] border-l border-slate-800 shadow-2xl flex flex-col z-10">
-        <div className="flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+      <div className="w-[420px] shrink-0 bg-black border-l border-slate-800 shadow-2xl flex flex-col z-10">
+        <div className="obligation-no-scrollbar flex-1 p-5 overflow-y-auto space-y-4" style={{scrollbarWidth:'none',msOverflowStyle:'none',WebkitOverflowScrolling:'touch'}}>
 
           <div className="grid grid-cols-2 gap-3">
             {/* Total Income - ReadOnly */}
@@ -7094,7 +7121,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Income</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
             {/* FOIR % - Editable select */}
             <div className="flex flex-col justify-end">
@@ -7117,25 +7144,25 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">FOIR Amount</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
-            {/* EMI Can Pay - ReadOnly */}
+            {/* Total Obligation - ReadOnly (in grid) */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
           </div>
 
-          {/* Total Obligation - full width yellow highlight */}
+          {/* EMI Can Pay - full width yellow highlight (result of FOIR Amount - Total Obligation) */}
           <div className="flex flex-col justify-end">
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
+            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
           </div>
 
           <hr className="border-slate-800/60"/>
@@ -7183,7 +7210,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total BT POS</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-[#151b23] text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
           </div>
 
@@ -7193,7 +7220,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* Max FOIR Eligibility - large display div */}
             <div className="flex flex-col justify-end">
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Max FOIR Eligibility</label>
-              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
+              <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
             </div>
             {/* Multiplier Limit - large display div with inline input */}
             <div className="flex flex-col justify-end">
@@ -7210,7 +7237,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   />
                 </div>
               </div>
-              <div className="w-full h-[50px] bg-[#151b23] rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
+              <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
             </div>
           </div>
 
@@ -7255,7 +7282,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     </label>
                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">@ {ceRoi}% · {ceTenureYears} Yrs · {ceTenureMonths} Mo</span>
                   </div>
-                  <div className="bg-[#151b23] p-3 flex gap-3 items-center">
+                  <div className="bg-black p-3 flex gap-3 items-center">
                     <div className="flex-1 relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
                       <input
@@ -7271,7 +7298,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                         }}
                         onBlur={handleObligationFieldBlur}
                         disabled={!canEdit}
-                        className={`w-full h-[44px] bg-[#0a0e14] border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
+                        className={`w-full h-[44px] bg-black border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
                         placeholder="Enter loan amount"
                       />
                     </div>
@@ -7628,6 +7655,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         </div>
       )}
     </div>
+  </>
   );
 }
 
@@ -7774,148 +7802,85 @@ function BankPopup({ onClose, onSelect, onSave, companyTypes, multiSelect = true
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
-    >
-      <div className="bg-transparent backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[95%] max-w-2xl mx-auto relative">
-        <div className="flex items-center mb-4 bg-white bg-opacity-90 p-3 rounded-t-xl">
-          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white text-lg flex items-center justify-center mr-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1" />
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[88vh]">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px] text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1"/>
             </svg>
-          </div>
-          <h3 className="font-bold text-lg text-black">{multiSelect ? "Select Multiple Banks" : "Select Bank"}</h3>
-          {multiSelect && <span className="ml-2 text-sm text-gray-600">(Click multiple items to select)</span>}
-        </div>
-
-        <div className="mb-4 bg-white bg-opacity-90 p-3 rounded-md">
-          <label className="block font-bold text-gray-700 mb-2 text-lg">
-            Search Banks {multiSelect && "(Select Multiple)"}
-          </label>
-          
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 border border-cyan-400 rounded text-black font-bold text-lg"
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="Search or enter bank name"
-            />
-            {bankName && (
-              <button
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-lg text-gray-400 hover:text-gray-600"
-                onClick={() => setBankName("")}
-                type="button"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Show loading or the bank list */}
-        <div className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white bg-opacity-90">
-          {isLoadingBanks ? (
-            <div className="p-5 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 text-lg border-t-2 border-b-2 border-cyan-500"></div>
-              <span className="ml-3 text-gray-600 text-lg">Loading banks...</span>
-            </div>
-          ) : filteredBanks.length > 0 ? (
-            filteredBanks.map((bank) => {
-              // Get label value for consistency
-              const labelValue = typeof bank.label === 'string' 
-                ? bank.label 
-                : String(bank.label || bank.value || '');
-                
-              // Check if this bank is selected (using more robust check)
-              const isSelected = selectedBanks.some(b => 
-                b === labelValue || 
-                (typeof b === 'object' && b?.label === labelValue)
-              );
-              
-              return (
-                <div
-                  key={bank.value || labelValue}
-                  className={`p-3 border-b last:border-b-0 cursor-pointer text-lg text-black transition flex items-center ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
-                  onClick={() => selectBank(bank)}
-                >
-                  {/* Profile icon with initials */}
-                  <div className={`w-8 h-8 rounded-full ${isSelected ? 'bg-cyan-600' : 'bg-[#03B0F5]'} text-white flex items-center justify-center mr-3 flex-shrink-0`}>
-                    {typeof labelValue === 'string' 
-                      ? labelValue.split(' ')
-                          .map(part => part[0] || '')
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()
-                      : 'BK'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium text-lg">{labelValue}</div>
-                  </div>
-                  {/* Show checkmark if selected */}
-                  {isSelected && (
-                    <div className="ml-2 text-cyan-600">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            bankName.trim() !== "" && ( // Only show "No results" if user typed something and no results
-              <div className="p-3 text-gray-500 text-center text-lg">No matching banks found.</div>
-            )
-          )}
-        </div>
-
-        <div className="flex justify-end gap-4 mt-4 bg-white bg-opacity-90 p-3 rounded-b-xl">
-          {bankName.trim() && (
-            <button
-              className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow text-lg hover:bg-cyan-700 transition"
-              onClick={handleAssign}
-            >
-              {multiSelect ? "Add Bank" : "Add Bank"}
-            </button>
-          )}
-          {multiSelect && (
-            <button
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl shadow text-lg hover:bg-blue-700 transition"
-              onClick={() => {
-                // Keep all selections and close the popup
-                onClose();
-              }}
-            >
-              Done
-            </button>
-          )}
-          <button
-            className="px-6 py-3 bg-gray-400 text-white text-lg rounded-xl shadow hover:bg-gray-500 transition"
-            onClick={onClose}
-          >
-            Cancel
+            Select Target Banks
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
           </button>
         </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        {/* Search */}
+        <div className="px-4 pt-4 shrink-0">
+          <div className="relative">
+            <svg className="absolute left-3.5 top-3 text-slate-500 pointer-events-none h-[15px] w-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input
+              autoFocus
+              type="text"
+              value={bankName}
+              onChange={e => setBankName(e.target.value)}
+              placeholder="Search bank name..."
+              className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-emerald-500 text-sm border border-slate-700/50"
+            />
+          </div>
+        </div>
+        {/* Bank Grid */}
+        <div className="flex-1 overflow-y-auto p-4 pt-3">
+          {isLoadingBanks ? (
+            <div className="py-8 flex items-center justify-center gap-2 text-slate-500">
+              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-emerald-400"></div>
+              <span className="text-sm font-bold">Loading banks...</span>
+            </div>
+          ) : filteredBanks.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2">
+              {filteredBanks.map(bank => {
+                const labelValue = typeof bank.label === 'string' ? bank.label : String(bank.label || bank.value || '');
+                const isSelected = selectedBanks.some(b => b === labelValue || (typeof b === 'object' && b?.label === labelValue));
+                return (
+                  <div
+                    key={bank.value || labelValue}
+                    onClick={() => selectBank(bank)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                        : 'bg-[#151b23] border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-[#1e2631]'
+                    }`}
+                  >
+                    <span className="font-semibold text-xs">{labelValue}</span>
+                    {isSelected && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-[15px] w-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-slate-500 text-sm font-bold">
+              No banks found{bankName ? ` for "${bankName}"` : ''}
+            </div>
+          )}
+        </div>
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-800 bg-[#151b23] shrink-0 flex items-center justify-between">
+          <span className="text-slate-500 text-xs">{selectedBanks.length} bank{selectedBanks.length !== 1 ? 's' : ''} selected</span>
+          <button onClick={onClose} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm">Done</button>
+        </div>
       </div>
     </div>
   );
 }
-
 // 📊 REAL-TIME DATA MONITORING for Login Transfers and Gunjan Sharma Analysis
 function useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData) {
   useEffect(() => {
@@ -8184,302 +8149,129 @@ function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onA
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       data-category-popup-backdrop="true"
-      onClick={(e) => {
-        // Only close if clicking EXACTLY on the backdrop, not on the popup content
-        console.log('Backdrop clicked, checking if should close popup');
-        console.log('Event target:', e.target);
-        console.log('Current target:', e.currentTarget);
-        console.log('Are they the same?', e.target === e.currentTarget);
-        
-        if (e.target === e.currentTarget) {
-          console.log('✅ Clicked on backdrop - closing popup');
-          onClose();
-        } else {
-          console.log('❌ Clicked inside popup content - NOT closing');
-        }
-      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div 
-        className="bg-transparent backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[95%] max-w-2xl mx-auto relative"
+      <div
+        className="bg-[#0f141e] border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh]"
         data-category-popup-container="true"
-        onClick={(e) => {
-          // Prevent clicks inside the popup from bubbling up and closing it
-          e.stopPropagation();
-        }}
+        onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center mb-4 bg-white bg-opacity-90 p-3 rounded-t-xl">
-          <div className="w-10 h-10 rounded-full bg-[#10B981] text-white flex items-center justify-center mr-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b23] shrink-0">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px] text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1"/>
             </svg>
-          </div>
-          <h3 className="font-bold text-lg text-black">{multiSelect ? "Select Multiple Categories" : "Select Category"}</h3>
-          {multiSelect && <span className="ml-2 text-sm text-gray-600">(Select multiple, options stay open)</span>}
-        </div>
-
-        <div className="mb-4 bg-white bg-opacity-90 p-3 rounded-md">
-          <label className="block font-bold text-gray-700 mb-2 text-lg">
-            Search Categories {multiSelect && "(Options stay open for multiple selection)"}
-          </label>
-          
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 border border-green-400 rounded text-black font-bold text-lg"
-              value={companySearchInput}
-              onChange={(e) => {
-                setCompanySearchInput(e.target.value);
-                // Search will be triggered automatically by useEffect
-              }}
-              placeholder="Search by company name"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleSearch();
-                }
-              }}
-            />
-            {companySearchInput && (
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                <button
-                  className="text-gray-400 hover:text-gray-600"
-                  onClick={() => setCompanySearchInput("")}
-                  type="button"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Categories list */}
-        <div 
-          className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white bg-opacity-90"
-          data-category-list="true"
-          onClick={(e) => {
-            // Prevent clicks in the categories list from bubbling up
-            e.stopPropagation();
-          }}
-        >
-          {loading ? (
-            <div className="p-5 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-              <span className="ml-3 text-gray-600">Loading categories...</span>
-            </div>
-          ) : (
-            // Show different content based on search input
-            companySearchInput.trim() === "" ? (
-              // No search input - show instruction message
-              <div className="p-5 text-center">
-                <div className="text-gray-500 text-lg mb-2">
-                  <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                  </svg>
-                  Search company name to choose Company Category
-                </div>
-                <div className="text-sm text-gray-400">
-                  Type a company name above to see available categories
-                </div>
-              </div>
-            ) : (
-              // Has search input - show results or no results message
-              filteredCategories.length > 0 ? (
-                filteredCategories.map((category, index) => {
-                  // Handle both string and object formats
-                  let labelValue, displayText;
-                  
-                  if (typeof category === 'string') {
-                    labelValue = category;
-                    displayText = category;
-                  } else {
-                    labelValue = category.label || category.display_text || category.category_name || '';
-                    displayText = category.display_text || category.label || `${category.company_name || ''} → ${category.bank_name || ''} → ${category.category_name || ''}`;
-                  }
-
-                  // Check if this category is selected using our helper function
-                  const isSelected = isCategorySelected(category);
-                  
-                  // Generate a unique key for React
-                  const categoryKey = category.display_key || category.value || category.display_text || category.category_name || JSON.stringify(category);
-
-                  console.log(`🎨 Rendering "${displayText}" - isSelected: ${isSelected}, key: ${categoryKey}, total selected: ${selectedCategories.length}`);
-
-                  // MANUAL SELECTION ONLY - Users select options manually by clicking
-                  const shouldShowSelected = isSelected; // Only show selected if actually selected by user
-                  console.log(`🖌️ Visual Debug - shouldShowSelected: ${shouldShowSelected} for "${displayText}" (manual selection only)`);
-                  
-                  // DIRECT STYLE TEST - Let's try a different approach
-                  const itemStyles = shouldShowSelected ? {
-                    backgroundColor: '#dcfce7',
-                    borderColor: '#86efac',
-                    borderWidth: '3px',
-                    borderStyle: 'solid',
-                    boxShadow: '0 0 10px rgba(134, 239, 172, 0.5)'
-                  } : {
-                    backgroundColor: '#ffffff',
-                    borderColor: '#e5e7eb',
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    boxShadow: 'none'
-                  };
-                  
-                  console.log(`🎨 ITEM STYLES for "${displayText}":`, itemStyles);
-                  
-                  return (
-                    <div
-                      key={`category-${categoryKey}-${index}`}
-                      className="p-3 border-b last:border-b-0 cursor-pointer text-lg text-black transition flex items-center"
-                      style={itemStyles}
-                      onClick={(e) => {
-                        // Prevent ALL event propagation
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                        
-                        console.log('🖱️ ========== CATEGORY CLICKED ==========');
-                        console.log('🖱️ Display Text:', displayText);
-                        console.log('🖱️ Current isSelected BEFORE click:', isSelected);
-                        console.log('🖱️ shouldShowSelected BEFORE click:', shouldShowSelected);
-                        console.log('🖱️ Category object:', category);
-                        console.log('🖱️ Current selectedCategories BEFORE:', selectedCategories);
-                        console.log('🖱️ selectedCategories length:', selectedCategories.length);
-                        
-                        handleCategoryClick(category);
-                        
-                        console.log('🖱️ ========== CLICK COMPLETE ==========');
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                      }}
-                      onMouseUp={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.stopImmediatePropagation) {
-                          e.stopImmediatePropagation();
-                        }
-                      }}
-                      data-category-popup-item="true"
-                    >
-                      {/* Profile icon with initials */}
-                      <div 
-                        className="w-8 h-8 rounded-full text-white flex items-center justify-center mr-3 flex-shrink-0"
-                        style={{
-                          backgroundColor: shouldShowSelected ? '#16a34a' : '#10B981',
-                          border: shouldShowSelected ? '2px solid #059669' : 'none'
-                        }}>
-                        {labelValue
-                          ? labelValue.split(' ')
-                              .map(part => part[0] || '')
-                              .slice(0, 2)
-                              .join('')
-                              .toUpperCase()
-                          : 'CA'}
-                      </div>
-                      <div className="flex-1">
-                        <div 
-                          style={{
-                            color: shouldShowSelected ? '#166534' : '#111827',
-                            fontWeight: shouldShowSelected ? 'bold' : 'normal'
-                          }}
-                          className="font-medium text-lg">{displayText}</div>
-                      </div>
-                      {/* Show checkmark if selected */}
-                      {shouldShowSelected && (
-                        <div className="ml-2" style={{ color: '#16a34a' }}>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ stroke: '#16a34a', strokeWidth: '3' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                // Search input provided but no results found
-                <div className="p-5 text-center">
-                  <div className="text-red-500 text-lg mb-2">
-                    <svg className="w-12 h-12 mx-auto mb-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.47-.881-6.08-2.33"></path>
-                    </svg>
-                    No search company found
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    Try searching with a different company name
-                  </div>
-                </div>
-              )
-            )
-          )}
-        </div>
-
-        <div className="flex justify-end gap-4 mt-4 bg-white bg-opacity-90 p-3 rounded-b-xl">
-          {/* DEBUG: Show selected count */}
-          <div className="px-4 py-2 bg-gray-100 rounded text-sm">
-            Selected: {selectedCategories.length} categories
-          </div>
-          
-          {multiSelect && (
-            <button
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl shadow text-lg hover:bg-blue-700 transition"
-              onClick={() => {
-                console.log('=== DONE BUTTON CLICKED ===');
-                console.log('selectedCategories to send:', selectedCategories);
-                console.log('onAddCategory function available:', typeof onAddCategory === 'function');
-                console.log('onSelect function available:', typeof onSelect === 'function');
-                
-                // Send all selected categories to parent when Done is clicked
-                
-                // Use onAddCategory callback if available (new approach)
-                if (onAddCategory && typeof onAddCategory === 'function') {
-                  console.log('Using onAddCategory callback to process categories');
-                  onAddCategory(selectedCategories);
-                } else {
-                  console.log('Fallback: Using onSelect for each category');
-                  // Fallback to old approach
-                  selectedCategories.forEach(category => {
-                    console.log('Adding category via onSelect:', category);
-                    onSelect(category, false); // false indicates addition
-                  });
-                }
-                
-                console.log('=== CLOSING POPUP ===');
-                // Close the popup after sending categories
-                if (onSave) onSave();
-                else onClose();
-              }}
-            >
-              Done
-            </button>
-          )}
-          <button
-            className="px-6 py-3 bg-gray-400 text-white text-lg rounded-xl shadow hover:bg-gray-500 transition"
-            onClick={onClose}
-          >
-            Cancel
+            Search Company &amp; Select Category
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
           </button>
         </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        {/* Search Input */}
+        <div className="px-4 pt-4 shrink-0">
+          <div className="relative">
+            <svg className="absolute left-3.5 top-3 text-slate-500 pointer-events-none h-[15px] w-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input
+              autoFocus
+              type="text"
+              value={companySearchInput}
+              onChange={e => setCompanySearchInput(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search by company or bank name..."
+              className="w-full bg-[#1e2631] text-white rounded-xl p-2.5 pl-9 outline-none focus:ring-2 focus:ring-blue-500 text-sm border border-slate-700/50"
+            />
+          </div>
+        </div>
+        {/* Results Table */}
+        <div className="flex-1 overflow-y-auto p-4 pt-3">
+          <div className="border border-slate-800 rounded-xl overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#151b23] text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Company</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Bank</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide">Cat</th>
+                  <th className="p-3 font-bold text-[10px] uppercase tracking-wide text-center w-24">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {loading ? (
+                  <tr><td colSpan="4" className="py-8 text-center">
+                    <div className="flex items-center justify-center gap-2 text-slate-500">
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-400"></div>
+                      <span className="text-sm font-bold">Searching...</span>
+                    </div>
+                  </td></tr>
+                ) : companySearchInput.trim() === '' ? (
+                  <tr><td colSpan="4" className="py-8 text-center text-slate-500 text-sm font-bold">Type a company name to search...</td></tr>
+                ) : filteredCategories.length > 0 ? filteredCategories.map((category, index) => {
+                  const isSelected = isCategorySelected(category);
+                  const catKey = category.display_key || category.value || `cat-${index}`;
+                  return (
+                    <tr key={catKey} className={`transition-colors ${isSelected ? 'bg-emerald-500/5' : 'hover:bg-[#1a2235]'}`} data-category-popup-item="true">
+                      <td className="p-2.5 text-white font-semibold text-xs">{category.company_name || category.label}</td>
+                      <td className="p-2.5 text-emerald-400 font-bold text-xs">{category.bank_name || '—'}</td>
+                      <td className="p-2.5"><span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-black uppercase">{category.category_name || category.label}</span></td>
+                      <td className="p-2.5 text-center">
+                        {isSelected ? (
+                          <span onClick={() => handleCategoryClick(category)} className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-1 rounded-lg cursor-pointer hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-[11px] w-[11px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Added
+                          </span>
+                        ) : (
+                          <button onClick={() => handleCategoryClick(category)} className="bg-blue-600/15 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-[11px] font-black px-3 py-1 rounded-lg transition-all">+ Add</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan="4" className="py-8 text-center text-slate-500 text-sm font-bold">{errorMessage || `No results for "${companySearchInput}"`}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {/* Footer */}
+        <div className="px-4 pb-4 pt-3 border-t border-slate-800 bg-[#0f141e] shrink-0 space-y-2.5">
+          {selectedCategories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedCategories.map((cat, idx) => {
+                const displayText = typeof cat === 'string' ? cat : (cat.display || cat.display_text || cat.label || cat.category_name || 'Unknown');
+                const catKey = typeof cat === 'string' ? cat : (cat.display_key || cat.value || `sel-${idx}`);
+                const bankText = typeof cat === 'object' ? (cat.bank_name || '') : '';
+                return (
+                  <span key={`${catKey}-${idx}`} className="bg-blue-500/10 text-blue-300 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                    {bankText ? `${bankText} – ${cat.category_name || displayText}` : displayText}
+                    <button onClick={() => handleCategoryClick(cat)} className="hover:text-red-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-[10px] w-[10px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500 text-xs">{selectedCategories.length > 0 ? `${selectedCategories.length} selected` : 'None selected'}</span>
+            <button
+              onClick={() => {
+                if (onAddCategory && typeof onAddCategory === 'function') {
+                  onAddCategory(selectedCategories);
+                } else {
+                  selectedCategories.forEach(cat => onSelect && onSelect(cat, false));
+                }
+                if (onSave) onSave(); else onClose();
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-5 rounded-lg transition-colors text-sm"
+            >Done</button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1598,8 +1598,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('Announcement', 'show') ||
                             isSuperAdmin(userPermissions),
 
-      // Knowledge Base - visible to all authenticated users
-      canShowKnowledgeBase: true
+      // Knowledge Base - admin always sees it, others need explicit permission
+      canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
+                            checkPermission('knowledge_base', 'show') ||
+                            checkPermission('Knowledge Base', 'show') ||
+                            checkPermission('knowledgebase', 'show')
     };
     
     console.log('🔐 ========================================');

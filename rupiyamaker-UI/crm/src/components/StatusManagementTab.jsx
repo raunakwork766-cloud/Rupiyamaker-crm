@@ -27,21 +27,36 @@ const StatusManagementTab = ({
     updateSubStatus,
     deleteSubStatus
 }) => {
-    // Local loading states for form submissions
     const [isStatusFormSubmitting, setIsStatusFormSubmitting] = useState(false);
     const [isSubStatusFormSubmitting, setIsSubStatusFormSubmitting] = useState(false);
-    
-    // Ensure statuses is always an array
+    // Track saving state per-status for inline edits
+    const [savingId, setSavingId] = useState(null);
+    // Local edits for reassign days (status_id -> value)
+    const [reassignEdits, setReassignEdits] = useState({});
+
     const statusesArray = Array.isArray(statuses) ? statuses : [];
-    
-    // Debug logging
-    console.log('StatusManagementTab render:', {
-        statusesReceived: statuses,
-        statusesArray,
-        statusesLength: statusesArray.length,
-        selectedDepartment
-    });
-    
+
+    const handleToggleManager = async (status) => {
+        const id = status._id || status.id;
+        setSavingId(id + '_mgr');
+        await updateStatus(id, {
+            is_manager_permission_required: !status.is_manager_permission_required
+        });
+        setSavingId(null);
+    };
+
+    const handleReassignSave = async (status) => {
+        const id = status._id || status.id;
+        const val = reassignEdits[id];
+        if (val === undefined) return;
+        const days = parseInt(val, 10);
+        if (isNaN(days) || days < 0) return;
+        setSavingId(id + '_days');
+        await updateStatus(id, { reassignment_period: days });
+        setSavingId(null);
+        setReassignEdits(prev => { const n = {...prev}; delete n[id]; return n; });
+    };
+
     return (
         <div className="p-6 bg-gray-900 text-white">
             <h2 className="text-2xl font-bold mb-4 text-white">Status Management</h2>
@@ -127,13 +142,48 @@ const StatusManagementTab = ({
                                     </div>
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                    {status.reassignment_period || 0}
+                                    {(() => {
+                                        const id = status._id || status.id;
+                                        const editVal = reassignEdits[id];
+                                        const currentVal = editVal !== undefined ? editVal : (status.reassignment_period ?? 0);
+                                        const isSaving = savingId === id + '_days';
+                                        return (
+                                            <div className="flex items-center justify-center gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={currentVal}
+                                                    disabled={isSaving}
+                                                    onChange={e => setReassignEdits(prev => ({...prev, [id]: e.target.value}))}
+                                                    onBlur={() => handleReassignSave(status)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleReassignSave(status)}
+                                                    className="w-16 text-center px-1 py-0.5 rounded border border-gray-600 bg-black text-white text-sm disabled:opacity-50"
+                                                />
+                                                {isSaving && <span className="text-xs text-gray-400">...</span>}
+                                            </div>
+                                        );
+                                    })()}
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                    {status.is_manager_permission_required ? 
-                                        <span className="px-2 py-1 rounded text-xs bg-green-600 text-white">Required</span> : 
-                                        <span className="px-2 py-1 rounded text-xs bg-gray-600 text-white">Not Required</span>
-                                    }
+                                    {(() => {
+                                        const id = status._id || status.id;
+                                        const isSaving = savingId === id + '_mgr';
+                                        const isOn = !!status.is_manager_permission_required;
+                                        return (
+                                            <button
+                                                onClick={() => handleToggleManager(status)}
+                                                disabled={isSaving}
+                                                title={isOn ? 'Required — click to disable' : 'Not Required — click to enable'}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                                                    isOn ? 'bg-green-500' : 'bg-gray-600'
+                                                }`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                                    isOn ? 'translate-x-6' : 'translate-x-1'
+                                                }`}/>
+                                            </button>
+                                        );
+                                    })()}
                                 </td>
                                 <td className="px-4 py-3">
                                     <div className="max-w-xs">
