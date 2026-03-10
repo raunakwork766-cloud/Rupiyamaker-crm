@@ -6544,18 +6544,40 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 {/* Company Category - 2nd grid column */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
-                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
-                    {(!Array.isArray(companyCategory) || companyCategory.length === 0) && <span className="text-slate-500 text-xs px-1">Select from modal...</span>}
-                    {Array.isArray(companyCategory) && companyCategory.map((category, index) => {
-                      const displayText = typeof category === 'string' ? category : (category.bank_name && category.category_name ? `${category.bank_name} – ${category.category_name}` : (category.category_name || category.bank_name || category.display || category.display_text || category.label || 'Unknown'));
-                      const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
-                      return (
-                        <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
-                          {displayText}
-                          <div onClick={e => { e.stopPropagation(); canEdit && handleRemoveCategory(category); }} className="hover:text-red-400 cursor-pointer">×</div>
-                        </span>
-                      );
-                    })}
+                  <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg overflow-hidden min-h-[42px] cursor-pointer hover:border-blue-500/50 transition-all">
+                    {(!Array.isArray(companyCategory) || companyCategory.length === 0) && (
+                      <div className="px-3 py-2.5 text-slate-500 text-xs">Select from modal...</div>
+                    )}
+                    {Array.isArray(companyCategory) && companyCategory.length > 0 && (
+                      <table className="w-full text-xs">
+                        <thead className="bg-[#151b23] border-b border-slate-800">
+                          <tr>
+                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Company</th>
+                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Bank</th>
+                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Category</th>
+                            <th className="px-2 py-1 w-6"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/50">
+                          {companyCategory.map((category, index) => {
+                            const companyName = typeof category === 'string' ? category : (category.company_name || category.label || '—');
+                            const bankName = typeof category === 'object' ? (category.bank_name || '—') : '—';
+                            const catName = typeof category === 'object' ? (category.category_name || category.display || '—') : category;
+                            const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
+                            return (
+                              <tr key={`${categoryKey}-${index}`} className="hover:bg-slate-800/20">
+                                <td className="px-2 py-1.5 text-white font-semibold">{companyName}</td>
+                                <td className="px-2 py-1.5 text-emerald-400 font-bold">{bankName}</td>
+                                <td className="px-2 py-1.5"><span className="bg-blue-500/20 text-blue-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">{catName}</span></td>
+                                <td className="px-2 py-1.5 text-center">
+                                  <div onClick={e => { e.stopPropagation(); canEdit && handleRemoveCategory(category); }} className="text-slate-600 hover:text-red-400 cursor-pointer font-bold text-sm leading-none">×</div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
               </div>
@@ -6584,13 +6606,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
               {/* Summary Cards */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-black rounded-xl p-4 border border-emerald-500/20">
-                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider block mb-1.5">Total BT POS</span>
-                  <span className="text-emerald-400 font-black text-2xl tracking-tight">{totalBtPos}</span>
+                <div className="bg-green-400 rounded-xl p-4 border border-green-500">
+                  <span className="text-[9px] font-bold text-black/70 uppercase tracking-wider block mb-1.5">Total BT POS</span>
+                  <span className="text-black font-black text-2xl tracking-tight">{totalBtPos}</span>
                 </div>
-                <div className="bg-black rounded-xl p-4 border border-yellow-500/20">
-                  <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider block mb-1.5">Total Obligation</span>
-                  <span className="text-yellow-400 font-black text-2xl tracking-tight">{totalObligation}</span>
+                <div className="bg-yellow-400 rounded-xl p-4 border border-yellow-500">
+                  <span className="text-[9px] font-bold text-black/70 uppercase tracking-wider block mb-1.5">Total Obligation</span>
+                  <span className="text-black font-black text-2xl tracking-tight">{totalObligation}</span>
                 </div>
                 <div className="bg-black rounded-xl p-4 border border-slate-700/50">
                   <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
@@ -7117,17 +7139,20 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">FOIR %</label>
               {ceFoirPercent === 'custom' ? (
                 <input
-                  type="number"
-                  value={ceCustomFoirPercent}
+                  type="text"
+                  value={ceCustomFoirPercent !== '' ? `${ceCustomFoirPercent}%` : ''}
                   onChange={canEdit ? (e) => {
-                    setCeCustomFoirPercent(e.target.value);
-                    setHasUserInteraction(true);
-                    setHasUnsavedChanges(true);
+                    const raw = e.target.value.replace(/%/g, '').replace(/[^\d]/g, '');
+                    const num = parseInt(raw, 10);
+                    if (raw === '' || (num >= 1 && num <= 100)) {
+                      setCeCustomFoirPercent(raw);
+                      setHasUserInteraction(true);
+                      setHasUnsavedChanges(true);
+                    }
                   } : undefined}
                   onBlur={() => { if (ceCustomFoirPercent === '') { setCeFoirPercent(60); } }}
                   disabled={!canEdit}
                   placeholder="Enter %"
-                  min={1} max={100}
                   className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 border-none shadow-sm"
                 />
               ) : (
