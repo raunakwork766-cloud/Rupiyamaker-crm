@@ -270,7 +270,13 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60">
-                {requests.map((lead) => (
+                {requests.map((lead) => {
+                  const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || lead.customer_name || 'Unknown Lead';
+                  const requestedBy = (lead.requestor_name || '').trim() || (lead.reassignment_requested_by_name || '').trim() || '—';
+                  const currentOwner = (lead.assigned_user_name || '').trim() || (lead.created_by_name || '').trim() || '—';
+                  const leadStatus = lead.lead_status || '';
+                  const leadSubStatus = lead.sub_status || '';
+                  return (
                   <tr key={lead._id}
                     className="hover:bg-neutral-800/40 transition-colors group cursor-pointer"
                     onClick={() => onViewLead && onViewLead(lead._id)}
@@ -279,11 +285,11 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-full bg-cyan-700/60 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 border border-cyan-600/30">
-                          {(lead.name || lead.customer_name || '?').charAt(0).toUpperCase()}
+                          {customerName.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
                           <p className="text-white font-semibold truncate max-w-[160px] group-hover:text-cyan-300 transition-colors">
-                            {lead.name || lead.customer_name || 'Unnamed'}
+                            {customerName}
                           </p>
                           <p className="text-neutral-500 text-xs">{lead.mobile_number || lead.phone || '—'}</p>
                         </div>
@@ -292,34 +298,38 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
 
                     {/* Requested By */}
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <p className="text-neutral-200 font-medium text-sm">{lead.requestor_name || lead.reassignment_requested_by_name || '—'}</p>
+                      <p className="text-neutral-200 font-medium text-sm">{requestedBy}</p>
                     </td>
 
                     {/* Current Owner */}
                     <td className="px-4 py-3.5 whitespace-nowrap text-neutral-300 text-sm">
-                      {lead.assigned_user_name || lead.created_by_name || '—'}
+                      {currentOwner}
                     </td>
 
                     {/* Lead Status */}
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       <div className="flex flex-col gap-1">
-                        {lead.status && (
-                          <span className="inline-block px-2 py-0.5 bg-neutral-800 text-neutral-300 rounded text-xs font-medium">{lead.status}</span>
+                        {leadStatus && (
+                          <span className="inline-block px-2 py-0.5 bg-neutral-800 text-neutral-300 rounded text-xs font-medium">{leadStatus}</span>
                         )}
-                        {lead.sub_status && (
-                          <span className="inline-block px-2 py-0.5 bg-blue-900/40 text-blue-300 rounded text-xs">{lead.sub_status}</span>
+                        {leadSubStatus && (
+                          <span className="inline-block px-2 py-0.5 bg-blue-900/40 text-blue-300 rounded text-xs">{leadSubStatus}</span>
                         )}
                       </div>
                     </td>
 
                     {/* Reason */}
-                    <td className="px-4 py-3.5 max-w-[200px]">
-                      <p className="text-neutral-400 text-xs line-clamp-2">{lead.reassignment_reason || '—'}</p>
+                    <td className="px-4 py-3.5 max-w-[220px]">
+                      {lead.reassignment_reason ? (
+                        <p className="text-neutral-200 text-xs leading-relaxed">{lead.reassignment_reason}</p>
+                      ) : (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      )}
                       {activeTab === 'approved' && lead.reassignment_approved_by_name && (
-                        <p className="text-green-400 text-[11px] mt-1">✓ {lead.reassignment_approved_by_name}</p>
+                        <p className="text-green-400 text-[11px] mt-1.5">✓ {lead.reassignment_approved_by_name}</p>
                       )}
                       {activeTab === 'rejected' && lead.reassignment_rejection_reason && (
-                        <p className="text-red-400 text-[11px] mt-1">✗ {lead.reassignment_rejection_reason}</p>
+                        <p className="text-red-400 text-[11px] mt-1.5">✗ {lead.reassignment_rejection_reason}</p>
                       )}
                     </td>
 
@@ -359,7 +369,8 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>
@@ -404,8 +415,8 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                   {actionModal.type === 'approve' ? 'Approve Reassignment' : 'Reject Reassignment'}
                 </h3>
                 <p className="text-white/70 text-xs mt-0.5">
-                  {actionModal.lead?.name || 'Unknown Lead'} — requested by{' '}
-                  {actionModal.lead?.requestor_name || actionModal.lead?.reassignment_requested_by_name || 'Unknown'}
+                  {[actionModal.lead?.first_name, actionModal.lead?.last_name].filter(Boolean).join(' ') || actionModal.lead?.name || 'Unknown Lead'} — requested by{' '}
+                  {(actionModal.lead?.requestor_name || '').trim() || 'Unknown'}
                 </p>
               </div>
             </div>
