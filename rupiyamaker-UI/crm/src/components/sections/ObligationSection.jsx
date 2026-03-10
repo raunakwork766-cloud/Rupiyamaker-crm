@@ -6588,7 +6588,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg p-2 min-h-[42px] flex flex-wrap gap-1.5 items-center cursor-pointer hover:border-blue-500/50 transition-all">
                     {(!Array.isArray(companyCategory) || companyCategory.length === 0) && <span className="text-slate-500 text-xs px-1">Select from modal...</span>}
                     {Array.isArray(companyCategory) && companyCategory.map((category, index) => {
-                      const displayText = typeof category === 'string' ? category : (category.bank_name || category.display || category.display_text || category.label || category.category_name || 'Unknown');
+                      const displayText = typeof category === 'string' ? category : (category.bank_name && category.category_name ? `${category.bank_name} – ${category.category_name}` : (category.category_name || category.bank_name || category.display || category.display_text || category.label || 'Unknown'));
                       const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
                       return (
                         <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-400 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
@@ -7007,6 +7007,20 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                           readOnly={isCreditCard(row.product)}
                           inputMode="numeric"
                         />
+                        {isCreditCard(row.product) && (
+                          <div className="flex gap-1 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => canEdit && handleCreditCardTenure(idx)}
+                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedTenurePercentage === 4 ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                            >4%</button>
+                            <button
+                              type="button"
+                              onClick={() => canEdit && handleCreditCardRoi(idx)}
+                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedRoiPercentage === 5 ? 'bg-purple-500 text-white border-purple-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                            >5%</button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Action Select with Enhanced Color Coding */}
@@ -7152,7 +7166,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-orange-500/10 text-orange-400 border-orange-500/30" />
             </div>
           </div>
 
@@ -7162,7 +7176,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-500/10 text-yellow-400 border-yellow-500/30" />
+            <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-white text-black border-gray-300" />
           </div>
 
           <hr className="border-slate-800/60"/>
@@ -7237,7 +7251,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   />
                 </div>
               </div>
-              <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-white flex items-center border border-slate-700/50">{eligibility.multiplierEligibility}</div>
+              <div className="w-full h-[50px] bg-white rounded-lg px-3 text-xl font-black text-black flex items-center border border-slate-300">{eligibility.multiplierEligibility}</div>
             </div>
           </div>
 
