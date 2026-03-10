@@ -27,7 +27,7 @@ import Remarks from './sections/Remarks';
 import Activities from './sections/Activities';
 import RequestReassignmentButton from './sections/RequestReassignmentButton';
 
-export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly = false }) {
+export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly = false, obligationsReadOnly = false, allowedTabs = null }) {
     // Lock all editing when lead has a pending reassignment request
     const isReassignmentLocked = ['pending', 'requested'].includes(lead?.reassignment_status);
     const effectiveReadOnly = readOnly || isReassignmentLocked;
@@ -347,7 +347,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
         { id: 'activities', label: 'LEADS ACTIVITY', icon: null }
     ];
     // When readOnly, show all tabs so user can browse, but editing is blocked
-    const tabs = allTabs;
+    // If allowedTabs is provided, restrict to only those tab IDs
+    const tabs = allowedTabs ? allTabs.filter(t => allowedTabs.includes(t.id)) : allTabs;
 
     const updateLeadStatus = async (status, subStatus) => {
         try {
@@ -749,7 +750,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                             <div style={effectiveReadOnly ? { height: 'calc(100vh - 160px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}}>
                                 <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                                     <ObligationsSection
-                                        canEdit={true}
+                                        canEdit={!obligationsReadOnly}
                                         insideOverlay={effectiveReadOnly}
                                         leadData={{
                                             ...leadData,

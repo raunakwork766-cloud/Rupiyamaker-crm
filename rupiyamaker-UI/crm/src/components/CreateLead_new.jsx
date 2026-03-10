@@ -4700,6 +4700,7 @@ function CreateLead() {
   const [viewLeadData, setViewLeadData] = useState(null);
   const [viewLeadLoading, setViewLeadLoading] = useState(false);
   const [viewLeadFromLogin, setViewLeadFromLogin] = useState(false);
+  const [viewLeadIsReassignment, setViewLeadIsReassignment] = useState(false);
 
   // Duplicate tab state
   const [dupActiveTab, setDupActiveTab] = useState('leads');
@@ -4726,12 +4727,13 @@ function CreateLead() {
     }
   }, [existingLeadData]);
 
-  const handleViewDuplicateLead = async (leadId, fromLogin = false) => {
+  const handleViewDuplicateLead = async (leadId, fromLogin = false, fromReassignment = false) => {
     if (!leadId) return;
     setViewLeadId(leadId);
     setViewLeadLoading(true);
     setViewLeadData(null);
     setViewLeadFromLogin(fromLogin);
+    setViewLeadIsReassignment(fromReassignment);
     try {
       const userId = localStorage.getItem('userId') || '';
       const url = fromLogin
@@ -5206,6 +5208,7 @@ function CreateLead() {
                           onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
                           readOnly={true}
                           obligationsReadOnly={viewLeadFromLogin}
+                          allowedTabs={viewLeadIsReassignment ? ['details', 'obligations'] : null}
                         />
                       </Suspense>
                     )}
@@ -5964,6 +5967,7 @@ function CreateLead() {
           <ReassignmentPanel 
             userPermissions={null}
             onLeadAction={() => {}}
+            onViewLead={(leadId) => handleViewDuplicateLead(leadId, false, true)}
           />
         )}
       </div>
