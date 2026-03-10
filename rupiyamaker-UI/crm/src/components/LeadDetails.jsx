@@ -346,10 +346,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
         { id: 'tasks', label: 'TASK', icon: null },
         { id: 'activities', label: 'LEADS ACTIVITY', icon: null }
     ];
-    // When readOnly (e.g. duplicate lead view from CreateLead), only show Details + Obligations
-    const tabs = effectiveReadOnly
-        ? allTabs.filter(t => t.id === 'details' || t.id === 'obligations')
-        : allTabs;
+    // When readOnly, show all tabs so user can browse, but editing is blocked
+    const tabs = allTabs;
 
     const updateLeadStatus = async (status, subStatus) => {
         try {
@@ -429,8 +427,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
     };
 
     return (
-        <div className={activeTab === 'obligations' ? 'h-screen overflow-hidden bg-black text-white flex flex-col pt-2 px-2 pb-0' : 'min-h-screen bg-black text-white p-6'}>
-            <div className={`w-full${activeTab === 'obligations' ? ' flex flex-col flex-1 min-h-0' : ''}`}>
+        <div className={activeTab === 'obligations' ? (effectiveReadOnly ? 'flex flex-col bg-black text-white pt-2 px-2 pb-0' : 'h-screen overflow-hidden bg-black text-white flex flex-col pt-2 px-2 pb-0') : 'min-h-screen bg-black text-white p-6'}>
+            <div className={`w-full${activeTab === 'obligations' && !effectiveReadOnly ? ' flex flex-col flex-1 min-h-0' : activeTab === 'obligations' ? ' flex flex-col' : ''}`}>
                 {/* Header */}
                 <div className={activeTab === 'obligations' ? 'py-1 px-1 mb-0' : ' rounded-lg p-6 mb-6'}>
                     <div className="flex items-center justify-between">
@@ -612,8 +610,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 </div>
                 
                 {/* Tab Content Container */}
-                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : ' flex-1 min-h-0'}`}>
-                    <div className={`w-full${activeTab === 'obligations' ? ' h-full' : ''}`}>
+                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : (effectiveReadOnly ? '' : ' flex-1 min-h-0')}`}>
+                    <div className={`w-full${activeTab === 'obligations' && !effectiveReadOnly ? ' h-full' : ''}`}>
                         {activeTab === 'details' && (
                             <div className="space-y-6">
                                 {/* About Section */}
@@ -748,10 +746,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         )}
 
                         {activeTab === 'obligations' && (
-                            <div>
+                            <div style={effectiveReadOnly ? { height: 'calc(100vh - 160px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}}>
                                 <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                                     <ObligationsSection
                                         canEdit={true}
+                                        insideOverlay={effectiveReadOnly}
                                         leadData={{
                                             ...leadData,
                                             // Initialize obligations if they don't exist
@@ -794,6 +793,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     leadId={lead._id}
                                     userId={userId}
                                     formatDate={formatDate}
+                                    canEdit={!effectiveReadOnly}
                                 />
                             </div>
                         )}
@@ -803,6 +803,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 <AttachmentsSection
                                     leadId={lead._id}
                                     userId={userId}
+                                    readOnly={effectiveReadOnly}
                                 />
                             </div>
                         )}

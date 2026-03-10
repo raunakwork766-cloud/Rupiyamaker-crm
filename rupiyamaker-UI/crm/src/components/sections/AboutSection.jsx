@@ -1933,13 +1933,13 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <div className="flex-1">
               <input
                 className={`w-full p-3 border-2 rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                  !isUserSuperAdmin ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
+                  (!canEdit || !isUserSuperAdmin) ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
                   validationErrors.mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
                 }`}
                 value={fields.mobileNumber}
-                onChange={e => isUserSuperAdmin && handleChange("mobileNumber", e.target.value)}
-                onBlur={e => isUserSuperAdmin && handleBlur("mobileNumber", e.target.value)}
-                readOnly={!isUserSuperAdmin}
+                onChange={e => (canEdit && isUserSuperAdmin) && handleChange("mobileNumber", e.target.value)}
+                onBlur={e => (canEdit && isUserSuperAdmin) && handleBlur("mobileNumber", e.target.value)}
+                readOnly={!canEdit || !isUserSuperAdmin}
                 placeholder={!isUserSuperAdmin ? "Super Admin only" : "Enter 10-digit mobile number"}
                 maxLength="10"
                 pattern="[0-9]{10}"
