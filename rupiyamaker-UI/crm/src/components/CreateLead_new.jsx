@@ -4699,17 +4699,53 @@ function CreateLead() {
   const [viewLeadId, setViewLeadId] = useState(null);
   const [viewLeadData, setViewLeadData] = useState(null);
   const [viewLeadLoading, setViewLeadLoading] = useState(false);
+  const [viewLeadFromLogin, setViewLeadFromLogin] = useState(false);
 
-  const handleViewDuplicateLead = async (leadId) => {
+  // Duplicate tab state
+  const [dupActiveTab, setDupActiveTab] = useState('leads');
+  const [loginDuplicateLeads, setLoginDuplicateLeads] = useState([]);
+  const [loginLeadsLoading, setLoginLeadsLoading] = useState(false);
+
+  // Fetch login leads when a duplicate is detected
+  useEffect(() => {
+    if (existingLeadData) {
+      const phone = existingLeadData.phone || existingLeadData.mobile_number || mobileNumber;
+      if (phone) {
+        setLoginLeadsLoading(true);
+        setDupActiveTab('leads');
+        const userId = localStorage.getItem('userId') || '';
+        fetch(`/api/lead-login/check-phone/${encodeURIComponent(phone)}?user_id=${userId}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => setLoginDuplicateLeads(data?.leads || []))
+          .catch(() => setLoginDuplicateLeads([]))
+          .finally(() => setLoginLeadsLoading(false));
+      }
+    } else {
+      setLoginDuplicateLeads([]);
+      setDupActiveTab('leads');
+    }
+  }, [existingLeadData]);
+
+  const handleViewDuplicateLead = async (leadId, fromLogin = false) => {
     if (!leadId) return;
     setViewLeadId(leadId);
     setViewLeadLoading(true);
     setViewLeadData(null);
+    setViewLeadFromLogin(fromLogin);
     try {
       const userId = localStorage.getItem('userId') || '';
-      const resp = await fetch(`/api/leads/${leadId}?user_id=${userId}`);
+      const url = fromLogin
+        ? `/api/lead-login/login-leads/${leadId}?user_id=${userId}`
+        : `/api/leads/${leadId}?user_id=${userId}`;
+      const resp = await fetch(url);
       if (resp.ok) {
         const data = await resp.json();
+        // For login leads viewed in the duplicate-check overlay, force all tabs visible
+        if (fromLogin) {
+          data.can_view_all_tabs = true;
+          data.can_edit = false; // read-only, but all tabs accessible
+          data.can_view = true;
+        }
         setViewLeadData(data);
       }
     } catch (e) {
@@ -4910,6 +4946,27 @@ function CreateLead() {
                       </button>
                     </div>
 
+                    {/* ─── TAB BAR ─── */}
+                    <div className="flex border-b border-neutral-700 bg-[#0d1117]">
+                      <button
+                        onClick={() => setDupActiveTab('leads')}
+                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold transition-colors border-b-2 ${dupActiveTab === 'leads' ? 'text-cyan-400 border-cyan-400 bg-neutral-800/50' : 'text-neutral-400 border-transparent hover:text-neutral-200'}`}
+                      >
+                        📋 Leads <span className="bg-neutral-700 text-neutral-300 rounded-full px-2 py-0.5 text-[10px]">{leads.length}</span>
+                      </button>
+                      <button
+                        onClick={() => setDupActiveTab('login')}
+                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold transition-colors border-b-2 ${dupActiveTab === 'login' ? 'text-cyan-400 border-cyan-400 bg-neutral-800/50' : 'text-neutral-400 border-transparent hover:text-neutral-200'}`}
+                      >
+                        🏦 Login in Leads{' '}
+                        {loginLeadsLoading
+                          ? <span className="text-neutral-500 text-[10px]">...</span>
+                          : <span className={`bg-neutral-700 rounded-full px-2 py-0.5 text-[10px] ${loginDuplicateLeads.length > 0 ? 'text-cyan-300' : 'text-neutral-400'}`}>{loginDuplicateLeads.length}</span>}
+                      </button>
+                    </div>
+
+                    {/* ─── LEADS TAB ─── */}
+                    {dupActiveTab === 'leads' ? (<div>
                     {/* Table */}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -5046,6 +5103,75 @@ function CreateLead() {
                         </div>
                       </div>
                     )}
+                    </div>) : (
+                    /* ─── LOGIN TAB ─── */
+                    <div>
+                      {loginLeadsLoading ? (
+                        <div className="flex items-center justify-center py-8 gap-3">
+                          <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-neutral-400 text-sm">Checking login leads...</span>
+                        </div>
+                      ) : loginDuplicateLeads.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-2">
+                          <svg className="w-8 h-8 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          <span className="text-neutral-500 text-sm">No login leads found for this number.</span>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-[#060d1a] border-b border-neutral-700">
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Login Date</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Bank Name</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Status</th>
+                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Loan Type</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {loginDuplicateLeads.map((loginLead, idx) => (
+                                <tr
+                                  key={loginLead.id || idx}
+                                  className="bg-neutral-900 hover:bg-neutral-800/50 transition-colors cursor-pointer border-b border-neutral-800/50"
+                                  onClick={() => handleViewDuplicateLead(loginLead.id, true)}
+                                  title="Click to view login lead details (read-only)"
+                                >
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <div className="text-white font-semibold text-sm">{fmtDate(loginLead.login_date || loginLead.login_created_at || loginLead.created_at)}</div>
+                                    <div className="text-cyan-400 text-xs mt-0.5">{fmtAge(loginLead.login_date || loginLead.login_created_at || loginLead.created_at)}</div>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{loginLead.created_by_name || '—'}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-white text-xs uppercase tracking-wider">{loginLead.department_name || '—'}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{loginLead.name || '—'}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    {loginLead.bank_name
+                                      ? <span className="inline-flex items-center gap-1.5 bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-lg px-2.5 py-1 text-xs font-bold">🏦 {loginLead.bank_name}</span>
+                                      : <span className="text-neutral-500 text-xs">—</span>}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    {loginLead.sub_status ? (
+                                      <div>
+                                        <div className="text-white font-semibold text-sm">{loginLead.sub_status}</div>
+                                        <div className="text-neutral-400 text-xs mt-0.5">{loginLead.status}</div>
+                                      </div>
+                                    ) : <span className="text-white text-sm">{loginLead.status || '—'}</span>}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-neutral-300 text-sm">{loginLead.loan_type || '—'}</td>
+                                </tr>
+                              ))}
+                              <tr className="bg-indigo-950/20">
+                                <td colSpan={7} className="px-5 py-2.5">
+                                  <span className="text-indigo-300 text-xs">🔒 Login leads are view-only. Click any row to view details.</span>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                    )}{/* end tab ternary */}
                   </div>
                 );
               })()}
@@ -5058,7 +5184,7 @@ function CreateLead() {
                   {/* Top bar */}
                   <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }}>
                     <svg style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
-                    <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Lead Details — View Only</span>
+                    <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{viewLeadFromLogin ? 'Login Lead Details — View Only' : 'Lead Details — View Only'}</span>
                     <button style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', background: '#374151', border: 'none', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
                       ✕ Close
                     </button>
@@ -5079,6 +5205,7 @@ function CreateLead() {
                           onBack={() => { setViewLeadId(null); setViewLeadData(null); }}
                           onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
                           readOnly={true}
+                          obligationsReadOnly={viewLeadFromLogin}
                         />
                       </Suspense>
                     )}
