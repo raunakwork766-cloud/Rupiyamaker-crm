@@ -6924,31 +6924,32 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
                       {/* ROI */}
                       <td className="px-1 py-1 border-r-2 border-gray-600 bg-black">
-                        <input
-                          type="text"
-                          className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
-                          placeholder="ROI %"
-                          value={row.roi || ''}
-                          disabled={!canEdit}
-                          onChange={e => {
-                            if (!canEdit) return;
-                            handleObligationChange(idx, 'roi', e.target.value);
-                          }}
-                          onBlur={handleObligationFieldBlur}
-                        />
-                        {isCreditCard(row.product) && (
-                          <div className="flex gap-1 mt-1">
+                        {isCreditCard(row.product) ? (
+                          <div className="flex gap-1">
                             <button
                               type="button"
                               onClick={() => canEdit && handleCreditCardTenure(idx)}
-                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedTenurePercentage === 4 ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                              className={`flex-1 text-[10px] font-bold py-1.5 rounded border transition-all ${row.selectedTenurePercentage === 4 ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
                             >4%</button>
                             <button
                               type="button"
                               onClick={() => canEdit && handleCreditCardRoi(idx)}
-                              className={`flex-1 text-[10px] font-bold py-0.5 rounded border transition-all ${row.selectedRoiPercentage === 5 ? 'bg-purple-500 text-white border-purple-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                              className={`flex-1 text-[10px] font-bold py-1.5 rounded border transition-all ${row.selectedRoiPercentage === 5 ? 'bg-purple-500 text-white border-purple-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}
                             >5%</button>
                           </div>
+                        ) : (
+                          <input
+                            type="text"
+                            className={`w-full px-1 py-1 text-sm text-center rounded border-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${getInputStyling(row.action)} placeholder-black`}
+                            placeholder="ROI %"
+                            value={row.roi || ''}
+                            disabled={!canEdit}
+                            onChange={e => {
+                              if (!canEdit) return;
+                              handleObligationChange(idx, 'roi', e.target.value);
+                            }}
+                            onBlur={handleObligationFieldBlur}
+                          />
                         )}
                       </td>
 
