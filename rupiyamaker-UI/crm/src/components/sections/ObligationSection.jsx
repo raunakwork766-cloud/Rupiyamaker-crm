@@ -7115,17 +7115,37 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* FOIR % - Editable select */}
             <div className="flex flex-col justify-end">
               <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">FOIR %</label>
-              <select
-                value={ceFoirPercent === 'custom' ? 60 : ceFoirPercent}
-                onChange={canEdit ? handleCeFoirPercentChange : undefined}
-                disabled={!canEdit}
-                className="w-full bg-white text-black rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm border-none"
-              >
-                <option value={50}>50%</option>
-                <option value={60}>60%</option>
-                <option value={70}>70%</option>
-                <option value={80}>80%</option>
-              </select>
+              {ceFoirPercent === 'custom' ? (
+                <input
+                  type="number"
+                  value={ceCustomFoirPercent}
+                  onChange={canEdit ? (e) => {
+                    setCeCustomFoirPercent(e.target.value);
+                    setHasUserInteraction(true);
+                    setHasUnsavedChanges(true);
+                  } : undefined}
+                  onBlur={() => { if (ceCustomFoirPercent === '') { setCeFoirPercent(60); } }}
+                  disabled={!canEdit}
+                  placeholder="Enter %"
+                  min={1} max={100}
+                  className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 border-none shadow-sm"
+                />
+              ) : (
+                <select
+                  value={ceFoirPercent}
+                  onChange={canEdit ? handleCeFoirPercentChange : undefined}
+                  disabled={!canEdit}
+                  className="w-full bg-white text-black rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm border-none"
+                >
+                  <option value={50}>50%</option>
+                  <option value={55}>55%</option>
+                  <option value={60}>60%</option>
+                  <option value={65}>65%</option>
+                  <option value={70}>70%</option>
+                  <option value={75}>75%</option>
+                  <option value="custom">Custom</option>
+                </select>
+              )}
             </div>
             {/* FOIR Amount - ReadOnly */}
             <div className="flex flex-col justify-end">
@@ -7141,7 +7161,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-orange-500/10 text-orange-400 border-orange-500/30" />
+              <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-400 text-black border-yellow-500" />
             </div>
           </div>
 
@@ -7199,7 +7219,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total BT POS</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
-              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
+              <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-emerald-400 text-black border-emerald-500" />
             </div>
           </div>
 
@@ -8239,20 +8259,37 @@ function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onA
         {/* Footer */}
         <div className="px-4 pb-4 pt-3 border-t border-slate-800 bg-[#0f141e] shrink-0 space-y-2.5">
           {selectedCategories.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {selectedCategories.map((cat, idx) => {
-                const displayText = typeof cat === 'string' ? cat : (cat.display || cat.display_text || cat.label || cat.category_name || 'Unknown');
-                const catKey = typeof cat === 'string' ? cat : (cat.display_key || cat.value || `sel-${idx}`);
-                const bankText = typeof cat === 'object' ? (cat.bank_name || '') : '';
-                return (
-                  <span key={`${catKey}-${idx}`} className="bg-blue-500/10 text-blue-300 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
-                    {bankText ? `${bankText} – ${cat.category_name || displayText}` : displayText}
-                    <button onClick={() => handleCategoryClick(cat)} className="hover:text-red-400 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-[10px] w-[10px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                  </span>
-                );
-              })}
+            <div className="border border-slate-700 rounded-xl overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[#151b23] border-b border-slate-700">
+                    <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Company</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Bank Name</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Category</th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400 w-14">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {selectedCategories.map((cat, idx) => {
+                    const companyName = typeof cat === 'object' ? (cat.company_name || cat.label || '—') : cat;
+                    const bankName = typeof cat === 'object' ? (cat.bank_name || '—') : '—';
+                    const categoryName = typeof cat === 'object' ? (cat.category_name || cat.display || '—') : cat;
+                    const catKey = typeof cat === 'string' ? cat : (cat.display_key || cat.value || `sel-${idx}`);
+                    return (
+                      <tr key={`${catKey}-${idx}`} className="bg-[#0f141e] hover:bg-slate-800/30 transition-colors">
+                        <td className="px-3 py-2 text-white font-semibold truncate max-w-[120px]">{companyName}</td>
+                        <td className="px-3 py-2 text-emerald-400 font-bold">{bankName}</td>
+                        <td className="px-3 py-2"><span className="bg-blue-500/20 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded uppercase">{categoryName}</span></td>
+                        <td className="px-3 py-2 text-center">
+                          <button onClick={() => handleCategoryClick(cat)} className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded" title="Remove">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           <div className="flex items-center justify-between">
