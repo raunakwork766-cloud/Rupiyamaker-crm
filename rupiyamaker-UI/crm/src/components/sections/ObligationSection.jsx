@@ -261,7 +261,7 @@ const fetchCompanyCategories = async () => {
   }
 };
 
-export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true }) {
+export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady }) {
   // Immediate safety check to prevent any initialization errors
   if (typeof React === 'undefined' || !React.useState) {
     console.error('React is not properly loaded');
@@ -6343,64 +6343,22 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   // 📊 Activate real-time data monitoring for this component
   useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompanyCategory, ceFoirPercent, obligations, dataLoaded, isInitialLoad, savedData);
 
+  // Expose download function to parent via onDownloadReady callback
+  useEffect(() => {
+    if (onDownloadReady) {
+      onDownloadReady(hasDownloadObligationPermission() ? handleDownloadObligations : null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadData?._id]);
+
   return (
     <>
     <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
-          {/* Customer Details Section with Download Button */}
+          {/* Customer Details Section */}
           <div className="p-5 pb-4">
-            <div className="mb-4 flex justify-between items-center">
-              {hasDownloadObligationPermission() && (
-                <button 
-                  type="button"
-                  onClick={handleDownloadObligations}
-                  className="download-obligations-btn"
-                style={{
-                  backgroundColor: '#16a34a',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '12px 24px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.backgroundColor = '#15803d';
-                  e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.backgroundColor = '#16a34a';
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
-                }}
-              >
-                <svg 
-                  width="20" 
-                  height="20" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7,10 12,15 17,10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Download Complete Report PDF
-              </button>
-              )}
-            </div>
             <div className="space-y-4">
               {/* Row 1: Salary, Partner's Salary, Bonus */}
               <div className="grid grid-cols-3 gap-4">
