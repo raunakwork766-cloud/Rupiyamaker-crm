@@ -282,6 +282,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [showBankPopup, setShowBankPopup] = useState(false);
   const [companyCategory, setCompanyCategory] = useState([]);
   const [showCategoryPopup, setShowCategoryPopup] = useState(false);
+  const [lastCategorySearchTerm, setLastCategorySearchTerm] = useState('');
   const [totalBtPos, setTotalBtPos] = useState('0');
   const [totalObligation, setTotalObligation] = useState('0');
   const [cibilScore, setCibilScore] = useState('');
@@ -7512,7 +7513,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       {showCategoryPopup && (
         <CategoryPopup
         className="text-lg"
-          initialCompanyName={companyName} // Pass current company name to pre-populate search
+          initialCompanyName={lastCategorySearchTerm || companyName} // Use last searched term or company name
+          onSearchTermChange={(term) => setLastCategorySearchTerm(term)}
           onClose={() => setShowCategoryPopup(false)}
           onSelect={(category, isRemove = false) => {
             console.log('CategoryPopup: Selected category for immediate feedback:', category, isRemove ? '(removing)' : '(adding)');
@@ -7560,6 +7562,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               });
             }
             
+            setHasUserInteraction(true);
+            setHasUnsavedChanges(true);
             console.log('✅ Immediate visual feedback applied to main field - popup should stay open');
             // DO NOT close the popup here - let the CategoryPopup handle its own state
           }}
@@ -7597,8 +7601,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             }
             
             console.log('Final category update completed');
-            // Mark as having unsaved changes
+            // Mark as having unsaved changes and user interaction for auto-save
             setHasUnsavedChanges(true);
+            setHasUserInteraction(true);
           }}
         />
       )}
@@ -7938,7 +7943,7 @@ function useDataMonitoring(leadData, salary, loanRequired, companyName, ceCompan
 }
 
 // CategoryPopup component - Enhanced company category search with API integration
-function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onAddCategory, companyCategories, multiSelect = true, selectedInitial = [] }) {
+function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onAddCategory, companyCategories, multiSelect = true, selectedInitial = [], onSearchTermChange }) {
   const [companySearchInput, setCompanySearchInput] = useState(initialCompanyName || ""); // Use passed company name as initial search
   const [filteredCategories, setFilteredCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -7978,6 +7983,11 @@ function CategoryPopup({ initialCompanyName = '', onClose, onSelect, onSave, onA
     // Clear existing timeout
     if (searchTimeout) {
       clearTimeout(searchTimeout);
+    }
+
+    // Notify parent of current search term so it can remember it across reopens
+    if (onSearchTermChange) {
+      onSearchTermChange(companySearchInput);
     }
     
     // Only set timeout if there's input to search
