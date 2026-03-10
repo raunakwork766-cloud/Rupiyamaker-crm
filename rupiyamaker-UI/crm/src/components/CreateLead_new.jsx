@@ -5078,6 +5078,7 @@ function CreateLead() {
                           user={JSON.parse(localStorage.getItem('userData') || '{}') || { id: localStorage.getItem('userId'), name: localStorage.getItem('userName') || 'User' }}
                           onBack={() => { setViewLeadId(null); setViewLeadData(null); }}
                           onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
+                          readOnly={true}
                         />
                       </Suspense>
                     )}

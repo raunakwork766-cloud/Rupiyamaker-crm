@@ -338,7 +338,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
         fetchCurrentLeadData();
     }, [lead._id]);
 
-    const tabs = [
+    const allTabs = [
         { id: 'details', label: 'LEAD DETAILS', icon: null },
         { id: 'obligations', label: 'OBLIGATION', icon: null },
         { id: 'remarks', label: 'REMARK', icon: null },
@@ -346,6 +346,10 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
         { id: 'tasks', label: 'TASK', icon: null },
         { id: 'activities', label: 'LEADS ACTIVITY', icon: null }
     ];
+    // When readOnly (e.g. duplicate lead view from CreateLead), only show Details + Obligations
+    const tabs = effectiveReadOnly
+        ? allTabs.filter(t => t.id === 'details' || t.id === 'obligations')
+        : allTabs;
 
     const updateLeadStatus = async (status, subStatus) => {
         try {
@@ -747,7 +751,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                             <div>
                                 <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                                     <ObligationsSection
-                                        canEdit={!effectiveReadOnly}
+                                        canEdit={true}
                                         leadData={{
                                             ...leadData,
                                             // Initialize obligations if they don't exist
