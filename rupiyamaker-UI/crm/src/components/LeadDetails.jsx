@@ -28,6 +28,9 @@ import Activities from './sections/Activities';
 import RequestReassignmentButton from './sections/RequestReassignmentButton';
 
 export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly = false }) {
+    // Lock all editing when lead has a pending reassignment request
+    const isReassignmentLocked = ['pending', 'requested'].includes(lead?.reassignment_status);
+    const effectiveReadOnly = readOnly || isReassignmentLocked;
     const [activeTab, setActiveTab] = useState('details');
     const [leadData, setLeadData] = useState(lead);
     const [isEditing, setIsEditing] = useState(false);
@@ -549,6 +552,22 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                     </div>
                 )}
 
+                {/* Reassignment Lock Banner */}
+                {isReassignmentLocked && (
+                    <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-yellow-500/10 border border-yellow-500/40 rounded-xl">
+                        <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                        </svg>
+                        <div>
+                            <p className="text-yellow-300 font-semibold text-sm">Lead Locked — Reassignment Pending</p>
+                            <p className="text-yellow-500 text-xs mt-0.5">All fields are read-only until this lead is reassigned or the request is rejected.</p>
+                        </div>
+                        <span className="ml-auto px-2.5 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold uppercase tracking-wider animate-pulse">
+                            LOCKED
+                        </span>
+                    </div>
+                )}
+
                 {/* Tab Navigation */}
                 <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
                     {tabs.map((tab) => {
@@ -600,7 +619,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         key={`about-${leadData._id}`}
                                         lead={leadData}
                                         onSave={updateLead}
-                                        canEdit={!readOnly}
+                                        canEdit={!effectiveReadOnly}
                                     />
                                 </div>
 
@@ -611,6 +630,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         lead={leadData}
                                         process={leadData.process}
                                         onSave={updateLead}
+                                        canEdit={!effectiveReadOnly}
                                     />
                                 </div>
 
@@ -620,7 +640,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     <div className="space-y-6">
                                         <div className="flex justify-between items-center mb-4">
                                             <h4 className="text-md font-semibold text-[#03B0F5]">Primary Applicant</h4>
-                                            {!showCoApplicant && !readOnly && (
+                                            {!showCoApplicant && !effectiveReadOnly && (
                                                 <button
                                                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-lg"
                                                     onClick={() => setShowCoApplicant(true)}
@@ -639,7 +659,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                             leadId={leadData._id}
                                             leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
                                             leadData={leadData}
-                                            canEdit={!readOnly}
+                                            canEdit={!effectiveReadOnly}
                                         />
                                         
                                         {/* Co-Applicant Form */}
@@ -667,6 +687,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                                     leadId={leadData._id}
                                                     leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
                                                     leadData={leadData}
+                                                    canEdit={!effectiveReadOnly}
                                                 />
                                             </div>
                                         )}
@@ -678,6 +699,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     <h3 className="text-lg font-bold text-[#03B0F5] mb-4">Important Questions</h3>
                                     <ImportantQuestionsSection
                                         leadData={leadData}
+                                        canEdit={!effectiveReadOnly}
                                         onUpdate={(updated) => {
                                             updateLead(updated);
                                             if (updated.question_responses) {
@@ -702,6 +724,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         <OperationsSection
                                             lead={leadData}
                                             onUpdate={updateLead}
+                                            canEdit={!effectiveReadOnly}
                                         />
                                     </div>
                                 )}
@@ -724,6 +747,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                             <div>
                                 <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                                     <ObligationsSection
+                                        canEdit={!effectiveReadOnly}
                                         leadData={{
                                             ...leadData,
                                             // Initialize obligations if they don't exist
