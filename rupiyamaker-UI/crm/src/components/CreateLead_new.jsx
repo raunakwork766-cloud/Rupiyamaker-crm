@@ -5179,48 +5179,6 @@ function CreateLead() {
               })()}
             </div>
 
-            {/* ─── LEAD VIEW PORTAL (mounted at document.body to avoid DOM inheritance issues) ─── */}
-            {viewLeadId && ReactDOM.createPortal(
-              <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.75)' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
-                <div style={{ width: '100%', maxWidth: 1100, height: '100%', background: '#0d1117', boxShadow: '0 0 40px rgba(0,0,0,0.8)', borderLeft: '1px solid #374151', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-                  {/* Top bar */}
-                  <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }}>
-                    <svg style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
-                    <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{viewLeadFromLogin ? 'Login Lead Details — View Only' : 'Lead Details — View Only'}</span>
-                    <button style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', background: '#374151', border: 'none', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
-                      ✕ Close
-                    </button>
-                  </div>
-                  {/* Content — flex:1 + overflow:auto for normal tabs; obligations tab uses its own internal scroll */}
-                  <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                    {viewLeadLoading && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0', gap: 12 }}>
-                        <div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                        <span style={{ color: '#9ca3af', fontSize: 14 }}>Loading lead details...</span>
-                      </div>
-                    )}
-                    {!viewLeadLoading && viewLeadData && (
-                      <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}><div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div></div>}>
-                        <LeadDetails
-                          lead={viewLeadData}
-                          user={JSON.parse(localStorage.getItem('userData') || '{}') || { id: localStorage.getItem('userId'), name: localStorage.getItem('userName') || 'User' }}
-                          onBack={() => { setViewLeadId(null); setViewLeadData(null); }}
-                          onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
-                          readOnly={true}
-                          obligationsReadOnly={viewLeadFromLogin}
-                          allowedTabs={viewLeadIsReassignment ? ['details', 'obligations'] : null}
-                        />
-                      </Suspense>
-                    )}
-                    {!viewLeadLoading && !viewLeadData && (
-                      <div style={{ textAlign: 'center', padding: '96px 0', color: '#6b7280' }}>Failed to load lead details.</div>
-                    )}
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
-
             {showLeadDetails && existingLeadData && !showReassignmentOption && (
               <div className="p-6 mb-6 bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-700">
                 {/* Header */}
@@ -5971,6 +5929,48 @@ function CreateLead() {
           />
         )}
       </div>
+
+      {/* ─── LEAD VIEW PORTAL (mounted at document.body, outside tab conditions so it works on all tabs) ─── */}
+      {viewLeadId && ReactDOM.createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.75)' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
+          <div style={{ width: '100%', maxWidth: 1100, height: '100%', background: '#0d1117', boxShadow: '0 0 40px rgba(0,0,0,0.8)', borderLeft: '1px solid #374151', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            {/* Top bar */}
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }}>
+              <svg style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{viewLeadFromLogin ? 'Login Lead Details — View Only' : 'Lead Details — View Only'}</span>
+              <button style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', background: '#374151', border: 'none', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
+                ✕ Close
+              </button>
+            </div>
+            {/* Content */}
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              {viewLeadLoading && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0', gap: 12 }}>
+                  <div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  <span style={{ color: '#9ca3af', fontSize: 14 }}>Loading lead details...</span>
+                </div>
+              )}
+              {!viewLeadLoading && viewLeadData && (
+                <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}><div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div></div>}>
+                  <LeadDetails
+                    lead={viewLeadData}
+                    user={JSON.parse(localStorage.getItem('userData') || '{}') || { id: localStorage.getItem('userId'), name: localStorage.getItem('userName') || 'User' }}
+                    onBack={() => { setViewLeadId(null); setViewLeadData(null); }}
+                    onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
+                    readOnly={true}
+                    obligationsReadOnly={viewLeadFromLogin}
+                    allowedTabs={viewLeadIsReassignment ? ['details', 'obligations'] : null}
+                  />
+                </Suspense>
+              )}
+              {!viewLeadLoading && !viewLeadData && (
+                <div style={{ textAlign: 'center', padding: '96px 0', color: '#6b7280' }}>Failed to load lead details.</div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* AssignPopup component */}
       {showAssignPopup && (
