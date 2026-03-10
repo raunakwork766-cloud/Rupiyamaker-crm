@@ -3519,8 +3519,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
     // Handle tab switching with unsaved changes check
     const handleTabChange = (newTabIndex) => {
-        // Check if we're leaving the Obligation tab (tab index 5) and there are unsaved changes
-        if (activeTab === 5 && hasUnsavedObligationChanges) {
+        // Check if we're leaving the Obligation tab (tab index 1) and there are unsaved changes
+        if (activeTab === 1 && hasUnsavedObligationChanges) {
             setPendingTabChange(newTabIndex);
             if (obligationModalTrigger) {
                 obligationModalTrigger(); // Trigger the modal from ObligationSection
@@ -3533,8 +3533,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         // No unsaved changes, proceed with tab change
         setActiveTab(newTabIndex);
         setOpenSection(0);
-        // Fetch reassignment history when switching to that tab (index 3)
-        if (newTabIndex === 3 && selectedLead?._id) {
+        // Fetch reassignment history when switching to that tab (index 6)
+        if (newTabIndex === 6 && selectedLead?._id) {
             fetchReassignmentHistory(selectedLead._id);
         }
     };
@@ -4668,7 +4668,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                       <LazySection height="400px">
                         <LeadActivity
                           leadId={String(lead._id || lead.id)}
-                          userId={String(lead.assigned_to || localStorage.getItem('userId') || localStorage.getItem('user_id'))}
+                          userId={localStorage.getItem('userId') || localStorage.getItem('user_id') || ''}
                           leadData={lead}
                         />
                       </LazySection>
