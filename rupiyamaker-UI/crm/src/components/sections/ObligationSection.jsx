@@ -6998,9 +6998,24 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                           onChange={e => {
                             if (!canEdit) return;
                             const raw = e.target.value.replace(/[^0-9.]/g, "");
-                            handleObligationChange(idx, "outstanding", formatINR(raw));
+                            if (isCreditCard(row.product)) {
+                              // For Credit Card: update display only, no recalculation until blur
+                              setObligations(prev => {
+                                const updated = [...prev];
+                                updated[idx] = { ...updated[idx], outstanding: raw ? formatINR(raw) : '' };
+                                return updated;
+                              });
+                            } else {
+                              handleObligationChange(idx, "outstanding", formatINR(raw));
+                            }
                           }}
-                          onBlur={handleObligationFieldBlur}
+                          onBlur={e => {
+                            if (isCreditCard(row.product) && canEdit) {
+                              const raw = e.target.value.replace(/[^0-9.]/g, "");
+                              handleObligationChange(idx, "outstanding", formatINR(raw));
+                            }
+                            handleObligationFieldBlur();
+                          }}
                           inputMode="numeric"
                         />
                       </td>

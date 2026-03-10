@@ -4553,7 +4553,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             getContent: (lead, handleFieldChange) => [
               {
                 content: (
-                  <div>
+                  <div style={{height:'100%'}}>
                     <ObligationSection
                       leadData={lead}
                       handleChangeFunc={(field, value) => {
@@ -4653,7 +4653,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         );
         
         return (
-            <div className="min-h-screen bg-black text-white text-sm sm:text-base w-full">
+            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-sm sm:text-base w-full flex flex-col' : 'min-h-screen bg-black text-white text-sm sm:text-base w-full'}>
                 {/* Header */}
                 <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] border-b-4 border-cyan-400/70 shadow-lg">
                     <button
@@ -4784,14 +4784,14 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                
 
                 {/* Content */}
-                <div className="px-2 sm:px-4 lg:px-6 py-4 lg:py-6 w-full relative z-0">
-                    <div className="w-full relative z-0">
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 overflow-hidden w-full' : 'px-2 sm:px-4 lg:px-6 py-4 lg:py-6 w-full relative z-0'}>
+                    <div className={activeTab === 1 ? 'w-full h-full' : 'w-full relative z-0'}>
                         {sectionData.map((section, idx) => {
                             const sectionKey = `${activeTab}-${idx}`;
                             const isCollapsed = collapsedSections[sectionKey];
                             
                             return (
-                                <div key={idx} className="mb-6 w-full">
+                                <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
                                     {section.label && (
                                         <button
                                             className="w-full px-2 sm:px-5 py-3 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border-2 border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-md"
@@ -4809,7 +4809,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         </button>
                                     )}
                                     {(!section.label || !isCollapsed) && (
-                                        <div className="w-full mt-2">
+                                        <div className={activeTab === 1 ? 'w-full h-full' : 'w-full mt-2'}>
                                             {section.content}
                                         </div>
                                     )}
