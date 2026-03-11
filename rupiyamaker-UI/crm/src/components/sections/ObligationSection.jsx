@@ -6365,7 +6365,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <div className="grid grid-cols-3 gap-4">
                 {/* Salary */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Salary</label>
+                  <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Salary</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
@@ -6382,7 +6382,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 </div>
                 {/* Partner's Salary */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Partner's Salary</label>
+                  <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Partner's Salary</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
                     <input
@@ -6399,7 +6399,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 </div>
                 {/* Bonus with Divide By */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Bonus</label>
+                  <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Bonus</label>
                   <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 overflow-hidden border border-slate-700/50">
                     <div className="relative flex-1 border-r border-slate-700/50">
                       <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-sm">₹</span>
@@ -6433,7 +6433,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               <div className="grid grid-cols-2 gap-4">
                 {/* Company Name with searchable input */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Name</label>
+                  <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Company Name</label>
                   <div className="flex bg-black rounded-lg focus-within:ring-1 focus-within:ring-blue-500 border border-slate-700/50 relative overflow-hidden">
                     <input
                       ref={companyDropdownRef}
@@ -6543,40 +6543,26 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                 </div>
                 {/* Company Category - 2nd grid column */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Company Category</label>
+                  <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Company Category</label>
                   <div onClick={() => canEdit && setShowCategoryPopup(true)} className="w-full bg-black border border-slate-700/50 rounded-lg overflow-hidden min-h-[42px] cursor-pointer hover:border-blue-500/50 transition-all">
                     {(!Array.isArray(companyCategory) || companyCategory.length === 0) && (
                       <div className="px-3 py-2.5 text-slate-500 text-xs">Select from modal...</div>
                     )}
                     {Array.isArray(companyCategory) && companyCategory.length > 0 && (
-                      <table className="w-full text-xs">
-                        <thead className="bg-[#151b23] border-b border-slate-800">
-                          <tr>
-                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Company</th>
-                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Bank</th>
-                            <th className="px-2 py-1 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">Category</th>
-                            <th className="px-2 py-1 w-6"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50">
-                          {companyCategory.map((category, index) => {
-                            const companyName = typeof category === 'string' ? category : (category.company_name || category.label || '—');
-                            const bankName = typeof category === 'object' ? (category.bank_name || '—') : '—';
-                            const catName = typeof category === 'object' ? (category.category_name || category.display || '—') : category;
-                            const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
-                            return (
-                              <tr key={`${categoryKey}-${index}`} className="hover:bg-slate-800/20">
-                                <td className="px-2 py-1.5 text-white font-semibold">{companyName}</td>
-                                <td className="px-2 py-1.5 text-emerald-400 font-bold">{bankName}</td>
-                                <td className="px-2 py-1.5"><span className="bg-blue-500/20 text-blue-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">{catName}</span></td>
-                                <td className="px-2 py-1.5 text-center">
-                                  <div onClick={e => { e.stopPropagation(); canEdit && handleRemoveCategory(category); }} className="text-slate-600 hover:text-red-400 cursor-pointer font-bold text-sm leading-none">×</div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <div className="flex flex-wrap gap-1.5 p-2">
+                        {companyCategory.map((category, index) => {
+                          const bankName = typeof category === 'object' ? (category.bank_name || '') : '';
+                          const catName = typeof category === 'object' ? (category.category_name || category.display || category.label || '') : category;
+                          const displayText = bankName && catName ? `${bankName} – ${catName}` : (catName || bankName || 'Unknown');
+                          const categoryKey = typeof category === 'string' ? category : (category.key || category.value || `cat-${index}`);
+                          return (
+                            <span key={`${categoryKey}-${index}`} className="bg-blue-500/10 text-blue-300 font-bold text-[10px] px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 uppercase">
+                              {displayText}
+                              <div onClick={e => { e.stopPropagation(); canEdit && handleRemoveCategory(category); }} className="text-slate-500 hover:text-red-400 cursor-pointer font-bold text-sm leading-none">×</div>
+                            </span>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -6584,7 +6570,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
               {/* Decide Bank For Case - full width */}
               <div>
-                <label className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
+                <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Decide Bank For Case</label>
                 <div className="flex flex-wrap gap-1.5 items-center bg-black border border-slate-700/50 rounded-lg p-2.5 min-h-[46px]">
                   {companyType.length === 0 && <span className="text-slate-500 text-xs">No banks selected...</span>}
                   {companyType.map((bank, index) => {
@@ -6615,7 +6601,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <span className="text-black font-black text-2xl tracking-tight">{totalObligation}</span>
                 </div>
                 <div className="bg-black rounded-xl p-4 border border-slate-700/50">
-                  <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider block mb-1.5">CIBIL Score</span>
+                  <span className="text-[9px] font-bold text-white uppercase tracking-wider block mb-1.5">CIBIL Score</span>
                   <input
                     type="text"
                     className="w-full bg-white text-black font-black text-xl rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
@@ -6752,10 +6738,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           
           {/* Enhanced Obligations Table */}
           <div className="mb-6 bg-black rounded-lg border-2 border-gray-600 shadow-lg relative">
-            {/* Simple Header */}
-            <div className="bg-gray-800 px-4 py-3 border-b-2 border-gray-600">
-              <h3 className="text-lg font-bold text-white">Bank-wise Customer Obligations</h3>
-            </div>
+            {/* Simple Header - removed */}
             <div className="relative" style={{ position: 'relative', zIndex: 1 }}>
               <div className="overflow-x-auto" style={{ overflowY: 'visible' }}>
                 <table 
@@ -7129,14 +7112,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* Total Income - ReadOnly */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Income</label>
+                <label className="text-[10px] font-bold text-white uppercase tracking-wide">Total Income</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
               <input type="text" readOnly value={eligibility.totalIncome} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
             </div>
             {/* FOIR % - Editable select */}
             <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">FOIR %</label>
+              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">FOIR %</label>
               {ceFoirPercent === 'custom' ? (
                 <input
                   type="text"
@@ -7175,7 +7158,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* FOIR Amount - ReadOnly */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">FOIR Amount</label>
+                <label className="text-[10px] font-bold text-white uppercase tracking-wide">FOIR Amount</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
               <input type="text" readOnly value={eligibility.foirAmount} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-slate-300 border-slate-700/50" />
@@ -7183,7 +7166,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* Total Obligation - ReadOnly (in grid) */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total Obligation</label>
+                <label className="text-[10px] font-bold text-white uppercase tracking-wide">Total Obligation</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
               <input type="text" readOnly value={eligibility.totalObligations} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-yellow-400 text-black border-yellow-500" />
@@ -7193,7 +7176,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           {/* EMI Can Pay - full width yellow highlight (result of FOIR Amount - Total Obligation) */}
           <div className="flex flex-col justify-end">
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">EMI Can Pay</label>
+              <label className="text-[10px] font-bold text-white uppercase tracking-wide">EMI Can Pay</label>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
             <input type="text" readOnly value={formatINR(ceMonthlyEmiCanPay.toString())} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-black text-white border-slate-700/50" />
@@ -7204,7 +7187,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           <div className="grid grid-cols-2 gap-3">
             {/* Tenure (Months) - Editable white bg */}
             <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Tenure (Months)</label>
+              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Tenure (Months)</label>
               <input
                 type="text"
                 value={ceTenureMonths}
@@ -7216,7 +7199,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             </div>
             {/* Tenure (Years) - Editable white bg */}
             <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">Tenure (Years)</label>
+              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Tenure (Years)</label>
               <input
                 type="text"
                 value={ceTenureYears}
@@ -7228,7 +7211,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             </div>
             {/* ROI % - Editable white bg */}
             <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">ROI %</label>
+              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">ROI %</label>
               <input
                 type="text"
                 value={ceRoi}
@@ -7241,7 +7224,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             {/* Total BT POS - ReadOnly */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Total BT POS</label>
+                <label className="text-[10px] font-bold text-white uppercase tracking-wide">Total BT POS</label>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-700"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </div>
               <input type="text" readOnly value={eligibility.totalBtPos} className="w-full rounded-lg p-2.5 font-bold text-sm outline-none cursor-not-allowed border bg-emerald-400 text-black border-emerald-500" />
@@ -7253,15 +7236,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           <div className="grid grid-cols-2 gap-3">
             {/* Max FOIR Eligibility - large display div */}
             <div className="flex flex-col justify-end">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Max FOIR Eligibility</label>
+              <label className="block text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">FOIR Eligibility</label>
               <div className="w-full h-[50px] bg-black rounded-lg px-3 text-xl font-black text-emerald-400 flex items-center border border-slate-700/50">{eligibility.finalEligibility}</div>
             </div>
             {/* Multiplier Limit - large display div with inline input */}
             <div className="flex flex-col justify-end">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">Multiplier Limit</label>
+                <label className="block text-[10px] font-bold text-white uppercase tracking-wide">Multiplier</label>
                 <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500">
-                  MULT
                   <input
                     type="number"
                     value={ceMultiplier}
