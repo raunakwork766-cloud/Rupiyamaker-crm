@@ -635,17 +635,40 @@ const SettingsPage = () => {
         );
     };
 
+    // Same category definitions as Attachments.jsx (leads tab)
+    const ATTACHMENT_DOCUMENT_CATEGORIES = [
+        { id: 'kyc',        title: 'PERSONAL IDENTIFICATION (KYC)',  keywords: ['cibil', 'pan', 'aadhaar', 'aadhar', 'voter', 'driving licen', 'passport', 'kyc', 'id proof', 'identity'] },
+        { id: 'employment', title: 'EMPLOYMENT PROOFS',              keywords: ['salary slip', 'offer letter', 'employment', 'form 16', 'appointment letter', 'experience letter', 'increment'] },
+        { id: 'financial',  title: 'FINANCIAL STATEMENTS',           keywords: ['bank statement', 'itr', 'income tax', 'financial', 'account statement'] },
+    ];
+
     // Build category-based draft structure from flat attachment types list
+    // Falls back to keyword matching (same as Attachments.jsx leads tab) when category field is empty
     const buildDraftCategories = (types) => {
         if (!types || types.length === 0) return [];
         const catMap = new Map();
+        // Pre-populate standard categories in the correct order
+        ATTACHMENT_DOCUMENT_CATEGORIES.forEach(c => catMap.set(c.title, []));
+
         const sorted = [...types].sort((a, b) => (a.sort_number || 999) - (b.sort_number || 999));
         sorted.forEach(t => {
-            const cat = (t.category || '').trim().toUpperCase() || 'GENERAL';
+            let cat = (t.category || '').trim().toUpperCase();
+            if (!cat) {
+                // Keyword fallback — same logic as leads Attachments.jsx
+                const lname = t.name.toLowerCase();
+                const matched = ATTACHMENT_DOCUMENT_CATEGORIES.find(c =>
+                    c.keywords.some(kw => lname.includes(kw))
+                );
+                cat = matched ? matched.title : 'OTHER DOCUMENTS';
+            }
             if (!catMap.has(cat)) catMap.set(cat, []);
             catMap.get(cat).push({ ...t });
         });
-        return [...catMap.entries()].map(([title, docs]) => ({ title, docs }));
+
+        // Drop empty standard-category buckets
+        return [...catMap.entries()]
+            .filter(([, docs]) => docs.length > 0)
+            .map(([title, docs]) => ({ title, docs }));
     };
 
     // Complete permissions structure (updated with lowercase keys)
@@ -3220,7 +3243,7 @@ const updateStatus = async (statusId, statusData) => {
                             // Hide category if filtered and no docs match
                             if (attachmentTypeFilter && visibleDocs.length === 0 && cat.docs.length > 0 && cat.docs.every(d => d.target_type !== attachmentTypeFilter)) return null;
 
-                            const isCollapsed = atCatCollapsed[cat.title] !== false; // default = collapsed
+                            const isCollapsed = atCatCollapsed[cat.title] === true; // default = expanded
                             const isCatDragOver = atCatDragOverIdx === catIdx;
                             const isCatBeingDragged = atCatDragIdx === catIdx;
 
