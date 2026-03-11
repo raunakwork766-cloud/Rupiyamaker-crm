@@ -2404,7 +2404,25 @@ const handleMobileNumberChange = (e) => {
     }
     
     console.log('✅ Permission check passed - user can create leads');
-    
+
+    // ── Duplicate lead guard ──────────────────────────────────────────────────
+    // If the phone-check already found a lead in the system, block creation and
+    // tell the employee to use the Reassignment flow instead.
+    if (mobileCheckResult && mobileCheckResult.found) {
+      setCreateLeadLoading(false);
+      // Scroll the duplicate panel into view so the employee sees what to do
+      const panel = document.getElementById('duplicate-lead-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      alert(
+        '🚫 Duplicate Lead Detected!\n\n' +
+        'A lead with this mobile number already exists in the system.\n' +
+        'A new lead cannot be created.\n\n' +
+        'Please use the Reassignment option shown on screen to request this lead.'
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // First validate all required fields
     if (!validateFormFields()) {
       // Just show validation errors, no alert

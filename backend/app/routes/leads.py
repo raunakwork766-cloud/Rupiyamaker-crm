@@ -267,6 +267,38 @@ async def create_lead(
             except Exception as e:
                 print(f"Error looking up loan type ID: {e}")
         
+    # ── Duplicate phone-number guard ────────────────────────────────────────
+    # Block creation if a lead with the same phone (and optionally same loan type)
+    # already exists.  The employee must use the Reassignment flow instead.
+    phone_val = lead_dict.get("phone") or lead_dict.get("mobile_number", "")
+    if phone_val:
+        loan_type_id_val = lead_dict.get("loan_type_id", "")
+        loan_type_name_val = lead_dict.get("loan_type_name", "") or lead_dict.get("loan_type", "")
+
+        dup_filter: dict = {"$or": [{"phone": phone_val}, {"mobile_number": phone_val}]}
+        # If a loan type is specified, narrow the duplicate check to the same loan type
+        if loan_type_id_val or loan_type_name_val:
+            lt_conditions = []
+            if loan_type_id_val:
+                lt_conditions.append({"loan_type_id": loan_type_id_val})
+            if loan_type_name_val:
+                lt_conditions.append({"loan_type_name": loan_type_name_val})
+                lt_conditions.append({"loan_type": loan_type_name_val})
+            dup_filter = {
+                "$and": [
+                    {"$or": [{"phone": phone_val}, {"mobile_number": phone_val}]},
+                    {"$or": lt_conditions},
+                ]
+            }
+
+        existing = await leads_db.list_leads(filter_dict=dup_filter, skip=0, limit=1)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A lead with this mobile number already exists. Please use the Reassignment option.",
+            )
+    # ─────────────────────────────────────────────────────────────────────────
+
     lead_id = await leads_db.create_lead(lead_dict)
     
     # Clear LoginCRM cache since new lead might appear in login department views
