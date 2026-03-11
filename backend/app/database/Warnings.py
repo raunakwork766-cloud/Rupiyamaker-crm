@@ -653,12 +653,15 @@ class WarningDB:
             logger.error(f"Error fetching unacknowledged warnings: {e}")
             return []
 
-    async def acknowledge_warning(self, warning_id: str, user_id: str) -> bool:
+    async def acknowledge_warning(self, warning_id: str, user_id: str, employee_remark: str = None) -> bool:
         """Mark a warning as acknowledged by the recipient"""
         try:
+            update_fields = {"is_acknowledged": True, "acknowledged_at": get_ist_now(), "status": "Acknowledged"}
+            if employee_remark and employee_remark.strip():
+                update_fields["employee_remark"] = employee_remark.strip()
             result = await self.collection.update_one(
                 {"_id": ObjectId(warning_id), "issued_to": ObjectId(user_id)},
-                {"$set": {"is_acknowledged": True, "acknowledged_at": get_ist_now(), "status": "Acknowledged"}}
+                {"$set": update_fields}
             )
             return result.modified_count > 0 or result.matched_count > 0
         except Exception as e:

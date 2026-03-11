@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { BellRing, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 
 /**
  * PopWarningModal — blocking warning acknowledgment popup.
  * Polls /warnings/pending-acknowledgment every 5 seconds.
- * The modal blocks ALL interaction until the user clicks "I Agree & Acknowledge".
- * Uses recursive setTimeout (no stale-closure issues) + stable callbacks.
+ * The modal blocks ALL interaction until the user clicks "Accept & Submit".
+ * UI matches warning-module.html employee-modal design.
  */
 const PopWarningModal = () => {
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
+  const [remark, setRemark] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -81,6 +82,7 @@ const PopWarningModal = () => {
 
   useEffect(() => {
     if (!current) return;
+    setRemark('');
     const handler = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
     };
@@ -102,6 +104,7 @@ const PopWarningModal = () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
+          body: JSON.stringify({ employee_remark: remark.trim() || null }),
         }
       );
       if (res.ok) {
@@ -110,6 +113,7 @@ const PopWarningModal = () => {
           if (!mountedRef.current) return;
           setDone(false);
           setLoading(false);
+          setRemark('');
           setQueue(prev => {
             const remaining = prev.filter(w => w.id !== current.id);
             setCurrent(remaining.length > 0 ? remaining[0] : null);
@@ -141,66 +145,100 @@ const PopWarningModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 sm:p-6"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 border border-red-500/40"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative border border-slate-100"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 pt-6 pb-4 border-b border-red-500/20">
-          <div className="flex items-center gap-3">
-            <div className="relative shrink-0">
-              <AlertTriangle className="w-7 h-7 text-red-400 animate-pulse" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+        {/* Header */}
+        <div className="bg-red-50 border-b border-red-100 px-6 py-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <BellRing className="w-5 h-5 text-red-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-red-900 tracking-tight">Official Warning Notice</h2>
+            <p className="text-sm text-red-600 font-medium mt-0.5">Action Required: Please review and acknowledge.</p>
+          </div>
+          {queue.length > 1 && (
+            <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-full shrink-0 shadow-sm">
+              {queueIdx + 1} / {queue.length}
+            </span>
+          )}
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-5">
+          {/* Warning type banner */}
+          <div className="bg-red-600 rounded-xl p-4 flex items-center gap-3 shadow-md">
+            <div className="bg-white/20 p-2 rounded-full shrink-0">
+              <AlertTriangle className="w-5 h-5 text-white" />
             </div>
-            <h2 className="text-xl font-black text-red-400 tracking-widest uppercase flex-1">
-              Warning Issued
-            </h2>
+            <h3 className="text-white text-base font-black uppercase tracking-wide flex-1">
+              {current.warning_type || 'GENERAL WARNING'}
+            </h3>
             {queue.length > 1 && (
-              <span className="text-xs font-bold text-gray-400 bg-gray-700 px-2 py-0.5 rounded-full shrink-0">
-                {queueIdx + 1} / {queue.length}
+              <span className="bg-white text-red-700 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0">
+                {queue.length} Pending
               </span>
             )}
           </div>
+
+          {/* Details card */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex justify-between items-center gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Issued By</p>
+                <p className="font-bold text-slate-800 text-sm truncate">{current.issued_by_name || 'Admin'}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Issue Date</p>
+                <p className="font-bold text-slate-700 text-sm">{formatDate(current.issued_date)}</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  Message from {current.issued_by_name || 'Manager'}:
+                </p>
+                <p className="text-sm text-slate-700 leading-relaxed font-medium bg-slate-50 p-4 rounded-lg border border-slate-100">
+                  {current.warning_message || 'A warning has been issued against you. Please acknowledge to proceed.'}
+                </p>
+              </div>
+              {current.penalty_amount > 0 && (
+                <div className="flex items-center justify-between p-4 bg-red-50/60 rounded-lg border border-red-100">
+                  <span className="text-sm font-bold text-red-800">Financial Penalty Imposed:</span>
+                  <span className="text-xl font-black text-red-600">
+                    ₹{Number(current.penalty_amount).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Employee remark textarea */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-slate-800">
+              Your Acknowledgement &amp; Remark{' '}
+              <span className="text-slate-400 font-normal text-xs">(optional)</span>
+            </label>
+            <textarea
+              rows={3}
+              value={remark}
+              onChange={e => setRemark(e.target.value)}
+              placeholder="I understand the concern. Moving forward, I will ensure..."
+              className="w-full text-sm outline-none p-4 resize-none bg-white border border-slate-300 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all shadow-sm"
+              disabled={loading || done}
+            />
+          </div>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          <div className="flex justify-center">
-            <span className="bg-red-500/20 border border-red-400/40 text-red-300 font-black text-sm uppercase tracking-widest px-4 py-1.5 rounded-full">
-              {current.warning_type || 'GENERAL WARNING'}
-            </span>
-          </div>
-
-          <div className="bg-black/30 border border-gray-700 rounded-xl p-4">
-            <p className="text-gray-200 text-sm leading-relaxed text-center">
-              {current.warning_message || 'A warning has been issued against you. Please acknowledge to proceed.'}
-            </p>
-          </div>
-
-          {current.penalty_amount > 0 && (
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-gray-400 text-sm">Penalty Amount:</span>
-              <span className="text-red-300 font-black text-lg">
-                &#8377;{Number(current.penalty_amount).toLocaleString('en-IN')}
-              </span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-gray-800/50 rounded-lg p-2">
-              <div className="text-gray-400 font-bold mb-0.5 uppercase tracking-wider text-[10px]">Issued By</div>
-              <div className="text-gray-200 font-medium text-sm">{current.issued_by_name || 'Admin'}</div>
-            </div>
-            <div className="bg-gray-800/50 rounded-lg p-2">
-              <div className="text-gray-400 font-bold mb-0.5 uppercase tracking-wider text-[10px]">Date</div>
-              <div className="text-gray-200 font-medium text-sm">{formatDate(current.issued_date)}</div>
-            </div>
-          </div>
-
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
           {done ? (
-            <div className="flex items-center justify-center gap-2 py-3 text-green-400 font-bold">
+            <div className="flex items-center gap-2 text-green-700 font-bold text-sm px-4 py-2.5">
               <CheckCircle2 className="w-5 h-5" />
               <span>Acknowledged!</span>
             </div>
@@ -208,15 +246,12 @@ const PopWarningModal = () => {
             <button
               onClick={handleAcknowledge}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-black py-3 px-4 rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 uppercase tracking-wide text-sm shadow-lg shadow-red-900/40"
+              className="px-6 py-2.5 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing\u2026' : 'I Agree & Acknowledge'}
+              <CheckCircle2 className="w-4 h-4" />
+              {loading ? 'Processing…' : 'Accept & Submit'}
             </button>
           )}
-
-          <p className="text-center text-[10px] text-gray-500 leading-snug">
-            You must acknowledge this warning before continuing. This is recorded.
-          </p>
         </div>
       </div>
     </div>

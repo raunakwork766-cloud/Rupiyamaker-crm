@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Depends, Body
 from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
 from bson import ObjectId
 from datetime import datetime, timedelta
 import os
@@ -2036,15 +2037,19 @@ async def get_employees_for_warnings(
 
 
 # ─── Acknowledge Warning ─────────────────────────────────────────────────────
+class AcknowledgeRequest(BaseModel):
+    employee_remark: Optional[str] = None
+
 @router.post("/{warning_id}/acknowledge")
 async def acknowledge_warning(
     warning_id: str,
     user_id: str = Query(..., description="User ID acknowledging the warning"),
+    body: AcknowledgeRequest = AcknowledgeRequest(),
     warnings_db: WarningDB = Depends(get_warnings_db)
 ):
     """Mark a warning as acknowledged by the recipient"""
     try:
-        success = await warnings_db.acknowledge_warning(warning_id, user_id)
+        success = await warnings_db.acknowledge_warning(warning_id, user_id, employee_remark=body.employee_remark)
         if not success:
             raise HTTPException(status_code=404, detail="Warning not found or already acknowledged")
         return {"success": True, "message": "Warning acknowledged successfully"}
