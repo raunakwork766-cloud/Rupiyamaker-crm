@@ -428,7 +428,7 @@ export const ticketsAPI = {
         const userId = getUserId();
         if (!userId) throw new Error('User not authenticated');
 
-        return apiCall(`/tickets/${ticketId}/comments/?user_id=${userId}`, {
+        return apiCall(`/tickets/${ticketId}/comments?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ content }),
         });

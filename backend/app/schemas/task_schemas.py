@@ -171,16 +171,16 @@ class TaskResponse(BaseModel):
     """Response model for task operations"""
     id: str
     subject: str
-    task_details: Optional[str]
+    task_details: Optional[str] = None
     task_type: TaskType
     status: TaskStatus
     priority: TaskPriority
-    due_date: Optional[str]
-    due_time: Optional[str]
+    due_date: Optional[str] = None
+    due_time: Optional[str] = None
     assigned_to: List[str]
-    lead_id: Optional[str]
-    loan_type: Optional[str]
-    notes: Optional[str]
+    lead_id: Optional[str] = None
+    loan_type: Optional[str] = None
+    notes: Optional[str] = None
     is_urgent: bool
     created_by: str
     created_at: datetime
