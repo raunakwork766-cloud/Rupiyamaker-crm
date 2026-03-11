@@ -263,52 +263,22 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
     }
 
     const data = await response.json();
-    
-    // If leads are found, check reassignment eligibility for the first lead
+
+    // Locking info is now computed by the backend (earliest lead governs all duplicates).
+    // Populate top-level convenience fields from locking_info so the rest of the UI
+    // works without changes.
     if (data && data.found && data.leads && data.leads.length > 0) {
-      try {
-        const leadId = data.leads[0].id;
-        const eligibilityUrl = `${API_BASE_URL}/leads/${leadId}/reassignment-eligibility?user_id=${userId}`;
-        
-        const eligibilityResponse = await fetch(eligibilityUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        
-        if (eligibilityResponse.ok) {
-          const eligibilityData = await eligibilityResponse.json();
-          
-          // Add reassignment eligibility data to the response
-          data.can_reassign = eligibilityData.can_reassign;
-          data.reassignment_reason = eligibilityData.reason;
-          data.days_elapsed = eligibilityData.days_elapsed;
-          data.reassignment_period = eligibilityData.reassignment_period;
-          data.days_remaining = eligibilityData.days_remaining;
-          data.is_manager_permission_required = eligibilityData.is_manager_permission_required;
-          data.file_sent_to_login = eligibilityData.file_sent_to_login;
-          data.status = eligibilityData.status;
-          data.sub_status = eligibilityData.sub_status;
-          
-          // If eligibility response includes lead data, merge it with existing lead data
-          if (eligibilityData.lead) {
-            data.leads[0] = { 
-              ...data.leads[0], 
-              ...eligibilityData.lead,
-              // Ensure these critical fields from eligibility data are preserved
-              file_sent_to_login: eligibilityData.file_sent_to_login,
-              status: eligibilityData.status,
-              sub_status: eligibilityData.sub_status,
-              login_department_sent_date: eligibilityData.lead.login_department_sent_date
-            };
-          }
-        }
-      } catch (eligibilityError) {
-        // Continue without eligibility data
-      }
+      const li = data.locking_info || {};
+      data.can_reassign              = !li.is_locked;
+      data.days_remaining            = li.days_remaining   ?? data.days_remaining   ?? 0;
+      data.reassignment_period       = li.reassignment_period ?? data.reassignment_period ?? 0;
+      data.days_elapsed              = li.days_elapsed     ?? data.days_elapsed     ?? 0;
+      data.is_manager_permission_required = li.is_manager_permission_required ?? false;
+      data.reassignment_reason       = li.is_locked
+        ? `Locked for ${li.days_remaining} more day(s) (based on earliest duplicate lead)`
+        : 'Available for reassignment';
     }
-    
+
     return data;
   } catch (error) {
     return null;
@@ -4985,7 +4955,7 @@ function CreateLead() {
                         </thead>
                         <tbody>
                           {leads.map((lead, idx) => {
-                            const isLatestRow = idx === 0 && leads.length > 1;
+                            const isLockingRow = lead.is_locking_lead === true && leads.length > 1;
                             const displayDate = hasBankLogins ? (lead.login_department_sent_date || lead.created_at) : lead.created_at;
                             return (
                               <tr
@@ -4998,9 +4968,9 @@ function CreateLead() {
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-white font-semibold text-sm">{fmtDate(displayDate)}</div>
                                   <div className="text-cyan-400 text-xs mt-0.5">{fmtAge(displayDate)}</div>
-                                  {isLatestRow && (
+                                  {isLockingRow && (
                                     <div className="inline-flex items-center gap-1 mt-1 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-500/30 whitespace-nowrap">
-                                      ★ LATEST — GOVERNS LOCK
+                                      ★ EARLIEST — GOVERNS LOCK
                                     </div>
                                   )}
                                 </td>

@@ -53,7 +53,7 @@ from app.utils.permissions import (
     get_lead_visibility_filter, can_view_lead, filter_leads_by_hierarchy,
     get_lead_user_capabilities
 )
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(
@@ -353,77 +353,42 @@ async def check_phone_number(
             "can_create_new": True
         }
     
-    # Check lead conditions for reassignment
+    # Build basic lead_results (sorted DESC by created_at — newest first for display)
     current_time = get_ist_now()
     lead_results = []
-    
-    for lead in matching_leads:
-        lead_age_days = 0
-        if lead.get("created_at"):
+
+    def _parse_dt(val):
+        if not val:
+            return None
+        if isinstance(val, str):
             try:
-                if isinstance(lead["created_at"], str):
-                    created_at = datetime.fromisoformat(lead["created_at"].replace("Z", "+00:00"))
-                else:
-                    created_at = lead["created_at"]
-                lead_age_days = (current_time - created_at).days
-            except Exception as e:
-                print(f"Error calculating lead age: {e}")
-        
-        lead_status = lead.get("status", "")
-        assigned_to = lead.get("assigned_to")
-        
-        # Determine action based on conditions
-        action = "processing"  # Default
-        can_reassign = False
-        
-        # Define status groups for better readability
-        active_statuses = ["active", "new", "pending"]
-        closed_statuses = ["closed", "completed", "converted", "rejected", "cancelled"]
-        processing_statuses = ["processing", "in_progress", "contacted", "under_review"]
-        
-        if lead_age_days > 15:
-            # Lead is older than 15 days - can reassign regardless of status
-            # This is the 15-day rule - any lead older than 15 days can be reassigned
-            action = "can_reassign"
-            can_reassign = True
-        elif lead_status in active_statuses:
-            if assigned_to != user_id:
-                # Lead is active but assigned to someone else - can request reassignment
-                action = "can_reassign" 
-                can_reassign = True
-            else:
-                # Lead is active and already assigned to current user
-                action = "processing"
-        elif lead_status in closed_statuses:
-            # Lead is closed/completed - can create new
-            action = "can_create_new"
-        elif lead_status in processing_statuses:
-            # Lead is actively being processed - cannot reassign unless it's older than 15 days
-            # (which is handled in the first condition)
-            action = "processing"
-        else:
-            # Any other status - assume processing
-            action = "processing"
-        
-        # Display loan type from either loan_type_name, loan_type, or loan_type_id
+                return datetime.fromisoformat(val.replace("Z", "+00:00"))
+            except Exception:
+                return None
+        return val
+
+    for lead in matching_leads:
+        created_dt = _parse_dt(lead.get("created_at"))
+        lead_age_days = (current_time - created_dt).days if created_dt else 0
+
         loan_type_display = lead.get("loan_type_name") or lead.get("loan_type") or ""
 
-        # Resolve created_by_name
         created_by_name = lead.get("created_by_name", "")
         if not created_by_name and lead.get("created_by"):
             try:
                 creator = await users_db.get_user(str(lead["created_by"]))
                 if creator:
-                    created_by_name = f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip() or creator.get("username", "")
+                    created_by_name = (
+                        f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip()
+                        or creator.get("username", "")
+                    )
             except Exception:
                 pass
 
-        # Resolve department_name (may already be a string in the lead doc)
         dept_name = lead.get("department_name", "")
         if isinstance(dept_name, dict):
             dept_name = dept_name.get("name", "")
 
-        # Bank name (from direct field or financial_details)
         bank_name = lead.get("bank_name", "") or ""
         if not bank_name:
             fin = lead.get("financial_details", {}) or {}
@@ -431,7 +396,7 @@ async def check_phone_number(
         if isinstance(bank_name, list):
             bank_name = bank_name[0] if bank_name else ""
 
-        lead_info = {
+        lead_results.append({
             "id": str(lead.get("_id", "")),
             "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),
             "phone": lead.get("phone", ""),
@@ -442,45 +407,135 @@ async def check_phone_number(
             "loan_type_id": str(lead.get("loan_type_id", "")),
             "login_department_sent_date": lead.get("login_department_sent_date", ""),
             "created_at": lead.get("created_at", ""),
-            "assigned_to": assigned_to,
+            "_created_dt": created_dt,          # internal, removed before response
+            "assigned_to": lead.get("assigned_to"),
             "created_by": str(lead.get("created_by", "")),
             "assign_report_to": lead.get("assign_report_to"),
             "age_days": lead_age_days,
-            "action": action,
-            "can_reassign": can_reassign,
+            "action": "processing",
+            "can_reassign": False,
+            "is_locking_lead": False,           # will be set below for earliest lead
             "created_by_name": created_by_name,
             "department_name": dept_name,
             "bank_name": bank_name,
             "file_sent_to_login": lead.get("file_sent_to_login", False),
-        }
-        lead_results.append(lead_info)
-    
-    # Determine overall response
-    can_create_new = all(lead.get("action") in ["can_create_new", "can_reassign"] for lead in lead_results)
-    has_processing = any(lead.get("action") == "processing" for lead in lead_results)
-    can_reassign_any = any(lead.get("can_reassign", False) for lead in lead_results)
-    
+        })
+
+    # ── Locking period logic ─────────────────────────────────────────────────
+    # Find the EARLIEST created lead — its status's reassignment_period governs ALL.
+    earliest_lr = None
+    for lr in lead_results:
+        dt = lr.get("_created_dt")
+        if dt and (earliest_lr is None or dt < earliest_lr.get("_created_dt")):
+            earliest_lr = lr
+
+    locking_info: Dict[str, Any] = {
+        "is_locked": False,
+        "reassignment_period": 0,
+        "days_elapsed": 0,
+        "days_remaining": 0,
+        "is_manager_permission_required": False,
+    }
+
+    if earliest_lr:
+        earliest_lr["is_locking_lead"] = True
+        status_name = earliest_lr.get("status", "")
+        sub_status_name = earliest_lr.get("sub_status", "")
+
+        # Look up reassignment_period from settings (status + optional sub-status override)
+        reassignment_period = 0
+        is_manager_required = False
+        status_obj = await leads_db.get_status_by_name(status_name)
+        if status_obj:
+            reassignment_period = status_obj.get("reassignment_period") or 0
+            is_manager_required = status_obj.get("is_manager_permission_required") or False
+            if sub_status_name:
+                for sub in (status_obj.get("sub_statuses") or []):
+                    sub_name = sub.get("name") if isinstance(sub, dict) else sub
+                    if sub_name == sub_status_name and isinstance(sub, dict):
+                        if sub.get("reassignment_period") is not None:
+                            reassignment_period = sub.get("reassignment_period")
+                        if sub.get("is_manager_permission_required") is not None:
+                            is_manager_required = sub.get("is_manager_permission_required")
+                        break
+
+        locking_info["is_manager_permission_required"] = is_manager_required
+
+        if reassignment_period and reassignment_period > 0:
+            # Reference date: login sent date (if sent to login) else created_at of earliest lead
+            ref_dt = earliest_lr.get("_created_dt") or current_time
+            if earliest_lr.get("file_sent_to_login") and earliest_lr.get("login_department_sent_date"):
+                parsed = _parse_dt(earliest_lr["login_department_sent_date"])
+                if parsed:
+                    ref_dt = parsed
+
+            days_elapsed = (current_time - ref_dt).days
+            days_remaining = max(0, reassignment_period - days_elapsed)
+            is_locked = days_remaining > 0
+            available_from = ref_dt + timedelta(days=reassignment_period)
+
+            locking_info.update({
+                "is_locked": is_locked,
+                "locked_since": ref_dt.isoformat(),
+                "locking_lead_id": earliest_lr.get("id"),
+                "locking_status": status_name,
+                "locking_sub_status": sub_status_name,
+                "reassignment_period": reassignment_period,
+                "days_elapsed": days_elapsed,
+                "days_remaining": days_remaining,
+                "available_from": available_from.isoformat(),
+            })
+
+            # Override can_reassign / action for each lead based on global lock
+            for lr in lead_results:
+                if is_locked:
+                    lr["can_reassign"] = False
+                    lr["action"] = "locked"
+                else:
+                    lr["can_reassign"] = True
+                    lr["action"] = "can_reassign"
+        else:
+            # No reassignment period → all available
+            for lr in lead_results:
+                lr["can_reassign"] = True
+                lr["action"] = "can_reassign"
+
+    # Remove internal helper field before returning
+    for lr in lead_results:
+        lr.pop("_created_dt", None)
+
+    # ── Overall flags ────────────────────────────────────────────────────────
+    is_globally_locked = locking_info.get("is_locked", False)
+    can_reassign_any = not is_globally_locked
+    has_processing = is_globally_locked
+
     response = {
         "found": True,
         "total_leads": len(lead_results),
         "leads": lead_results,
-        "can_create_new": can_create_new,
-        "has_processing": has_processing,
-        "can_reassign": can_reassign_any
+        "can_create_new": not is_globally_locked,
+        "has_processing": is_globally_locked,
+        "can_reassign": can_reassign_any,
+        # Convenience top-level fields (mirrors locking_info for backward compat)
+        "days_remaining": locking_info.get("days_remaining", 0),
+        "reassignment_period": locking_info.get("reassignment_period", 0),
+        "days_elapsed": locking_info.get("days_elapsed", 0),
+        "is_manager_permission_required": locking_info.get("is_manager_permission_required", False),
+        "locking_info": locking_info,
     }
-    
-    # Create a message based on what was searched
+
     message_prefix = "Phone number"
     if loan_type_id or loan_type_name:
         message_prefix += " with the selected loan type"
-    
-    if has_processing:
-        response["message"] = f"{message_prefix} found with leads currently in processing"
+
+    if is_globally_locked:
+        dr = locking_info.get("days_remaining", 0)
+        response["message"] = f"{message_prefix} found — locked for {dr} more day(s)"
     elif can_reassign_any:
-        response["message"] = f"{message_prefix} found with leads that can be reassigned"
+        response["message"] = f"{message_prefix} found — available for reassignment"
     else:
         response["message"] = f"{message_prefix} found in database"
-    
+
     return response
 
 @router.post("/{lead_id}/reassign", response_model=Dict[str, str])
