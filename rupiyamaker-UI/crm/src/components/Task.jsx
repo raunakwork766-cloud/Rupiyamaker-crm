@@ -1846,7 +1846,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   // Handle task deletion
   const handleDeleteTask = async (taskId) => {
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/tasks/${taskId}/?user_id=${currentUserId}`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/tasks/${taskId}?user_id=${currentUserId}`, {
         method: 'DELETE',
       });
 
