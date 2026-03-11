@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload } from "lucide-react";
+import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload, Maximize, Minimize } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
@@ -411,6 +411,19 @@ const CameraModal = ({
     document.getElementById('camera-modal-container') || document.body
   );
 };
+
+// Fullscreen icon that reacts to actual fullscreen state
+function FullscreenIcon() {
+  const [isFullscreen, setIsFullscreen] = React.useState(!!document.fullscreenElement);
+  React.useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+  return isFullscreen
+    ? <Minimize className="w-5 h-5" />
+    : <Maximize className="w-5 h-5" />;
+}
 
 export default function TopNavbar({
   selectedLabel = "Feed",
@@ -1431,6 +1444,25 @@ export default function TopNavbar({
       
       {/* Right side - Actions */}
       <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
+        {/* Fullscreen Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+              document.exitFullscreen().catch(() => {});
+            }
+          }}
+          onMouseEnter={e => e.currentTarget.querySelector('span').style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.querySelector('span').style.opacity = '0'}
+          className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          title="Toggle Fullscreen"
+        >
+          <FullscreenIcon />
+          <span style={{opacity: 0, transition: 'opacity 0.15s'}} className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap pointer-events-none">Fullscreen</span>
+        </button>
+
         {/* Notifications Bell - Hidden on very small screens */}
         <div className="hidden sm:block">
           <NotificationBell />
