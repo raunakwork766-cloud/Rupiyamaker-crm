@@ -218,6 +218,8 @@ class AttachmentTypeBase(BaseModel):
     sort_number: int = Field(..., ge=1, description="Sort order within the target type (1, 2, 3, etc.)")
     is_active: bool = Field(True, description="Whether the attachment type is active")
     description: Optional[str] = Field(None, max_length=500, description="Description of attachment type")
+    category: Optional[str] = Field(None, max_length=200, description="Category/section grouping for this attachment type")
+    is_primary: Optional[bool] = Field(True, description="Whether this type shows by default (True) or is an extra doc (False)")
 
 class AttachmentTypeCreate(AttachmentTypeBase):
     pass
@@ -228,6 +230,8 @@ class AttachmentTypeUpdate(BaseModel):
     sort_number: Optional[int] = Field(None, ge=1, description="Sort order within the target type (1, 2, 3, etc.)")
     is_active: Optional[bool] = Field(None, description="Whether the attachment type is active")
     description: Optional[str] = Field(None, max_length=500, description="Description of attachment type")
+    category: Optional[str] = Field(None, max_length=200, description="Category/section grouping for this attachment type")
+    is_primary: Optional[bool] = Field(None, description="Whether this type shows by default (True) or is an extra doc (False)")
 
 class AttachmentTypeInDB(BaseModel):
     id: str = Field(alias="_id")
@@ -236,6 +240,8 @@ class AttachmentTypeInDB(BaseModel):
     sort_number: Optional[int] = Field(None, ge=1, description="Sort order within the target type (1, 2, 3, etc.)")
     is_active: bool = Field(True, description="Whether the attachment type is active")
     description: Optional[str] = Field(None, max_length=500, description="Description of attachment type")
+    category: Optional[str] = Field(None, max_length=200, description="Category/section grouping for this attachment type")
+    is_primary: Optional[bool] = Field(True, description="Whether this type shows by default (True) or is an extra doc (False)")
     created_at: datetime
     updated_at: datetime
 

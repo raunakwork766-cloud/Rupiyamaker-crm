@@ -329,6 +329,19 @@ const SettingsPage = () => {
     const [atInlineEditing, setAtInlineEditing] = useState(null); // { id, value }
     const [atQuickAddName, setAtQuickAddName] = useState('');
     const [atQuickAddTarget, setAtQuickAddTarget] = useState('leads');
+    // Category-based settings UI (matching premium_document_upload.html settings popup)
+    const [atDraftCategories, setAtDraftCategories] = useState([]);
+    const [atCatCollapsed, setAtCatCollapsed] = useState({});
+    const [atDraftDirty, setAtDraftDirty] = useState(false);
+    const [atSaving, setAtSaving] = useState(false);
+    const [atNewCatInput, setAtNewCatInput] = useState('');
+    const [atNewDocInputs, setAtNewDocInputs] = useState({});
+    const [atNewDocTargets, setAtNewDocTargets] = useState({});
+    const [atCatDragIdx, setAtCatDragIdx] = useState(null);
+    const [atCatDragOverIdx, setAtCatDragOverIdx] = useState(null);
+    const [atDocDrag, setAtDocDrag] = useState(null);
+    const [atDocDragOver, setAtDocDragOver] = useState(null);
+    const [atDraftKey, setAtDraftKey] = useState(0);
     const [attendanceSettings, setAttendanceSettings] = useState({
         check_in_time: '10:00',
         check_out_time: '19:00',
@@ -620,6 +633,19 @@ const SettingsPage = () => {
         return attachmentTypes.filter(item => 
             item.target_type === attachmentTypeFilter
         );
+    };
+
+    // Build category-based draft structure from flat attachment types list
+    const buildDraftCategories = (types) => {
+        if (!types || types.length === 0) return [];
+        const catMap = new Map();
+        const sorted = [...types].sort((a, b) => (a.sort_number || 999) - (b.sort_number || 999));
+        sorted.forEach(t => {
+            const cat = (t.category || '').trim().toUpperCase() || 'GENERAL';
+            if (!catMap.has(cat)) catMap.set(cat, []);
+            catMap.get(cat).push({ ...t });
+        });
+        return [...catMap.entries()].map(([title, docs]) => ({ title, docs }));
     };
 
     // Complete permissions structure (updated with lowercase keys)
@@ -1032,6 +1058,9 @@ const SettingsPage = () => {
                 });
                 
                 setAttachmentTypes(processedAttachmentTypes);
+                // Build category draft for settings UI
+                setAtDraftCategories(buildDraftCategories(processedAttachmentTypes));
+                setAtDraftDirty(false);
             }
         } catch (error) {
             console.error('Error loading attachment types:', error);
@@ -2999,86 +3028,168 @@ const updateStatus = async (statusId, statusData) => {
     );
 
     const renderAttachmentTypesTable = () => {
-        const filtered = getFilteredAttachmentTypes()
-            .slice()
-            .sort((a, b) => (a.sort_number || 0) - (b.sort_number || 0));
-
-        // Inline name save
-        const handleInlineSave = async (item) => {
-            if (!atInlineEditing || atInlineEditing.id !== (item._id || item.id)) return;
-            const val = atInlineEditing.value.trim().toUpperCase();
-            if (!val) { setAtInlineEditing(null); return; }
-            try {
-                await hrmsService.updateAttachmentType(item._id || item.id, {
-                    name: val, target_type: item.target_type,
-                    sort_number: item.sort_number, description: item.description,
-                    is_active: item.is_active
-                });
-                setAtInlineEditing(null);
-                loadAttachmentTypes();
-            } catch (e) { console.error(e); }
+        // ── Draft mutation helpers ──
+        const updateDraft = (updater) => {
+            setAtDraftCategories(prev => {
+                const next = JSON.parse(JSON.stringify(prev));
+                return updater(next);
+            });
+            setAtDraftDirty(true);
         };
 
-        // Quick toggle (status / target)
-        const handleQuickToggle = async (item, field, value) => {
-            try {
-                await hrmsService.updateAttachmentType(item._id || item.id, {
-                    name: item.name, target_type: field === 'target_type' ? value : item.target_type,
-                    sort_number: item.sort_number, description: item.description,
-                    is_active: field === 'is_active' ? value : item.is_active
-                });
-                loadAttachmentTypes();
-            } catch (e) { console.error(e); }
+        const toggleCatCollapse = (catTitle) => {
+            setAtCatCollapsed(prev => ({ ...prev, [catTitle]: !prev[catTitle] }));
         };
 
-        // Drag drop reorder → bulk sort_number update
-        const handleDrop = async (targetIdx) => {
-            if (atDragIdx === null || atDragIdx === targetIdx) {
-                setAtDragIdx(null); setAtDragOverIdx(null); return;
-            }
-            const reordered = [...filtered];
-            const [moved] = reordered.splice(atDragIdx, 1);
-            reordered.splice(targetIdx, 0, moved);
-            const updates = reordered.map((item, i) => ({ ...item, sort_number: i + 1 }));
-            // Optimistic local update
-            setAttachmentTypes(prev =>
-                prev.map(t => {
-                    const upd = updates.find(u => (u._id || u.id) === (t._id || t.id));
-                    return upd ? { ...t, sort_number: upd.sort_number } : t;
-                })
-            );
-            setAtDragIdx(null); setAtDragOverIdx(null);
-            // Persist to backend
-            updates.forEach(upd =>
-                hrmsService.updateAttachmentType(upd._id || upd.id, {
-                    name: upd.name, target_type: upd.target_type,
-                    sort_number: upd.sort_number, description: upd.description,
-                    is_active: upd.is_active
-                }).catch(console.error)
-            );
+        const renameCategory = (catIdx, val) => {
+            if (!val.trim()) return;
+            const newTitle = val.trim().toUpperCase();
+            updateDraft(draft => {
+                draft[catIdx].title = newTitle;
+                draft[catIdx].docs.forEach(d => { d.category = newTitle; });
+                return draft;
+            });
         };
 
-        // Quick add
-        const handleQuickAdd = async () => {
-            const val = atQuickAddName.trim().toUpperCase();
+        const deleteCategory = (catIdx) => {
+            if (!window.confirm(`Delete "${atDraftCategories[catIdx].title}" and all its documents?`)) return;
+            updateDraft(draft => { draft.splice(catIdx, 1); return draft; });
+        };
+
+        const renameDoc = (catIdx, docIdx, val) => {
+            if (!val.trim()) return;
+            updateDraft(draft => { draft[catIdx].docs[docIdx].name = val.trim().toUpperCase(); return draft; });
+        };
+
+        const changeDocPrimary = (catIdx, docIdx, isPrimary) => {
+            updateDraft(draft => { draft[catIdx].docs[docIdx].is_primary = isPrimary; return draft; });
+        };
+
+        const deleteDoc = (catIdx, docIdx) => {
+            if (!window.confirm(`Delete "${atDraftCategories[catIdx].docs[docIdx].name}"?`)) return;
+            updateDraft(draft => { draft[catIdx].docs.splice(docIdx, 1); return draft; });
+        };
+
+        const addDocToCategory = (catIdx) => {
+            const val = (atNewDocInputs[catIdx] || '').trim().toUpperCase();
             if (!val) return;
-            const maxSort = filtered.length > 0 ? Math.max(...filtered.map(t => t.sort_number || 0)) : 0;
-            try {
-                await hrmsService.createAttachmentType({
-                    name: val, target_type: atQuickAddTarget,
-                    sort_number: maxSort + 1, description: '', is_active: true
+            const targetType = atNewDocTargets[catIdx] || 'leads';
+            updateDraft(draft => {
+                draft[catIdx].docs.push({
+                    name: val,
+                    target_type: targetType,
+                    is_active: true,
+                    is_primary: true,
+                    category: draft[catIdx].title,
+                    sort_number: draft[catIdx].docs.length + 1,
+                    _isNew: true
                 });
-                setAtQuickAddName('');
-                loadAttachmentTypes();
-            } catch (e) { console.error(e); }
+                return draft;
+            });
+            setAtNewDocInputs(prev => ({ ...prev, [catIdx]: '' }));
+        };
+
+        const addCategory = () => {
+            const val = atNewCatInput.trim().toUpperCase();
+            if (!val) return;
+            updateDraft(draft => { draft.push({ title: val, docs: [] }); return draft; });
+            setAtNewCatInput('');
+        };
+
+        // ── Category drag/drop ──
+        const handleCatDrop = (targetIdx) => {
+            if (atCatDragIdx === null || atCatDragIdx === targetIdx) {
+                setAtCatDragIdx(null); setAtCatDragOverIdx(null); return;
+            }
+            updateDraft(draft => {
+                const [moved] = draft.splice(atCatDragIdx, 1);
+                draft.splice(targetIdx, 0, moved);
+                return draft;
+            });
+            setAtCatDragIdx(null); setAtCatDragOverIdx(null);
+        };
+
+        // ── Doc drag/drop (within same category) ──
+        const handleDocDrop = (targetCatIdx, targetDocIdx) => {
+            if (!atDocDrag) { setAtDocDragOver(null); return; }
+            const { catIdx: srcCatIdx, docIdx: srcDocIdx } = atDocDrag;
+            if (srcCatIdx !== targetCatIdx || srcDocIdx === targetDocIdx) {
+                setAtDocDrag(null); setAtDocDragOver(null); return;
+            }
+            updateDraft(draft => {
+                const [moved] = draft[targetCatIdx].docs.splice(srcDocIdx, 1);
+                draft[targetCatIdx].docs.splice(targetDocIdx, 0, moved);
+                return draft;
+            });
+            setAtDocDrag(null); setAtDocDragOver(null);
+        };
+
+        // ── Save changes to backend ──
+        const saveAllChanges = async () => {
+            setAtSaving(true);
+            try {
+                // Flatten all docs with their new category/sort info
+                const draftDocs = [];
+                atDraftCategories.forEach((cat, catIdx) => {
+                    cat.docs.forEach((doc, docIdx) => {
+                        draftDocs.push({ ...doc, category: cat.title, sort_number: catIdx * 100 + docIdx + 1 });
+                    });
+                });
+
+                const originalIds = new Set(attachmentTypes.map(t => t._id || t.id));
+                const draftIds = new Set(draftDocs.filter(d => !d._isNew && (d._id || d.id)).map(d => d._id || d.id));
+
+                // Delete removed items
+                for (const id of originalIds) {
+                    if (!draftIds.has(id)) await hrmsService.deleteAttachmentType(id).catch(console.error);
+                }
+                // Create new items
+                for (const doc of draftDocs.filter(d => d._isNew)) {
+                    await hrmsService.createAttachmentType({
+                        name: doc.name, target_type: doc.target_type || 'leads',
+                        sort_number: doc.sort_number, description: doc.description || '',
+                        is_active: doc.is_active !== false, category: doc.category,
+                        is_primary: doc.is_primary !== false
+                    }).catch(console.error);
+                }
+                // Update existing items
+                for (const doc of draftDocs.filter(d => !d._isNew && (d._id || d.id))) {
+                    await hrmsService.updateAttachmentType(doc._id || doc.id, {
+                        name: doc.name, target_type: doc.target_type,
+                        sort_number: doc.sort_number, description: doc.description || '',
+                        is_active: doc.is_active !== false, category: doc.category,
+                        is_primary: doc.is_primary !== false
+                    }).catch(console.error);
+                }
+                await loadAttachmentTypes();
+                setAtDraftDirty(false);
+                alert('Attachment settings saved successfully!');
+            } catch (e) {
+                console.error('Error saving attachment settings:', e);
+                alert('Error saving settings. Please try again.');
+            } finally {
+                setAtSaving(false);
+            }
+        };
+
+        const cancelChanges = () => {
+            setAtDraftCategories(buildDraftCategories(attachmentTypes));
+            setAtDraftDirty(false);
+            setAtDraftKey(k => k + 1);
         };
 
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 {/* ── Header ── */}
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-black text-gray-800 uppercase tracking-tight">Attachment Types</h3>
+                <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2 bg-gray-50">
+                    <h3 className="font-black text-lg text-gray-800 flex items-center gap-2">
+                        <Settings size={18} className="text-blue-600" />
+                        DOCUMENT SETTINGS
+                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {atDraftDirty && (
+                            <span className="text-[10px] text-amber-600 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded uppercase">Unsaved Changes</span>
+                        )}
                         {/* Filter tabs */}
                         <div className="flex rounded overflow-hidden border border-gray-200 shadow-sm">
                             {[['', 'All'], ['leads', 'Leads'], ['employees', 'Employees']].map(([val, label]) => (
@@ -3086,176 +3197,217 @@ const updateStatus = async (statusId, statusData) => {
                                     key={val}
                                     onClick={() => setAttachmentTypeFilter(val)}
                                     className={`px-2.5 py-1 text-[10px] font-bold transition ${
-                                        attachmentTypeFilter === val
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                                        attachmentTypeFilter === val ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
                                     }`}
                                 >{label}</button>
                             ))}
                         </div>
-                        <span className="text-[10px] text-gray-400 font-medium">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
                     </div>
-                    {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                        <button
-                            onClick={() => handleAdd('attachmentTypes')}
-                            className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm flex items-center gap-1 transition uppercase"
-                        >
-                            <Plus size={12} /> Add New
-                        </button>
-                    )}
                 </div>
 
-                {/* ── Body ── */}
-                <div className="p-3 bg-gray-50/30">
-                    {filtered.length === 0 ? (
+                {/* ── Content ── */}
+                <div key={atDraftKey} className="p-4 bg-gray-50/50 max-h-[70vh] overflow-y-auto">
+                    {atDraftCategories.length === 0 ? (
                         <div className="p-8 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
-                            No attachment types found. Click "Add New" to create one.
+                            No attachment types found. Add a category below to get started.
                         </div>
                     ) : (
-                        <div className="space-y-1.5">
-                            {filtered.map((item, idx) => {
-                                const id = item._id || item.id;
-                                const isDragOver = atDragOverIdx === idx;
-                                const isBeingDragged = atDragIdx === idx;
-                                const isInlineEdit = atInlineEditing?.id === id;
-                                return (
-                                    <div
-                                        key={id}
-                                        draggable
-                                        onDragStart={() => setAtDragIdx(idx)}
-                                        onDragOver={e => { e.preventDefault(); setAtDragOverIdx(idx); }}
-                                        onDragEnd={() => { setAtDragIdx(null); setAtDragOverIdx(null); }}
-                                        onDrop={e => { e.preventDefault(); handleDrop(idx); }}
-                                        className={`flex items-center justify-between px-2.5 py-2 bg-white border rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-grab active:cursor-grabbing hover:border-blue-300 group/sdoc transition
-                                            ${isDragOver ? 'border-t-2 border-t-blue-500 border-blue-200' : 'border-gray-200'}
-                                            ${isBeingDragged ? 'opacity-40' : ''}`}
-                                    >
-                                        {/* Left: grip + sort badge + name */}
-                                        <div className="flex items-center gap-2 flex-1 min-w-0 pr-3">
-                                            <GripVertical size={14} className="text-gray-300 shrink-0" />
-                                            <span className="text-[9px] font-black w-5 h-5 bg-gray-100 text-gray-500 rounded flex items-center justify-center shrink-0">
-                                                {item.sort_number || idx + 1}
-                                            </span>
-                                            {isInlineEdit ? (
-                                                <input
-                                                    autoFocus
-                                                    value={atInlineEditing.value}
-                                                    onChange={e => setAtInlineEditing(prev => ({ ...prev, value: e.target.value }))}
-                                                    onBlur={() => handleInlineSave(item)}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter') handleInlineSave(item);
-                                                        if (e.key === 'Escape') setAtInlineEditing(null);
-                                                    }}
-                                                    className="text-xs font-bold text-gray-700 bg-white border border-blue-400 rounded px-1.5 py-0.5 outline-none w-full uppercase shadow-sm focus:ring-1 focus:ring-blue-300"
-                                                />
-                                            ) : (
-                                                <span
-                                                    className="text-xs font-bold text-gray-800 truncate uppercase flex-1 cursor-pointer hover:text-blue-600 transition"
-                                                    onDoubleClick={() => setAtInlineEditing({ id, value: item.name })}
-                                                    title="Double-click to rename"
-                                                >
-                                                    {item.name}
-                                                </span>
-                                            )}
+                        atDraftCategories.map((cat, catIdx) => {
+                            // Apply target type filter to docs display
+                            const visibleDocs = attachmentTypeFilter
+                                ? cat.docs.filter(d => d.target_type === attachmentTypeFilter)
+                                : cat.docs;
+                            // Hide category if filtered and no docs match
+                            if (attachmentTypeFilter && visibleDocs.length === 0 && cat.docs.length > 0 && cat.docs.every(d => d.target_type !== attachmentTypeFilter)) return null;
+
+                            const isCollapsed = atCatCollapsed[cat.title] !== false; // default = collapsed
+                            const isCatDragOver = atCatDragOverIdx === catIdx;
+                            const isCatBeingDragged = atCatDragIdx === catIdx;
+
+                            return (
+                                <div
+                                    key={`cat-${catIdx}-${cat.title}`}
+                                    draggable
+                                    onDragStart={e => { setAtCatDragIdx(catIdx); e.stopPropagation(); setTimeout(() => {}, 0); }}
+                                    onDragOver={e => { e.preventDefault(); setAtCatDragOverIdx(catIdx); e.stopPropagation(); }}
+                                    onDragEnd={() => { setAtCatDragIdx(null); setAtCatDragOverIdx(null); }}
+                                    onDrop={e => { e.preventDefault(); e.stopPropagation(); handleCatDrop(catIdx); }}
+                                    className={`mb-3 bg-gray-100/70 p-3 border border-gray-200 rounded-lg shadow-sm transition
+                                        ${isCatDragOver ? 'border-t-4 border-t-blue-500' : ''}
+                                        ${isCatBeingDragged ? 'opacity-50' : ''}`}
+                                >
+                                    {/* Category header */}
+                                    <div className={`flex items-center justify-between ${!isCollapsed ? 'pb-1 border-b border-gray-300 mb-3' : ''} text-gray-800`}>
+                                        <div className="flex items-center gap-2 cursor-grab flex-1 mr-2 min-w-0">
+                                            <GripVertical size={16} className="text-gray-400 shrink-0" />
+                                            <span className="font-black text-sm uppercase shrink-0">{catIdx + 1}.</span>
+                                            <input
+                                                key={`cat-input-${cat.title}`}
+                                                type="text"
+                                                defaultValue={cat.title}
+                                                onBlur={e => renameCategory(catIdx, e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                                className="font-black text-sm uppercase tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-blue-400 focus:bg-white rounded px-1 transition text-gray-800 min-w-0"
+                                            />
                                         </div>
-
-                                        {/* Right: controls */}
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                            {/* Target badge */}
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                                                item.target_type === 'employees'
-                                                    ? 'bg-blue-100 text-blue-700'
-                                                    : 'bg-green-100 text-green-700'
-                                            }`}>
-                                                {item.target_type === 'employees' ? 'EMP' : 'LEAD'}
-                                            </span>
-
-                                            {/* Status dropdown */}
-                                            <select
-                                                value={item.is_active ? 'active' : 'inactive'}
-                                                onChange={e => handleQuickToggle(item, 'is_active', e.target.value === 'active')}
-                                                className={`text-[9px] font-bold px-1.5 py-1 rounded border outline-none cursor-pointer transition ${
-                                                    item.is_active
-                                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                                        : 'bg-gray-100 text-gray-600 border-gray-200'
-                                                }`}
-                                            >
-                                                <option value="active">ACTIVE (DEFAULT)</option>
-                                                <option value="inactive">INACTIVE</option>
-                                            </select>
-
-                                            {/* Edit */}
-                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingItem(item);
-                                                        setFormData({
-                                                            name: item.name,
-                                                            target_type: item.target_type,
-                                                            sort_number: item.sort_number,
-                                                            description: item.description,
-                                                            is_active: item.is_active
-                                                        });
-                                                        setModalType('edit');
-                                                        setShowModal(true);
-                                                    }}
-                                                    className="text-gray-400 hover:text-blue-600 w-6 h-6 flex items-center justify-center rounded hover:bg-blue-50 transition"
-                                                    title="Edit details"
-                                                >
-                                                    <Edit size={12} />
-                                                </button>
-                                            )}
-
-                                            {/* Delete */}
+                                        <div className="flex items-center gap-0.5 shrink-0">
                                             {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
                                                 <button
-                                                    onClick={() => handleDelete(id, 'attachmentTypes')}
-                                                    disabled={deletingItems.has(id)}
-                                                    className={`w-6 h-6 flex items-center justify-center rounded transition ${
-                                                        deletingItems.has(id)
-                                                            ? 'text-gray-300 cursor-not-allowed'
-                                                            : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
-                                                    }`}
-                                                    title="Delete"
+                                                    onClick={() => deleteCategory(catIdx)}
+                                                    className="text-gray-400 hover:text-red-500 transition p-1.5 rounded hover:bg-white w-7 h-7 flex items-center justify-center"
+                                                    title="Delete category"
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
                                             )}
+                                            <button
+                                                onClick={() => toggleCatCollapse(cat.title)}
+                                                className="text-gray-500 hover:text-blue-600 transition p-1.5 rounded hover:bg-white w-7 h-7 flex items-center justify-center border border-transparent hover:border-gray-200"
+                                                title={isCollapsed ? 'Expand' : 'Collapse'}
+                                            >
+                                                {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                                            </button>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
+
+                                    {/* Docs inside category (when expanded) */}
+                                    {!isCollapsed && (
+                                        <div className="pl-6 pr-1">
+                                            {visibleDocs.length === 0 && (
+                                                <div className="text-[11px] text-gray-400 italic py-2 text-center">No documents in this section yet.</div>
+                                            )}
+                                            {visibleDocs.map((doc) => {
+                                                const docIdx = cat.docs.indexOf(doc);
+                                                const isPrim = doc.is_primary !== false;
+                                                const isDocDragOver = atDocDragOver?.catIdx === catIdx && atDocDragOver?.docIdx === docIdx;
+                                                const isDocBeingDragged = atDocDrag?.catIdx === catIdx && atDocDrag?.docIdx === docIdx;
+                                                return (
+                                                    <div
+                                                        key={`doc-${doc._id || doc.id || `new-${catIdx}-${docIdx}`}`}
+                                                        draggable
+                                                        onDragStart={e => { setAtDocDrag({ catIdx, docIdx }); e.stopPropagation(); }}
+                                                        onDragOver={e => { e.preventDefault(); setAtDocDragOver({ catIdx, docIdx }); e.stopPropagation(); }}
+                                                        onDragEnd={() => { setAtDocDrag(null); setAtDocDragOver(null); }}
+                                                        onDrop={e => { e.preventDefault(); e.stopPropagation(); handleDocDrop(catIdx, docIdx); }}
+                                                        className={`flex items-center justify-between p-2 lg:p-2.5 bg-white border border-gray-200 rounded-md mb-1.5 cursor-grab active:cursor-grabbing hover:border-blue-300 transition
+                                                            ${isDocDragOver ? 'border-t-2 border-t-blue-500' : ''}
+                                                            ${isDocBeingDragged ? 'opacity-40' : ''}`}
+                                                    >
+                                                        <div className="flex items-center gap-2.5 flex-1 pr-2 min-w-0">
+                                                            <GripVertical size={14} className="text-gray-300 shrink-0" />
+                                                            <input
+                                                                key={`doc-input-${doc._id || doc.id || `${catIdx}-${docIdx}`}`}
+                                                                type="text"
+                                                                defaultValue={doc.name}
+                                                                onBlur={e => renameDoc(catIdx, docIdx, e.target.value)}
+                                                                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                                                className="text-[11px] lg:text-xs font-bold text-gray-700 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-400 focus:bg-white rounded px-1 transition uppercase"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${doc.target_type === 'employees' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                                {doc.target_type === 'employees' ? 'EMP' : 'LEAD'}
+                                                            </span>
+                                                            <select
+                                                                value={isPrim ? 'primary' : 'extra'}
+                                                                onChange={e => changeDocPrimary(catIdx, docIdx, e.target.value === 'primary')}
+                                                                className={`text-[9px] font-bold px-1.5 py-1 rounded border outline-none cursor-pointer ${isPrim ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}
+                                                            >
+                                                                <option value="primary">OUTSIDE (DEFAULT)</option>
+                                                                <option value="extra">EXTRA DOC</option>
+                                                            </select>
+                                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
+                                                                <button
+                                                                    onClick={() => deleteDoc(catIdx, docIdx)}
+                                                                    className="text-gray-400 hover:text-red-500 w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 transition"
+                                                                    title="Delete document type"
+                                                                >
+                                                                    <Trash2 size={10} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {/* Add doc input row */}
+                                            {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
+                                                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 border-dashed">
+                                                    <input
+                                                        type="text"
+                                                        value={atNewDocInputs[catIdx] || ''}
+                                                        onChange={e => setAtNewDocInputs(prev => ({ ...prev, [catIdx]: e.target.value }))}
+                                                        onKeyDown={e => { if (e.key === 'Enter') addDocToCategory(catIdx); }}
+                                                        placeholder="NEW DOC TITLE..."
+                                                        className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none flex-1 uppercase shadow-inner focus:border-blue-400 bg-white text-gray-800 placeholder-gray-400"
+                                                    />
+                                                    <select
+                                                        value={atNewDocTargets[catIdx] || 'leads'}
+                                                        onChange={e => setAtNewDocTargets(prev => ({ ...prev, [catIdx]: e.target.value }))}
+                                                        className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none bg-white text-gray-800 focus:border-blue-400 shrink-0"
+                                                    >
+                                                        <option value="leads">Leads</option>
+                                                        <option value="employees">Employees</option>
+                                                    </select>
+                                                    <button
+                                                        onClick={() => addDocToCategory(catIdx)}
+                                                        className="bg-gray-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold shadow-sm uppercase shrink-0 transition"
+                                                    >
+                                                        Add Doc
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
                     )}
 
-                    {/* ── Quick add row ── */}
+                    {/* Add category row */}
                     {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-dashed border-gray-300">
+                        <div className="p-3 border-2 border-dashed border-gray-300 rounded-lg flex items-center gap-2 bg-gray-50/50 mt-4 hover:border-blue-400 transition">
                             <input
                                 type="text"
-                                value={atQuickAddName}
-                                onChange={e => setAtQuickAddName(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(); }}
-                                placeholder="NEW ATTACHMENT TYPE NAME..."
-                                className="flex-1 text-[10px] font-bold px-2.5 py-1.5 rounded border border-gray-300 outline-none uppercase focus:border-blue-400 focus:ring-1 focus:ring-blue-200 shadow-inner bg-white text-gray-800 placeholder-gray-400"
+                                value={atNewCatInput}
+                                onChange={e => setAtNewCatInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') addCategory(); }}
+                                placeholder="NEW CATEGORY HEADING..."
+                                className="text-[11px] font-bold px-3 py-2 rounded border border-gray-300 outline-none flex-1 uppercase shadow-inner focus:border-blue-400 bg-white text-gray-800 placeholder-gray-400"
                             />
-                            <select
-                                value={atQuickAddTarget}
-                                onChange={e => setAtQuickAddTarget(e.target.value)}
-                                className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none bg-white text-gray-800 focus:border-blue-400"
-                            >
-                                <option value="leads">Leads</option>
-                                <option value="employees">Employees</option>
-                            </select>
                             <button
-                                onClick={handleQuickAdd}
-                                disabled={!atQuickAddName.trim()}
-                                className="bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold shadow-sm uppercase shrink-0 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                onClick={addCategory}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold shadow-sm uppercase shrink-0 transition"
                             >
-                                Add
+                                Add Category
                             </button>
                         </div>
                     )}
+                </div>
+
+                {/* ── Footer: Cancel + Save Changes ── */}
+                <div className="p-3 border-t border-gray-200 bg-white flex justify-end gap-2">
+                    <button
+                        onClick={cancelChanges}
+                        disabled={atSaving}
+                        className="px-4 py-1.5 rounded text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition uppercase disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={saveAllChanges}
+                        disabled={atSaving || !atDraftDirty}
+                        className="px-4 py-1.5 rounded text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5 uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {atSaving ? (
+                            <>
+                                <Save size={12} className="animate-pulse" /> Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save size={12} /> Save Changes
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
         );

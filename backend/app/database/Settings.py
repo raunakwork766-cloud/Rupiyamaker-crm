@@ -851,16 +851,6 @@ class SettingsDB:
         if not ObjectId.is_valid(attachment_type_id):
             return False
         
-        # Check if sort_number already exists for this target_type (excluding current record)
-        if "sort_number" in update_data and "target_type" in update_data:
-            existing_sort = await self.attachment_types_collection.find_one({
-                "target_type": update_data["target_type"],
-                "sort_number": update_data["sort_number"],
-                "_id": {"$ne": ObjectId(attachment_type_id)}
-            })
-            if existing_sort:
-                raise ValueError(f"Sort number {update_data['sort_number']} already exists for target type '{update_data['target_type']}'")
-        
         update_data["updated_at"] = get_ist_now()
         result = await self.attachment_types_collection.update_one(
             {"_id": ObjectId(attachment_type_id)}, 
