@@ -1406,26 +1406,10 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   // Permission check helper - Enhanced with comprehensive fallback logic
   const checkPermission = useCallback((page, action) => {
     try {
-      // CRITICAL FIX: Check if user is logged in - if yes, and permissions are empty, likely a race condition
-      // In this case, be PERMISSIVE and allow access (backend will still enforce)
-      const userId = localStorage.getItem('userId');
-      const token = localStorage.getItem('token');
-      const isLoggedIn = !!(userId && token);
-      
       if (!userPermissions || Object.keys(userPermissions).length === 0) {
         console.warn(`⚠️ No permissions loaded yet for ${page}.${action}`);
         
-        // If user is logged in but permissions are empty, it's a race condition
-        // Allow access to core items (backend will still validate)
-        if (isLoggedIn && action === 'show') {
-          const coreItems = ['feeds', 'leads', 'tasks', 'tickets', 'login', 'logins'];
-          if (coreItems.includes(page.toLowerCase())) {
-            console.log(`✅ Permissive access granted for core item ${page}.${action} (logged in, permissions loading)`);
-            return true;
-          }
-        }
-        
-        // Always allow Feed
+        // Always allow Feed; deny everything else until permissions load
         return page === 'feeds' && action === 'show';
       }
       
