@@ -1504,12 +1504,25 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     console.log('🔐 ========================================');
     
     const perms = {
-      // LEAD CRM - Check multiple variations
-      canShowLeads: checkPermission('leads', 'show') || 
-                    checkPermission('Leads', 'show') || 
-                    checkPermission('LEADS', 'show') ||
-                    checkPermission('lead', 'show') ||
-                    isSuperAdmin(userPermissions),
+      // LEAD CRM - Requires actual section-level or content-level leads permissions.
+      // A generic {page:"leads", actions:["show"]} alone (leftover backward-compat entry)
+      // must NOT grant sidebar visibility — user needs real content access.
+      canShowLeads: (() => {
+        // 1. Nested section permissions (preferred / most specific)
+        if (checkPermission('leads.create_lead', 'show') ||
+            checkPermission('leads.pl_odd_leads', 'show') ||
+            checkPermission('leads.pl_&_odd_leads', 'show')) {
+          return true;
+        }
+        // 2. Unified "leads" entry with real content permissions (backward compat)
+        const contentActions = ['own', 'all', 'junior', 'add', 'assign',
+                                'status_update', 'download_obligation', 'delete', '*'];
+        if (contentActions.some(action => checkPermission('leads', action))) {
+          return true;
+        }
+        // 3. Super admin always gets access
+        return isSuperAdmin(userPermissions);
+      })(),
       
       // Feed - Always visible
       canShowFeeds: true,
