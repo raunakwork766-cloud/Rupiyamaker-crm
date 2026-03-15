@@ -1,8 +1,8 @@
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.utils.timezone import get_ist_now
+from app.utils.timezone import get_ist_now, IST
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -40,6 +40,14 @@ class InterviewsDB:
                 "created_at": current_time,
                 "updated_at": current_time
             })
+
+            # Normalize interview_date to IST-aware datetime to avoid timezone drift
+            if "interview_date" in interview_data and isinstance(interview_data["interview_date"], datetime):
+                dt = interview_data["interview_date"]
+                if dt.tzinfo is None:
+                    # Naive datetime (e.g. from date-only string "2026-03-14" parsed as midnight UTC)
+                    # Treat the date as IST local date at midnight IST
+                    interview_data["interview_date"] = dt.replace(tzinfo=IST)
             
             result = await self.collection.insert_one(interview_data)
             
@@ -117,6 +125,12 @@ class InterviewsDB:
                 return None
             
             update_data["updated_at"] = get_ist_now()
+
+            # Normalize interview_date to IST-aware datetime
+            if "interview_date" in update_data and isinstance(update_data["interview_date"], datetime):
+                dt = update_data["interview_date"]
+                if dt.tzinfo is None:
+                    update_data["interview_date"] = dt.replace(tzinfo=IST)
             
             result = await self.collection.update_one(
                 {"_id": ObjectId(interview_id)},

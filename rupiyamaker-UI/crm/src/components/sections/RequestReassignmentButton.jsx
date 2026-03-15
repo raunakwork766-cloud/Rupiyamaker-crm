@@ -47,7 +47,7 @@ const RequestReassignmentButton = ({
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <h3 className="text-xl font-semibold mb-4">Request Lead Reassignment</h3>
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Request Lead Reassignment</h3>
             
             {error && (
               <div className="mb-4 p-3 bg-red-100 text-red-700 rounded flex items-center">
@@ -64,7 +64,7 @@ const RequestReassignmentButton = ({
                 <select
                   value={targetUser}
                   onChange={(e) => setTargetUser(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 text-gray-900 bg-white"
                 >
                   <option value="">-- Select User --</option>
                   {assignableUsers.map((user) => (
@@ -86,7 +86,7 @@ const RequestReassignmentButton = ({
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 text-gray-900 bg-white placeholder-gray-400"
                   placeholder="Explain why this lead needs to be reassigned..."
                 ></textarea>
               </div>

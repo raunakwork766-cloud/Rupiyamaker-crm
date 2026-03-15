@@ -201,12 +201,37 @@ async def list_reassignment_requests(
         print(f"🔍 Sample request requestors: {sample_requestors}")
     
     # Get leads with reassignment requests
+    # CRITICAL: Pass explicit projection including ALL reassignment fields
+    # Default projection in list_leads excludes these fields
+    reassignment_projection = {
+        "_id": 1, "first_name": 1, "last_name": 1, "name": 1, "customer_name": 1,
+        "phone": 1, "mobile_number": 1, "email": 1, "alternative_phone": 1,
+        "status": 1, "sub_status": 1, "loan_type": 1, "loan_type_name": 1,
+        "assigned_to": 1, "created_by": 1, "created_by_name": 1,
+        "created_at": 1, "updated_at": 1,
+        # Reassignment-specific fields
+        "pending_reassignment": 1,
+        "reassignment_requested_by": 1,
+        "reassignment_target_user": 1,
+        "reassignment_reason": 1,
+        "reassignment_requested_at": 1,
+        "reassignment_status": 1,
+        "reassignment_approved_by": 1,
+        "reassignment_approved_at": 1,
+        "reassignment_rejected_by": 1,
+        "reassignment_rejected_at": 1,
+        "reassignment_rejection_reason": 1,
+        "reassignment_eligibility": 1,
+        "reassignment_new_data_code": 1,
+        "reassignment_new_campaign_name": 1,
+    }
     leads = await leads_db.list_leads(
         filter_dict=filter_dict,
         skip=skip,
         limit=page_size,
         sort_by="reassignment_requested_at",
-        sort_order=-1
+        sort_order=-1,
+        projection=reassignment_projection
     )
     
     # Debug: Log results
@@ -285,7 +310,129 @@ async def list_reassignment_requests(
             lead_dict["reassignment_new_campaign_name"] = lead["reassignment_new_campaign_name"]
         
         enhanced_leads.append(lead_dict)
-    
+
+    # ── Enrich each lead with duplicate leads (same phone) & reassignment history ──
+    try:
+        user_name_cache: Dict[str, str] = {}
+
+        async def _resolve_name(uid: str) -> str:
+            if not uid:
+                return ""
+            if uid in user_name_cache:
+                return user_name_cache[uid]
+            try:
+                u = await users_db.get_user(uid)
+                if u:
+                    name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("username", "")
+                    user_name_cache[uid] = name
+                    return name
+            except Exception:
+                pass
+            user_name_cache[uid] = ""
+            return ""
+
+        for el in enhanced_leads:
+            phone = (el.get("phone") or el.get("mobile_number") or "").strip()
+            if not phone:
+                el["duplicate_leads"] = []
+                el["duplicate_count"] = 0
+                el["reassignment_history"] = []
+                continue
+
+            clean_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+
+            # Find other leads with the same phone number
+            dup_filter = {
+                "$or": [
+                    {"phone": {"$regex": clean_phone, "$options": "i"}},
+                    {"alternative_phone": {"$regex": clean_phone, "$options": "i"}}
+                ]
+            }
+            dup_leads = await leads_db.list_leads(
+                filter_dict=dup_filter, skip=0, limit=20,
+                sort_by="created_at", sort_order=-1
+            )
+
+            dup_results = []
+            for dl in dup_leads:
+                dl_id = str(dl.get("_id", ""))
+                assigned_name = await _resolve_name(str(dl.get("assigned_to", ""))) if dl.get("assigned_to") else ""
+                created_name = await _resolve_name(str(dl.get("created_by", ""))) if dl.get("created_by") else ""
+                created_at_val = dl.get("created_at")
+                if isinstance(created_at_val, datetime):
+                    created_at_val = created_at_val.isoformat()
+                dup_results.append({
+                    "id": dl_id,
+                    "name": f"{dl.get('first_name', '')} {dl.get('last_name', '')}".strip() or dl.get("name", ""),
+                    "phone": dl.get("phone", ""),
+                    "status": dl.get("status", ""),
+                    "sub_status": dl.get("sub_status", ""),
+                    "assigned_to_name": assigned_name,
+                    "created_by_name": created_name,
+                    "loan_type": dl.get("loan_type_name") or dl.get("loan_type") or "",
+                    "created_at": created_at_val or "",
+                    "is_current": dl_id == el.get("_id", ""),
+                })
+
+            el["duplicate_leads"] = dup_results
+            el["duplicate_count"] = len(dup_results)
+
+        # Fetch reassignment history (from activity collection) for all leads
+        lead_ids_obj = []
+        for el in enhanced_leads:
+            lid = el.get("_id", "")
+            if lid and ObjectId.is_valid(lid):
+                lead_ids_obj.append(ObjectId(lid))
+
+        if lead_ids_obj:
+            history_cursor = leads_db.activity_collection.find(
+                {"lead_id": {"$in": lead_ids_obj}, "type": "reassignment"},
+                {"_id": 0, "lead_id": 1, "created_at": 1, "created_by": 1,
+                 "action": 1, "activity_description": 1, "details": 1}
+            ).sort("created_at", -1)
+            history_records = await history_cursor.to_list(length=200)
+
+            for rec in history_records:
+                if rec.get("created_by"):
+                    await _resolve_name(str(rec["created_by"]))
+                details = rec.get("details") or {}
+                if details.get("target_user"):
+                    await _resolve_name(str(details["target_user"]))
+
+            history_by_lead: Dict[str, list] = {}
+            for rec in history_records:
+                lid = str(rec.get("lead_id", ""))
+                if lid not in history_by_lead:
+                    history_by_lead[lid] = []
+                created_at_val = rec.get("created_at")
+                if isinstance(created_at_val, datetime):
+                    created_at_val = created_at_val.isoformat()
+                details = rec.get("details") or {}
+                history_by_lead[lid].append({
+                    "date": created_at_val or "",
+                    "action": rec.get("action", ""),
+                    "by_user": user_name_cache.get(str(rec.get("created_by", "")), ""),
+                    "to_user": user_name_cache.get(str(details.get("target_user", "")), ""),
+                    "reason": details.get("reason", ""),
+                    "status": details.get("reassignment_status", ""),
+                    "description": rec.get("activity_description", ""),
+                })
+
+            for el in enhanced_leads:
+                el["reassignment_history"] = history_by_lead.get(el.get("_id", ""), [])
+        else:
+            for el in enhanced_leads:
+                el["reassignment_history"] = []
+
+    except Exception as e:
+        logging.error(f"Failed to enrich reassignment leads with duplicates/history: {e}")
+        for el in enhanced_leads:
+            if "duplicate_leads" not in el:
+                el["duplicate_leads"] = []
+                el["duplicate_count"] = 0
+            if "reassignment_history" not in el:
+                el["reassignment_history"] = []
+
     # Calculate total pages
     total_pages = math.ceil(total_leads / page_size) if total_leads > 0 else 1
     
@@ -343,13 +490,9 @@ async def create_reassignment_request(
     # Check if this is a direct reassignment (approved status)
     is_direct_reassignment = reassignment_status == "approved"
     
-    if not is_direct_reassignment:
-        # Check if lead is already pending reassignment for non-direct requests
-        if lead.get("pending_reassignment"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Lead already has a pending reassignment request"
-            )
+    # Note: We intentionally allow a new pending request even if one already exists —
+    # the new request simply updates/overwrites the previous pending state.
+    # Only direct (approved) reassignments need special gating below.
     
     # Check reassignment eligibility based on status/sub-status settings
     eligibility = await leads_db.check_reassignment_eligibility(lead_id)
@@ -357,15 +500,19 @@ async def create_reassignment_request(
     # Check if user has admin/manager permission
     can_override = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
     
-    # If reassignment requires manager permission but user is not a manager
-    if eligibility.get("is_manager_permission_required") and not can_override:
+    # If reassignment requires manager permission AND the user wants direct (approved) reassignment,
+    # block it — they must go through the pending/approval flow.
+    # Pending requests from regular users are ALWAYS allowed regardless of manager permission.
+    if is_direct_reassignment and eligibility.get("is_manager_permission_required") and not can_override:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This lead requires manager approval for reassignment"
+            detail="This lead requires manager approval for reassignment. Please submit a pending request."
         )
     
-    # If lead is not eligible for reassignment and user doesn't have override permission
-    if not eligibility.get("can_reassign") and not can_override:
+    # If lead is not yet eligible (locking period not elapsed) and user doesn't have override
+    # permission, only block DIRECT reassignments. Pending requests must still be submittable
+    # so that managers can process them once the lock expires or override it.
+    if is_direct_reassignment and not eligibility.get("can_reassign") and not can_override:
         # Return specific error details
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

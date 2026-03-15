@@ -147,8 +147,13 @@ class AppShareLinksDB:
             return False
         
         # Check expiration
-        if "expires_at" in share_link and share_link["expires_at"] < get_ist_now():
-            return False
+        if "expires_at" in share_link:
+            exp = share_link["expires_at"]
+            if exp.tzinfo is None:
+                from datetime import timezone as _tz
+                exp = exp.replace(tzinfo=_tz.utc)
+            if exp < get_ist_now():
+                return False
         
         # Check access count
         if share_link.get("access_count", 0) >= share_link.get("max_access_count", 999):

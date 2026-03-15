@@ -16,9 +16,7 @@ import {
   MoreVertical,
   Link as LinkIcon,
   Copy,
-  ExternalLink,
-  ToggleLeft,
-  ToggleRight
+  ExternalLink
 } from 'lucide-react';
 import { fetchWithAuth, getCurrentUserId } from '../utils/auth';
 import { hasPermission, getUserPermissions, isSuperAdmin } from '../utils/permissions';
@@ -28,39 +26,34 @@ const API_BASE_URL = '/api'; // Always use API proxy
 // Helper function to get proper image URL
 const getImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
-  
-  console.log('getImageUrl input:', imageUrl);
-  
-  // If it's already a full URL with rupiyamaker.com:8049, convert to use /api proxy
-  if (imageUrl.startsWith('https://rupiyamaker.com:8049/')) {
-    const path = imageUrl.replace('https://rupiyamaker.com:8049/', '');
-    const proxyUrl = `/api/${path}`;
-    console.log('getImageUrl output (proxied full URL):', proxyUrl);
-    return proxyUrl;
+
+  // If it's a full URL pointing to the rupiyamaker backend (any port), convert to /api proxy
+  const rupiyamakerMatch = imageUrl.match(/^https?:\/\/rupiyamaker\.com:\d+\/(.*)/);
+  if (rupiyamakerMatch) {
+    return `/api/${rupiyamakerMatch[1]}`;
   }
-  
-  // If it's already a different full URL (starts with http:// or https://), use it as is
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    console.log('getImageUrl output (external full URL):', imageUrl);
-    return imageUrl;
-  }
-  
+
   // If it's a relative path starting with /media/, use /api proxy
   if (imageUrl.startsWith('/media/')) {
-    const proxyUrl = `/api${imageUrl}`;
-    console.log('getImageUrl output (proxied relative path):', proxyUrl);
-    return proxyUrl;
+    return `/api${imageUrl}`;
   }
-  
-  // If it's just a filename, construct path with /api proxy
-  if (!imageUrl.startsWith('/')) {
-    const proxyUrl = `/api/media/app-images/${imageUrl}`;
-    console.log('getImageUrl output (proxied filename):', proxyUrl);
-    return proxyUrl;
+
+  // If it's a relative path starting with /api/, use it as-is
+  if (imageUrl.startsWith('/api/')) {
+    return imageUrl;
   }
-  
-  // Default: return as is
-  console.log('getImageUrl output (default):', imageUrl);
+
+  // If it's already a different full URL (starts with http:// or https://), use it as is
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl;
+  }
+
+  // If it's just a filename (no slashes), construct path with /api proxy
+  if (!imageUrl.includes('/')) {
+    return `/api/media/app-images/${imageUrl}`;
+  }
+
+  // Default: return as-is
   return imageUrl;
 };
 
@@ -85,6 +78,8 @@ const AppsPage = () => {
     max_access_count: 999,
     notes: ''
   });
+  const [shareDurVal, setShareDurVal] = useState('30');
+  const [shareDurUnit, setShareDurUnit] = useState('minutes');
   const [copiedToken, setCopiedToken] = useState(null);
   
   // Image upload states
@@ -561,7 +556,12 @@ const AppsPage = () => {
     try {
       const currentUserId = getCurrentUserId();
       const baseUrl = window.location.origin;
-      
+
+      // Compute expires_in_days from the duration input
+      const dur = parseFloat(shareDurVal) || 30;
+      const unitToDays = { minutes: 1 / 1440, hours: 1 / 24, days: 1 };
+      const expires_in_days = dur * (unitToDays[shareDurUnit] || 1);
+
       const response = await fetchWithAuth(`${API_BASE_URL}/app-share-links/create?user_id=${currentUserId}`, {
         method: 'POST',
         headers: {
@@ -569,7 +569,7 @@ const AppsPage = () => {
         },
         body: JSON.stringify({
           app_id: selectedApp.id,
-          expires_in_days: parseInt(newShareLink.expires_in_days),
+          expires_in_days: expires_in_days,
           max_access_count: parseInt(newShareLink.max_access_count),
           base_url: baseUrl,
           notes: newShareLink.notes || null
@@ -578,11 +578,6 @@ const AppsPage = () => {
 
       if (response.ok) {
         await fetchShareLinks(selectedApp.id);
-        setNewShareLink({
-          expires_in_days: 7,
-          max_access_count: 999,
-          notes: ''
-        });
       } else {
         const errorData = await response.json();
         setError(errorData.detail || 'Failed to create share link');
@@ -1912,189 +1907,194 @@ const AppsPage = () => {
 
         {/* Share Links Modal */}
         {showShareModal && selectedApp && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <LinkIcon size={24} className="text-[#08B8EA]" />
-                  Share Links for "{selectedApp.title}"
-                </h2>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+
+              {/* Header */}
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <LinkIcon size={20} className="text-[#08B8EA]" />
+                  <h2 className="text-lg font-bold text-white">Share Link</h2>
+                  <span className="text-gray-400 text-sm">— {selectedApp.title}</span>
+                </div>
                 <button
                   onClick={() => {
                     setShowShareModal(false);
                     setSelectedApp(null);
                     setShareLinks([]);
-                    setNewShareLink({
-                      expires_in_days: 7,
-                      max_access_count: 999,
-                      notes: ''
-                    });
+                    setNewShareLink({ expires_in_days: 7, max_access_count: 999, notes: '' });
+                    setShareDurVal('30');
+                    setShareDurUnit('minutes');
                   }}
-                  className="text-gray-400 hover:text-white"
+                  className="text-gray-400 hover:text-white transition-colors"
                 >
-                  <X size={24} />
+                  <X size={20} />
                 </button>
               </div>
 
-              {/* Create New Share Link Section */}
-              <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
-                <h3 className="text-lg font-semibold mb-4">Create New Share Link</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm text-gray-300 mb-2">
-                      Expires in (days)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="365"
-                      value={newShareLink.expires_in_days}
-                      onChange={(e) => setNewShareLink({...newShareLink, expires_in_days: e.target.value})}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
-                    />
+              {/* Generate Link Section */}
+              <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 mb-5">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Anyone with the link can open this app without logging in</p>
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm text-gray-300 mb-2">Link valid for</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={shareDurVal}
+                        onChange={(e) => setShareDurVal(e.target.value < 1 ? '1' : e.target.value)}
+                        className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#08B8EA] text-sm"
+                        placeholder="30"
+                      />
+                      <select
+                        value={shareDurUnit}
+                        onChange={(e) => setShareDurUnit(e.target.value)}
+                        className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#08B8EA] text-sm"
+                      >
+                        <option value="minutes">Minutes</option>
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm text-gray-300 mb-2">
-                      Max Access Count
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={newShareLink.max_access_count}
-                      onChange={(e) => setNewShareLink({...newShareLink, max_access_count: e.target.value})}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
-                    />
-                  </div>
+                  <button
+                    onClick={createShareLink}
+                    className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white px-5 py-2 rounded-lg flex items-center gap-2 font-medium text-sm whitespace-nowrap transition-colors"
+                  >
+                    <Plus size={16} />
+                    Generate Link
+                  </button>
                 </div>
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-300 mb-2">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    value={newShareLink.notes}
-                    onChange={(e) => setNewShareLink({...newShareLink, notes: e.target.value})}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#08B8EA]"
-                    rows="2"
-                    placeholder="Add notes about this share link..."
-                  />
-                </div>
-                <button
-                  onClick={createShareLink}
-                  className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white px-4 py-2 rounded-lg flex items-center gap-2"
-                >
-                  <Plus size={16} />
-                  Generate Share Link
-                </button>
               </div>
 
-              {/* Existing Share Links */}
+              {/* Sessions / Existing Links */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Existing Share Links</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Sessions
+                    {shareLinks.length > 0 && (
+                      <span className="ml-2 bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded text-xs">
+                        {shareLinks.filter(l => l.is_active && new Date(l.expires_at) > new Date() && l.access_count < l.max_access_count).length} active
+                      </span>
+                    )}
+                  </h3>
+                  {shareLinks.length > 0 && (
+                    <button
+                      onClick={() => fetchShareLinks(selectedApp.id)}
+                      className="text-gray-500 hover:text-gray-300 text-xs flex items-center gap-1 transition-colors"
+                    >
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
                 {loadingShareLinks ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#08B8EA] mx-auto"></div>
-                    <p className="text-gray-400 mt-2">Loading share links...</p>
+                  <div className="flex items-center justify-center py-10">
+                    <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-[#08B8EA]"></div>
                   </div>
                 ) : shareLinks.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
-                    <p>No share links created yet</p>
+                  <div className="text-center py-10 text-gray-500">
+                    <LinkIcon size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No links yet — generate one above</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {shareLinks.map((link) => {
                       const shareUrl = getShareUrl(link.share_token);
                       const isExpired = new Date(link.expires_at) < new Date();
                       const isMaxedOut = link.access_count >= link.max_access_count;
-                      
+                      const isActive = link.is_active && !isExpired && !isMaxedOut;
+
+                      // Human-readable expiry
+                      const expiryDate = new Date(link.expires_at);
+                      const now = new Date();
+                      const diffMs = expiryDate - now;
+                      const diffHours = diffMs / (1000 * 60 * 60);
+                      let expiryText;
+                      if (isExpired) {
+                        expiryText = 'Expired';
+                      } else if (diffHours < 1) {
+                        expiryText = `Expires in ${Math.round(diffHours * 60)}m`;
+                      } else if (diffHours < 24) {
+                        expiryText = `Expires in ${Math.round(diffHours)}h`;
+                      } else {
+                        const days = Math.ceil(diffHours / 24);
+                        expiryText = `Expires in ${days}d`;
+                      }
+
                       return (
                         <div
                           key={link.id}
-                          className={`p-4 rounded-lg border ${
-                            link.is_active && !isExpired && !isMaxedOut
-                              ? 'bg-gray-800 border-gray-700'
-                              : 'bg-gray-800 bg-opacity-50 border-gray-700 opacity-60'
+                          className={`p-3 rounded-lg border transition-opacity ${
+                            isActive
+                              ? 'bg-gray-800 border-gray-600'
+                              : 'bg-gray-800/50 border-gray-700 opacity-55'
                           }`}
                         >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className={`px-2 py-1 text-xs rounded ${
-                                  link.is_active && !isExpired && !isMaxedOut
-                                    ? 'bg-green-500 bg-opacity-20 text-green-400'
-                                    : 'bg-red-500 bg-opacity-20 text-red-400'
-                                }`}>
-                                  {!link.is_active ? 'Deactivated' : isExpired ? 'Expired' : isMaxedOut ? 'Max Reached' : 'Active'}
-                                </span>
-                                <span className="text-xs text-gray-400">
-                                  Created: {new Date(link.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                                </span>
-                                <span className="text-xs text-gray-400">
-                                  Expires: {new Date(link.expires_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 bg-gray-900 p-2 rounded border border-gray-600">
-                                <input
-                                  type="text"
-                                  value={shareUrl}
-                                  readOnly
-                                  className="flex-1 bg-transparent text-sm text-gray-300 outline-none"
-                                />
-                                <button
-                                  onClick={() => copyToClipboard(shareUrl, link.share_token)}
-                                  className="text-[#08B8EA] hover:text-[#12d8fa] p-1"
-                                  title="Copy link"
-                                >
-                                  {copiedToken === link.share_token ? (
-                                    <span className="text-green-400 text-xs">Copied!</span>
-                                  ) : (
-                                    <Copy size={16} />
-                                  )}
-                                </button>
-                                <a
-                                  href={shareUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[#08B8EA] hover:text-[#12d8fa] p-1"
-                                  title="Open in new tab"
-                                >
-                                  <ExternalLink size={16} />
-                                </a>
-                              </div>
-                              {link.notes && (
-                                <p className="text-xs text-gray-400 mt-2">
-                                  Note: {link.notes}
-                                </p>
-                              )}
-                            </div>
+                          {/* URL row */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded font-medium ${
+                              isActive
+                                ? 'bg-green-500/15 text-green-400 border border-green-500/20'
+                                : 'bg-red-500/15 text-red-400 border border-red-500/20'
+                            }`}>
+                              {!link.is_active ? 'Off' : isExpired ? 'Expired' : isMaxedOut ? 'Limit reached' : 'Active'}
+                            </span>
+                            <input
+                              type="text"
+                              value={shareUrl}
+                              readOnly
+                              className="flex-1 bg-transparent text-xs text-gray-300 outline-none truncate min-w-0"
+                            />
+                            <button
+                              onClick={() => copyToClipboard(shareUrl, link.share_token)}
+                              className="flex-shrink-0 text-[#08B8EA] hover:text-[#12d8fa] transition-colors p-1"
+                              title="Copy link"
+                            >
+                              {copiedToken === link.share_token
+                                ? <span className="text-green-400 text-xs font-medium">Copied!</span>
+                                : <Copy size={14} />
+                              }
+                            </button>
+                            <a
+                              href={shareUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 text-[#08B8EA] hover:text-[#12d8fa] transition-colors p-1"
+                              title="Open link"
+                            >
+                              <ExternalLink size={14} />
+                            </a>
                           </div>
-                          
-                          <div className="flex items-center justify-between pt-3 border-t border-gray-700">
-                            <div className="flex items-center gap-4 text-xs text-gray-400">
-                              <span>Accesses: {link.access_count} / {link.max_access_count}</span>
+
+                          {/* Stats + actions row */}
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <div className="flex items-center gap-3">
+                              <span className="flex items-center gap-1">
+                                <span className="text-gray-300 font-medium">{link.access_count}</span> uses
+                              </span>
+                              <span>{expiryText}</span>
                               {link.last_accessed_at && (
-                                <span>Last accessed: {new Date(link.last_accessed_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
+                                <span>Last used {new Date(link.last_accessed_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                               <button
                                 onClick={() => toggleShareLink(link.share_token, link.is_active)}
-                                className={`flex items-center gap-1 px-3 py-1 rounded text-xs ${
+                                className={`px-2 py-1 rounded text-xs transition-colors ${
                                   link.is_active
-                                    ? 'bg-yellow-500 bg-opacity-20 text-yellow-400 hover:bg-opacity-30'
-                                    : 'bg-green-500 bg-opacity-20 text-green-400 hover:bg-opacity-30'
+                                    ? 'text-yellow-400 hover:bg-yellow-500/10'
+                                    : 'text-green-400 hover:bg-green-500/10'
                                 }`}
-                                title={link.is_active ? 'Deactivate link' : 'Reactivate link'}
                               >
-                                {link.is_active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                                 {link.is_active ? 'Deactivate' : 'Activate'}
                               </button>
                               <button
                                 onClick={() => deleteShareLink(link.share_token)}
-                                className="bg-red-500 bg-opacity-20 text-red-400 hover:bg-opacity-30 px-3 py-1 rounded text-xs flex items-center gap-1"
-                                title="Delete link"
+                                className="text-red-400 hover:bg-red-500/10 px-2 py-1 rounded text-xs transition-colors"
                               >
-                                <Trash2 size={14} />
                                 Delete
                               </button>
                             </div>
@@ -2106,14 +2106,16 @@ const AppsPage = () => {
                 )}
               </div>
 
-              <div className="mt-6 flex justify-end">
+              <div className="mt-5 flex justify-end">
                 <button
                   onClick={() => {
                     setShowShareModal(false);
                     setSelectedApp(null);
                     setShareLinks([]);
+                    setShareDurVal('30');
+                    setShareDurUnit('minutes');
                   }}
-                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
                 >
                   Close
                 </button>

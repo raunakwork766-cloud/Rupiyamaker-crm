@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status as http_status, Query, Response
 from typing import Dict, Optional, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 from app.utils.timezone import get_ist_now
 
@@ -182,11 +182,16 @@ async def get_public_app(
         )
     
     # Check if link is expired
-    if share_link.get("expires_at", datetime.min) < get_ist_now():
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="This share link has expired"
-        )
+    expires_at = share_link.get("expires_at")
+    if expires_at is not None:
+        # MongoDB returns naive UTC datetimes — make aware before comparing
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < get_ist_now():
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="This share link has expired"
+            )
     
     # Check access count
     if share_link.get("access_count", 0) >= share_link.get("max_access_count", 999):

@@ -348,6 +348,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   // Company dropdown ref for positioning
   const companyDropdownRef = useRef(null);
 
+  // Ref for capturing the full obligation section for PDF export
+  const obligationSectionRef = useRef(null);
+
   // Notify parent component when unsaved changes state updates
   // Auto-save is always active - no tab-switch popup needed
   useEffect(() => {
@@ -4664,18 +4667,300 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     }
   };
 
-  // Download obligations as PDF - Exact UI capture
+  // Download obligations as PDF - captures the actual rendered UI
   const handleDownloadObligations = async () => {
     try {
-      console.log('🎯 Starting UI capture for PDF generation...');
-      console.log('📊 Eligibility state at PDF generation:', {
-        eligibility: eligibility,
-        finalEligibility: eligibility?.finalEligibility,
-        backendFinalEligibility: backendFinalEligibility,
-        backendEligibilityLoaded: backendEligibilityLoaded
+      console.log('🎯 Starting DOM capture for PDF generation...');
+
+      const sourceEl = obligationSectionRef.current;
+      if (!sourceEl) {
+        alert('Could not find the obligation section. Please try again.');
+        return;
+      }
+
+      // Clone the element so we can expand all overflow without affecting the live UI
+      const clone = sourceEl.cloneNode(true);
+      clone.style.position = 'fixed';
+      clone.style.top = '0';
+      clone.style.left = '-99999px';  // off-screen to the left (not above) — avoids scrollY issues with html2canvas
+      // Use a wide enough canvas so the table + right panel both fit without clipping.
+      // Table columns alone need ~1300px; right panel is 420px; add breathing room → 1900px.
+      clone.style.width = Math.max(sourceEl.scrollWidth, sourceEl.offsetWidth, 1900) + 'px';
+      clone.style.height = 'auto';
+      clone.style.overflow = 'visible';
+      clone.style.zIndex = '-9999';
+      clone.style.pointerEvents = 'none';
+
+      // Expand ALL overflow-restricted elements so every field renders fully in the clone.
+      clone.querySelectorAll('[class]').forEach(el => {
+        const cls = el.className || '';
+        if (typeof cls !== 'string') return;
+
+        // Unlock any scroll/clip overflow (including overflow-x-auto which wraps the table)
+        if (cls.includes('overflow-y-auto') || cls.includes('overflow-y-hidden') ||
+            cls.includes('overflow-x-auto') || cls.includes('overflow-x-hidden') ||
+            cls.includes('overflow-auto') || cls.includes('overflow-hidden') ||
+            cls.includes('obligation-no-scrollbar')) {
+          el.style.overflow = 'visible';
+          el.style.overflowX = 'visible';
+          el.style.overflowY = 'visible';
+          el.style.height = 'auto';
+          el.style.maxHeight = 'none';
+        }
+
+        // Un-truncate text that uses ellipsis (e.g. bank name span)
+        if (cls.includes('text-ellipsis') || cls.includes('truncate') || cls.includes('line-clamp')) {
+          el.style.overflow = 'visible';
+          el.style.textOverflow = 'clip';
+          el.style.whiteSpace = 'normal';
+        }
       });
-      
-      // Create a container element that will hold our PDF content
+
+      // Fix inline height/overflow constraints (root div, panel divs, etc.)
+      clone.querySelectorAll('[style]').forEach(el => {
+        if (el.style.height === '100%' || el.style.overflow === 'hidden' ||
+            el.style.overflowY === 'hidden' || el.style.overflowY === 'auto' ||
+            el.style.overflowX === 'hidden' || el.style.overflowX === 'auto') {
+          el.style.height = 'auto';
+          el.style.overflow = 'visible';
+          el.style.overflowX = 'visible';
+          el.style.overflowY = 'visible';
+          el.style.maxHeight = 'none';
+        }
+      });
+
+      // ── Sync form-element values ──────────────────────────────────────────
+      // cloneNode(true) copies HTML attributes but NOT the JS .value property.
+      // React controls all inputs via .value (JS property), so without this
+      // sync every input in the clone appears empty in the PDF capture.
+      {
+        const srcEls = [...sourceEl.querySelectorAll('input, textarea, select')];
+        const dstEls = [...clone.querySelectorAll('input, textarea, select')];
+        srcEls.forEach((src, i) => {
+          const dst = dstEls[i];
+          if (!dst) return;
+          try {
+            dst.value = src.value;
+            if (src.type === 'checkbox' || src.type === 'radio') {
+              dst.checked = src.checked;
+            }
+          } catch (_) {}
+        });
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      document.body.appendChild(clone);
+      // Allow layout to settle
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // ── Convert ALL unsupported CSS color functions to rgb ─────────────────
+      // html2canvas cannot parse oklch(), oklab(), or color() syntax.
+      // Because the clone is now IN the DOM, window.getComputedStyle() resolves
+      // every color to whatever the browser uses natively (which may still be
+      // oklch/oklab in modern Chrome). We convert those to rgb using the
+      // 1×1 canvas trick — the browser handles the conversion internally.
+      const resolveColorToRgb = (() => {
+        const tmp = document.createElement('canvas');
+        tmp.width = tmp.height = 1;
+        const ctx = tmp.getContext('2d');
+        return (v) => {
+          try {
+            ctx.clearRect(0, 0, 1, 1);
+            ctx.fillStyle = v;       // browser resolves any valid CSS color
+            ctx.fillRect(0, 0, 1, 1);
+            const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+            return a < 255
+              ? `rgba(${r},${g},${b},${+(a / 255).toFixed(3)})`
+              : `rgb(${r},${g},${b})`;
+          } catch (_) {
+            return 'transparent';
+          }
+        };
+      })();
+
+      const UNSUPPORTED_COLOR_RE = /oklch|oklab|color\(/i;
+      const COLOR_PROPS_CSS = [
+        'color', 'background-color',
+        'border-top-color', 'border-right-color',
+        'border-bottom-color', 'border-left-color',
+        'outline-color', 'caret-color',
+        'text-decoration-color', 'column-rule-color',
+        'fill', 'stroke',
+      ];
+      // camelCase map for el.style assignment
+      const toCamel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
+      clone.querySelectorAll('*').forEach(el => {
+        try {
+          const cs = window.getComputedStyle(el);
+          COLOR_PROPS_CSS.forEach(cssProp => {
+            const val = cs.getPropertyValue(cssProp);
+            if (val && UNSUPPORTED_COLOR_RE.test(val)) {
+              el.style[toCamel(cssProp)] = resolveColorToRgb(val);
+            }
+          });
+        } catch (_) { /* element may not support getComputedStyle */ }
+      });
+      // ──────────────────────────────────────────────────────────────────────
+
+      // ── Replace <input> / <select> / <textarea> with styled display divs ──
+      // html2canvas clips form-element text to the visible painted area.
+      // We replace every form element with a plain <div> that shows the full
+      // value centred vertically using flexbox.
+      //
+      // Key fixes vs naïve approach:
+      //  1. Use getBoundingClientRect().height (actual rendered px) — avoids the
+      //     content-box vs border-box ambiguity from getComputedStyle().height.
+      //  2. Set lineHeight:'normal' — browsers often set an input's lineHeight
+      //     equal to the full field height to fake vertical centering; copying
+      //     that large value to a <div> pushes the text to the bottom.
+      //  3. Remove paddingTop/Bottom — flex alignItems:'center' handles vertical
+      //     centering, so we don't want conflicting padding pushing text down.
+      clone.querySelectorAll('input, select, textarea').forEach(formEl => {
+        try {
+          const tag = formEl.tagName.toLowerCase();
+          let displayText = formEl.value || '';
+
+          // <select>: show the visible option label, not the raw value
+          if (tag === 'select') {
+            const opt = formEl.options[formEl.selectedIndex];
+            displayText = (opt && opt.text) ? opt.text : displayText;
+          }
+
+          const cs  = window.getComputedStyle(formEl);
+          const rect = formEl.getBoundingClientRect();          // actual rendered height
+          const div  = document.createElement('div');
+
+          // ── Dimensions ──────────────────────────────────────────────────
+          // Use the real rendered height so the div is the exact same size
+          // as the original input in the layout.
+          const h = Math.max(rect.height || 0, parseFloat(cs.height) || 0, 20);
+          div.style.width      = cs.width;
+          div.style.height     = h + 'px';
+          div.style.boxSizing  = 'border-box';
+
+          // ── Spacing ─────────────────────────────────────────────────────
+          div.style.marginTop    = cs.marginTop;
+          div.style.marginRight  = cs.marginRight;
+          div.style.marginBottom = cs.marginBottom;
+          div.style.marginLeft   = cs.marginLeft;
+          // Horizontal padding only — vertical centering done by flexbox
+          div.style.paddingLeft  = cs.paddingLeft;
+          div.style.paddingRight = cs.paddingRight;
+
+          // ── Typography ──────────────────────────────────────────────────
+          div.style.fontSize      = cs.fontSize;
+          div.style.fontWeight    = cs.fontWeight;
+          div.style.fontFamily    = cs.fontFamily;
+          div.style.letterSpacing = cs.letterSpacing;
+          div.style.textAlign     = cs.textAlign;
+          // CRITICAL: 'normal' prevents a tall inherited lineHeight from
+          // pushing the text baseline to the bottom of the div.
+          div.style.lineHeight    = 'normal';
+
+          // ── Colors ──────────────────────────────────────────────────────
+          div.style.color           = cs.color;
+          div.style.backgroundColor = cs.backgroundColor;
+
+          // ── Borders ─────────────────────────────────────────────────────
+          div.style.border       = `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`;
+          div.style.borderRadius = cs.borderRadius;
+
+          // ── Flexbox vertical centering ───────────────────────────────────
+          div.style.display     = 'flex';
+          div.style.alignItems  = 'center';   // vertically center text
+          div.style.overflow    = 'visible';
+          div.style.whiteSpace  = 'nowrap';
+          div.style.position    = 'relative';
+
+          // ── Content ─────────────────────────────────────────────────────
+          if (displayText) {
+            div.textContent = displayText;
+          } else if (formEl.placeholder) {
+            div.textContent   = formEl.placeholder;
+            div.style.color   = 'rgba(100,116,139,0.45)';
+          }
+
+          formEl.parentNode.replaceChild(div, formEl);
+        } catch (_) { /* skip elements that can't be replaced */ }
+      });
+      // ──────────────────────────────────────────────────────────────────────
+
+      // Use the explicit width we set on the clone; scrollHeight gives full content height.
+      const captureWidth = clone.offsetWidth || clone.scrollWidth || 1900;
+      const captureHeight = clone.scrollHeight || 800;
+
+      const canvas = await html2canvas(clone, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#000000',
+        width: captureWidth,
+        height: captureHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: captureWidth + 50,
+        windowHeight: captureHeight + 50,
+        logging: false,
+        allowTaint: true,
+        onclone: (clonedDoc) => {
+          // Safety pass inside html2canvas's own clone
+          clonedDoc.querySelectorAll('*').forEach(el => {
+            try {
+              const cs = clonedDoc.defaultView.getComputedStyle(el);
+              COLOR_PROPS_CSS.forEach(cssProp => {
+                const val = cs.getPropertyValue(cssProp);
+                if (val && UNSUPPORTED_COLOR_RE.test(val)) {
+                  el.style[toCamel(cssProp)] = resolveColorToRgb(val);
+                }
+              });
+            } catch (_) {}
+          });
+        },
+      });
+
+      document.body.removeChild(clone);
+
+      const imgData = canvas.toDataURL('image/png');
+
+      // Use landscape A4 to best fit the side-by-side layout
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageW = 297; // landscape A4 width mm
+      const pageH = 210; // landscape A4 height mm
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      let heightLeft = imgH;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+      }
+
+      const customerName = leadData?.name || leadData?.first_name || 'Report';
+      const fileName = `Obligation_${customerName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pdf`;
+      pdf.save(fileName);
+
+      console.log('✅ UI-matched PDF generated:', fileName);
+    } catch (error) {
+      console.error('❌ Error generating PDF:', error);
+      // Clean up clone if still present
+      try { document.querySelectorAll('div[style*="-999999px"]').forEach(el => el.remove()); } catch(_) {}
+      alert('Error generating PDF: ' + error.message + '. Please try again.');
+    }
+
+    if (false) {
+      // Legacy template-based generation kept below for reference but not used
       const pdfContainer = document.createElement('div');
       pdfContainer.style.position = 'fixed';
       pdfContainer.style.top = '-9999px';
@@ -5033,10 +5318,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       pdf.save(fileName);
 
       console.log('✅ UI-matched PDF generated successfully:', fileName);
-    } catch (error) {
-      console.error('❌ Error generating UI-matched PDF:', error);
-      alert('Error generating PDF. Please try again.');
     }
+  // end legacy
   };
 
   const handleAddBank = (newBankName) => {
@@ -5509,8 +5792,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   function handleBankSelect(index, bank) {
     console.log(`Bank selection triggered for index ${index} with bank: "${bank}"`);
-    const bankValue = bank.includes('') ? bank.replace(' ', '') : bank;
-    console.log(`Cleaned bank value: "${bankValue}"`);
+    // Use the bank name exactly as received - no modification
+    const bankValue = bank;
+    console.log(`Bank value: "${bankValue}"`);
     
     handleObligationChange(index, "bankName", bankValue);
     
@@ -6354,7 +6638,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   return (
     <>
-    <div key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
+    <div ref={obligationSectionRef} key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
         <div className="mb-8 form-section">
@@ -6877,9 +7161,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                             onClick={() => canEdit && handleBankDropdownToggle(idx)}
                             data-dropdown-trigger="true"
                           >
-                            <span className={`${(row.bankName && row.bankName.toLowerCase() !== 'custom') ? '' : 'text-slate-500'} uppercase`}>
+                            <span className={`${(row.bankName && row.bankName.toLowerCase() !== 'custom') ? '' : 'text-slate-500'} uppercase whitespace-nowrap overflow-hidden text-ellipsis block`}>
                               {(row.bankName && row.bankName.toLowerCase() !== 'custom') ? row.bankName : 'Select Bank'}
-                              {row.bankName && companyType.includes(row.bankName) ? '': ''}
                             </span>
                             <ChevronDown className="h-4 w-4 ml-2 flex-shrink-0" />
                           </div>

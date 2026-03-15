@@ -110,10 +110,14 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
   const [internalUpdate, setInternalUpdate] = useState(0);
   const isSelected = useMemo(() => {
     const stored = localStorage.getItem('selectedLabel');
-    const currentPath = window.location.pathname;
     
-    // Enhanced URL-based selection check for specific items
-    const urlBasedSelection = 
+    // If there's an explicit selection (from prop or localStorage), use ONLY that
+    if (selectedLabel) return selectedLabel === label;
+    if (stored) return stored === label;
+    
+    // Fallback: URL-based selection only when no explicit selection exists
+    const currentPath = window.location.pathname;
+    return (
       (label === 'Announcement' && currentPath.includes('/notification')) ||
       (label === 'Task' && currentPath.includes('/task')) ||
       (label === 'Ticket' && currentPath.includes('/ticket')) ||
@@ -122,9 +126,8 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
       (label === 'Settings' && currentPath.includes('/setting')) ||
       (label === 'Feed' && (currentPath === '/feed' || currentPath === '/')) ||
       (label === 'Interview Panel' && currentPath.includes('/interview-panel')) ||
-      (label === 'Knowledge Base' && currentPath.includes('/knowledge-base'));
-    
-    return selectedLabel === label || stored === label || urlBasedSelection;
+      (label === 'Knowledge Base' && currentPath.includes('/knowledge-base'))
+    );
   }, [selectedLabel, label, internalUpdate]);
   
   const handleClick = useCallback((e) => {
@@ -146,11 +149,7 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
     onSelect(label);
   }, [label, onSelect]);
 
-  // Re-check localStorage on every render to maintain highlighting - updated on selectedLabel change
-  const currentSelectedLabel = useMemo(() => localStorage.getItem('selectedLabel'), [selectedLabel]);
-  const isCurrentlySelected = currentSelectedLabel === label;
-
-  const activeStyle = (isSelected || isCurrentlySelected) ? {
+  const activeStyle = isSelected ? {
     boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
     border: '1px solid rgba(255,235,0,0.45)',
     transform: 'translateY(-1px)'
@@ -159,10 +158,10 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
   return (
     <button
       className={cn(
-        "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all text-sm sm:text-[15px] font-semibold animate-pop min-h-[44px]",
-        (isSelected || isCurrentlySelected)
+        "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all text-sm sm:text-[15px] font-semibold animate-pop min-h-[44px] border border-transparent",
+        isSelected
           ? "bg-[#ffeb00] text-black"
-          : "hover:bg-[#121212] text-[#00d2ff]"
+          : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:border-white/[0.12]"
       )}
       style={activeStyle}
       onClick={handleClick}
@@ -196,27 +195,28 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
   const urlParams = new URLSearchParams(window.location.search);
   const loanTypeName = urlParams.get('loan_type_name');
   
-  // Check if this item is selected through multiple methods
-  const isSelected = 
-    selectedLabel === label || 
-    currentSelectedLabel === label ||
-    // URL-based loan type selection - only when no explicit selection is active
-    (!currentSelectedLabel && isLoanType && loanTypeName && (
-      (label === loanTypeName && currentPath.includes('/lead-crm')) ||
-      (label === `${loanTypeName} Login` && currentPath.includes('/login-crm'))
-    )) ||
-    // Check URL-based selection for HRMS items
-    (label === 'Employees' && currentPath.includes('/employees')) ||
-    (label === 'Attendance' && currentPath.includes('/attendance')) ||
-    (label === 'Leave' && currentPath.includes('/leave')) ||
-    (label === 'Daily Performance' && currentPath.includes('/performance')) ||
-    // Check URL-based selection for Warning items
-    (label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) ||
-    (label === 'All Warnings' && currentPath.includes('/warning/all')) ||
-    (label === 'My Warnings' && currentPath.includes('/warning/my') && !isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '{}'))) ||
-  // Check URL-based selection for LEAD CRM items
-  (label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) ||
-  (label === 'Create LEAD' && currentPath.includes('/create-lead'));  const handleClick = useCallback((e) => {
+  // Check if this item is selected — explicit selection takes priority
+  const isSelected = (() => {
+    // If there's an explicit selection, use ONLY that
+    if (selectedLabel) return selectedLabel === label;
+    if (currentSelectedLabel) return currentSelectedLabel === label;
+    
+    // Fallback: URL-based selection only when no explicit selection exists
+    if (isLoanType && loanTypeName) {
+      if (label === loanTypeName && currentPath.includes('/lead-crm')) return true;
+      if (label === `${loanTypeName} Login` && currentPath.includes('/login-crm')) return true;
+    }
+    if (label === 'Employees' && currentPath.includes('/employees')) return true;
+    if (label === 'Attendance' && currentPath.includes('/attendance')) return true;
+    if (label === 'Leave' && currentPath.includes('/leave')) return true;
+    if (label === 'Daily Performance' && currentPath.includes('/performance')) return true;
+    if (label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) return true;
+    if (label === 'All Warnings' && currentPath.includes('/warning/all')) return true;
+    if (label === 'My Warnings' && currentPath.includes('/warning/my') && !isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '{}'))) return true;
+    if (label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) return true;
+    if (label === 'Create LEAD' && currentPath.includes('/create-lead')) return true;
+    return false;
+  })();  const handleClick = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -235,10 +235,10 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
   return (
     <button
       className={cn(
-        "flex items-center w-full p-2 text-left mb-0.5 rounded-lg transition-all duration-200 text-xs sm:text-[13px] font-medium animate-pop min-h-[38px]",
+        "flex items-center w-full p-2 text-left mb-0.5 rounded-lg transition-all duration-200 text-xs sm:text-[13px] font-medium animate-pop min-h-[38px] border border-transparent",
         isSelected
           ? "bg-[#ffeb00] text-black translate-x-1.5"
-          : "hover:bg-[#111] text-[#00d2ff] hover:translate-x-1.5"
+          : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:translate-x-1.5 hover:border-white/[0.12]"
       )}
       style={subActiveStyle}
       onClick={handleClick}
@@ -284,66 +284,36 @@ const DropdownHeader = React.memo(({
   const loanTypeName = urlParams.get('loan_type_name');
   
   const hasActiveSubItem = useMemo(() => {
-    // Enhanced detection for parent dropdown highlighting
-    let hasActive = false;
+    const activeLabel = selectedLabel || currentSelectedLabel;
     
-    // Check each item for selection
-    hasActive = items.some(item => {
-      // Check direct selection
-      if (selectedLabel === item.label || currentSelectedLabel === item.label) {
-        return true;
+    // If there's an explicit selection, check if any sub-item matches it
+    if (activeLabel) {
+      return items.some(item => item.label === activeLabel);
+    }
+    
+    // Fallback: URL-based detection only when no explicit selection
+    return items.some(item => {
+      if (item.isLoanType && loanTypeName) {
+        if (item.label === loanTypeName && currentPath.includes('/lead-crm')) return true;
+        if (item.label === `${loanTypeName} Login` && currentPath.includes('/login-crm')) return true;
       }
-      
-      // URL-based loan type selection - only when no explicit selection is active
-      if (!currentSelectedLabel && item.isLoanType && loanTypeName) {
-        // Check exact match for LEAD CRM loan types
-        if (item.label === loanTypeName && currentPath.includes('/lead-crm')) {
-          return true;
-        }
-        // Check exact match for Login CRM loan types
-        if (item.label === `${loanTypeName} Login` && currentPath.includes('/login-crm')) {
-          return true;
-        }
-      }
-      
-      // Check URL-based selection for HRMS items
       if ((item.label === 'Employees' && currentPath.includes('/employees')) ||
           (item.label === 'Attendance' && currentPath.includes('/attendance')) ||
           (item.label === 'Leave' && currentPath.includes('/leave')) ||
-          (item.label === 'Daily Performance' && currentPath.includes('/performance'))) {
-        return true;
-      }
-      
-      // Check URL-based selection for Warning items
+          (item.label === 'Daily Performance' && currentPath.includes('/performance'))) return true;
       if ((item.label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) ||
           (item.label === 'All Warnings' && currentPath.includes('/warning/all')) ||
-          (item.label === 'My Warnings' && currentPath.includes('/warning/my') && !isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '{}')))) {
-        return true;
-      }
-      
-      // Check URL-based selection for LEAD CRM items
+          (item.label === 'My Warnings' && currentPath.includes('/warning/my'))) return true;
       if ((item.label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) ||
-          (item.label === 'Create LEAD' && currentPath.includes('/create-lead'))) {
-        return true;
-      }
-      
+          (item.label === 'Create LEAD' && currentPath.includes('/create-lead'))) return true;
       return false;
-    });
-    
-    // Additional check for dropdown headers - specifically for loan type dropdowns
-    if (!hasActive && loanTypeName) {
-      // Check if this dropdown should be highlighted based on the current loan type context
-      if (label === 'LEAD CRM' && (currentPath.includes('/lead-crm') || currentPath.includes('/leads'))) {
-        hasActive = true;
-      } else if (label === 'Login CRM' && (currentPath.includes('/login-crm') || currentPath.includes('/login'))) {
-        hasActive = true;
-      }
-    }
-    
-    if (hasActive && (label === 'LEAD CRM' || label === 'Login CRM')) {
-    }
-    
-    return hasActive;
+    }) || (
+      // Parent dropdown highlight for loan type context
+      loanTypeName && (
+        (label === 'LEAD CRM' && (currentPath.includes('/lead-crm') || currentPath.includes('/leads'))) ||
+        (label === 'Login CRM' && (currentPath.includes('/login-crm') || currentPath.includes('/login')))
+      )
+    );
   }, [items, selectedLabel, currentSelectedLabel, currentPath, loanTypeName, label]);
 
   const handleToggle = useCallback((e) => {
@@ -357,10 +327,10 @@ const DropdownHeader = React.memo(({
       <button
         onClick={handleToggle}
         className={cn(
-          "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all font-semibold text-sm sm:text-[15px] animate-pop min-h-[44px]",
+          "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all font-semibold text-sm sm:text-[15px] animate-pop min-h-[44px] border border-transparent",
           hasActiveSubItem
             ? "bg-[#ffeb00] text-black"
-            : "hover:bg-[#121212] text-[#00d2ff]"
+            : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:border-white/[0.12]"
         )}
         style={hasActiveSubItem ? {
           boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
@@ -395,7 +365,7 @@ const DropdownHeader = React.memo(({
           transition: 'max-height 0.35s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease'
         }}
       >
-        <div className="relative pl-9 pr-1 pt-1 pb-2">
+        <div className="relative pl-9 pr-1 pt-1 pb-2 bg-white/[0.11] rounded-xl mx-1 my-1 border border-white/[0.10]">
           {/* Yellow left border hierarchy indicator */}
           <div className="absolute left-5 top-2 bottom-2 w-[3px] bg-[#ffeb00] rounded-full opacity-50"></div>
           <ul className="flex flex-col gap-0.5">
@@ -1646,7 +1616,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   return (
     <div
       className={cn(
-        "h-screen relative transition-all duration-300 z-10 bg-black border-r border-[#1f1f1f] shadow-2xl",
+        "h-screen relative transition-all duration-300 z-10 bg-black/90 backdrop-blur-xl border-r border-white/[0.08] shadow-2xl",
         // Desktop width behavior
         isOpen
           ? "w-[260px]"
@@ -1663,7 +1633,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       `}</style>
       <div className="flex flex-col h-full relative z-50">
         {/* Header */}
-        <div className="flex items-center flex-shrink-0 h-14 px-3 border-b border-[#1f1f1f] gap-3 shrink-0">
+        <div className="flex items-center flex-shrink-0 h-14 px-3 border-b border-white/[0.08] gap-3 shrink-0">
           <button
             onClick={() => {
               const newState = !isPinnedOpen;

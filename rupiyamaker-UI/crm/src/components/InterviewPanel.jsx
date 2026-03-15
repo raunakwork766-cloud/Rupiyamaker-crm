@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2 } from 'lucide-react';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
@@ -113,6 +113,11 @@ const InterviewPanel = () => {
       from { transform: translateX(100%); }
       to { transform: translateX(0); }
     }
+
+    @keyframes scaleIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
   `;
 
   const navigate = useNavigate();
@@ -154,7 +159,6 @@ const InterviewPanel = () => {
   const [historyModalTab, setHistoryModalTab] = useState('full');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRound1ModalOpen, setIsRound1ModalOpen] = useState(false);
-  const [isNumberGuideOpen, setIsNumberGuideOpen] = useState(false);
   const [auditSubTab, setAuditSubTab] = useState('Pending');
   const [reasonFilter, setReasonFilter] = useState('All');
 
@@ -164,6 +168,8 @@ const InterviewPanel = () => {
     interviewTiming: '', officeAddress: '', officeNearby: '',
     hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: ''
   });
+  // HR Head fetched from employees (for WhatsApp messages)
+  const [hrHead, setHrHead] = useState({ name: '', phone: '', designation: 'HR Head' });
 
   // Decline reason options
   const [declineReasons, setDeclineReasons] = useState([
@@ -334,7 +340,13 @@ const InterviewPanel = () => {
   // Load job opening and interview type options from backend
   useEffect(() => {
     loadDropdownOptions();
-    loadGlobalSettingsFromDB();
+    loadGlobalSettingsFromDB(); // HR info (hr_name, hr_mobile, hr_designation) comes from global settings
+    // Fetch HR Head from employees for WhatsApp messages
+    interviewSettingsAPI.getHrHead().then(res => {
+      if (res?.success && res?.data?.name) {
+        setHrHead(res.data);
+      }
+    }).catch(() => {});
   }, []);
 
   // Load permissions on mount (like Tickets/Warnings)
@@ -1253,8 +1265,9 @@ const InterviewPanel = () => {
       console.log("Refreshing dropdown options after interview creation...");
       await loadDropdownOptions();
       
-      // Switch to 'interview' tab to ensure the new interview is visible
+      // Switch to 'interview' tab + reset to 'today' subtab so the new interview is always visible
       setActiveTab('interview');
+      setActiveSubTab('today');
       
       // Clear any search filters that might hide the new interview
       setSearchTerm('');
@@ -1269,16 +1282,29 @@ const InterviewPanel = () => {
         jobOpening: []
       });
       
+      // Ensure the newly created interview is always visible even if API reload was slow
+      if (newInterview) {
+        setInterviews(prev => {
+          const newId = newInterview._id || newInterview.id;
+          const alreadyExists = prev.some(i => (i._id || i.id) === newId);
+          return alreadyExists ? prev : [newInterview, ...prev];
+        });
+      }
+      
       console.log("✅ Interview creation completed and view reset to show all interviews");
       
     } catch (error) {
       console.error("❌ Error in handleInterviewCreated:", error);
-      // If reloading fails, still try to add the interview locally
-      setInterviews(prev => {
-        const updated = [...prev, newInterview];
-        console.log("Fallback: Updated interviews list after creation:", updated);
-        return updated;
-      });
+      // If reloading fails, still add the interview locally so it's immediately visible
+      if (newInterview) {
+        setInterviews(prev => {
+          const updated = [newInterview, ...prev];
+          console.log("Fallback: Updated interviews list after creation:", updated);
+          return updated;
+        });
+      }
+      setActiveTab('interview');
+      setActiveSubTab('today');
     }
   };
 
@@ -2001,7 +2027,7 @@ const InterviewPanel = () => {
       await API.interviews.updateInterview(candidateId, { 
         interview_date: newDate,
         reschedule_reason: reason,
-        status: interview?.status || 'rescheduled'
+        status: selectedCandidate?.status || 'rescheduled'
       });
       setIsRescheduleOpen(false);
       setSelectedCandidate(null);
@@ -2024,8 +2050,11 @@ const InterviewPanel = () => {
 
   // WhatsApp handler
   const handleWhatsApp = (interview) => {
+    const hrName = hrHead.name || companySettings.hrName || '';
+    const hrPhone = hrHead.phone || companySettings.hrMobile || '';
+    const hrDesig = hrHead.designation || companySettings.hrDesignation || 'HR';
     const msg = encodeURIComponent(
-      `*INTERVIEW INVITATION*\n\nHi *${interview.candidate_name || ''}*,\n\nYour interview has been scheduled with our company.\n\n*Company Name:* ${companySettings.companyName}\n*Position:* ${interview.job_opening || ''}\n\n*Job Description:*\n${companySettings.jobDescription}\n\n*Office Timing:* ${companySettings.officeTiming}\n*Working Days:* ${companySettings.workingDays}\n\n*INTERVIEW DETAILS*\n\n*Interview Date:* ${interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}\n*Interview Timing:* ${companySettings.interviewTiming}\n*Please do not be late. Be on time.*\n\n*Office Address:*\n${companySettings.officeAddress}\nNearby: ${companySettings.officeNearby}\n\nFor any query:\n*${companySettings.hrName}*\nMobile: ${companySettings.hrMobile}\n${companySettings.hrDesignation}`
+      `*INTERVIEW INVITATION*\n\nHi *${interview.candidate_name || ''}*,\n\nYour interview has been scheduled with our company.\n\n*Company Name:* ${companySettings.companyName}\n*Position:* ${interview.job_opening || ''}\n\n*Job Description:*\n${companySettings.jobDescription}\n\n*Office Timing:* ${companySettings.officeTiming}\n*Working Days:* ${companySettings.workingDays}\n\n*INTERVIEW DETAILS*\n\n*Interview Date:* ${interview.interview_date ? new Date(interview.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : ''}\n*Interview Timing:* ${companySettings.interviewTiming}\n*Please do not be late. Be on time.*\n\n*Office Address:*\n${companySettings.officeAddress}\nNearby: ${companySettings.officeNearby}\n\nFor any query:\n*${hrName}*\nMobile: ${hrPhone}\n${hrDesig}`
     );
     const phone = (interview.mobile_number || '').replace(/\D/g, '');
     const url = `https://wa.me/91${phone}?text=${msg}`;
@@ -2045,7 +2074,7 @@ const InterviewPanel = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !isDetailModalOpen && !isHistoryModalOpen) {
     return (
       <div className="flex items-center justify-center h-64 bg-slate-50 min-h-screen">
         <div className="text-lg text-slate-600">Loading interviews...</div>
@@ -2061,8 +2090,9 @@ const InterviewPanel = () => {
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-3">
         <div className="flex items-center justify-between gap-4">
-          {/* LEFT: Search bar */}
+          {/* LEFT: Search bar (hidden on Dashboard) */}
           <div className="flex items-center gap-3">
+            {activeTab !== 'dashboard' && (
             <div className="relative w-64">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search size={14} className="text-slate-500" />
@@ -2072,8 +2102,30 @@ const InterviewPanel = () => {
                 placeholder="Search by name, mobile, owner, role..."
                 value={searchTerm}
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setIsGlobalSearch(e.target.value.length > 0);
+                  const val = e.target.value;
+                  setSearchTerm(val);
+                  // If searching by phone number (digits only, 3+ chars), find the candidate and switch to their tab
+                  if (val.length >= 3 && /^\d+$/.test(val)) {
+                    const match = interviews.find(i => i.mobile_number?.includes(val));
+                    if (match) {
+                      const matchStage = getStageFromStatus(match.status);
+                      const stageToTab = { 'Interview': 'interview', 'Round 2': 'interview', 'No-Show': 'interview', 'Job Offered': 'job_offered', 'Training': 'training', 'Hired': 'hired', 'Rejected': 'rejected' };
+                      const targetTab = stageToTab[matchStage] || 'interview';
+                      if (targetTab !== activeTab) {
+                        setActiveTab(targetTab);
+                        if (targetTab === 'interview') {
+                          if (matchStage === 'No-Show') setActiveSubTab('no_show');
+                          else if (matchStage === 'Round 2') setActiveSubTab('round2');
+                          else setActiveSubTab('today');
+                        }
+                      }
+                      setIsGlobalSearch(false);
+                    } else {
+                      setIsGlobalSearch(true);
+                    }
+                  } else {
+                    setIsGlobalSearch(val.length > 0);
+                  }
                 }}
                 className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
               />
@@ -2083,6 +2135,7 @@ const InterviewPanel = () => {
                 </button>
               )}
             </div>
+            )}
             {activeTab === 'rejected' && (
               <select
                 value={reasonFilter}
@@ -2096,12 +2149,6 @@ const InterviewPanel = () => {
           </div>
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsNumberGuideOpen(true)}
-              className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
-            >
-              <PhoneOff size={14} /> <span className="hidden sm:inline">Search Test Data</span>
-            </button>
             {canAccessSettings() && (
               <button
                 onClick={() => setIsSettingsOpen(true)}
@@ -2154,7 +2201,7 @@ const InterviewPanel = () => {
               >
                 {tab.id === 'audit_logs' && <ShieldAlert size={14} className="inline mr-0.5" />}
                 {tab.icon && <span>{tab.icon}</span>}
-                {tab.label} {tab.id !== 'interview' && tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined ? `(${tabCount})` : ''}
+                {tab.label} {tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined ? `(${tabCount})` : ''}
                 {isActive && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
               </button>
             );
@@ -2277,6 +2324,7 @@ const InterviewPanel = () => {
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Exp & Gender</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Role & Source</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Accept & Offer</th>
                       <th className="px-5 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Interview Date & Alerts</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap text-right">Action</th>
                     </tr>
@@ -2331,6 +2379,7 @@ const InterviewPanel = () => {
             statusOptionsWithSubs={statusOptionsWithSubs}
             sourcePortalOptions={sourcePortalOptions}
             existingInterviews={interviews}
+            cooldownDays={cooldownDays}
           />
         </React.Suspense>
       )}
@@ -2384,7 +2433,10 @@ const InterviewPanel = () => {
       {isDetailModalOpen && selectedCandidate && (
         <CandidateDetailModal
           candidate={selectedCandidate}
-          onClose={() => { setIsDetailModalOpen(false); setSelectedCandidate(null); }}
+          onClose={() => { setIsDetailModalOpen(false); setSelectedCandidate(null); loadInterviews(); }}
+          onSaved={() => loadInterviews()}
+          jobOpeningOptions={jobOpeningOptions}
+          sourcePortalOptions={sourcePortalOptions}
         />
       )}
 
@@ -2414,51 +2466,18 @@ const InterviewPanel = () => {
         onCompanySettingsChange={setCompanySettings}
         onDeclineReasonsChange={setDeclineReasons}
         onCooldownChange={setCooldownDays}
+        onRolesChange={loadDropdownOptions}
+        onSourcesChange={loadDropdownOptions}
         onClose={() => setIsSettingsOpen(false)}
       />
     )}
 
-    {/* ── Search Test Data Guide Modal ── */}
-    {isNumberGuideOpen && (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
-        <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><PhoneOff size={18} className="text-blue-600"/> Search Test Data Guide</h2>
-              <p className="text-xs text-slate-600 mt-1">Numbers ya names ko search box me daalo, result direct table me stage tag ke saath mil jayega.</p>
-            </div>
-            <button onClick={() => setIsNumberGuideOpen(false)} className="text-slate-500 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-100 transition-colors"><X size={20} /></button>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-              <p className="font-bold mb-1">🔍 Search kaise karein:</p>
-              <ul className="space-y-1 text-xs">
-                <li>• Candidate ka <strong>naam</strong> ya <strong>mobile number</strong> type karein</li>
-                <li>• <strong>HR ka naam</strong> ya <strong>source portal</strong> se bhi filter hoga</li>
-                <li>• Multiple words se narrow down karein, e.g. "Rahul 9876"</li>
-              </ul>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-              <p className="font-bold mb-1">⚠️ Duplicate Check Flow:</p>
-              <ul className="space-y-1 text-xs">
-                <li>• Agar same number bachcha already pipeline me hai → duplicate warning aayega</li>
-                <li>• Cooldown period me hai → reassign option milega</li>
-                <li>• Cooldown khatam ho gayi hai → naya interview create hoga</li>
-              </ul>
-            </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600">
-              💡 <strong>Tip:</strong> Saare stages (Interview, Round 2, Hired, Rejected) ke records ek hi search se milenge — stage tag ke saath.
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 };
 
 // ── SETTINGS MODAL (white, matches interview module.html) ──
-const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onClose }) => {
+const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onRolesChange, onSourcesChange, onClose }) => {
   const [tab, setTab] = React.useState('company');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -2466,6 +2485,13 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
   const [reasons, setReasons] = React.useState([]);
   const [newReason, setNewReason] = React.useState('');
   const [days, setDays] = React.useState(7);
+  // Roles & Sources state
+  const [rolesList, setRolesList] = React.useState([]);
+  const [sourcesList, setSourcesList] = React.useState([]);
+  const [newRole, setNewRole] = React.useState('');
+  const [newSource, setNewSource] = React.useState('');
+  const [rolesLoading, setRolesLoading] = React.useState(false);
+  const [sourcesLoading, setSourcesLoading] = React.useState(false);
 
   // Map backend snake_case → frontend camelCase
   const fromBackend = (doc) => {
@@ -2498,12 +2524,84 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
         setLoading(false);
       }
     })();
+    // Load roles
+    (async () => {
+      setRolesLoading(true);
+      try {
+        const res = await interviewSettingsAPI.getJobOpenings();
+        if (res?.success && res?.data) setRolesList(res.data);
+      } catch (e) { console.error('Failed to load roles:', e); }
+      finally { setRolesLoading(false); }
+    })();
+    // Load sources
+    (async () => {
+      setSourcesLoading(true);
+      try {
+        const res = await interviewSettingsAPI.getSourcePortals();
+        if (res?.success && res?.data) setSourcesList(res.data);
+      } catch (e) { console.error('Failed to load sources:', e); }
+      finally { setSourcesLoading(false); }
+    })();
   }, []);
+
+  const handleAddRole = async () => {
+    const name = newRole.trim();
+    if (!name) return;
+    if (rolesList.some(r => (r.name || '').toLowerCase() === name.toLowerCase())) return;
+    try {
+      const res = await interviewSettingsAPI.createJobOpening({ name });
+      if (res?.success && res?.data) {
+        setRolesList(prev => [...prev, res.data]);
+        setNewRole('');
+        if (onRolesChange) onRolesChange();
+      } else {
+        alert('Failed to add role: ' + (res?.message || 'Already exists'));
+      }
+    } catch (e) { alert('Error adding role: ' + e.message); }
+  };
+
+  const handleDeleteRole = async (id) => {
+    try {
+      const res = await interviewSettingsAPI.deleteJobOpening(id);
+      if (res?.success) {
+        setRolesList(prev => prev.filter(r => r._id !== id));
+        if (onRolesChange) onRolesChange();
+      }
+    } catch (e) { alert('Error deleting role: ' + e.message); }
+  };
+
+  const handleAddSource = async () => {
+    const name = newSource.trim();
+    if (!name) return;
+    if (sourcesList.some(s => (s.name || '').toLowerCase() === name.toLowerCase())) return;
+    try {
+      const res = await interviewSettingsAPI.createSourcePortal({ name });
+      if (res?.success && res?.data) {
+        setSourcesList(prev => [...prev, res.data]);
+        setNewSource('');
+        if (onSourcesChange) onSourcesChange();
+      } else {
+        alert('Failed to add source: ' + (res?.message || 'Already exists'));
+      }
+    } catch (e) { alert('Error adding source: ' + e.message); }
+  };
+
+  const handleDeleteSource = async (id) => {
+    try {
+      const res = await interviewSettingsAPI.deleteSourcePortal(id);
+      if (res?.success) {
+        setSourcesList(prev => prev.filter(s => s._id !== id));
+        if (onSourcesChange) onSourcesChange();
+      }
+    } catch (e) { alert('Error deleting source: ' + e.message); }
+  };
 
   const tabs = [
     { id: 'company', label: '🏢 Company' },
     { id: 'pipeline', label: '⚙️ Pipeline' },
     { id: 'reasons', label: '📋 Reasons' },
+    { id: 'roles', label: '💼 Roles' },
+    { id: 'sources', label: '📡 Sources' },
   ];
 
   const handleSave = async () => {
@@ -2612,26 +2710,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
                 <input value={cs.officeNearby} onChange={e => setCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
                   className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
               </div>
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                <div className="text-xs font-black text-emerald-700 uppercase tracking-wide mb-3">HR Point of Contact</div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">HR Name</label>
-                    <input value={cs.hrName} onChange={e => setCs({...cs, hrName: e.target.value})}
-                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Mobile</label>
-                    <input value={cs.hrMobile} onChange={e => setCs({...cs, hrMobile: e.target.value})}
-                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Designation</label>
-                    <input value={cs.hrDesignation} onChange={e => setCs({...cs, hrDesignation: e.target.value})}
-                      className="w-full border border-slate-200 bg-white focus:border-emerald-500 rounded-xl px-3 py-2 text-sm outline-none" />
-                  </div>
-                </div>
-              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
                 <input value={cs.interviewFormBaseUrl} onChange={e => setCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
@@ -2679,6 +2758,70 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
                   ))}
                   {reasons.length === 0 && <p className="text-slate-400 text-sm">No reasons added yet.</p>}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {!loading && tab === 'roles' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Job Roles / Openings</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs text-slate-500 mb-4">Manage roles that appear in the Role dropdown when creating or editing interviews.</p>
+                <div className="flex gap-2 mb-4">
+                  <input value={newRole} onChange={e => setNewRole(e.target.value)}
+                    onKeyPress={e => { if (e.key === 'Enter') handleAddRole(); }}
+                    placeholder="Add new role..."
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" />
+                  <button onClick={handleAddRole}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold">Add</button>
+                </div>
+                {rolesLoading ? (
+                  <div className="flex items-center justify-center py-8 text-slate-400 text-sm">Loading roles...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                    {rolesList.map(r => (
+                      <span key={r._id} className="bg-white border border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                        {r.name}
+                        <button onClick={() => handleDeleteRole(r._id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                    {rolesList.length === 0 && <p className="text-slate-400 text-sm">No roles added yet. Add roles to populate the Role dropdown.</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!loading && tab === 'sources' && (
+            <div>
+              <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Source / Portals</h3>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs text-slate-500 mb-4">Manage sources that appear in the Source dropdown when creating or editing interviews.</p>
+                <div className="flex gap-2 mb-4">
+                  <input value={newSource} onChange={e => setNewSource(e.target.value)}
+                    onKeyPress={e => { if (e.key === 'Enter') handleAddSource(); }}
+                    placeholder="Add new source..."
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" />
+                  <button onClick={handleAddSource}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold">Add</button>
+                </div>
+                {sourcesLoading ? (
+                  <div className="flex items-center justify-center py-8 text-slate-400 text-sm">Loading sources...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                    {sourcesList.map(s => (
+                      <span key={s._id} className="bg-white border border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-full flex items-center gap-2">
+                        {s.name}
+                        <button onClick={() => handleDeleteSource(s._id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                    {sourcesList.length === 0 && <p className="text-slate-400 text-sm">No sources added yet. Add sources to populate the Source dropdown.</p>}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2736,7 +2879,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
   const formatInterviewDate = (date) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   };
 
   // Audit Log view
@@ -2745,18 +2888,17 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <tr className="hover:bg-slate-50/80 transition-colors group">
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
         <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100">
           <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
           <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
         </td>
-        <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
+        <td className="px-4 py-3 border-r border-slate-100" colSpan={3}>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-semibold text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
             <div>
               <div className="font-semibold text-slate-800 text-xs whitespace-nowrap">{interview.candidate_name || '-'}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
             </div>
           </div>
         </td>
@@ -2764,10 +2906,8 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
           <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
           <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.source_portal || '-'}</div>
         </td>
-        <td className="px-5 py-3 border-r border-slate-100">
-          <button onClick={onViewHistory} className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5 shadow-sm">
-            <History size={12} className="text-blue-600"/> Full Track
-          </button>
+        <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
+          <span className="text-[10px] text-slate-400 italic">—</span>
         </td>
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-2">
@@ -2793,7 +2933,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
         <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
       </td>
 
@@ -2807,7 +2947,6 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
           <div>
             <button onClick={(e) => { e.stopPropagation(); onRowClick(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
-            <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.mobile_number || '-'}</div>
           </div>
         </div>
         {isGlobalSearch && <Tag text={stage} color="orange" />}
@@ -2823,6 +2962,17 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
         <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
         <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.source_portal || '-'}</div>
+      </td>
+
+      <td className="px-2 py-3 border-r border-slate-100" onClick={onRowClick}>
+        <div className="flex flex-col gap-1">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 w-fit whitespace-nowrap">
+            <span className="text-[9px] font-bold text-emerald-700">Expected: INR {interview.offer_salary ? Number(interview.offer_salary).toLocaleString('en-IN') : 'Pending'}</span>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 w-fit whitespace-nowrap">
+            <span className="text-[9px] font-bold text-blue-700">Final Offer: {interview.monthly_salary_offered ? 'INR ' + Number(interview.monthly_salary_offered).toLocaleString('en-IN') : 'Pending'}</span>
+          </div>
+        </div>
       </td>
 
       <td className="px-5 py-3 border-r border-slate-100" onClick={onRowClick}>
@@ -2886,6 +3036,25 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
                   )}
                   <div className="my-1 border-t border-slate-100"/>
                   <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Decline / Reject</button>
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
+
+          {/* Three-dots menu for Hired stage */}
+          {activeTab === 'hired' && (
+            <div className="relative">
+              <button ref={btnRef} onClick={handleToggleDropdown} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+                <MoreVertical size={15} />
+              </button>
+              {isDropdownOpen && dropdownPos && createPortal(
+                <div
+                  ref={dropdownRef}
+                  style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
+                  className="w-52 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 overflow-hidden text-left"
+                >
+                  <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Reject / Decline</button>
                 </div>,
                 document.body
               )}
@@ -3208,150 +3377,645 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
         <input type="text" placeholder="Mandatory reschedule reason" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-900 mb-6 text-sm outline-none focus:border-blue-500" />
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 bg-slate-100 border border-slate-300 text-slate-700 rounded-md text-sm">Cancel</button>
-          <button disabled={!customDate || !reason.trim()} onClick={() => onSubmit(candidate._id, new Date(customDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), reason.trim())} className={`flex-1 py-2 rounded-md text-sm font-bold ${customDate && reason.trim() ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm</button>
+          <button disabled={!customDate || !reason.trim()} onClick={() => onSubmit(candidate._id, customDate, reason.trim())} className={`flex-1 py-2 rounded-md text-sm font-bold ${customDate && reason.trim() ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Confirm</button>
         </div>
       </div>
     </div>
   );
 };
 
-// --- CANDIDATE DETAIL MODAL ---
-const CandidateDetailModal = ({ candidate, onClose }) => {
-  const [data, setData] = useState(candidate || null);
+// --- CANDIDATE DETAIL / EDIT MODAL (Editable with auto-save + Attachments) ---
+const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions = [], sourcePortalOptions = [] }) => {
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const saveTimerRef = useRef(null);
+  const originalRef = useRef(null);
+  const [histTab, setHistTab] = useState('details');
 
+  // Attachments
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState(null); // {type:'success'|'error', text}
+  const fileInputRef = useRef(null);
+
+  // Qualification
+  const qualCatalog = [
+    { level: 'School Level', entries: ['10th Pass', '12th Pass'] },
+    { level: 'Diploma Level', entries: ['ITI', 'Polytechnic Diploma', 'Diploma in Engineering', 'Diploma in Pharmacy (D.Pharm)', 'Diploma in Computer Applications', 'Diploma in Hotel Management', 'Diploma in Fashion Designing', 'Diploma in Nursing', 'Diploma in Agriculture', 'Diploma in Architecture', 'Diploma in Education (D.Ed)', 'Diploma in Physiotherapy', 'Diploma in Lab Technology'] },
+    { level: "Bachelor's Degree", entries: ['BA', 'BA (Hons)', 'B.Com', 'B.Com (Hons)', 'B.Sc', 'B.Sc (Hons)', 'BBA', 'BCA', 'BMS', 'BSW', 'BFA', 'BJMC', 'BHM', 'BTTM', 'B.Des', 'B.Voc', 'B.Lib', 'B.Tech', 'BE', 'B.Arch', 'B.Plan', 'MBBS', 'BDS', 'BAMS', 'BHMS', 'BUMS', 'BPT', 'B.Pharm', 'B.Sc Nursing', 'BVSc', 'LLB (3 Year)', 'BA LLB', 'BBA LLB', 'B.Com LLB', 'B.Ed', 'B.El.Ed', 'CA', 'CS', 'CMA'] },
+    { level: "Master's Degree", entries: ['MA', 'M.Com', 'M.Sc', 'MBA', 'PGDM', 'MCA', 'M.Tech', 'ME', 'M.Pharm', 'MS', 'LLM', 'M.Ed', 'MSW', 'M.Des', 'M.Lib', 'M.Plan'] },
+    { level: 'Doctorate Level', entries: ['PhD', 'MPhil', 'D.Litt', 'DM', 'MCh'] }
+  ];
+  const [qualSearch, setQualSearch] = useState('');
+  const [qualOpen, setQualOpen] = useState(false);
+  const qualRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) { if (qualRef.current && !qualRef.current.contains(e.target)) setQualOpen(false); }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredQualGroups = qualCatalog.map(g => ({ ...g, entries: g.entries.filter(e => e.toLowerCase().includes((qualSearch || '').toLowerCase())) })).filter(g => g.entries.length > 0);
+
+  // Load data
   useEffect(() => {
     const id = candidate?._id || candidate?.id;
     if (!id) { setLoading(false); return; }
     (async () => {
       try {
-        const res = await API.interviewsAPI.getInterviewById(id);
-        if (res) setData(res);
+        const res = await API.interviews.getInterviewById(id);
+        const d = res || candidate;
+        setData(d);
+        originalRef.current = JSON.parse(JSON.stringify(d));
+        // Use attachments from the interview response; also fetch separately as fallback
+        if (d.attachments && d.attachments.length > 0) {
+          setAttachments(d.attachments);
+        } else {
+          try {
+            const attRes = await API.interviews.getAttachments(id);
+            setAttachments(attRes?.data || []);
+          } catch {
+            setAttachments([]);
+          }
+        }
       } catch (e) {
-        console.warn('CandidateDetailModal fetch failed, using cached data', e);
+        setData(candidate);
+        originalRef.current = JSON.parse(JSON.stringify(candidate));
+        // Try to fetch attachments even if main load failed
+        try {
+          const attRes = await API.interviews.getAttachments(id);
+          setAttachments(attRes?.data || candidate.attachments || []);
+        } catch {
+          setAttachments(candidate.attachments || []);
+        }
       } finally {
         setLoading(false);
       }
     })();
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, []);
 
   if (!candidate) return null;
-
   const d = data || candidate;
-  const stage = getStageFromStatus(d.status);
+  const interviewId = d._id || d.id;
 
-  // Compute sub-stage label from interview_date
-  const getSubStage = (dateStr) => {
-    if (!dateStr) return '-';
-    const today = new Date(); today.setHours(0,0,0,0);
-    const dt = new Date(dateStr); dt.setHours(0,0,0,0);
-    const diff = (dt - today) / 86400000;
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Tomorrow';
-    if (diff === -1) return 'Yesterday';
-    if (diff > 1 && diff <= 7) return 'This Week';
-    if (diff < 0) return 'Past';
-    return 'Upcoming';
+  // Auto-save on field change (debounced 1.5s)
+  const handleFieldChange = (field, value) => {
+    setData(prev => {
+      const updated = { ...prev, [field]: value };
+      // Sync date_time
+      if (field === 'interview_date' || field === 'interview_time') {
+        const dt = field === 'interview_date' ? value : (prev.interview_date || '');
+        const tm = field === 'interview_time' ? value : (prev.interview_time || '');
+        if (dt && tm) updated.date_time = `${dt}T${tm}`;
+      }
+      return updated;
+    });
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => triggerSave(), 1500);
   };
 
-  const Field = ({ label, value }) => (
-    <div className="p-3 rounded-lg border border-slate-200 bg-white">
-      <div className="text-xs text-slate-400 mb-0.5">{label}</div>
-      <div className="text-sm font-semibold text-slate-800">{value || '-'}</div>
-    </div>
-  );
+  const triggerSave = async () => {
+    if (!interviewId || !data) return;
+    setSaving(true);
+    try {
+      const saveData = { ...data };
+      delete saveData._id;
+      delete saveData.id;
+      delete saveData.attachments;
+      // Convert salary fields to numbers
+      ['old_salary', 'offer_salary', 'monthly_salary_offered'].forEach(f => {
+        if (saveData[f] !== undefined && saveData[f] !== null && saveData[f] !== '') {
+          saveData[f] = parseFloat(saveData[f]);
+        } else {
+          delete saveData[f];
+        }
+      });
+      await API.interviews.updateInterview(interviewId, saveData, originalRef.current);
+      originalRef.current = JSON.parse(JSON.stringify(data));
+      setLastSaved(new Date());
+    } catch (e) {
+      console.warn('Auto-save failed:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const capFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '-';
+  // Attachment handlers
+  const handleUploadFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setUploadMsg(null);
+    let uploadError = null;
+    let uploadedCount = 0;
+    try {
+      for (const file of Array.from(files)) {
+        const res = await API.interviews.uploadAttachment(interviewId, file, file.name);
+        if (res?.success && res.data) {
+          setAttachments(prev => [...prev, res.data]);
+          uploadedCount++;
+        } else {
+          uploadError = 'Upload failed: unexpected response';
+        }
+      }
+    } catch (e) {
+      uploadError = e?.message || 'Upload failed';
+      console.warn('Upload failed:', e);
+    } finally {
+      setUploading(false);
+    }
+    if (uploadError) {
+      setUploadMsg({ type: 'error', text: 'Upload failed: ' + uploadError });
+    } else if (uploadedCount > 0) {
+      setUploadMsg({ type: 'success', text: `${uploadedCount} file${uploadedCount > 1 ? 's' : ''} uploaded successfully` });
+      setTimeout(() => setUploadMsg(null), 3000);
+    }
+  };
+
+  const handleDeleteAttachment = async (attId) => {
+    try {
+      await API.interviews.deleteAttachment(interviewId, attId);
+      setAttachments(prev => prev.filter(a => a.id !== attId));
+    } catch (e) {
+      console.warn('Delete failed:', e);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  };
+
+  const inputCls = "w-full bg-white border border-slate-200 focus:bg-white focus:border-[#03B0F5] rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder-slate-400 shadow-sm";
+  const reassigns = (data || candidate)?.reassign_history || (data || candidate)?.reassignHistory || [];
+  const reschedules = (data || candidate)?.reschedule_history || (data || candidate)?.rescheduleHistory || [];
+  // Combine all remarks from reassign + reschedule into single timeline for right panel
+  const allRemarks = [
+    ...reassigns.map(r => ({ type: 'reassign', date: r.date, reason: r.reason, by: r.toHr || r.to_hr || r.fromHr || r.from_hr || 'HR', fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr })),
+    ...reschedules.map(r => ({ type: 'reschedule', date: r.date, reason: r.reason, by: r.rescheduled_by || r.hr_name || 'HR', from: r.from, to: r.to }))
+  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-200 flex justify-between items-start">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Candidate Profile Details</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Complete data for {d.candidate_name}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"><X size={20}/></button>
-        </div>
-
-        {/* Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-4">
-          {loading && (
-            <div className="flex items-center gap-2 text-slate-400 text-sm py-4 justify-center">
-              <svg className="animate-spin w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-              Loading latest data...
-            </div>
-          )}
-
-          {/* Row 1: Name, Phone, Alt Phone */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Name" value={d.candidate_name} />
-            <Field label="Phone" value={d.mobile_number} />
-            <Field label="Alt Phone" value={d.alternate_number} />
-          </div>
-
-          {/* Row 2: Stage, Sub Stage, HR */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Stage" value={stage} />
-            <Field label="Sub Stage" value={getSubStage(d.interview_date)} />
-            <Field label="HR" value={d.created_by} />
-          </div>
-
-          {/* Row 3: Role, Source, Experience */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Role" value={d.job_opening} />
-            <Field label="Source" value={d.source_portal} />
-            <Field label="Experience" value={capFirst(d.experience_type)} />
-          </div>
-
-          {/* Row 4: Qualification, Age, City */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Qualification" value={d.qualification} />
-            <Field label="Age" value={d.age} />
-            <Field label="City" value={d.city} />
-          </div>
-
-          {/* Row 5: Marital Status, Living Arrangement, Banking Experience */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Marital Status" value={d.marital_status} />
-            <Field label="Living Arrangement" value={d.living_arrangement} />
-            <Field label="Banking Experience" value={d.banking_experience} />
-          </div>
-
-          {/* Documents */}
-          <div className="border border-slate-200 rounded-xl p-4">
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Documents</h3>
-            <div className="flex flex-wrap gap-2">
-              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                d.has_salary_slip ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
-              }`}>Salary Slip: {d.has_salary_slip ? 'Yes' : 'No'}</span>
-              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                d.has_bank_statement ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
-              }`}>Bank Statement: {d.has_bank_statement ? 'Yes' : 'No'}</span>
-              <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                d.has_experience_letter ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'
-              }`}>Experience Letter: {d.has_experience_letter ? 'Yes' : 'No'}</span>
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-black text-white">
+      {/* ── Header ── */}
+      <div className="flex-shrink-0 px-4 sm:px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <button onClick={onClose} className="mr-4 p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-white">{d.candidate_name || 'Candidate Details'}</h1>
+              <p className="text-gray-400">
+                📱 {d.mobile_number} | {d.city || ''} | <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                  { Interview:'bg-blue-600', 'Round 2':'bg-indigo-600', 'Job Offered':'bg-orange-500', Training:'bg-yellow-500', Hired:'bg-emerald-600', Rejected:'bg-red-600' }[getStageFromStatus(d.status)] || 'bg-slate-600'
+                } text-white`}>{getStageFromStatus(d.status)}</span>
+              </p>
             </div>
           </div>
-
-          {/* Interview date strip */}
-          {d.interview_date && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-4 text-sm">
-              <Calendar size={16} className="text-blue-500 shrink-0" />
-              <span className="text-blue-800 font-medium">
-                Interview: {new Date(d.interview_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                {d.interview_time ? ` at ${d.interview_time}` : ''}
-              </span>
+          <div className="flex items-center space-x-4">
+            {saving && <span className="text-xs text-amber-300 animate-pulse">💾 Saving...</span>}
+            {!saving && lastSaved && <span className="text-xs text-emerald-300">✓ Saved {lastSaved.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
+            <div className="text-right">
+              <div className="text-sm text-gray-400">Status</div>
+              <div className="text-white font-semibold">{getStageFromStatus(d.status)}</div>
             </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-200 flex justify-end">
-          <button onClick={onClose} className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold transition-colors">Close</button>
+          </div>
         </div>
       </div>
+
+      {/* ── Two‑column body ── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT column */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Pill tab bar — Details | Reassignment | Reschedule */}
+          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto shrink-0">
+            {[
+              { id: 'details', label: '📋 INTERVIEW DETAILS' },
+              { id: 'reassign', label: '🔄 REASSIGNMENT', count: reassigns.length },
+              { id: 'reschedule', label: '📅 RESCHEDULE', count: reschedules.length }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setHistTab(tab.id)}
+                className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 sm:py-3 rounded-3xl font-extrabold text-sm sm:text-base transition border shadow-md whitespace-nowrap focus:outline-none ${histTab===tab.id ? 'bg-[#03B0F5] text-white border-cyan-400 shadow-lg scale-105' : 'bg-white text-[#03B0F5] border-slate-200 hover:bg-cyan-50 hover:text-cyan-500'}`}
+                style={{ boxShadow: histTab===tab.id ? '0 4px 16px 0 #1cb5e080' : undefined, letterSpacing: '0.01em' }}
+              >
+                {tab.label}
+                {tab.count !== undefined && <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${histTab===tab.id ? 'bg-white/20 text-white' : 'bg-cyan-100 text-cyan-700'}`}>{tab.count}</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content area (scrollable) */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
+
+          {/* DETAILS tab — form fields */}
+          {histTab === 'details' && (
+          <div className="space-y-4">
+          {loading ? (
+            <div className="flex items-center gap-2 text-slate-400 text-sm py-8 justify-center">
+              <svg className="animate-spin w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Loading...
+            </div>
+          ) : (
+            <>
+              {/* ── Basic Info ── */}
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">👤</span>
+                  <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Basic Info</span>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Candidate Name</label>
+                    <input value={d.candidate_name || ''} onChange={e => handleFieldChange('candidate_name', e.target.value.toUpperCase())} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Date</label>
+                    <input type="date" value={d.interview_date ? (d.interview_date.includes('T') ? d.interview_date.split('T')[0] : d.interview_date.substring(0,10)) : ''} onChange={e => handleFieldChange('interview_date', e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
+                    <input value={d.mobile_number || ''} className={inputCls + ' !bg-slate-100 cursor-not-allowed'} readOnly />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
+                    <input value={d.alternate_number || ''} onChange={e => handleFieldChange('alternate_number', e.target.value.replace(/\D/g, '').slice(0,10))} className={inputCls} maxLength="10" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source</label>
+                    <SearchableSelect
+                      name="source_portal"
+                      value={d.source_portal || ''}
+                      onChange={e => handleFieldChange('source_portal', e.target.value)}
+                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      placeholder="Select source..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Age</label>
+                    <input type="number" value={d.age || ''} onChange={e => handleFieldChange('age', e.target.value)} className={inputCls} min="18" max="65" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">City</label>
+                    <input value={d.city || ''} onChange={e => handleFieldChange('city', e.target.value.toUpperCase())} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Gender</label>
+                    <div className="flex gap-2">
+                      {['Male', 'Female'].map(g => (
+                        <label key={g} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl border-2 cursor-pointer transition-all font-bold text-xs ${d.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                          <input type="radio" checked={d.gender === g} onChange={() => handleFieldChange('gender', g)} className="hidden" />
+                          {g === 'Male' ? '👨' : '👩'} {g}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Education & Background ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">🎓</span>
+                  <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Marital Status</label>
+                    <select value={d.marital_status || ''} onChange={e => handleFieldChange('marital_status', e.target.value)} className={inputCls}>
+                      <option value="">Select...</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Living Arrangement</label>
+                    <select value={d.living_arrangement || ''} onChange={e => handleFieldChange('living_arrangement', e.target.value)} className={inputCls}>
+                      <option value="">Select...</option><option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
+                    <div className="relative" ref={qualRef}>
+                      <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
+                      {qualOpen && filteredQualGroups.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                          {filteredQualGroups.map(g => (
+                            <div key={g.level}>
+                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
+                              {g.entries.map(entry => (
+                                <button type="button" key={entry} onClick={() => { handleFieldChange('qualification', entry); setQualSearch(''); setQualOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{entry}</button>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Banking Experience</label>
+                    <div className="flex gap-2">
+                      {['Yes', 'No'].map(opt => (
+                        <label key={opt} className={`flex-1 flex items-center justify-center py-2 rounded-xl border-2 cursor-pointer transition-all font-bold text-xs ${d.banking_experience === opt ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+                          <input type="radio" checked={d.banking_experience === opt} onChange={() => handleFieldChange('banking_experience', opt)} className="hidden" />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Professional Details ── */}
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">💼</span>
+                  <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Role</label>
+                    <SearchableSelect
+                      name="job_opening"
+                      value={d.job_opening || ''}
+                      onChange={e => handleFieldChange('job_opening', e.target.value)}
+                      options={jobOpeningOptions.length > 0 ? jobOpeningOptions : ['Sales Executive', 'Back Office Exec', 'Telecaller', 'Floor Manager']}
+                      placeholder="Select role..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Work Experience</label>
+                    <div className="flex gap-2 p-1 bg-slate-100 border border-slate-200 rounded-xl">
+                      {['fresher', 'experienced'].map(type => (
+                        <button type="button" key={type} onClick={() => handleFieldChange('experience_type', type)} className={`flex-1 py-2 text-xs font-black rounded-lg transition-all capitalize ${d.experience_type === type ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>{type}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {d.experience_type === 'experienced' && (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Total Experience</label>
+                        <input value={d.total_experience || ''} onChange={e => handleFieldChange('total_experience', e.target.value)} className={inputCls} placeholder="e.g. 2 years 3 months" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Proof of Experience</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {[['has_salary_slip', '💰 Salary Slip'], ['has_bank_statement', '🏦 Bank Statement'], ['has_experience_letter', '📄 Exp. Letter']].map(([doc, lbl]) => (
+                            <label key={doc} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold ${d[doc] ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                              <input type="checkbox" checked={!!d[doc]} onChange={() => handleFieldChange(doc, !d[doc])} className="hidden" />
+                              {lbl}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Salary Information ── */}
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">💵</span>
+                  <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">Salary Information</span>
+                </div>
+                <div className="p-4 grid grid-cols-1 gap-3">
+                  {[
+                    { label: 'Last Salary (Monthly CTC)', field: 'old_salary' },
+                    { label: 'Salary Expectation (Monthly CTC)', field: 'offer_salary' },
+                    { label: 'Final Offered Salary', field: 'monthly_salary_offered' }
+                  ].map(({ label, field }) => (
+                    <div key={field}>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 text-sm font-bold pointer-events-none">₹</span>
+                        <input type="number" value={d[field] ?? ''} onChange={e => handleFieldChange(field, e.target.value)} className={inputCls + ' pl-7'} placeholder="0" min="0" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Attachments ── */}
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📎</span>
+                    <span className="text-xs font-black text-amber-700 uppercase tracking-wider">Attachments</span>
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">{attachments.length}</span>
+                  </div>
+                  <label htmlFor={`attach-upload-${interviewId}`} className={`cursor-pointer text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <Plus size={14}/> {uploading ? 'Uploading...' : 'Add Files'}
+                  </label>
+                  <input id={`attach-upload-${interviewId}`} type="file" multiple className="hidden" onChange={e => { handleUploadFiles(e.target.files); e.target.value = ''; }} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx" disabled={uploading} />
+                </div>
+                <div className="p-4">
+                  {uploading && (
+                    <div className="flex items-center gap-2 text-sm text-blue-600 mb-3">
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                      Uploading...
+                    </div>
+                  )}
+                  {uploadMsg && (
+                    <div className={`flex items-center gap-2 text-xs font-semibold mb-3 px-3 py-2 rounded-lg ${uploadMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                      {uploadMsg.type === 'success' ? '✓' : '✗'} {uploadMsg.text}
+                      <button onClick={() => setUploadMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
+                    </div>
+                  )}
+                  {attachments.length === 0 && !uploading ? (
+                    <div className="text-center py-6 text-slate-400">
+                      <FileText size={28} className="mx-auto mb-2 opacity-30"/>
+                      <p className="text-xs">No attachments yet. Upload offer letters, documents, etc.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {attachments.map((att, idx) => (
+                        <div key={att.id || idx} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 group">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                            <FileText size={14}/>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 truncate">{att.label || att.original_name || 'File'}</div>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                              <span>{formatFileSize(att.file_size)}</span>
+                              {att.uploaded_by && <span>• {att.uploaded_by}</span>}
+                              {att.uploaded_at && <span>• {new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</span>}
+                            </div>
+                          </div>
+                          <a href={API.interviews.getAttachmentDownloadUrl(interviewId, att.id)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Download">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          </a>
+                          <button onClick={() => handleDeleteAttachment(att.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Delete">
+                            <X size={14}/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          </div>)}
+
+          {/* REASSIGNMENT tab */}
+          {histTab === 'reassign' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-orange-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">🔄</span>
+                  <span className="text-xs font-black text-orange-700 uppercase tracking-wider">Reassignment History</span>
+                  <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">{reassigns.length}</span>
+                </div>
+                <div className="p-4">
+                  {reassigns.length > 0 ? (
+                    <div className="relative">
+                      <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-orange-200 rounded-full" />
+                      <div className="space-y-4">
+                        {reassigns.map((r, i) => (
+                          <div key={i} className="relative pl-7">
+                            <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-orange-500 shadow-sm" />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-slate-800 text-sm">{r.reassigned_by_name || r.reassigned_by || 'Unknown'}</span>
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600">🔄 Reassigned</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 mb-1">{r.reassigned_at ? new Date(r.reassigned_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : ''}</div>
+                              {r.reason && <p className="text-xs text-slate-600 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                              {(r.from_hr_name || r.to_hr_name) && (
+                                <div className="text-[10px] text-slate-500 mt-1">
+                                  {r.from_hr_name && <span>{r.from_hr_name}</span>}
+                                  {r.from_hr_name && r.to_hr_name && <span className="mx-1 text-slate-400">→</span>}
+                                  {r.to_hr_name && <span className="text-slate-700 font-semibold">{r.to_hr_name}</span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+                      <div className="text-3xl mb-2 opacity-40">🔄</div>
+                      <p className="text-xs font-medium">No reassignment history</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* RESCHEDULE tab */}
+          {histTab === 'reschedule' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-sky-50 to-slate-50 flex items-center gap-2">
+                  <span className="text-base">📅</span>
+                  <span className="text-xs font-black text-sky-700 uppercase tracking-wider">Reschedule History</span>
+                  <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-bold">{reschedules.length}</span>
+                </div>
+                <div className="p-4">
+                  {reschedules.length > 0 ? (
+                    <div className="relative">
+                      <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-sky-200 rounded-full" />
+                      <div className="space-y-4">
+                        {reschedules.map((r, i) => (
+                          <div key={i} className="relative pl-7">
+                            <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-sky-500 shadow-sm" />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-slate-800 text-sm">{r.rescheduled_by_name || r.rescheduled_by || 'Unknown'}</span>
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600">📅 Rescheduled</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 mb-1">{r.rescheduled_at ? new Date(r.rescheduled_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : ''}</div>
+                              {r.reason && <p className="text-xs text-slate-600 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                              {(r.from_date || r.to_date) && (
+                                <div className="text-[10px] text-slate-500 mt-1">
+                                  {r.from_date && <span>From: <strong className="text-slate-700">{new Date(r.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</strong></span>}
+                                  {r.from_date && r.to_date && <span className="mx-1 text-slate-400">→</span>}
+                                  {r.to_date && <span>To: <strong className="text-slate-700">{new Date(r.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</strong></span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+                      <div className="text-3xl mb-2 opacity-40">📅</div>
+                      <p className="text-xs font-medium">No reschedule history</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>{/* end LEFT scrollable content */}
+        </div>{/* end LEFT column */}
+
+        {/* RIGHT: Remarks only panel */}
+        <div className="w-[360px] flex flex-col bg-white border-l border-slate-200 shrink-0">
+          {/* Single REMARK tab header */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 shrink-0">
+            <button className="flex items-center gap-1.5 px-5 py-2.5 rounded-3xl font-extrabold text-sm bg-[#03B0F5] text-white border border-cyan-400 shadow-lg scale-105 focus:outline-none" style={{ boxShadow: '0 4px 16px 0 #1cb5e080', letterSpacing: '0.01em' }}>
+              📝 REMARK
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-white/20 text-white">{allRemarks.length}</span>
+            </button>
+          </div>
+          {/* All remarks timeline */}
+          <div className="flex-1 overflow-y-auto p-4 bg-white">
+            {allRemarks.length > 0 ? (
+              <div className="relative">
+                <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-blue-200 rounded-full" />
+                <div className="space-y-4">
+                  {allRemarks.map((r, i) => (
+                    <div key={i} className="relative pl-7">
+                      <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${r.type === 'reassign' ? 'bg-orange-500' : 'bg-sky-500'}`} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-800 text-sm">{r.by}</span>
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${r.type === 'reassign' ? 'bg-orange-100 text-orange-600' : 'bg-sky-100 text-sky-600'}`}>
+                            {r.type === 'reassign' ? '🔄 Reassign' : '📅 Reschedule'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mb-1">{r.date || ''}</div>
+                        {r.reason && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                        {r.type === 'reassign' && (r.fromHr || r.toHr) && (
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            {r.fromHr && <span>{r.fromHr}</span>}
+                            {r.fromHr && r.toHr && <span className="mx-1 text-slate-400">→</span>}
+                            {r.toHr && <span className="text-slate-700 font-semibold">{r.toHr}</span>}
+                          </div>
+                        )}
+                        {r.type === 'reschedule' && (r.from || r.to) && (
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            {r.from && <span>From: <strong className="text-slate-700">{r.from}</strong></span>}
+                            {r.from && r.to && <span className="mx-1 text-slate-400">→</span>}
+                            {r.to && <span>To: <strong className="text-slate-700">{r.to}</strong></span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
+                <div className="text-4xl mb-3 opacity-40">📝</div>
+                <p className="text-xs font-medium text-slate-400">No remarks yet</p>
+                <p className="text-[10px] mt-1 text-slate-500">Remarks from reassignments & reschedules will appear here</p>
+              </div>
+            )}
+          </div>
+        </div>{/* end RIGHT remarks panel */}
+      </div>{/* end two-column body */}
     </div>
   );
 };
@@ -3686,7 +4350,7 @@ const SearchableSelect = ({
       </div>
 
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+        <div className="absolute z-[99999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
           {/* Search input */}
           <div className="p-2 border-b border-gray-200">
             <input
@@ -3724,7 +4388,7 @@ const SearchableSelect = ({
 };
 
 // Create Interview Modal Component
-const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, interviewTypeOptions, statusOptions, statusOptionsWithSubs = [], sourcePortalOptions = [], existingInterviews = [] }) => {
+const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, interviewTypeOptions, statusOptions, statusOptionsWithSubs = [], sourcePortalOptions = [], existingInterviews = [], cooldownDays = 7 }) => {
   // Get current date and time in the required format for datetime-local input
   const getCurrentDateTime = () => {
     const now = new Date();
@@ -3786,17 +4450,26 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Two-step form state
+  const [formStep, setFormStep] = useState(1);
+  const [createdInterviewId, setCreatedInterviewId] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
   // Drawer UI state
   const [qualSearch, setQualSearch] = useState('');
   const [qualOpen, setQualOpen] = useState(false);
   const qualRef = useRef(null);
-  const [drawerShowDupDetails, setDrawerShowDupDetails] = useState(false);
 
-  // Duplicate check state
-  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [duplicateInterviews, setDuplicateInterviews] = useState([]);
-  const [duplicatePhoneNumber, setDuplicatePhoneNumber] = useState('');
-  const [pendingInterviewData, setPendingInterviewData] = useState(null);
+  // Inline duplicate check state (matching HTML design)
+  const [duplicateMatch, setDuplicateMatch] = useState(null);
+  const [canReassign, setCanReassign] = useState(false);
+  const [reassignReason, setReassignReason] = useState('');
+  const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+
+  // Available users for reassignment
   const [availableUsers, setAvailableUsers] = useState([]);
 
   // Load available users for reassignment
@@ -3845,6 +4518,64 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     setQualSearch(entry);
     setQualOpen(false);
     if (errors.qualification) setErrors(prev => ({ ...prev, qualification: '' }));
+  };
+
+  // Inline phone duplicate check (matching HTML handlePhoneCheck)
+  const handlePhoneCheck = async (e) => {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setFormData(prev => ({ ...prev, mobile_number: val }));
+    if (errors.mobile_number) setErrors(prev => ({ ...prev, mobile_number: '' }));
+
+    if (val.length >= 10) {
+      setCheckingDuplicate(true);
+      try {
+        const response = await API.interviews.checkDuplicatePhone(val);
+        if (response.success && response.data && response.data.length > 0) {
+          const match = response.data[0];
+          setDuplicateMatch(match);
+          const lastUpdate = match.updated_at || match.created_at;
+          const d = lastUpdate ? (new Date() - new Date(lastUpdate)) / (1000 * 60 * 60 * 24) : 999;
+          const stage = getStageFromStatus(match.status);
+          setCanReassign(!(stage === 'Interview' && d < cooldownDays));
+        } else {
+          setDuplicateMatch(null);
+        }
+      } catch (error) {
+        console.warn('Duplicate check failed:', error);
+        setDuplicateMatch(null);
+      } finally {
+        setCheckingDuplicate(false);
+      }
+    } else {
+      setDuplicateMatch(null);
+    }
+  };
+
+  // Handle reassign of duplicate interview to current user
+  const handleReassign = async () => {
+    if (!duplicateMatch || !reassignReason.trim()) return;
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    const userId = userData.user_id || localStorage.getItem('userId') || '';
+    if (!userId) { alert('Please login first'); return; }
+    
+    setLoading(true);
+    try {
+      const response = await API.interviews.requestReassignment(
+        duplicateMatch._id || duplicateMatch.id,
+        userId,
+        reassignReason.trim()
+      );
+      if (response.success) {
+        alert('Reassignment request submitted successfully. Awaiting admin approval.');
+        onClose();
+      } else {
+        alert(response.message || 'Failed to submit reassignment request');
+      }
+    } catch (error) {
+      alert('Failed to submit reassignment request');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredQualGroups = qualCatalog.map(group => ({
@@ -3960,8 +4691,6 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     
     if (!formData.gender) newErrors.gender = 'Gender is required';
     if (!formData.qualification) newErrors.qualification = 'Qualification is required';
-    if (!formData.job_opening?.trim()) newErrors.job_opening = 'Job opening is required';
-    if (!formData.interview_type) newErrors.interview_type = 'Interview type is required';
     if (!formData.date_time) newErrors.date_time = 'Date and time is required';
     
     setErrors(newErrors);
@@ -4007,8 +4736,8 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         candidate_name: formData.candidate_name,
         mobile_number: formData.mobile_number,
         gender: formData.gender,
-        job_opening: formData.job_opening,
-        interview_type: formData.interview_type,
+        job_opening: formData.job_opening || '',
+        interview_type: formData.interview_type || (interviewTypeOptions.length > 0 ? interviewTypeOptions[0] : 'Walk-In'),
         
         // Optional contact fields
         alternate_number: formData.alternate_number || '',
@@ -4035,8 +4764,8 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         type_of_business: formData.type_of_business || '',
         banking_experience: formData.banking_experience || '',
         
-        // Interview scheduling
-        interview_date: new Date(formData.date_time).toISOString().split('T')[0],
+        // Interview scheduling — use local date directly to avoid UTC timezone shift
+        interview_date: formData.date_time.split('T')[0],
         interview_time: formData.date_time.split('T')[1] || '10:00',
         date_time: formData.date_time,
         
@@ -4056,78 +4785,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       if (interviewData.offer_salary === null) delete interviewData.offer_salary;
       if (interviewData.monthly_salary_offered === null) delete interviewData.monthly_salary_offered;
       
-      // Check for duplicate phone numbers before creating interview
-      const phoneNumbers = [formData.mobile_number];
-      if (formData.alternate_number?.trim()) {
-        phoneNumbers.push(formData.alternate_number.trim());
-      }
-      
-      let duplicateFound = false;
-      let allDuplicates = [];
-      
-      // Enhanced duplicate checking: check both mobile_number and alternate_number fields
-      // against both the primary and alternate numbers being submitted
-      for (const phoneNumber of phoneNumbers) {
-        try {
-          // Check if this phone number exists as mobile_number in any existing interview
-          const mobileResponse = await API.interviews.checkDuplicatePhone(phoneNumber);
-          if (mobileResponse.success && mobileResponse.data && mobileResponse.data.length > 0) {
-            duplicateFound = true;
-            allDuplicates = [...allDuplicates, ...mobileResponse.data];
-          }
-          
-          // Also check against local existingInterviews for comprehensive duplicate checking
-          // This covers cases where the API might not return all matches or for alternate numbers
-          if (existingInterviews && existingInterviews.length > 0) {
-            const localMatches = existingInterviews.filter(interview => {
-              // Check both mobile_number and alternate_number fields
-              const interviewMobile = interview.mobile_number?.trim();
-              const interviewAlternate = interview.alternate_number?.trim();
-              const currentPhone = phoneNumber.trim();
-              
-              return (interviewMobile && interviewMobile === currentPhone) ||
-                     (interviewAlternate && interviewAlternate === currentPhone);
-            });
-            
-            if (localMatches.length > 0) {
-              duplicateFound = true;
-              allDuplicates = [...allDuplicates, ...localMatches];
-            }
-          }
-        } catch (error) {
-          console.warn(`Failed to check duplicates for phone ${phoneNumber}:`, error);
-          // Continue with creation if duplicate check fails
-        }
-      }
-      
-      if (duplicateFound && allDuplicates.length > 0) {
-        // Remove duplicates from the array (same interview might be found via multiple phones)
-        const uniqueDuplicates = allDuplicates.filter((interview, index, self) => 
-          index === self.findIndex(i => (i._id || i.id) === (interview._id || interview.id))
-        );
-        
-        // Store interview data for later creation and show duplicate modal
-        setPendingInterviewData(interviewData);
-        setDuplicateInterviews(uniqueDuplicates);
-        setDuplicatePhoneNumber(phoneNumbers.join(', '));
-        setShowDuplicateModal(true);
-        setLoading(false);
-        
-        console.log('Duplicate phone numbers found:', {
-          submittedNumbers: phoneNumbers,
-          duplicatesFound: uniqueDuplicates.length,
-          duplicateInterviews: uniqueDuplicates.map(d => ({
-            id: d._id || d.id,
-            name: d.candidate_name,
-            mobile: d.mobile_number,
-            alternate: d.alternate_number
-          }))
-        });
-        
-        return;
-      }
-      
-      // No duplicates found, proceed with direct creation
+      // Duplicate was already checked inline on phone input — proceed with creation
       await createInterviewDirectly(interviewData);
       
     } catch (error) {
@@ -4138,14 +4796,17 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
 
   const createInterviewDirectly = async (interviewData) => {
     try {
-      // Use API service instead of direct fetch to ensure proper history creation
       const newInterview = await API.interviews.createInterview(interviewData);
-      
-      // Show success message - using the same pattern as the main component
-      alert(`Interview created successfully for ${interviewData.candidate_name}!`);
-      
-      onInterviewCreated(newInterview);
-      onClose(); // Close modal after success
+      const iid = newInterview._id || newInterview.id || (newInterview.data && (newInterview.data._id || newInterview.data.id));
+      setCreatedInterviewId(iid);
+      setFormStep(2);
+      // Load any existing attachments (shouldn't be any, but just in case)
+      if (iid) {
+        try {
+          const attRes = await API.interviews.getAttachments(iid);
+          if (attRes.success) setAttachments(attRes.data || []);
+        } catch (_) {}
+      }
     } catch (error) {
       alert('Error creating interview: ' + error.message);
       throw error;
@@ -4154,43 +4815,55 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     }
   };
 
-  const handleProceedWithDuplicate = async () => {
-    if (pendingInterviewData) {
-      setShowDuplicateModal(false);
-      try {
-        await createInterviewDirectly(pendingInterviewData);
-      } catch (error) {
-        alert(`Failed to create interview: ${error.message}`);
+  // Attachment handlers for step 2
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !createdInterviewId) return;
+    setUploading(true);
+    try {
+      const res = await API.interviews.uploadAttachment(createdInterviewId, file, file.name);
+      if (res.success) {
+        const attRes = await API.interviews.getAttachments(createdInterviewId);
+        if (attRes.success) setAttachments(attRes.data || []);
       }
-      setPendingInterviewData(null);
-      setDuplicateInterviews([]);
-      setDuplicatePhoneNumber('');
+    } catch (err) {
+      console.error('Upload failed:', err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleCloseDuplicateModal = () => {
-    setShowDuplicateModal(false);
-    setPendingInterviewData(null);
-    setDuplicateInterviews([]);
-    setDuplicatePhoneNumber('');
-    setLoading(false);
+  const handleDeleteAttachment = async (attId) => {
+    if (!createdInterviewId) return;
+    try {
+      await API.interviews.deleteAttachment(createdInterviewId, attId);
+      setAttachments(prev => prev.filter(a => a.id !== attId));
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  };
+
+  const handleFinish = async () => {
+    await onInterviewCreated();
+    onClose();
   };
 
   const drawerInputCls = "w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all";
   const canSubmit = formData.mobile_number.length >= 10 && formData.interview_date && formData.candidate_name.trim();
 
   return (
-    <div className="fixed inset-0 z-[9999] flex justify-end">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Drawer */}
+      {/* Modal */}
       <div
-        className="relative w-full max-w-2xl bg-white h-full border-l border-slate-200 flex flex-col shadow-2xl"
-        style={{ animation: 'slideInRight 0.25s ease-out' }}
+        className="relative w-full max-w-2xl bg-white rounded-2xl flex flex-col shadow-2xl max-h-[90vh]"
+        style={{ animation: 'scaleIn 0.2s ease-out' }}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 to-indigo-900 flex justify-between items-center shrink-0">
+        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 to-indigo-900 rounded-t-2xl flex justify-between items-center shrink-0">
           <div>
             <h2 className="font-black text-white text-lg flex items-center gap-2">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9">
@@ -4199,18 +4872,28 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                 <line x1="19" y1="8" x2="19" y2="14"/>
                 <line x1="22" y1="11" x2="16" y2="11"/>
               </svg>
-              Add Candidate
+              {formStep === 1 ? 'Add Candidate' : 'Attachments'}
             </h2>
-            <p className="text-slate-400 text-xs mt-0.5">Full interview registration form</p>
+            <p className="text-slate-400 text-xs mt-0.5">
+              {formStep === 1 ? 'Step 1 of 2 — Candidate details' : 'Step 2 of 2 — Upload documents'}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Step indicator dots */}
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${formStep === 1 ? 'bg-white' : 'bg-white/40'}`}></div>
+              <div className={`w-2 h-2 rounded-full ${formStep === 2 ? 'bg-white' : 'bg-white/40'}`}></div>
+            </div>
+            <button onClick={onClose} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
 
         {/* Scrollable body */}
         <div className="p-5 overflow-y-auto flex-1 bg-slate-50 space-y-4">
 
+        {formStep === 1 && (<>
           {/* ── Phone Check ── */}
           <div className="bg-white border-2 border-indigo-200 rounded-2xl p-4">
             <label className="block text-xs font-black text-indigo-600 uppercase tracking-wider mb-2">
@@ -4219,11 +4902,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
             <input
               name="mobile_number"
               value={formData.mobile_number}
-              onChange={e => {
-                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                setFormData(prev => ({ ...prev, mobile_number: val }));
-                if (errors.mobile_number) setErrors(prev => ({ ...prev, mobile_number: '' }));
-              }}
+              onChange={handlePhoneCheck}
               className="w-full bg-indigo-50 border border-indigo-200 focus:bg-white focus:border-indigo-500 rounded-xl px-4 py-3 text-slate-900 text-base font-bold outline-none transition-all tracking-widest"
               placeholder="Enter 10-digit mobile"
               maxLength="10"
@@ -4237,8 +4916,97 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
             )}
           </div>
 
-          {/* ── Main form (shown after phone entered) ── */}
-          {formData.mobile_number.length >= 10 && (
+          {/* ── Inline Duplicate Match Card (matching HTML design) ── */}
+          {checkingDuplicate && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center">
+              <div className="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-xs text-slate-500">Checking for duplicates...</p>
+            </div>
+          )}
+          {duplicateMatch && (() => {
+            const stageMeta = { Interview:{bg:'bg-blue-600'}, 'Round 2':{bg:'bg-indigo-600'}, 'Job Offered':{bg:'bg-orange-500'}, Training:{bg:'bg-yellow-500'}, Hired:{bg:'bg-emerald-600'}, Rejected:{bg:'bg-red-600'} };
+            const matchStage = getStageFromStatus(duplicateMatch.status);
+            const sm = stageMeta[matchStage] || {bg:'bg-slate-600'};
+            const activities = duplicateMatch.activity_history || duplicateMatch.activityHistory || [];
+            const ownerName = duplicateMatch.created_by || duplicateMatch.hr || 'N/A';
+            const createdDate = duplicateMatch.created_at ? new Date(duplicateMatch.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A';
+            const updatedDate = duplicateMatch.updated_at ? new Date(duplicateMatch.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A';
+            const reassignCount = duplicateMatch.reassign_count || duplicateMatch.reassignCount || 0;
+            const rescheduleCount = duplicateMatch.reschedule_count || duplicateMatch.rescheduleCount || 0;
+            return (
+              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
+                <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-5 py-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white text-xl font-black">{(duplicateMatch.candidate_name || 'U').charAt(0)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="text-lg font-black text-white">{duplicateMatch.candidate_name || 'Unknown'}</h3>
+                        <span className={`text-[11px] font-black text-white px-2.5 py-1 rounded-full ${sm.bg}`}>{matchStage}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <span className="text-xs text-slate-400">📱 {duplicateMatch.mobile_number}</span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-xs text-slate-400">{duplicateMatch.job_opening || duplicateMatch.role || 'N/A'}</span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-xs text-slate-400">{duplicateMatch.experience_type || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-slate-800/90 px-5 py-3 grid grid-cols-3 gap-4 text-xs">
+                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Owner</div><div className="text-white font-bold">{ownerName}</div></div>
+                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Created</div><div className="text-white font-medium">{createdDate}</div></div>
+                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Last Updated</div><div className="text-white font-medium">{updatedDate}</div></div>
+                </div>
+                {matchStage === 'Rejected' && duplicateMatch.status && (
+                  <div className="bg-red-50 border-b border-red-200 px-5 py-3 flex items-center gap-3">
+                    <XCircle size={16} className="text-red-500 shrink-0"/>
+                    <div><div className="text-[10px] font-black text-red-600 uppercase tracking-wider">Rejection Reason</div><div className="text-sm font-semibold text-red-800">{duplicateMatch.status}</div></div>
+                  </div>
+                )}
+                <div className="bg-white border-b border-slate-200 px-5 py-3 flex gap-4">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-600"><RefreshCw size={12}/> {reassignCount} Reassign{reassignCount !== 1 ? 's' : ''}</div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600"><Calendar size={12}/> {rescheduleCount} Reschedule{rescheduleCount !== 1 ? 's' : ''}</div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600"><History size={12}/> {activities.length} Activity</div>
+                </div>
+                <div className="bg-white px-5 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider">Activity History</div>
+                    {activities.length > 3 && <button onClick={() => setShowDuplicateDetails(!showDuplicateDetails)} className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">{showDuplicateDetails ? <><ChevronDown size={12}/> Less</> : <><ChevronRight size={12}/> +{activities.length - 3} more</>}</button>}
+                  </div>
+                  {activities.length === 0 && <div className="text-xs text-slate-400 italic py-2">No activity logged.</div>}
+                  <div className="space-y-2">{(showDuplicateDetails ? activities : activities.slice(-3)).map((log, i) => (
+                    <div key={i} className="flex items-start gap-3 text-xs">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                      <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <div className="flex items-center justify-between gap-2"><span className="font-bold text-slate-700">{log.action}</span><span className="text-slate-400 text-[10px] shrink-0">{log.date || (log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')}</span></div>
+                        <div className="text-slate-500 mt-0.5">{log.details || log.description || ''}</div>
+                      </div>
+                    </div>
+                  ))}</div>
+                </div>
+                <div className="px-5 py-5 bg-slate-50 border-t border-slate-200">
+                  {canReassign ? (
+                    <div>
+                      <div className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2">Re-assign to Me <span className="text-red-500">*</span></div>
+                      <textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} placeholder="Enter mandatory audit reason..." className="w-full h-20 bg-white border border-slate-300 rounded-xl p-3 text-sm text-slate-900 outline-none mb-3 focus:border-blue-500 resize-none" />
+                      <button disabled={!reassignReason.trim() || loading} onClick={handleReassign} className={`w-full py-3 rounded-xl font-black text-sm transition-all ${reassignReason.trim() && !loading ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                        {loading ? 'Submitting...' : 'Transfer Lead to Me'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-4">
+                      <Lock size={22} className="text-red-500 mt-0.5 shrink-0"/>
+                      <div><div className="text-sm font-black text-red-700">Lead is Locked</div><div className="text-xs text-red-600/80 mt-1 leading-relaxed"><b>{ownerName}</b> recently updated this lead. {cooldownDays}-day cooldown active.</div></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Main form (shown after phone entered, hidden when duplicate found) ── */}
+          {!duplicateMatch && formData.mobile_number.length >= 10 && (
             <form id="create-interview-drawer" onSubmit={handleSubmit} className="space-y-4">
 
               {/* ── Basic Info ── */}
@@ -4263,12 +5031,6 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       className={errors.date_time ? drawerInputCls + ' border-red-400' : drawerInputCls} />
                     {errors.date_time && <p className="text-xs text-red-500 mt-1">{errors.date_time}</p>}
                   </div>
-                  {/* Interview Time */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Time <span className="text-red-400">*</span></label>
-                    <input type="time" name="interview_time" value={formData.interview_time} onChange={handleInputChange}
-                      className={drawerInputCls} />
-                  </div>
                   {/* Alternate Number */}
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
@@ -4282,13 +5044,14 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                   </div>
                   {/* Source */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source/Portal</label>
-                    <select name="source_portal" value={formData.source_portal} onChange={handleInputChange} className={drawerInputCls}>
-                      <option value="">Select...</option>
-                      {(sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Employee Referral', 'IVR']).map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source</label>
+                    <SearchableSelect
+                      name="source_portal"
+                      value={formData.source_portal}
+                      onChange={handleInputChange}
+                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      placeholder="Select source..."
+                    />
                   </div>
                   {/* Age */}
                   <div>
@@ -4302,34 +5065,14 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                     <input name="city" value={formData.city} onChange={handleInputChange}
                       className={drawerInputCls} placeholder="Current city" />
                   </div>
-                  {/* Job Opening */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Job Applied <span className="text-red-400">*</span></label>
-                    <select name="job_opening" value={formData.job_opening} onChange={handleInputChange}
-                      className={errors.job_opening ? drawerInputCls + ' border-red-400' : drawerInputCls}>
-                      <option value="">Select role...</option>
-                      {jobOpeningOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                    {errors.job_opening && <p className="text-xs text-red-500 mt-1">{errors.job_opening}</p>}
-                  </div>
-                  {/* Interview Type */}
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Type <span className="text-red-400">*</span></label>
-                    <select name="interview_type" value={formData.interview_type} onChange={handleInputChange}
-                      className={errors.interview_type ? drawerInputCls + ' border-red-400' : drawerInputCls}>
-                      <option value="">Select type...</option>
-                      {interviewTypeOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                    {errors.interview_type && <p className="text-xs text-red-500 mt-1">{errors.interview_type}</p>}
-                  </div>
                   {/* Gender toggle */}
                   <div className="col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Gender <span className="text-red-400">*</span></label>
                     <div className="flex gap-2">
-                      {['Male', 'Female', 'Other'].map(g => (
-                        <label key={g} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                      {['Male', 'Female'].map(g => (
+                        <label key={g} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
                           <input type="radio" name="gender" value={g} checked={formData.gender === g} onChange={handleInputChange} className="hidden" />
-                          {g === 'Male' ? '👨' : g === 'Female' ? '👩' : '🧑'} {g}
+                          {g === 'Male' ? '👨' : '👩'} {g}
                         </label>
                       ))}
                     </div>
@@ -4413,13 +5156,16 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                   <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
                 </div>
                 <div className="p-4 space-y-3">
-                  {/* Primary earner */}
+                  {/* Role */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Primary Earning Member</label>
-                    <select name="primary_earning_member" value={formData.primary_earning_member} onChange={handleInputChange} className={drawerInputCls}>
-                      <option value="">Select...</option>
-                      {['Father', 'Mother', 'Both Parents', 'Self', 'Spouse', 'Sibling', 'Other'].map(o => <option key={o}>{o}</option>)}
-                    </select>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Role</label>
+                    <SearchableSelect
+                      name="job_opening"
+                      value={formData.job_opening}
+                      onChange={handleInputChange}
+                      options={jobOpeningOptions.length > 0 ? jobOpeningOptions : ['Sales Executive', 'Back Office Exec', 'Telecaller', 'Floor Manager']}
+                      placeholder="Select role..."
+                    />
                   </div>
                   {/* Work Experience toggle */}
                   <div>
@@ -4518,11 +5264,84 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
 
             </form>
           )}
+        </>)}
+
+        {/* ── Step 2: Attachments ── */}
+        {formStep === 2 && (
+          <div className="space-y-4">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 text-lg">✓</div>
+              <div>
+                <div className="text-sm font-black text-emerald-800">Candidate Saved Successfully</div>
+                <div className="text-xs text-emerald-600 mt-0.5">Now upload any supporting documents</div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-slate-50 flex items-center gap-2">
+                <span className="text-base">📎</span>
+                <span className="text-xs font-black text-amber-700 uppercase tracking-wider">Attachments</span>
+                <span className="ml-auto text-[10px] font-bold text-slate-400">{attachments.length} file{attachments.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-xs text-slate-500">Upload offer letters, previous company documents, or any other relevant files. You can add multiple files one by one.</p>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 text-sm font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  {uploading ? (
+                    <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Uploading...</>
+                  ) : (
+                    <><Upload size={16}/> Choose File to Upload</>
+                  )}
+                </button>
+
+                {/* Attachment list */}
+                {attachments.length > 0 && (
+                  <div className="space-y-2 mt-3">
+                    {attachments.map((att, idx) => (
+                      <div key={att.id} className="group flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 hover:border-slate-300 transition-all">
+                        <span className="text-xs font-black text-slate-400 w-5">{idx + 1}.</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-slate-700 truncate">{att.original_name || att.file_name}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : ''}
+                            {att.uploaded_at ? ` • ${new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}` : ''}
+                          </div>
+                        </div>
+                        <a
+                          href={API.interviews.getAttachmentDownloadUrl(createdInterviewId, att.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-500 hover:text-indigo-700 p-1"
+                          title="Download"
+                        >
+                          <Download size={14}/>
+                        </a>
+                        <button
+                          onClick={() => handleDeleteAttachment(att.id)}
+                          className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete"
+                        >
+                          <Trash2 size={14}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         </div>
 
-        {/* ── Footer submit button ── */}
-        {formData.mobile_number.length >= 10 && (
-          <div className="p-4 border-t border-slate-200 bg-white shrink-0">
+        {/* ── Footer ── */}
+        {formStep === 1 && !duplicateMatch && formData.mobile_number.length >= 10 && (
+          <div className="p-4 border-t border-slate-200 bg-white rounded-b-2xl shrink-0">
             <button
               type="submit"
               form="create-interview-drawer"
@@ -4532,28 +5351,30 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               {loading ? (
                 <>
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-                  Creating Interview...
+                  Saving Candidate...
                 </>
               ) : (
                 <>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-                  Save Candidate Profile
+                  Save &amp; Continue →
                 </>
               )}
             </button>
           </div>
         )}
+        {formStep === 2 && (
+          <div className="p-4 border-t border-slate-200 bg-white rounded-b-2xl shrink-0">
+            <button
+              type="button"
+              onClick={handleFinish}
+              className="w-full py-3.5 rounded-2xl font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Done
+            </button>
+          </div>
+        )}
       </div>
-
-      {/* Duplicate Interview Modal (API-based check) */}
-      <DuplicateInterviewModal
-        visible={showDuplicateModal}
-        onClose={handleCloseDuplicateModal}
-        duplicateInterviews={duplicateInterviews}
-        phoneNumber={duplicatePhoneNumber}
-        onProceed={handleProceedWithDuplicate}
-        onCloseCreateModal={onClose}
-      />
     </div>
   );
 };

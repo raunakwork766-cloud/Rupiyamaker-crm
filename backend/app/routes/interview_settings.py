@@ -767,3 +767,27 @@ async def save_global_settings_route(
     except Exception as e:
         logger.error(f"Error in save_global_settings_route: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/interview-settings/hr-head")
+async def get_hr_head_info(user_id: str = Query(...)):
+    """Get HR Head employee info for WhatsApp messages (no permission check)."""
+    try:
+        db_instances = get_database_instances()
+        users_db = db_instances["users"]
+        # Search for active employee with HR-like designation
+        doc = await users_db.collection.find_one(
+            {"designation": {"$regex": "hr", "$options": "i"}, "employee_status": "active", "is_disabled": {"$ne": True}},
+            {"first_name": 1, "last_name": 1, "phone": 1, "designation": 1}
+        )
+        if doc:
+            name = f"{doc.get('first_name', '')} {doc.get('last_name', '')}".strip()
+            return {"success": True, "data": {
+                "name": name,
+                "phone": doc.get("phone", ""),
+                "designation": doc.get("designation", "HR Head"),
+            }}
+        return {"success": True, "data": {"name": "", "phone": "", "designation": "HR Head"}}
+    except Exception as e:
+        logger.error(f"Error in get_hr_head_info: {e}")
+        return {"success": True, "data": {"name": "", "phone": "", "designation": "HR Head"}}

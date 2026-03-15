@@ -592,6 +592,80 @@ async def send_lead_to_login_department(
         "obligation_data_preserved": bool(login_lead_data.get('dynamic_fields', {}).get('obligation_data'))
     }
 
+@router.get("/check-phone/{phone_number}")
+async def check_login_phone_number(
+    phone_number: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """
+    Check if a phone number exists in the login_leads collection.
+    Used by the CreateLead duplicate check to populate the 'Login in Leads' tab.
+    """
+    await check_permission(user_id, "leads", "show", users_db, roles_db)
+
+    clean_phone = phone_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+
+    search_filter = {
+        "$or": [
+            {"phone": {"$regex": clean_phone, "$options": "i"}},
+            {"mobile_number": {"$regex": clean_phone, "$options": "i"}},
+            {"alternative_phone": {"$regex": clean_phone, "$options": "i"}}
+        ]
+    }
+
+    matching_leads = await login_leads_db.list_login_leads(filter_dict=search_filter, limit=20)
+
+    if not matching_leads:
+        return {"found": False, "leads": [], "total_leads": 0}
+
+    lead_results = []
+    for lead in matching_leads:
+        lead_id = str(lead.get("_id", ""))
+
+        created_by_name = lead.get("created_by_name", "")
+        if not created_by_name and lead.get("login_created_by"):
+            try:
+                creator = await users_db.get_user(str(lead["login_created_by"]))
+                if creator:
+                    created_by_name = f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip() or creator.get("username", "")
+            except Exception:
+                pass
+
+        dept_name = lead.get("department_name", "")
+        if isinstance(dept_name, dict):
+            dept_name = dept_name.get("name", "")
+
+        bank_name = lead.get("bank_name", "") or ""
+        if not bank_name:
+            fin = lead.get("financial_details", {}) or {}
+            bank_name = fin.get("bank_name", "") or ""
+        if isinstance(bank_name, list):
+            bank_name = bank_name[0] if bank_name else ""
+
+        loan_type_display = lead.get("loan_type_name") or lead.get("loan_type") or ""
+
+        lead_results.append({
+            "id": lead_id,
+            "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),
+            "phone": lead.get("phone", lead.get("mobile_number", "")),
+            "status": lead.get("status", ""),
+            "sub_status": lead.get("sub_status", ""),
+            "bank_name": bank_name,
+            "loan_type": loan_type_display,
+            "login_date": lead.get("login_date", lead.get("login_created_at", "")),
+            "created_at": lead.get("created_at", ""),
+            "login_created_at": lead.get("login_created_at", ""),
+            "created_by_name": created_by_name,
+            "department_name": dept_name,
+            "original_lead_id": lead.get("original_lead_id", ""),
+        })
+
+    return {"found": True, "leads": lead_results, "total_leads": len(lead_results)}
+
+
 @router.get("/login-leads/{login_lead_id}")
 async def get_single_login_lead(
     login_lead_id: str,
@@ -2483,6 +2557,64 @@ async def delete_login_lead(
         # Don't fail the operation if cache invalidation fails
     
     return {"message": "Login department lead deleted successfully"}
+
+@router.get("/login-leads/{lead_id}/assignment-history")
+async def get_login_lead_assignment_history(
+    lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get enriched assignment/reassignment history for a login lead with user names resolved"""
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    lead = await login_leads_db.get_login_lead(lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    raw_history = lead.get("assignment_history", [])
+
+    # Collect all unique user IDs for bulk lookup
+    all_user_ids = set()
+    for entry in raw_history:
+        if entry.get("assigned_by"):
+            all_user_ids.add(str(entry["assigned_by"]))
+        for uid in entry.get("users", []):
+            all_user_ids.add(str(uid))
+
+    # Resolve user names in bulk
+    user_name_map = {}
+    for uid in all_user_ids:
+        try:
+            u = await users_db.get_user(uid)
+            if u:
+                fn = u.get("first_name", "")
+                ln = u.get("last_name", "")
+                user_name_map[uid] = f"{fn} {ln}".strip() or u.get("username", uid)
+        except Exception:
+            user_name_map[uid] = uid
+
+    enriched = []
+    for entry in raw_history:
+        assigned_by_id = str(entry.get("assigned_by", ""))
+        assigned_to_ids = [str(u) for u in entry.get("users", [])]
+        enriched.append({
+            "assigned_by_id": assigned_by_id,
+            "assigned_by_name": user_name_map.get(assigned_by_id, assigned_by_id),
+            "assigned_to_ids": assigned_to_ids,
+            "assigned_to_names": [user_name_map.get(uid, uid) for uid in assigned_to_ids],
+            "assigned_date": entry.get("assigned_date", ""),
+            "assignment_type": entry.get("assignment_type", "login_department"),
+            "department_id": str(entry.get("department_id", "")) if entry.get("department_id") else None,
+            "remark": entry.get("remark", ""),
+        })
+
+    # Newest first
+    enriched.sort(key=lambda x: x["assigned_date"], reverse=True)
+
+    return {"lead_id": lead_id, "history": enriched, "total": len(enriched)}
+
 
 @router.get("/channel-names")
 async def get_channel_names_for_operations(
