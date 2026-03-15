@@ -53,7 +53,7 @@ from app.utils.permissions import (
     get_lead_visibility_filter, can_view_lead, filter_leads_by_hierarchy,
     get_lead_user_capabilities
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(
@@ -397,6 +397,8 @@ async def check_phone_number(
                 return datetime.fromisoformat(val.replace("Z", "+00:00"))
             except Exception:
                 return None
+        if isinstance(val, datetime) and val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
         return val
 
     for lead in matching_leads:
@@ -428,6 +430,19 @@ async def check_phone_number(
         if isinstance(bank_name, list):
             bank_name = bank_name[0] if bank_name else ""
 
+        # Resolve assigned_to user name
+        assigned_to_name = ""
+        if lead.get("assigned_to"):
+            try:
+                assigned_user = await users_db.get_user(str(lead["assigned_to"]))
+                if assigned_user:
+                    assigned_to_name = (
+                        f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip()
+                        or assigned_user.get("username", "")
+                    )
+            except Exception:
+                pass
+
         lead_results.append({
             "id": str(lead.get("_id", "")),
             "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),
@@ -441,6 +456,7 @@ async def check_phone_number(
             "created_at": lead.get("created_at", ""),
             "_created_dt": created_dt,          # internal, removed before response
             "assigned_to": lead.get("assigned_to"),
+            "assigned_to_name": assigned_to_name,
             "created_by": str(lead.get("created_by", "")),
             "assign_report_to": lead.get("assign_report_to"),
             "age_days": lead_age_days,
@@ -451,6 +467,14 @@ async def check_phone_number(
             "department_name": dept_name,
             "bank_name": bank_name,
             "file_sent_to_login": lead.get("file_sent_to_login", False),
+            # Reassignment metadata
+            "pending_reassignment": lead.get("pending_reassignment", False),
+            "reassignment_status": lead.get("reassignment_status", ""),
+            "reassignment_requested_by": lead.get("reassignment_requested_by", ""),
+            "reassignment_requested_at": lead.get("reassignment_requested_at", ""),
+            "reassignment_reason": lead.get("reassignment_reason", ""),
+            "reassignment_approved_by": lead.get("reassignment_approved_by", ""),
+            "reassignment_approved_at": lead.get("reassignment_approved_at", ""),
         })
 
     # ── Locking period logic ─────────────────────────────────────────────────
@@ -535,6 +559,67 @@ async def check_phone_number(
     # Remove internal helper field before returning
     for lr in lead_results:
         lr.pop("_created_dt", None)
+
+    # ── Fetch reassignment history for each lead ─────────────────────────────
+    try:
+        lead_ids_obj = [ObjectId(lr["id"]) for lr in lead_results if lr.get("id")]
+        if lead_ids_obj:
+            history_cursor = leads_db.activity_collection.find(
+                {"lead_id": {"$in": lead_ids_obj}, "type": "reassignment"},
+                {"_id": 0, "lead_id": 1, "created_at": 1, "created_by": 1,
+                 "action": 1, "activity_type": 1, "activity_description": 1, "details": 1}
+            ).sort("created_at", -1)
+            history_records = await history_cursor.to_list(length=100)
+
+            # Resolve user names for history records
+            history_user_ids = set()
+            for rec in history_records:
+                if rec.get("created_by"):
+                    history_user_ids.add(str(rec["created_by"]))
+                details = rec.get("details") or {}
+                if details.get("target_user"):
+                    history_user_ids.add(str(details["target_user"]))
+
+            user_name_cache = {}
+            for uid in history_user_ids:
+                try:
+                    u = await users_db.get_user(uid)
+                    if u:
+                        user_name_cache[uid] = (
+                            f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
+                            or u.get("username", "")
+                        )
+                except Exception:
+                    pass
+
+            # Group by lead_id
+            history_by_lead = {}
+            for rec in history_records:
+                lid = str(rec.get("lead_id", ""))
+                if lid not in history_by_lead:
+                    history_by_lead[lid] = []
+                created_at_val = rec.get("created_at")
+                if isinstance(created_at_val, datetime):
+                    created_at_val = created_at_val.isoformat()
+                details = rec.get("details") or {}
+                history_by_lead[lid].append({
+                    "date": created_at_val or "",
+                    "action": rec.get("action", ""),
+                    "by_user": user_name_cache.get(str(rec.get("created_by", "")), ""),
+                    "to_user": user_name_cache.get(str(details.get("target_user", "")), ""),
+                    "reason": details.get("reason", ""),
+                    "status": details.get("reassignment_status", ""),
+                    "description": rec.get("activity_description", ""),
+                })
+
+            for lr in lead_results:
+                lr["reassignment_history"] = history_by_lead.get(lr["id"], [])
+        else:
+            for lr in lead_results:
+                lr["reassignment_history"] = []
+    except Exception:
+        for lr in lead_results:
+            lr["reassignment_history"] = []
 
     # ── Overall flags ────────────────────────────────────────────────────────
     is_globally_locked = locking_info.get("is_locked", False)

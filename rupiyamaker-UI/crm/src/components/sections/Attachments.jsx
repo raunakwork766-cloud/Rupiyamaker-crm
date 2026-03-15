@@ -93,6 +93,7 @@ export default function Attachments({ leadId, userId }) {
   const [showTooltip, setShowTooltip] = useState({}); // State to manage tooltip visibility
   const [editingFileId, setEditingFileId] = useState(null); // ID of file being renamed
   const [editingFileName, setEditingFileName] = useState(''); // edit value (base name only)
+  const [viewerDoc, setViewerDoc] = useState(null); // { blobUrl, downloadUrl, name, isPdf, isImage, loading, error }
 
   // Base URL for API calls
   const BASE_URL = '/api';
@@ -1781,7 +1782,9 @@ export default function Attachments({ leadId, userId }) {
   const handleFileDragOver = (e, docType, toIdx) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const key = `${docType}_${toIdx}`;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const half = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+    const key = `${docType}_${toIdx}_${half}`;
     if (dragOverKey !== key) setDragOverKey(key);
   };
 
@@ -1798,15 +1801,32 @@ export default function Attachments({ leadId, userId }) {
     if (!dragFile.current) return;
     const { docType: fromDocType, fromIdx } = dragFile.current;
     dragFile.current = null;
-    if (fromDocType !== docType || fromIdx === toIdx) return;
+    if (fromDocType !== docType) return;
 
-    // Reorder uploadedDocuments in state (visual only – no backend call needed for ordering)
+    // Determine top/bottom half at drop time for precision
+    const rect = e.currentTarget.getBoundingClientRect();
+    const isTopHalf = e.clientY < rect.top + rect.height / 2;
+
+    // Reorder uploadedDocuments in state
     setUploadedDocuments(prev => {
       const typeDocs = prev.filter(d => d.document_type === docType && getProfileDocs([d]).length > 0);
       const otherDocs = prev.filter(d => !(d.document_type === docType && getProfileDocs([d]).length > 0));
       const moved = [...typeDocs];
       const item = moved.splice(fromIdx, 1)[0];
-      const insertAt = fromIdx < toIdx ? toIdx : toIdx + 1; // border-b semantics: drop after hovered element
+      // After splice, adjust target index for the removal shift, then insert before/after
+      let insertAt;
+      if (isTopHalf) {
+        // insert before toIdx
+        insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      } else {
+        // insert after toIdx
+        insertAt = fromIdx < toIdx ? toIdx : toIdx + 1;
+      }
+      insertAt = Math.max(0, Math.min(moved.length, insertAt));
+      // Skip if result is identical position
+      if (moved[insertAt] && moved[insertAt]._id === item._id) {
+        return prev;
+      }
       moved.splice(insertAt, 0, item);
       return [...otherDocs, ...moved];
     });
@@ -1889,7 +1909,7 @@ export default function Attachments({ leadId, userId }) {
           >
             {isDownloadingAll
               ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
-              : <><i className="fa-solid fa-download mr-1 text-xs"></i> DL ALL ({getProfileDocs(uploadedDocuments).length})</>
+              : <><i className="fa-solid fa-download mr-1 text-xs"></i> DOWNLOAD ALL ({getProfileDocs(uploadedDocuments).length})</>
             }
           </button>
         </div>
@@ -2001,8 +2021,11 @@ export default function Attachments({ leadId, userId }) {
                         const displayNum = typeStartGlobal + fileIdx; // global file number
                         const fname = (doc.filename || doc.file_name || `Document ${displayNum}`).toUpperCase();
                         const isLocked = doc.has_password;
-                        const overKey = `${attachmentType.name}_${fileIdx}`;
-                        const isDraggedOver = dragOverKey === overKey;
+                        const overKeyTop = `${attachmentType.name}_${fileIdx}_top`;
+                        const overKeyBottom = `${attachmentType.name}_${fileIdx}_bottom`;
+                        const isDraggedOverTop = dragOverKey === overKeyTop;
+                        const isDraggedOverBottom = dragOverKey === overKeyBottom;
+                        const isDraggedOver = isDraggedOverTop || isDraggedOverBottom;
 
                         return (
                           <div
@@ -2014,7 +2037,7 @@ export default function Attachments({ leadId, userId }) {
                             onDrop={e => handleFileDrop(e, attachmentType.name, fileIdx)}
                             className={`cursor-grab active:cursor-grabbing bg-white border rounded p-1.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition group/filerow
                               ${isLocked ? 'border-red-200' : 'border-gray-200'}
-                              ${isDraggedOver ? 'border-b-2 border-b-[#2563eb] !border-blue-300' : 'hover:border-blue-300'}`}
+                              ${isDraggedOverTop ? '!border-t-2 !border-t-[#2563eb]' : isDraggedOverBottom ? '!border-b-2 !border-b-[#2563eb]' : 'hover:border-blue-300'}`}
                           >
                             {/* file info */}
                             <div className="flex items-start gap-1.5 min-w-0 pr-2 flex-1 w-full">
@@ -2091,7 +2114,28 @@ export default function Attachments({ leadId, userId }) {
                                 </>
                               )}
                               <button
-                                onClick={() => window.open(`${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`, '_blank')}
+                                onClick={async () => {
+                                  const fname2 = (doc.filename || doc.file_name || '').toLowerCase();
+                                  const ext2 = fname2.split('.').pop();
+                                  const isPdf = ext2 === 'pdf';
+                                  const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext2);
+                                  const downloadUrl = `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`;
+                                  const docName = doc.filename || doc.file_name || 'Document';
+                                  // Show loading state immediately
+                                  setViewerDoc({ blobUrl: null, downloadUrl, name: docName, isPdf, isImage, loading: true, error: null });
+                                  try {
+                                    const res = await fetch(
+                                      `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`,
+                                      { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+                                    );
+                                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                    const blob = await res.blob();
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    setViewerDoc({ blobUrl, downloadUrl, name: docName, isPdf, isImage, loading: false, error: null });
+                                  } catch (err) {
+                                    setViewerDoc(prev => prev ? { ...prev, loading: false, error: err.message } : null);
+                                  }
+                                }}
                                 className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-[#2563eb] hover:bg-white transition shadow-sm"
                                 title="View"
                               >
@@ -2152,6 +2196,80 @@ export default function Attachments({ leadId, userId }) {
       </div>
 
       <textarea id="copy-helper" style={{ position: 'absolute', left: '-9999px' }} readOnly></textarea>
+
+      {/* ── Inline File Viewer Modal ── */}
+      {viewerDoc && (
+        <div
+          className="fixed inset-0 z-[99999] flex flex-col bg-black/85"
+          onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+        >
+          {/* Toolbar */}
+          <div
+            className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 shrink-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="text-white text-sm font-bold truncate max-w-[55vw]" title={viewerDoc.name}>
+              <i className="fa-solid fa-file mr-2 text-blue-400"></i>{viewerDoc.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <a
+                href={viewerDoc.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <i className="fa-solid fa-download"></i> Download
+              </a>
+              <button
+                onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+                className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+              >
+                <i className="fa-solid fa-xmark"></i> Close
+              </button>
+            </div>
+          </div>
+
+          {/* Viewer area */}
+          <div className="flex-1 overflow-hidden flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            {viewerDoc.loading ? (
+              <div className="flex flex-col items-center gap-3 text-white">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
+                <span className="text-sm text-gray-300">Loading file...</span>
+              </div>
+            ) : viewerDoc.error ? (
+              <div className="flex flex-col items-center gap-4 text-white">
+                <i className="fa-solid fa-triangle-exclamation text-5xl text-yellow-400"></i>
+                <p className="text-sm text-gray-300">Failed to load file: {viewerDoc.error}</p>
+                <a href={viewerDoc.downloadUrl} target="_blank" rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2">
+                  <i className="fa-solid fa-download"></i> Download Instead
+                </a>
+              </div>
+            ) : (viewerDoc.isPdf || viewerDoc.isImage) ? (
+              <iframe
+                src={viewerDoc.blobUrl}
+                title={viewerDoc.name}
+                className="w-full h-full border-0 bg-white"
+                style={{ display: 'block' }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-white gap-5">
+                <i className="fa-solid fa-file-lines text-6xl text-gray-400"></i>
+                <p className="text-base font-medium text-gray-300">Preview not available for this file type.</p>
+                <a
+                  href={viewerDoc.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2"
+                >
+                  <i className="fa-solid fa-download"></i> Download to View
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

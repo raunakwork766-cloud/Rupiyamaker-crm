@@ -276,7 +276,7 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
       data.is_manager_permission_required = li.is_manager_permission_required ?? false;
       data.reassignment_reason       = li.is_locked
         ? `Locked for ${li.days_remaining} more day(s) (based on earliest duplicate lead)`
-        : 'Available for reassignment';
+        : 'Available for transfer';
     }
 
     return data;
@@ -1263,6 +1263,8 @@ function useCreateLeadLogic() {
       
       // If primary number check found a lead, process it
       if (duplicateCheck && duplicateCheck.found) {
+        // Hide the create-lead form — duplicate found, must use reassignment flow
+        setShowLeadForm(false);
         setMobileCheckResult(duplicateCheck);
         setAllDuplicateLeads(duplicateCheck.leads || []);
         leadFound = true;
@@ -1283,7 +1285,8 @@ function useCreateLeadLogic() {
         
         // If duplicate found with alternate number, process that lead
         if (altNumberCheck && altNumberCheck.found) {
-
+          // Hide the create-lead form — duplicate found, must use reassignment flow
+          setShowLeadForm(false);
           setMobileCheckResult(altNumberCheck);
           setAllDuplicateLeads(altNumberCheck.leads || []);
           leadFound = true;
@@ -1359,13 +1362,15 @@ const handleMobileNumberChange = (e) => {
       }));
     }
     
-    // Close existing lead window when mobile number changes
-    if (showReassignmentOption || showLeadDetails) {
+    // Close existing lead window and create-lead form when mobile number changes
+    if (showReassignmentOption || showLeadDetails || showLeadForm) {
       setShowReassignmentOption(false);
       setShowLeadDetails(false);
       setExistingLeadData(null);
       setMobileCheckResult(null);
+      setAllDuplicateLeads([]);
       setReassignmentCancelled(false); // Clear cancellation flag
+      setShowLeadForm(false); // Hide create-lead form so it doesn't persist into duplicate flow
     }
     
     // Validate mobile number
@@ -1721,7 +1726,7 @@ const handleMobileNumberChange = (e) => {
         // Use the reassignmentReason state instead of prompt()
         const reason = reassignmentReason?.trim();
         if (!reason) {
-          alert('Please enter a reason for reassignment');
+          alert('Please enter a reason for transfer');
           return;
         }
         
@@ -1790,12 +1795,12 @@ const handleMobileNumberChange = (e) => {
         // Skip eligibility check for users with assign permission (admin/managers)
         // For regular users, verify eligibility from API before proceeding
         if (!existingLeadData.can_reassign) {
-          alert(`Cannot request reassignment: ${existingLeadData.reassignment_reason || 'Not eligible'}`);
+          alert(`Cannot request transfer: ${existingLeadData.reassignment_reason || 'Not eligible'}`);
           return;
         }
         
         if (existingLeadData.is_manager_permission_required) {
-          alert('This lead requires manager approval for reassignment. Your request will be sent to a manager.');
+          alert('This lead requires manager approval for transfer. Your request will be sent to a manager.');
         }
       }
       
@@ -1864,7 +1869,7 @@ const handleMobileNumberChange = (e) => {
           // For other actions, use reason from state
           const otherReason = reassignmentReason?.trim();
           if (!otherReason) {
-            alert('Please enter a reason for reassignment');
+            alert('Please enter a reason for transfer');
             return;
           }
           
@@ -2016,18 +2021,18 @@ const handleMobileNumberChange = (e) => {
         
         // Show appropriate success message based on action and user permissions
         if (actionString === 'approve') {
-          alert('Lead reassignment approved successfully!');
+          alert('Lead transfer approved successfully!');
           // Refresh the page after approval
           window.location.reload();
         } else if (actionString === 'reject') {
-          alert('Lead reassignment rejected.');
+          alert('Lead transfer rejected.');
           // Refresh the page after rejection
           window.location.reload();
         } else {
           // For reassignment requests, check if manager permission is required
           if (existingLeadData.is_manager_permission_required) {
             // If manager permission is required, show request sent message
-            alert('Reassignment request sent for manager approval successfully!');
+            alert('Transfer request sent for manager approval successfully!');
             // Refresh the page after request submission
             window.location.reload();
           } else {
@@ -2037,7 +2042,7 @@ const handleMobileNumberChange = (e) => {
               alert('Lead assigned to you successfully!');
             } else {
               // Regular users get direct reassignment (when no manager permission required)
-              alert('Lead reassigned successfully!');
+              alert('Lead transferred successfully!');
             }
             // Refresh the page after direct assignment
             window.location.reload();
@@ -2181,7 +2186,7 @@ const handleMobileNumberChange = (e) => {
   // Handle reassignment cancellation
   const handleReassignmentCancel = () => {
     // Show custom message that reassignment was cancelled due to no reason provided
-    alert('Warning: Your request reassignment got cancelled because you didn\'t enter a reason');
+    alert('Warning: Your transfer request got cancelled because you didn\'t enter a reason');
     
     // Set the cancellation flag
     setReassignmentCancelled(true);
@@ -2417,7 +2422,7 @@ const handleMobileNumberChange = (e) => {
         '🚫 Duplicate Lead Detected!\n\n' +
         'A lead with this mobile number already exists in the system.\n' +
         'A new lead cannot be created.\n\n' +
-        'Please use the Reassignment option shown on screen to request this lead.'
+        'Please use the Transfer Lead option shown on screen to request this lead.'
       );
       return;
     }
@@ -4017,7 +4022,7 @@ function ReassignmentTable({
 
       if (response.status === 200 || response.status === 201) {
         const data = await response.json();
-        alert('Lead reassignment approved successfully!');
+        alert('Lead transfer approved successfully!');
         
         // Refresh the page after successful approval
         window.location.reload();
@@ -4110,7 +4115,7 @@ function ReassignmentTable({
 
       if (response.status === 200 || response.status === 201) {
         const data = await response.json();
-        alert('Lead reassignment rejected successfully!');
+        alert('Lead transfer rejected successfully!');
         
         // Refresh the page after successful rejection
         window.location.reload();
@@ -4678,10 +4683,38 @@ function CreateLead() {
     hasReassignmentPopupPermission
   } = useCreateLeadLogic();
 
-  // Local UI state: controls visibility of inline reassignment form
+  // Local UI state: controls visibility of Transfer Lead popup modal
   const [showReassignForm, setShowReassignForm] = useState(false);
-  // Reset form whenever a new duplicate lead is loaded
-  useEffect(() => { setShowReassignForm(false); }, [existingLeadData?.id]);
+  const [transferModalTab, setTransferModalTab] = useState('details'); // 'details' | 'activity'
+  const [showAllDuplicates, setShowAllDuplicates] = useState(false); // Show all duplicate leads or just latest
+  const [showAllLoginDuplicates, setShowAllLoginDuplicates] = useState(false); // Show all login duplicate leads or just latest
+  // Auto-expand transfer popup when a non-locked duplicate is detected; reset otherwise
+  useEffect(() => {
+    if (!existingLeadData) {
+      setShowReassignForm(false);
+      return;
+    }
+    const isLocked = (existingLeadData.days_remaining ?? 0) > 0;
+    if (hasReassignmentPopupPermission && !isLocked) {
+      setShowReassignForm(true);
+      setTransferModalTab('details');
+    } else {
+      setShowReassignForm(false);
+    }
+  }, [existingLeadData?.id]);
+
+  // Silent close — clears duplicate panel without alert or clearing mobile number
+  const handleDuplicatePanelClose = () => {
+    setExistingLeadData(null);
+    setShowReassignmentOption(false);
+    setShowLeadDetails(false);
+    setAllDuplicateLeads([]);
+    setMobileCheckResult(null);
+    setShowReassignForm(false);
+    setTransferModalTab('details');
+    setShowAllDuplicates(false);
+    setShowAllLoginDuplicates(false);
+  };
 
   // Read-only lead view overlay state
   const [viewLeadId, setViewLeadId] = useState(null);
@@ -4778,7 +4811,7 @@ function CreateLead() {
               setActiveTab("reassignment");
             }}
           >
-            Reassignment
+            Transfer Lead
           </button>
         </div>
         {activeTab === "all" && (
@@ -4811,7 +4844,7 @@ function CreateLead() {
                           }}
                           placeholder={loadingLoanTypes ? "Loading..." : "Select Product"}
                           searchPlaceholder="Search products..."
-                          disabled={loadingLoanTypes || showLeadForm}
+                          disabled={loadingLoanTypes || showLeadForm || !!existingLeadData}
                           emptyMessage={!loadingLoanTypes ? "No loan types available" : "Loading..."}
                           className={`form-select h-full ${showValidationErrors && formValidationErrors.productType ? 'border-red-500' : ''}`}
                         />
@@ -4833,12 +4866,12 @@ function CreateLead() {
                             mobileValidationError || (showValidationErrors && formValidationErrors.mobileNumber) 
                               ? 'border-red-500 focus:border-red-500' 
                               : 'focus:border-sky-400'
-                          } ${showLeadForm ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          } ${(showLeadForm || !!existingLeadData) ? 'opacity-60 cursor-not-allowed' : ''}`}
                           placeholder="Enter Mobile Number"
                           value={mobileNumber}
                           onChange={handleMobileNumberChange}
-                          disabled={showLeadForm}
-                          readOnly={showLeadForm}
+                          disabled={showLeadForm || !!existingLeadData}
+                          readOnly={showLeadForm || !!existingLeadData}
                         />
                       </div>
                       {showValidationErrors && formValidationErrors.mobileNumber && (
@@ -4855,18 +4888,25 @@ function CreateLead() {
                           className={`w-full h-full px-4 py-2 font-bold text-white rounded-lg btn transition-all duration-300 transform ${
                             showLeadForm 
                               ? "bg-green-500 hover:bg-green-600 cursor-default" 
+                              : existingLeadData
+                              ? "bg-yellow-600 cursor-default opacity-90"
                               : checkMobileLoading
                               ? "bg-gray-400 cursor-not-allowed scale-95"
                               : "bg-sky-400 hover:bg-sky-500 hover:scale-105 active:scale-95"
                           } ${buttonAnimations.checkMobileBtn ? 'animate-pulse scale-95' : ''}`}
                           id="checkMobile"
-                          onClick={showLeadForm ? undefined : handleCheckMobile}
-                          disabled={showLeadForm || checkMobileLoading}
+                          onClick={showLeadForm || existingLeadData ? undefined : handleCheckMobile}
+                          disabled={showLeadForm || !!existingLeadData || checkMobileLoading}
                         >
                           {showLeadForm ? (
                             <>
                               <i className="fas fa-check mr-2"></i>
                               Loaded
+                            </>
+                          ) : existingLeadData ? (
+                            <>
+                              <i className="fas fa-exclamation-triangle mr-2"></i>
+                              Duplicate Found
                             </>
                           ) : checkMobileLoading ? (
                             <>
@@ -4931,32 +4971,17 @@ function CreateLead() {
                           ? `${bankLoginLeads.length} bank login${bankLoginLeads.length > 1 ? 's' : ''} — Latest: ${latestBank} (${fmtDate(latestBankDate)})`
                           : `No bank login — locking from lead creation date`}
                       </span>
-                      <button className="ml-auto w-6 h-6 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700 transition" onClick={handleReassignmentCancel}>
+                      <button className="ml-auto w-6 h-6 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700 transition" onClick={handleDuplicatePanelClose} title="Close duplicate panel">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                       </button>
                     </div>
 
-                    {/* ─── TAB BAR ─── */}
-                    <div className="flex border-b border-neutral-700 bg-[#0d1117]">
-                      <button
-                        onClick={() => setDupActiveTab('leads')}
-                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold transition-colors border-b-2 ${dupActiveTab === 'leads' ? 'text-cyan-400 border-cyan-400 bg-neutral-800/50' : 'text-neutral-400 border-transparent hover:text-neutral-200'}`}
-                      >
-                        📋 Leads <span className="bg-neutral-700 text-neutral-300 rounded-full px-2 py-0.5 text-[10px]">{leads.length}</span>
-                      </button>
-                      <button
-                        onClick={() => setDupActiveTab('login')}
-                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold transition-colors border-b-2 ${dupActiveTab === 'login' ? 'text-cyan-400 border-cyan-400 bg-neutral-800/50' : 'text-neutral-400 border-transparent hover:text-neutral-200'}`}
-                      >
-                        🏦 Login in Leads{' '}
-                        {loginLeadsLoading
-                          ? <span className="text-neutral-500 text-[10px]">...</span>
-                          : <span className={`bg-neutral-700 rounded-full px-2 py-0.5 text-[10px] ${loginDuplicateLeads.length > 0 ? 'text-cyan-300' : 'text-neutral-400'}`}>{loginDuplicateLeads.length}</span>}
-                      </button>
-                    </div>
-
-                    {/* ─── LEADS TAB ─── */}
-                    {dupActiveTab === 'leads' ? (<div>
+                    {/* ─── LEADS SECTION ─── */}
+                    <div className="border-b border-neutral-700">
+                      <div className="flex items-center gap-2 px-5 py-2 bg-neutral-800/50">
+                        <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider">📋 Leads</span>
+                        <span className="bg-neutral-700 text-neutral-300 rounded-full px-2 py-0.5 text-[10px]">{leads.length}</span>
+                      </div>
                     {/* Table */}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -4972,7 +4997,7 @@ function CreateLead() {
                           </tr>
                         </thead>
                         <tbody>
-                          {leads.map((lead, idx) => {
+                          {(showAllDuplicates ? leads : leads.slice(0, 1)).map((lead, idx) => {
                             const isLockingRow = lead.is_locking_lead === true && leads.length > 1;
                             const displayDate = hasBankLogins ? (lead.login_department_sent_date || lead.created_at) : lead.created_at;
                             return (
@@ -5026,14 +5051,14 @@ function CreateLead() {
                                     ) : !hasReassignmentPopupPermission ? (
                                       <span className="text-neutral-500 text-xs italic">No permission</span>
                                     ) : mgr ? (
-                                      <button onClick={() => setShowReassignForm(f => !f)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold hover:bg-yellow-500/30 transition">
+                                      <button onClick={() => { setShowReassignForm(true); setTransferModalTab('details'); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold hover:bg-yellow-500/30 transition">
                                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                                        Available — Manager Required {showReassignForm ? '▲' : '▼'}
+                                        Available — Manager Required
                                       </button>
                                     ) : (
-                                      <button onClick={() => setShowReassignForm(f => !f)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold hover:bg-green-500/30 transition">
+                                      <button onClick={() => { setShowReassignForm(true); setTransferModalTab('details'); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold hover:bg-green-500/30 transition">
                                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a5 5 0 00-5 5h2a3 3 0 016 0h2a5 5 0 00-5-5zm-7 9a2 2 0 012-2h10a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z" clipRule="evenodd" /></svg>
-                                        Available {showReassignForm ? '▲' : '▼'}
+                                        Available
                                       </button>
                                     )
                                   ) : isLocked ? (
@@ -5046,6 +5071,20 @@ function CreateLead() {
                               </tr>
                             );
                           })}
+                          {/* Expand/Collapse more leads */}
+                          {leads.length > 1 && (
+                            <tr className="bg-neutral-800/30 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setShowAllDuplicates(p => !p)}>
+                              <td colSpan={colCount} className="px-5 py-2">
+                                <div className="flex items-center justify-center gap-2">
+                                  <svg className={`w-3.5 h-3.5 text-cyan-400 transition-transform ${showAllDuplicates ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                  <span className="text-cyan-400 text-xs font-bold">
+                                    {showAllDuplicates ? 'Hide' : `Show ${leads.length - 1} more lead${leads.length - 1 > 1 ? 's' : ''}`}
+                                  </span>
+                                  <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold">{leads.length}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                           {/* Footer info row */}
                           <tr className={isLocked ? 'bg-red-950/20' : 'bg-neutral-800/20'}>
                             <td colSpan={colCount} className="px-5 py-2.5">
@@ -5060,7 +5099,7 @@ function CreateLead() {
                                   </span>
                                 )
                               ) : (
-                                <span className="text-green-400 text-xs font-medium">✓ This lead is available for reassignment.</span>
+                                <span className="text-green-400 text-xs font-medium">✓ This lead is available for transfer.</span>
                               )}
                             </td>
                           </tr>
@@ -5068,43 +5107,223 @@ function CreateLead() {
                       </table>
                     </div>
 
-                    {/* Inline reassignment form */}
-                    {showReassignForm && canRequest && (
-                      <div className="border-t border-neutral-700 p-5 space-y-4 bg-neutral-900/50">
-                        {mgr && (
-                          <div className="flex items-center gap-3 bg-yellow-900/20 border border-yellow-700/40 rounded-xl px-4 py-3">
-                            <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                            <div>
-                              <p className="text-yellow-300 font-semibold text-sm">Manager Approval Required</p>
-                              <p className="text-yellow-200/60 text-xs">Your request will be sent for manager review before reassignment</p>
+                    {/* Transfer Lead Popup Modal */}
+                    {showReassignForm && canRequest && ReactDOM.createPortal(
+                      <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowReassignForm(false)}>
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                        {/* Modal */}
+                        <div className="relative w-full max-w-xl mx-4 bg-[#0d1117] border border-neutral-700 rounded-2xl shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
+                          {/* Header */}
+                          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700 bg-gradient-to-r from-cyan-500/10 to-transparent">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" /></svg>
+                              </div>
+                              <div>
+                                <h3 className="text-white text-base font-bold">Transfer Lead</h3>
+                                <p className="text-neutral-400 text-xs">{existingLeadData?.name || existingLeadData?.customer_name || 'Lead'} &bull; {existingLeadData?.mobile_number || mobileNumber}</p>
+                              </div>
                             </div>
+                            <button onClick={() => setShowReassignForm(false)} className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 hover:text-white transition-colors">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                            </button>
                           </div>
-                        )}
-                        <div>
-                          <label className="block text-neutral-300 text-sm font-semibold mb-1.5">Reason for Reassignment <span className="text-red-400">*</span></label>
-                          <textarea value={reassignmentReason} onChange={(e) => setReassignmentReason(e.target.value)} placeholder="Enter your reason for requesting this lead..." className="w-full px-4 py-3 bg-neutral-800 border border-neutral-600 rounded-lg text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-cyan-400 resize-none" rows={3} />
+
+                          {/* Tabs */}
+                          <div className="flex border-b border-neutral-700">
+                            <button
+                              onClick={() => setTransferModalTab('details')}
+                              className={`flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                                transferModalTab === 'details'
+                                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                                  : 'text-neutral-500 hover:text-neutral-300 border-b-2 border-transparent'
+                              }`}
+                            >
+                              <span className="flex items-center justify-center gap-1.5">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+                                Details
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => setTransferModalTab('activity')}
+                              className={`flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                                transferModalTab === 'activity'
+                                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                                  : 'text-neutral-500 hover:text-neutral-300 border-b-2 border-transparent'
+                              }`}
+                            >
+                              <span className="flex items-center justify-center gap-1.5">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
+                                Activity
+                                {(() => { const c = leads.flatMap(l => l.reassignment_history || []).length; return c > 0 ? <span className="ml-1 bg-cyan-500/20 text-cyan-400 rounded-full px-1.5 py-0.5 text-[9px]">{c}</span> : null; })()}
+                              </span>
+                            </button>
+                          </div>
+
+                          {/* Tab Content */}
+                          <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
+                            {/* ─── Details Tab ─── */}
+                            {transferModalTab === 'details' && (
+                              <div className="p-5 space-y-4">
+                                {/* Lead Info Cards */}
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="bg-neutral-800/60 rounded-xl p-3 border border-neutral-700/50">
+                                    <div className="text-neutral-400 text-[10px] uppercase tracking-wider mb-1">Requesting User</div>
+                                    <div className="text-white text-sm font-semibold">{(() => { try { return localStorage.getItem('userName') || localStorage.getItem('userFullName') || 'Current User'; } catch { return 'Current User'; } })()}</div>
+                                  </div>
+                                  <div className="bg-neutral-800/60 rounded-xl p-3 border border-neutral-700/50">
+                                    <div className="text-neutral-400 text-[10px] uppercase tracking-wider mb-1">Currently Assigned To</div>
+                                    <div className="text-white text-sm font-semibold">{existingLeadData?.created_by_name || existingLeadData?.assigned_to_name || '—'}</div>
+                                    {existingLeadData?.department_name && <div className="text-neutral-500 text-[10px]">{existingLeadData.department_name}</div>}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div className="bg-neutral-800/60 rounded-xl p-3 border border-neutral-700/50">
+                                    <div className="text-neutral-400 text-[10px] uppercase tracking-wider mb-1">Lead Status</div>
+                                    <div className="text-white text-sm font-semibold">{existingLeadData?.sub_status || existingLeadData?.status || '—'}</div>
+                                  </div>
+                                  <div className="bg-neutral-800/60 rounded-xl p-3 border border-neutral-700/50">
+                                    <div className="text-neutral-400 text-[10px] uppercase tracking-wider mb-1">Manager Approval</div>
+                                    <div className={`text-sm font-semibold ${mgr ? 'text-yellow-400' : 'text-green-400'}`}>{mgr ? 'Required' : 'Not Required'}</div>
+                                  </div>
+                                  <div className="bg-neutral-800/60 rounded-xl p-3 border border-neutral-700/50">
+                                    <div className="text-neutral-400 text-[10px] uppercase tracking-wider mb-1">Loan Type</div>
+                                    <div className="text-white text-sm font-semibold">{existingLeadData?.loan_type || '—'}</div>
+                                  </div>
+                                </div>
+
+                                {/* Manager Approval Warning */}
+                                {mgr && (
+                                  <div className="flex items-center gap-3 bg-yellow-900/20 border border-yellow-700/40 rounded-xl px-4 py-3">
+                                    <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                    <div>
+                                      <p className="text-yellow-300 font-semibold text-sm">Manager Approval Required</p>
+                                      <p className="text-yellow-200/60 text-xs">Your request will be sent for manager review before transfer</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Reason */}
+                                <div>
+                                  <label className="block text-neutral-300 text-sm font-semibold mb-1.5">Reason for Transfer <span className="text-red-400">*</span></label>
+                                  <textarea value={reassignmentReason} onChange={(e) => setReassignmentReason(e.target.value)} placeholder="Enter your reason for requesting this lead..." className="w-full px-4 py-3 bg-neutral-800 border border-neutral-600 rounded-xl text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-cyan-400 resize-none transition-colors" rows={3} />
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-3 justify-end pt-1">
+                                  <button className="flex items-center gap-2 px-5 py-2.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 font-bold rounded-xl transition-all text-sm" onClick={() => { setShowReassignForm(false); handleReassignmentCancel(); }}>Cancel</button>
+                                  <button
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    onClick={() => handleReassignmentRequest(existingLeadData)}
+                                    disabled={!reassignmentReason?.trim()}
+                                  >
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                    {mgr ? 'Request Manager Approval' : 'Transfer Lead'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ─── Activity Tab ─── */}
+                            {transferModalTab === 'activity' && (
+                              <div className="p-5">
+                                {(() => {
+                                  const history = leads.flatMap(l => l.reassignment_history || []);
+                                  if (history.length === 0) {
+                                    return (
+                                      <div className="flex flex-col items-center justify-center py-10 gap-3">
+                                        <div className="w-14 h-14 rounded-full bg-neutral-800 flex items-center justify-center">
+                                          <svg className="w-7 h-7 text-neutral-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
+                                        </div>
+                                        <p className="text-neutral-500 text-sm font-medium">No transfer history yet</p>
+                                        <p className="text-neutral-600 text-xs">Activity will appear here once transfers are initiated</p>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="relative">
+                                      {/* Timeline line */}
+                                      <div className="absolute left-[15px] top-2 bottom-2 w-px bg-neutral-700" />
+                                      <div className="space-y-0">
+                                        {history.map((h, i) => {
+                                          const statusColor = h.status === 'approved' ? 'green' : h.status === 'rejected' ? 'red' : 'yellow';
+                                          const statusIcon = h.status === 'approved' ? '✓' : h.status === 'rejected' ? '✕' : '⏳';
+                                          const statusLabel = h.status || h.action || 'pending';
+                                          return (
+                                            <div key={i} className="relative pl-10 py-3 group">
+                                              {/* Timeline dot */}
+                                              <div className={`absolute left-[10px] top-[18px] w-[11px] h-[11px] rounded-full border-2 border-[#0d1117] z-10 ${
+                                                statusColor === 'green' ? 'bg-green-400' : statusColor === 'red' ? 'bg-red-400' : 'bg-yellow-400'
+                                              }`} />
+                                              <div className="bg-neutral-800/40 rounded-xl p-3 border border-neutral-700/40 hover:border-neutral-600/60 transition-colors">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                  <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-white text-xs font-bold">{h.by_user || 'Unknown'}</span>
+                                                    <svg className="w-3 h-3 text-neutral-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                                    <span className="text-cyan-300 text-xs font-bold">{h.to_user || '—'}</span>
+                                                  </div>
+                                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                                    statusColor === 'green' ? 'bg-green-500/15 text-green-400 border border-green-500/30' :
+                                                    statusColor === 'red' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
+                                                    'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                                                  }`}>{statusIcon} {statusLabel}</span>
+                                                </div>
+                                                {h.reason && (
+                                                  <div className="text-neutral-400 text-[11px] mb-1 leading-relaxed">
+                                                    <span className="text-neutral-500 font-medium">Reason:</span> {h.reason}
+                                                  </div>
+                                                )}
+                                                {h.approved_by && h.status === 'approved' && (
+                                                  <div className="text-green-400/70 text-[10px]">
+                                                    Approved by: <span className="font-semibold text-green-400">{h.approved_by}</span>
+                                                  </div>
+                                                )}
+                                                {h.rejected_by && h.status === 'rejected' && (
+                                                  <div className="text-red-400/70 text-[10px]">
+                                                    Rejected by: <span className="font-semibold text-red-400">{h.rejected_by}</span>
+                                                    {h.rejection_reason && <span> — {h.rejection_reason}</span>}
+                                                  </div>
+                                                )}
+                                                {h.date && (
+                                                  <div className="text-neutral-500 text-[10px] mt-1 flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg>
+                                                    {new Date(h.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex gap-3 justify-end">
-                          <button className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm" onClick={() => handleReassignmentRequest(existingLeadData)} disabled={!reassignmentReason?.trim()}>
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                            {mgr ? 'Request Manager Approval' : 'Request Reassignment'}
-                          </button>
-                          <button className="flex items-center gap-2 px-5 py-2.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 font-bold rounded-lg transition-all text-sm" onClick={handleReassignmentCancel}>Cancel</button>
-                        </div>
-                      </div>
+                      </div>,
+                      document.body
                     )}
-                    </div>) : (
-                    /* ─── LOGIN TAB ─── */
+                    </div>
+
+                    {/* ─── LOGIN IN LEADS SECTION ─── */}
                     <div>
+                      <div className="flex items-center gap-2 px-5 py-2 bg-neutral-800/50 border-t border-b border-neutral-700">
+                        <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider">🏦 Login in Leads</span>
+                        {loginLeadsLoading
+                          ? <span className="text-neutral-500 text-[10px]">...</span>
+                          : <span className={`bg-neutral-700 rounded-full px-2 py-0.5 text-[10px] ${loginDuplicateLeads.length > 0 ? 'text-cyan-300' : 'text-neutral-400'}`}>{loginDuplicateLeads.length}</span>}
+                      </div>
                       {loginLeadsLoading ? (
-                        <div className="flex items-center justify-center py-8 gap-3">
+                        <div className="flex items-center justify-center py-6 gap-3">
                           <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
                           <span className="text-neutral-400 text-sm">Checking login leads...</span>
                         </div>
                       ) : loginDuplicateLeads.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 gap-2">
-                          <svg className="w-8 h-8 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                          <span className="text-neutral-500 text-sm">No login leads found for this number.</span>
+                        <div className="flex flex-col items-center justify-center py-5 gap-2">
+                          <span className="text-neutral-500 text-xs">No login leads found for this number.</span>
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
@@ -5121,7 +5340,7 @@ function CreateLead() {
                               </tr>
                             </thead>
                             <tbody>
-                              {loginDuplicateLeads.map((loginLead, idx) => (
+                              {(showAllLoginDuplicates ? loginDuplicateLeads : loginDuplicateLeads.slice(0, 1)).map((loginLead, idx) => (
                                 <tr
                                   key={loginLead.id || idx}
                                   className="bg-neutral-900 hover:bg-neutral-800/50 transition-colors cursor-pointer border-b border-neutral-800/50"
@@ -5151,6 +5370,19 @@ function CreateLead() {
                                   <td className="px-4 py-3 whitespace-nowrap text-neutral-300 text-sm">{loginLead.loan_type || '—'}</td>
                                 </tr>
                               ))}
+                              {loginDuplicateLeads.length > 1 && (
+                                <tr className="bg-neutral-800/30 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setShowAllLoginDuplicates(p => !p)}>
+                                  <td colSpan={7} className="px-5 py-2">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <svg className={`w-3.5 h-3.5 text-indigo-400 transition-transform ${showAllLoginDuplicates ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                      <span className="text-indigo-400 text-xs font-bold">
+                                        {showAllLoginDuplicates ? 'Hide' : `Show ${loginDuplicateLeads.length - 1} more login lead${loginDuplicateLeads.length - 1 > 1 ? 's' : ''}`}
+                                      </span>
+                                      <span className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold">{loginDuplicateLeads.length}</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
                               <tr className="bg-indigo-950/20">
                                 <td colSpan={7} className="px-5 py-2.5">
                                   <span className="text-indigo-300 text-xs">🔒 Login leads are view-only. Click any row to view details.</span>
@@ -5161,7 +5393,6 @@ function CreateLead() {
                         </div>
                       )}
                     </div>
-                    )}{/* end tab ternary */}
                   </div>
                 );
               })()}
@@ -5185,14 +5416,14 @@ function CreateLead() {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-white">
-                        {existingLeadData.reassignment_status === 'requested' ? 'Reassignment Already Requested' : 'Lead Already Exists'}
+                        {existingLeadData.reassignment_status === 'requested' ? 'Transfer Already Requested' : 'Lead Already Exists'}
                       </h2>
                       <p className="text-sm text-neutral-400">
                         {existingLeadData.reassignment_status === 'requested' ? 
-                          'Reassignment request submitted. Awaiting manager approval.' : 
+                          'Transfer request submitted. Awaiting manager approval.' : 
                           existingLeadData.days_remaining > 0 ?
-                          `This lead is locked. Available for reassignment in ${existingLeadData.days_remaining} days.` :
-                          'A lead with this mobile number already exists.'}
+                          `This lead is locked. Available for transfer in ${existingLeadData.days_remaining} days.` :
+                          'A lead with this mobile number already exists.'}}
                       </p>
                     </div>
                   </div>
@@ -5947,7 +6178,7 @@ function CreateLead() {
                     onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
                     readOnly={true}
                     obligationsReadOnly={viewLeadFromLogin}
-                    allowedTabs={viewLeadIsReassignment ? ['details', 'obligations'] : null}
+                    allowedTabs={['details', 'obligations']}
                   />
                 </Suspense>
               )}

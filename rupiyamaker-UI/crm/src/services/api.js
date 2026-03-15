@@ -942,6 +942,41 @@ export const interviewsAPI = {
         return apiCall(`/interviews/all-reassignments?user_id=${userId}`, {
             method: 'GET'
         });
+    },
+
+    // Interview Attachments
+    getAttachments: async (interviewId) => {
+        const userId = getUserId();
+        if (!userId) throw new Error('User not authenticated');
+        return apiCall(`/interviews/${interviewId}/attachments?user_id=${userId}`);
+    },
+
+    uploadAttachment: async (interviewId, file, label = '') => {
+        const userId = getUserId();
+        const userName = getUserName();
+        if (!userId) throw new Error('User not authenticated');
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('label', label || file.name);
+
+        const response = await fetch(`/api/interviews/${interviewId}/attachments?user_id=${userId}&user_name=${encodeURIComponent(userName)}`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) throw new Error('Upload failed');
+        return response.json();
+    },
+
+    deleteAttachment: async (interviewId, attachmentId) => {
+        const userId = getUserId();
+        if (!userId) throw new Error('User not authenticated');
+        return apiCall(`/interviews/${interviewId}/attachments/${attachmentId}?user_id=${userId}`, { method: 'DELETE' });
+    },
+
+    getAttachmentDownloadUrl: (interviewId, attachmentId) => {
+        const userId = getUserId();
+        return `/api/interviews/${interviewId}/attachments/${attachmentId}/download?user_id=${userId}`;
     }
 };
 
@@ -1238,6 +1273,11 @@ export const interviewSettingsAPI = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
+    },
+
+    getHrHead: async () => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/hr-head?user_id=${userId}`);
     },
 };
 

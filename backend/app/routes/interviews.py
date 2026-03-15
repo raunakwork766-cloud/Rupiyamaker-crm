@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query, Form, Depends
+from fastapi import APIRouter, HTTPException, Query, Form, Depends, UploadFile, File
+from fastapi.responses import StreamingResponse
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ValidationError
 from datetime import datetime, timedelta
@@ -12,6 +13,9 @@ from app.database.Roles import RolesDB
 from app.utils.permissions import check_permission, PermissionManager
 from app.utils.timezone import get_ist_now
 import logging
+import os
+import uuid
+import io
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -230,6 +234,9 @@ class InterviewResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    attachments: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    reassign_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    reschedule_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 
     class Config:
         allow_population_by_field_name = True
@@ -1533,3 +1540,154 @@ async def get_pending_interview_reassignments(
     except Exception as e:
         logger.error(f"Error getting pending interview reassignments: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting pending interview reassignments: {str(e)}")
+
+
+# ── Interview Attachments ──
+
+@router.get("/interviews/{interview_id}/attachments")
+async def get_interview_attachments(
+    interview_id: str,
+    user_id: str = Query(..., description="User ID"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db)
+):
+    """Get all attachments for an interview"""
+    try:
+        if not ObjectId.is_valid(interview_id):
+            raise HTTPException(status_code=400, detail="Invalid interview ID")
+        interview = await interviews_db.get_interview_by_id(interview_id)
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        attachments = interview.get("attachments", [])
+        return {"success": True, "data": attachments}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching interview attachments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/interviews/{interview_id}/attachments")
+async def upload_interview_attachment(
+    interview_id: str,
+    file: UploadFile = File(...),
+    label: str = Form(""),
+    user_id: str = Query(..., description="User ID"),
+    user_name: str = Query("", description="User name"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db)
+):
+    """Upload an attachment for an interview"""
+    try:
+        if not ObjectId.is_valid(interview_id):
+            raise HTTPException(status_code=400, detail="Invalid interview ID")
+        interview = await interviews_db.get_interview_by_id(interview_id)
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+
+        media_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "media", "interviews", interview_id)
+        os.makedirs(media_dir, exist_ok=True)
+
+        file_ext = os.path.splitext(file.filename or "")[1]
+        unique_name = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(media_dir, unique_name)
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        attachment = {
+            "id": str(uuid.uuid4()),
+            "file_name": unique_name,
+            "original_name": file.filename,
+            "file_size": len(content),
+            "file_type": file.content_type,
+            "label": label or file.filename,
+            "uploaded_by": user_name or user_id,
+            "uploaded_at": get_ist_now().isoformat(),
+        }
+
+        await interviews_db.collection.update_one(
+            {"_id": ObjectId(interview_id)},
+            {"$push": {"attachments": attachment}, "$set": {"updated_at": get_ist_now()}}
+        )
+
+        return {"success": True, "data": attachment, "message": "File uploaded"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading interview attachment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/interviews/{interview_id}/attachments/{attachment_id}")
+async def delete_interview_attachment(
+    interview_id: str,
+    attachment_id: str,
+    user_id: str = Query(..., description="User ID"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db)
+):
+    """Delete an attachment from an interview"""
+    try:
+        if not ObjectId.is_valid(interview_id):
+            raise HTTPException(status_code=400, detail="Invalid interview ID")
+        interview = await interviews_db.get_interview_by_id(interview_id)
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+
+        attachments = interview.get("attachments", [])
+        target = next((a for a in attachments if a.get("id") == attachment_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+
+        media_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "media", "interviews", interview_id)
+        file_path = os.path.join(media_dir, target.get("file_name", ""))
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        await interviews_db.collection.update_one(
+            {"_id": ObjectId(interview_id)},
+            {"$pull": {"attachments": {"id": attachment_id}}, "$set": {"updated_at": get_ist_now()}}
+        )
+
+        return {"success": True, "message": "Attachment deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting interview attachment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/interviews/{interview_id}/attachments/{attachment_id}/download")
+async def download_interview_attachment(
+    interview_id: str,
+    attachment_id: str,
+    user_id: str = Query(..., description="User ID"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db)
+):
+    """Download an interview attachment"""
+    try:
+        if not ObjectId.is_valid(interview_id):
+            raise HTTPException(status_code=400, detail="Invalid interview ID")
+        interview = await interviews_db.get_interview_by_id(interview_id)
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+
+        attachments = interview.get("attachments", [])
+        target = next((a for a in attachments if a.get("id") == attachment_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+
+        media_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "media", "interviews", interview_id)
+        file_path = os.path.join(media_dir, target.get("file_name", ""))
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=target.get("file_type", "application/octet-stream"),
+            headers={"Content-Disposition": f'attachment; filename="{target.get("original_name", "file")}"'}
+        )
+    except Exception as e:
+        logger.error(f"Error downloading interview attachment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

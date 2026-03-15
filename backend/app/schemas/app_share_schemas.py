@@ -6,7 +6,7 @@ from datetime import datetime
 class AppShareLinkCreate(BaseModel):
     """Schema for creating a new app share link"""
     app_id: str = Field(..., description="ID of the app to share")
-    expires_in_days: Optional[int] = Field(7, description="Number of days until expiration", ge=1, le=365)
+    expires_in_days: Optional[float] = Field(7.0, description="Number of days until expiration (supports fractions — e.g. 0.000694 ≈ 1 minute)", ge=0.0006, le=365)
     max_access_count: Optional[int] = Field(999, description="Maximum number of times the link can be accessed", ge=1)
     purpose: Optional[str] = Field("public_view", description="Purpose of the share link")
     recipient_email: Optional[str] = Field(None, description="Email of the recipient (optional)")

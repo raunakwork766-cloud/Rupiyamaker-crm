@@ -1555,6 +1555,15 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [statusDropdownOpen])
 
+  // Pre-select dropdown with current status whenever modal opens or employee/date changes
+  useEffect(() => {
+    if (isOpen && employee && selectedDate) {
+      const status = employee[`day${selectedDate}`] || 'A'
+      setSelectedAttendance(status)
+      setUpdateReason('')
+    }
+  }, [isOpen, employee, selectedDate])
+
   // Load attendance detail when modal opens
   useEffect(() => {
     if (isOpen && employee && selectedDate && user?.user_id) {
@@ -1643,7 +1652,6 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
 
   const handleConfirmUpdate = async () => {
     if (!updateReason.trim()) {
-      alert('Please provide a reason for this update')
       return
     }
 
@@ -1709,14 +1717,13 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       // Reload detail to get updated data
       await loadAttendanceDetail()
       
-      // Clear reason
+      // Clear reason and reset status selector back to current (closes remark textarea)
       setUpdateReason('')
+      setSelectedAttendance('')
       
       console.log('🎉 [UPDATE] Attendance update completed successfully')
-      alert('Attendance updated successfully!')
     } catch (error) {
       console.error('❌ [UPDATE] Error updating attendance:', error)
-      alert('Failed to update attendance. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -1743,372 +1750,304 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       
     } catch (error) {
       console.error('Error adding comment:', error)
-      alert('Failed to add comment. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f0f0f] border border-gray-800 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-4xl bg-[#050505] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black flex-shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-indigo-700 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-indigo-600/20 flex items-center justify-center text-indigo-400 font-bold border border-indigo-500/30 flex-shrink-0">
               {employee.name?.charAt(0)?.toUpperCase() || 'E'}
             </div>
             <div>
-              <h2 className="text-white font-bold text-xl leading-tight uppercase tracking-wide">{employee.name}</h2>
-              <p className="text-gray-400 text-sm mt-0.5">
-                {employee.employee_code || employee.employeeId || `EMP-${employee.id?.slice(-6) || '???'}`}
-                <span className="mx-2 text-gray-600">•</span>
-                {employee.department || 'Employee'}
-                <span className="mx-2 text-gray-600">•</span>
-                <span className="text-blue-400">
+              <h2 className="text-lg font-bold text-white tracking-tight">{employee.name}</h2>
+              <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono flex-wrap">
+                <span>{employee.employee_code || employee.employeeId || `EMP-${employee.id?.slice(-6) || '???'}`}</span>
+                <span className="w-1 h-1 rounded-full bg-zinc-700" />
+                <span>{employee.designation || employee.department || 'Employee'}</span>
+                <span className="w-1 h-1 rounded-full bg-zinc-700" />
+                <span className="text-indigo-400">
                   {selectedDate && new Date(selectedYear, selectedMonth - 1, selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
-              </p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-full text-sm font-semibold transition-colors">
-              Daily Record
-            </button>
-            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+            <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-white/10">
+              <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.3)]">
+                Daily Record
+              </span>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full text-zinc-500 hover:text-white hover:bg-white/10 transition-colors focus:outline-none"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* ── Body (left main + right history) ── */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: scrollable main content */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            {/* ── Loading ── */}
+        {/* ── Body ── */}
+        <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
+
+          {/* Left column */}
+          <div className="flex-1 p-6 overflow-y-auto border-r border-white/10 space-y-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+
+            {/* Loading */}
             {loading && (
               <div className="flex flex-col items-center justify-center py-16">
-                <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p className="text-gray-400 text-sm">Loading attendance details...</p>
+                <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-zinc-400 text-sm">Loading attendance details...</p>
               </div>
             )}
 
+            {/* Leave mode */}
             {!loading && attendanceDetail?.type === 'leave' && (
-              /* ── Leave mode ── */
               <div className="space-y-4">
-                <div className="bg-[#1a1a1a] border border-orange-500/40 rounded-xl p-5">
-                  <p className="text-orange-400 text-xs font-semibold tracking-widest mb-1">LEAVE STATUS</p>
+                <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Leave Status</p>
                   <p className="text-yellow-400 font-bold text-2xl uppercase">{attendanceDetail.leave_details?.leave_type_display || 'ON LEAVE'}</p>
                 </div>
                 {attendanceDetail.leave_details && (
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-4 space-y-3">
-                      <p className="text-gray-500 text-xs font-semibold tracking-widest">LEAVE INFO</p>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400 text-sm">Type</span>
-                        <span className="text-orange-400 font-semibold text-sm">{attendanceDetail.leave_details.leave_type_display}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400 text-sm">Duration</span>
-                        <span className="text-green-400 font-semibold text-sm">{attendanceDetail.leave_details.duration_days} day(s)</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400 text-sm">Status</span>
-                        <span className="text-green-400 font-semibold text-sm uppercase">{attendanceDetail.leave_details.status_display || attendanceDetail.leave_details.status}</span>
-                      </div>
+                    <div className="bg-black border border-white/10 rounded-xl p-4 space-y-3">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Leave Info</p>
+                      <div className="flex justify-between"><span className="text-zinc-400 text-sm">Type</span><span className="text-amber-400 font-semibold text-sm">{attendanceDetail.leave_details.leave_type_display}</span></div>
+                      <div className="flex justify-between"><span className="text-zinc-400 text-sm">Duration</span><span className="text-emerald-400 font-semibold text-sm">{attendanceDetail.leave_details.duration_days} day(s)</span></div>
+                      <div className="flex justify-between"><span className="text-zinc-400 text-sm">Status</span><span className="text-emerald-400 font-semibold text-sm uppercase">{attendanceDetail.leave_details.status_display || attendanceDetail.leave_details.status}</span></div>
                     </div>
-                    <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-4 space-y-3">
-                      <p className="text-gray-500 text-xs font-semibold tracking-widest">APPROVAL</p>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400 text-sm">Approved By</span>
-                        <span className="text-purple-400 font-semibold text-sm">{attendanceDetail.leave_details.approved_by_name || '—'}</span>
-                      </div>
+                    <div className="bg-black border border-white/10 rounded-xl p-4 space-y-3">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Approval</p>
+                      <div className="flex justify-between"><span className="text-zinc-400 text-sm">Approved By</span><span className="text-indigo-400 font-semibold text-sm">{attendanceDetail.leave_details.approved_by_name || '—'}</span></div>
                       {attendanceDetail.leave_details.reason && (
                         <div>
-                          <span className="text-gray-400 text-xs block mb-1">Reason</span>
-                          <p className="text-yellow-400 text-sm bg-gray-800 rounded-lg p-2">{attendanceDetail.leave_details.reason}</p>
+                          <span className="text-zinc-400 text-xs block mb-1">Reason</span>
+                          <p className="text-yellow-400 text-sm bg-white/5 rounded-lg p-2">{attendanceDetail.leave_details.reason}</p>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
-                {attendanceDetail.leave_details?.attachments && attendanceDetail.leave_details.attachments.length > 0 && (
-                  <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-4">
-                    <p className="text-gray-500 text-xs font-semibold tracking-widest mb-3">ATTACHMENTS</p>
-                    <div className="space-y-2">
-                      {attendanceDetail.leave_details.attachments.map((att, i) => (
-                        <div key={i} className="flex items-center justify-between bg-[#111] border border-gray-800 rounded-lg p-3">
-                          <span className="text-gray-300 text-sm">{att.filename || `Attachment ${i + 1}`}</span>
-                          <button onClick={() => window.open(`${BASE_URL}/media/${att.relative_path || att.file_path}`, '_blank')} className="text-indigo-400 hover:text-indigo-300 text-sm underline">View</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="bg-orange-900/20 border border-orange-500/30 rounded-xl p-4 flex gap-3 items-start">
-                  <span className="text-orange-400 text-lg">🏖️</span>
+                <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 flex gap-3 items-start">
+                  <span className="text-amber-400 text-lg">🏖️</span>
                   <div>
-                    <p className="text-orange-400 font-semibold text-sm">Employee is on Leave</p>
-                    <p className="text-gray-400 text-xs mt-0.5">Attendance cannot be modified for approved leave days.</p>
+                    <p className="text-amber-400 font-semibold text-sm">Employee is on Leave</p>
+                    <p className="text-zinc-400 text-xs mt-0.5">Attendance cannot be modified for approved leave days.</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {!loading && attendanceDetail?.type !== 'leave' && (
-              /* ── Regular attendance mode ── */
-              <>
-                {/* Status + Hours Row */}
-                <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-5 flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-500 text-xs font-semibold tracking-widest mb-1">CURRENT STATUS</p>
-                    <p className={`font-bold text-2xl tracking-wide ${
-                      (attendanceDetail?.status_text || statusText)?.toUpperCase() === 'PRESENT' ? 'text-green-400' :
-                      (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('half') ? 'text-yellow-400' :
-                      (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('absent') || (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('absconding') ? 'text-red-400' :
-                      'text-blue-400'
-                    }`}>{(attendanceDetail?.status_text || statusText || 'NOT MARKED').toUpperCase()}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-gray-500 text-xs font-semibold tracking-widest mb-1">TOTAL HOURS</p>
-                    <p className="text-white font-bold text-2xl font-mono tracking-widest">
-                      {attendanceDetail?.attendance_details?.total_working_hours || attendanceDetail?.working_hours || '—'}
-                    </p>
-                  </div>
-                </div>
+            {/* Regular attendance mode */}
+            {!loading && attendanceDetail?.type !== 'leave' && (() => {
+              const statusText = getStatusText(currentStatus)
+              const statusColorClass =
+                (attendanceDetail?.status_text || statusText)?.toUpperCase() === 'PRESENT' ? 'text-emerald-400' :
+                (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('half') ? 'text-amber-400' :
+                (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('absent') ||
+                (attendanceDetail?.status_text || statusText)?.toLowerCase().includes('absconding') ? 'text-rose-400' :
+                'text-indigo-400'
 
-                {/* Check In / Check Out Cards */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Check In */}
-                  <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                      <span className="text-blue-400 font-bold text-xs tracking-widest">CHECK IN</span>
-                      <span className="text-gray-300 font-mono text-sm">{attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time || '—'}</span>
+              const statusOptions = [
+                { value: 'P',  label: 'FULL DAY',   num: '1',   dotClass: 'bg-emerald-500', badgeClass: 'bg-emerald-500 text-emerald-950' },
+                { value: 'HD', label: 'HALF DAY',   num: '0.5', dotClass: 'bg-amber-400',   badgeClass: 'bg-amber-400 text-amber-950' },
+                { value: 'A',  label: 'ABSENT',     num: '0',   dotClass: 'bg-zinc-500',    badgeClass: 'bg-zinc-800 text-zinc-400' },
+                { value: 'AB', label: 'ABSCONDING', num: '-1',  dotClass: 'bg-rose-500',    badgeClass: 'bg-rose-500 text-rose-950' },
+              ]
+              const activeOpt = statusOptions.find(o => o.value === selectedAttendance)
+              const isStatusChanged = !!selectedAttendance && selectedAttendance !== currentStatus
+
+              return (
+                <>
+                  {/* Current Status Banner */}
+                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Current Status</p>
+                      <p className={`text-xl font-bold uppercase tracking-tight ${statusColorClass}`}>
+                        {(attendanceDetail?.status_text || statusText || 'NOT MARKED').toUpperCase()}
+                      </p>
                     </div>
-                    <div className="flex items-center justify-center bg-[#111] min-h-[200px] relative">
-                      {(attendanceDetail?.check_in_photo_path || attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? (
-                        <img
-                          src={`${BASE_URL}/${attendanceDetail.check_in_photo_path || attendanceDetail.check_in_photo || attendanceDetail.attendance_details.check_in_photo_path}`}
-                          alt="Check-in"
-                          className="w-full object-cover max-h-[220px]"
-                          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                        />
-                      ) : null}
-                      <div className={`flex-col items-center justify-center gap-2 text-center p-6 ${(attendanceDetail?.check_in_photo_path || attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? 'hidden' : 'flex'}`}>
-                        <div className="w-14 h-14 rounded-full bg-gray-700 flex items-center justify-center">
-                          <Frown className="w-7 h-7 text-gray-500" />
-                        </div>
-                        <p className="text-gray-500 text-xs">No photo</p>
-                      </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Total Hours</p>
+                      <p className="text-xl font-mono text-zinc-300">
+                        {attendanceDetail?.attendance_details?.total_working_hours || attendanceDetail?.working_hours || '—'}
+                      </p>
                     </div>
-                    {(attendanceDetail?.check_in_geolocation?.address && attendanceDetail.check_in_geolocation.address !== 'Unknown') && (
-                      <div className="px-4 py-2 border-t border-gray-800">
-                        <p className="text-gray-500 text-xs truncate">📍 {attendanceDetail.check_in_geolocation.address}</p>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Check Out */}
-                  <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                      <span className="text-red-400 font-bold text-xs tracking-widest">CHECK OUT</span>
-                      <span className="text-gray-300 font-mono text-sm">{attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time || '—'}</span>
-                    </div>
-                    <div className="flex items-center justify-center bg-[#111] min-h-[200px] relative">
-                      {(attendanceDetail?.check_out_photo_path || attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? (
-                        <img
-                          src={`${BASE_URL}/${attendanceDetail.check_out_photo_path || attendanceDetail.check_out_photo || attendanceDetail.attendance_details.check_out_photo_path}`}
-                          alt="Check-out"
-                          className="w-full object-cover max-h-[220px]"
-                          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                        />
-                      ) : null}
-                      <div className={`flex-col items-center justify-center gap-2 text-center p-6 ${(attendanceDetail?.check_out_photo_path || attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? 'hidden' : 'flex'}`}>
-                        <div className="w-14 h-14 rounded-full bg-gray-700 flex items-center justify-center">
-                          <Frown className="w-7 h-7 text-gray-500" />
-                        </div>
-                        <p className="text-gray-500 text-xs">No photo</p>
+                  {/* Check In / Check Out */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Check In */}
+                    <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Check In</span>
+                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time || '—'}</span>
                       </div>
-                    </div>
-                    {(attendanceDetail?.check_out_geolocation?.address && attendanceDetail.check_out_geolocation.address !== 'Unknown') && (
-                      <div className="px-4 py-2 border-t border-gray-800">
-                        <p className="text-gray-500 text-xs truncate">📍 {attendanceDetail.check_out_geolocation.address}</p>
+                      <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
+                        {(attendanceDetail?.check_in_photo_path || attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? (
+                          <img
+                            src={`${BASE_URL}/${attendanceDetail.check_in_photo_path || attendanceDetail.check_in_photo || attendanceDetail.attendance_details?.check_in_photo_path}`}
+                            alt="Check-in"
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                            onError={(e) => { e.target.style.display = 'none' }}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-center">
+                            <User className="w-8 h-8 text-zinc-700" />
+                            <p className="text-zinc-600 text-xs">No photo</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                      {attendanceDetail?.check_in_geolocation?.address && attendanceDetail.check_in_geolocation.address !== 'Unknown' && (
+                        <p className="text-xs text-zinc-500 truncate">📍 {attendanceDetail.check_in_geolocation.address}</p>
+                      )}
+                    </div>
 
-                {/* Update Record (edit permission only) */}
-                {hasEditPermission() && (() => {
-                  const statusOptions = [
-                    { value: 'P',  label: 'FULL DAY',  num: '1',   color: 'text-green-400 border-green-700' },
-                    { value: 'HD', label: 'HALF DAY',  num: '0.5', color: 'text-yellow-400 border-yellow-700' },
-                    { value: 'A',  label: 'ABSENT',    num: '0',   color: 'text-orange-400 border-orange-700' },
-                    { value: 'AB', label: 'ABSCONDING',num: '-1',  color: 'text-red-400 border-red-700' },
-                  ]
-                  const activeOpt = statusOptions.find(o => o.value === selectedAttendance)
-                  return (
-                    <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-5 space-y-3">
-                      <p className="text-gray-500 text-xs font-semibold tracking-widest">UPDATE RECORD</p>
+                    {/* Check Out */}
+                    <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">Check Out</span>
+                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time || '—'}</span>
+                      </div>
+                      <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
+                        {(attendanceDetail?.check_out_photo_path || attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? (
+                          <img
+                            src={`${BASE_URL}/${attendanceDetail.check_out_photo_path || attendanceDetail.check_out_photo || attendanceDetail.attendance_details?.check_out_photo_path}`}
+                            alt="Check-out"
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                            onError={(e) => { e.target.style.display = 'none' }}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-center">
+                            <User className="w-8 h-8 text-zinc-700" />
+                            <p className="text-zinc-600 text-xs">No photo</p>
+                          </div>
+                        )}
+                      </div>
+                      {attendanceDetail?.check_out_geolocation?.address && attendanceDetail.check_out_geolocation.address !== 'Unknown' && (
+                        <p className="text-xs text-zinc-500 truncate">📍 {attendanceDetail.check_out_geolocation.address}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Update Record */}
+                  {hasEditPermission() && (
+                    <div className="space-y-4 pt-4 border-t border-white/10">
+                      <h4 className="text-xs font-bold tracking-widest text-zinc-400 uppercase">Update Record</h4>
+
+                      {/* Status Dropdown */}
                       <div className="relative" ref={statusDropdownRef}>
                         <button
                           type="button"
                           onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 bg-[#111] border border-gray-600 rounded-xl text-white font-semibold hover:border-gray-500 transition-all"
+                          className="w-full bg-black border border-white/10 hover:border-indigo-500/50 rounded-lg px-4 py-3 flex items-center justify-between transition-colors focus:outline-none"
                         >
-                          {activeOpt ? (
-                            <span className="font-bold tracking-wide uppercase">{activeOpt.label}</span>
-                          ) : (
-                            <span className="text-gray-500 font-normal">Select Status</span>
-                          )}
-                          <svg className={`w-4 h-4 text-gray-400 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          <span className="text-sm font-medium text-zinc-200">
+                            {activeOpt ? activeOpt.label : 'Select Attendance Status'}
+                          </span>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`transition-transform duration-200 ${statusDropdownOpen ? 'rotate-180' : ''}`}>
+                            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500" />
                           </svg>
                         </button>
                         {statusDropdownOpen && (
-                          <div className="absolute z-50 mt-1 w-full bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
-                            {statusOptions.map(opt => (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-20">
+                            {statusOptions.map((opt) => (
                               <button
                                 key={opt.value}
                                 type="button"
                                 onClick={() => { setSelectedAttendance(opt.value); setStatusDropdownOpen(false) }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-800 font-bold tracking-wide text-sm ${selectedAttendance === opt.value ? 'bg-gray-800' : ''}`}
+                                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
                               >
-                                <span className={`text-xs border rounded px-1.5 py-0.5 ${opt.color}`}>{opt.num}</span>
-                                <span className="text-white uppercase">{opt.label}</span>
+                                <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${opt.badgeClass}`}>
+                                  {opt.num}
+                                </div>
+                                <span className="text-sm font-medium text-zinc-200">{opt.label}</span>
                               </button>
                             ))}
                           </div>
                         )}
                       </div>
+
+                      {/* Remark — only shown when status is changed, mandatory */}
+                      <div className={`overflow-hidden transition-all duration-300 ${isStatusChanged ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+                        <textarea
+                          value={updateReason}
+                          onChange={(e) => setUpdateReason(e.target.value)}
+                          placeholder="Mandatory remark for status change..."
+                          rows={3}
+                          className={`w-full bg-black border rounded-lg p-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none ${updateReason.trim() === '' ? 'border-rose-500/50' : 'border-white/10'}`}
+                        />
+                        {updateReason.trim() === '' && (
+                          <p className="text-xs text-rose-400 font-semibold mt-2 flex items-center gap-1">
+                            <span>⚠</span> Remark is required to update status
+                          </p>
+                        )}
+                      </div>
+
                       <button
-                        onClick={handleUpdate}
-                        disabled={!selectedAttendance}
-                        className="w-full py-3 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold tracking-widest text-sm rounded-xl transition-colors uppercase"
+                        onClick={handleConfirmUpdate}
+                        disabled={loading || !isStatusChanged || updateReason.trim() === ''}
+                        className={`w-full py-3 rounded-lg font-bold text-xs tracking-widest uppercase transition-all duration-300 flex items-center justify-center gap-2
+                          ${(loading || !isStatusChanged || updateReason.trim() === '')
+                            ? 'bg-white/5 text-zinc-600 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.2)]'
+                          }`}
                       >
-                        UPDATE ATTENDANCE
+                        {loading ? 'Updating...' : 'Update Attendance'}
                       </button>
                     </div>
-                  )
-                })()}
-
-                {/* Comments */}
-                <div className="bg-[#1a1a1a] border border-gray-700 rounded-xl p-5 space-y-3">
-                  <p className="text-gray-500 text-xs font-semibold tracking-widest">COMMENTS</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      className="flex-1 bg-[#111] border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-gray-500"
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-                    />
-                    <button
-                      onClick={handleSendComment}
-                      disabled={loading || !newComment.trim()}
-                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-semibold"
-                    >
-                      <Send className="w-3.5 h-3.5" /> Send
-                    </button>
-                  </div>
-                  {comments.length > 0 && (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {comments.map((c, i) => (
-                        <div key={c._id || i} className="bg-[#111] border border-gray-800 rounded-lg p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-indigo-400 text-xs font-semibold">{c.user_name || c.user || 'Unknown'}</span>
-                            <span className="text-gray-600 text-xs">{c.created_at ? formatDateTime(c.created_at) : c.timestamp}</span>
-                          </div>
-                          <p className="text-gray-300 text-sm">{c.content || c.message}</p>
-                        </div>
-                      ))}
-                    </div>
                   )}
-                  {comments.length === 0 && !loading && (
-                    <p className="text-gray-600 text-xs text-center py-2">No comments yet</p>
-                  )}
-                </div>
-              </>
-            )}
+                </>
+              )
+            })()}
           </div>
 
-          {/* Right: Activity History panel */}
-          <div className="w-64 border-l border-gray-800 flex flex-col flex-shrink-0 bg-[#0a0a0a]">
-            <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-800">
-              <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-              <span className="text-gray-300 font-bold text-xs tracking-widest uppercase">Activity History</span>
+          {/* Right: Activity History */}
+          <div className="w-full md:w-80 bg-black flex flex-col flex-shrink-0">
+            <div className="flex items-center gap-2 px-4 py-4 border-b border-white/10">
+              <History className="w-4 h-4 text-indigo-400" />
+              <span className="text-zinc-300 font-bold text-xs tracking-widest uppercase">Activity History</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
               {history.length > 0 ? (
-                <div className="space-y-3">
-                  {history.map((record, index) => (
-                    <div key={record._id || index} className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-3">
-                      <p className="text-gray-400 text-xs">{formatDateTime(record.changed_at)}</p>
-                      <p className="text-white text-xs font-semibold mt-0.5">{record.action}</p>
+                history.map((record, index) => (
+                  <div key={record._id || index} className="relative pl-4 border-l border-white/10 pb-2">
+                    <div className="absolute w-2 h-2 bg-indigo-500 rounded-full -left-[4.5px] top-1.5 ring-4 ring-black" />
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-zinc-500 font-mono">{record.changed_at ? formatDateTime(record.changed_at) : ''}</p>
+                      <p className="text-sm text-zinc-200">{record.action}</p>
                       {record.old_value !== undefined && (
-                        <p className="text-gray-500 text-xs">{record.old_value} → {record.new_value}</p>
+                        <p className="text-zinc-500 text-xs">{record.old_value} → {record.new_value}</p>
+                      )}
+                      {record.reason && (
+                        <p className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mt-1 leading-relaxed">💬 {record.reason}</p>
                       )}
                       {record.changed_by_name && (
-                        <p className="text-indigo-400 text-xs mt-0.5">by {record.changed_by_name}</p>
+                        <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {record.changed_by_name}</p>
                       )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-12">
-                  <div className="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center">
-                    <svg className="w-7 h-7 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
                   </div>
-                  <p className="text-gray-600 text-xs font-semibold tracking-widest uppercase">No history for this date</p>
+                ))
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-50 py-12">
+                  <History className="w-8 h-8 text-zinc-600" />
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest">No history for this date</p>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* ── Reason Modal ── */}
-      {showReasonModal && (
-        <div
-          className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowReasonModal(false); setUpdateReason('') } }}
-        >
-          <div className="bg-[#111] border border-amber-500/50 rounded-2xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white p-5 rounded-t-2xl">
-              <h3 className="text-lg font-bold flex items-center gap-2"><Send className="w-4 h-4" /> Update Reason Required</h3>
-              <p className="text-amber-100 text-xs mt-0.5">Please provide a reason for this attendance update</p>
-            </div>
-            <div className="p-6 space-y-4">
-              <label className="block text-amber-400 font-semibold text-sm">Reason <span className="text-red-400">*</span></label>
-              <textarea
-                value={updateReason}
-                onChange={(e) => setUpdateReason(e.target.value)}
-                placeholder="Enter reason for updating attendance..."
-                rows={4}
-                className="w-full bg-[#1a1a1a] border border-gray-700 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-amber-500 resize-none"
-                autoFocus style={{ pointerEvents: 'auto' }}
-              />
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex gap-2 text-xs text-gray-400">
-                <span>ℹ️</span> This reason will be permanently recorded in the edit history.
-              </div>
-            </div>
-            <div className="px-6 pb-5 flex gap-3 justify-end">
-              <button onClick={() => { setShowReasonModal(false); setUpdateReason('') }} className="px-6 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-semibold transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleConfirmUpdate} disabled={!updateReason.trim()} className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
-                <Send className="w-3.5 h-3.5" /> Confirm Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -2772,7 +2711,6 @@ export default function MonthlyAttendanceTable() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     if (clickedDate > today) {
-      alert('Cannot edit attendance for future dates!')
       return
     }
     

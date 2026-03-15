@@ -73,7 +73,10 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [selectedLabel, setSelectedLabel] = useState("")
+  const [selectedLabel, setSelectedLabel] = useState(() => {
+    const stored = localStorage.getItem('selectedLabel');
+    return stored || 'Feed';
+  })
   const [isMobileView, setIsMobileView] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()

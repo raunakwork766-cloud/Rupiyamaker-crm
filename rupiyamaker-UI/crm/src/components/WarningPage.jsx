@@ -3166,7 +3166,7 @@ const WarningPage = memo(() => {
                         <h3 className="font-black text-sm uppercase tracking-tight">Same Mistake Repeated</h3>
                       </div>
                       <span className="bg-red-600 text-white text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-bold shadow-sm w-fit">
-                        {similarWarnings.length}{similarWarnings.length === 1 ? 'st' : similarWarnings.length === 2 ? 'nd' : similarWarnings.length === 3 ? 'rd' : 'th'} Time Offense
+                        {(() => { const n = similarWarnings.length + 1; return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Time Offense`; })()}
                       </span>
                     </div>
                     <div className="flex items-center gap-4 mb-4 bg-white p-3 rounded-lg border border-red-100 shadow-sm">

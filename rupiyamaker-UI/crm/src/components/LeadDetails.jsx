@@ -452,6 +452,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
+                        {!effectiveReadOnly && (
                         <RequestReassignmentButton 
                             leadId={leadData._id}
                             buttonClassName="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center mr-2"
@@ -461,6 +462,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 setTimeout(() => setSuccess(''), 3000);
                             }}
                         />
+                        )}
+                        {!effectiveReadOnly && (
                         <button
                             className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
                             onClick={async () => {
@@ -497,7 +500,9 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                             <Plus className="w-4 h-4 mr-2" />
                             {showCoApplicant ? 'Hide Co-Applicant Form' : 'Show Co-Applicant Form'}
                         </button>
-                        {leadData?.form_share === false ? (
+                        )}
+                        {!effectiveReadOnly && (
+                        leadData?.form_share === false ? (
                             <div className="flex items-center bg-gray-500 px-4 py-2 rounded-lg font-medium text-white">
                                 <Share2 className="w-4 h-4 mr-2" />
                                 Form Submitted
@@ -510,6 +515,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 <Share2 className="w-4 h-4 mr-2" />
                                 Share
                             </button>
+                        )
                         )}
                         {activeTab !== 'obligations' && (
                         <div className="text-right">
@@ -732,7 +738,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     </div>
                                 )}
                                 
-                                {/* Request Reassignment Button - Always visible at bottom */}
+                                {!effectiveReadOnly && (
                                 <div className="mt-6">
                                     <RequestReassignmentButton
                                         leadId={lead._id}
@@ -743,6 +749,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         }}
                                     />
                                 </div>
+                                )}
                             </div>
                         )}
 
