@@ -2098,32 +2098,9 @@ async def check_in_attendance(
             attendance_status = 0.5
             status_reason = "Late check-in - Half day"
         else:
-            # Too late - mark as absent for next day as well
-            attendance_status = -2
-            status_reason = "Very late check-in - Marked absent"
-            
-            # Mark next day as absent too if it's a working day
-            next_day = (get_ist_now().date() + timedelta(days=1)).isoformat()
-            try:
-                # Check if next day is not weekend
-                next_day_obj = datetime.strptime(next_day, '%Y-%m-%d').date()
-                weekend_days = settings.get("weekend_days", [5, 6])  # Saturday, Sunday
-                if next_day_obj.weekday() not in weekend_days:
-                    # Auto-mark next day as absent
-                    next_day_record = {
-                        "user_id": user_id,
-                        "date": next_day,
-                        "status": -2,
-                        "comments": f"Auto-marked absent due to very late check-in on {date.today().isoformat()}",
-                        "marked_by": "system",
-                        "marked_at": get_ist_now(),
-                        "is_holiday": False,
-                        "created_at": get_ist_now(),
-                        "updated_at": get_ist_now()
-                    }
-                    await attendance_db.mark_attendance(next_day_record)
-            except Exception as e:
-                print(f"Error auto-marking next day absent: {e}")
+            # Too late (after shift end) - mark as leave for today
+            attendance_status = 0
+            status_reason = "Check-in after shift ended - Marked as leave"
         
         check_in_record = {
             "check_in_time": check_in_time,
@@ -2153,8 +2130,8 @@ async def check_in_attendance(
             message = "Checked in successfully - Full day potential"
         elif attendance_status == 0.5:
             message = "Checked in - Half day marked (Late arrival or early check-in)"
-        elif attendance_status == -2:
-            message = "Checked in - Marked absent (Very late arrival, next day also marked absent)"
+        elif attendance_status == 0:
+            message = "Checked in - Marked as leave (Check-in after shift ended)"
         else:
             message = "Checked in successfully"
         
@@ -2463,20 +2440,6 @@ async def edit_attendance(
             old_value = existing_record.get(field)
             if old_value != new_value:
                 changes.append(f"{field}: {old_value} → {new_value}")
-                
-                # Add individual history entry for each change
-                await attendance_history_db.add_history_entry(
-                    attendance_id=attendance_id,
-                    user_id=str(existing_record.get("user_id")),
-                    date=existing_record.get("date"),
-                    action_type="field_updated",
-                    action_description=f"{field.replace('_', ' ').title()} updated by {admin_name}",
-                    created_by=admin_id,
-                    created_by_name=admin_name,
-                    old_value=old_value,
-                    new_value=new_value,
-                    reason=update_reason
-                )
         
         # Add summary history entry
         if changes:

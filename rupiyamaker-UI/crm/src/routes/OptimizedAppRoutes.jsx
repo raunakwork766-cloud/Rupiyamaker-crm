@@ -52,12 +52,15 @@ const LazyLeavesPage = createLazyComponent(() => import('../components/LeavesPag
 const LazyDialerReport = createLazyComponent(() => import('../components/Dialer.jsx'), 'Dialer');
 const LazyChartPage = createLazyComponent(() => import('../components/ChartPage.jsx'), 'ChartPage');
 const LazyWarningPage = createLazyComponent(() => import('../components/WarningPage.jsx'), 'WarningPage');
+const LazyTransferRequestsPage = createLazyComponent(() => import('../components/sections/TransferRequestsPage.jsx'), 'TransferRequestsPage');
 const LazyPermissionTest = createLazyComponent(() => import('../components/PermissionTest.jsx'), 'PermissionTest');
 const LazyLeadsReport = createLazyComponent(() => import('../components/reports/ComprehensiveReportDark.jsx'), 'ComprehensiveReportDark');
 const LazyNotificationsPage = createLazyComponent(() => import('../components/NotificationsPage.jsx'), 'NotificationsPage');
 const LazyNotificationManagementPage = createLazyComponent(() => import('../pages/NotificationManagementPage.jsx'), 'NotificationManagementPage');
 const LazyRoleCompare = createLazyComponent(() => import('../components/settings/RoleCompare.jsx'), 'RoleCompare');
 const LazyKnowledgeBase = createLazyComponent(() => import('../components/KnowledgeBase.jsx'), 'KnowledgeBase');
+const LazyFAQPage = createLazyComponent(() => import('../components/FAQPage.jsx'), 'FAQPage');
+const LazyOfferLetterGenerator = createLazyComponent(() => import('../components/OfferLetterGenerator.jsx'), 'OfferLetterGenerator');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
@@ -151,7 +154,9 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredAction="show"
             alternativeChecks={[
               { page: 'Leads', action: 'show' },
-              { page: 'LEADS', action: 'show' }
+              { page: 'LEADS', action: 'show' },
+              { page: 'leads.create_lead', action: 'show' },
+              { page: 'leads.pl_odd_leads', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -170,7 +175,9 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="leads" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'show' }
+              { page: 'Leads', action: 'show' },
+              { page: 'leads.create_lead', action: 'show' },
+              { page: 'leads.pl_odd_leads', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -581,6 +588,35 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         } 
       />
       <Route 
+        path="/offer-letter" 
+        element={
+          <ProtectedRoute 
+            requiredPage="offer-letter" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'hrms', action: 'show' },
+              { page: 'HRMS', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyOfferLetterGenerator} 
+              routeName="Offer Letter"
+              user={user}
+            />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/transfer-requests" 
+        element={
+          <RouteWithSuspense 
+            component={LazyTransferRequestsPage} 
+            routeName="Transfer Requests"
+            user={user}
+          />
+        } 
+      />
+      <Route 
         path="/permission-test" 
         element={
           <RouteWithSuspense 
@@ -599,7 +635,8 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="notifications" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Notifications', action: 'show' }
+              { page: 'Notifications', action: 'show' },
+              { page: 'notification', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -638,6 +675,18 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
           <RouteWithSuspense 
             component={LazyKnowledgeBase} 
             routeName="Knowledge Base"
+            user={user}
+          />
+        } 
+      />
+
+      {/* FAQ Route */}
+      <Route 
+        path="/faq" 
+        element={
+          <RouteWithSuspense 
+            component={LazyFAQPage} 
+            routeName="FAQ"
             user={user}
           />
         } 

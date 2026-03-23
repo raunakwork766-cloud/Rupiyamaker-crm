@@ -939,7 +939,7 @@ const LeavesPage = () => {
   const fetchAllEmployees = async () => {
     try {
       const userId = getCurrentUserId();
-      const response = await fetch(`${API_BASE_URL}/users/?user_id=${userId}`, { headers: getAuthHeaders() });
+      const response = await fetch(`${API_BASE_URL}/users/?user_id=${userId}&is_active=true`, { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         // /users/ returns array of user objects with _id, first_name, last_name, designation, is_active

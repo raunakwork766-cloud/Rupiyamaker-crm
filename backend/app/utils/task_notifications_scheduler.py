@@ -129,10 +129,10 @@ class TaskNotificationsScheduler:
                 
                 # Get all active users (fallback to list_users if get_active_users is not available)
                 try:
-                    users = self.users_db.get_active_users()
+                    users = await self.users_db.get_active_users()
                 except AttributeError:
                     logger.warning("get_active_users method not found, using list_users with filter instead")
-                    users = self.users_db.list_users({"is_disabled": {"$ne": True}})
+                    users = await self.users_db.list_users({"is_disabled": {"$ne": True}})
                 
                 for user in users:
                     if not user:

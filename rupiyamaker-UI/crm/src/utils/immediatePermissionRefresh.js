@@ -47,7 +47,7 @@ export const fetchFreshPermissions = async (userId) => {
             throw new Error('No authentication token found');
         }
         
-        const response = await fetch(`${API_BASE_URL}/users/${userId}/permissions`, {
+        const response = await fetch(`${API_BASE_URL}/users/permissions/${userId}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -64,7 +64,37 @@ export const fetchFreshPermissions = async (userId) => {
         const permissionsData = await response.json();
         console.log('✅ Fresh permissions fetched:', permissionsData);
         
-        return permissionsData;
+        // Convert array format to object format (same as Login.jsx does at login time)
+        // so that Sidebar and ProtectedRoute object-format checks work correctly.
+        let normalized = permissionsData;
+        if (Array.isArray(permissionsData)) {
+            normalized = {};
+            permissionsData.forEach(perm => {
+                if (!perm.page || !perm.actions) return;
+                if (!normalized[perm.page]) normalized[perm.page] = {};
+                const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                if (actions.includes('*')) {
+                    normalized[perm.page] = '*';
+                } else {
+                    actions.forEach(action => {
+                        if (typeof normalized[perm.page] !== 'object') return;
+                        normalized[perm.page][action] = true;
+                    });
+                }
+                // Propagate parent key for dot-notation sub-pages (e.g. leads.create_lead → leads.show)
+                if (perm.page.includes('.')) {
+                    const parentPage = perm.page.split('.')[0];
+                    if (!normalized[parentPage]) normalized[parentPage] = {};
+                    if (typeof normalized[parentPage] === 'object') {
+                        if (actions.includes('show') || actions.includes('*') || actions.includes('all')) {
+                            normalized[parentPage]['show'] = true;
+                        }
+                    }
+                }
+            });
+        }
+        
+        return normalized;
     } catch (error) {
         console.error('❌ Error fetching fresh permissions:', error);
         throw error;

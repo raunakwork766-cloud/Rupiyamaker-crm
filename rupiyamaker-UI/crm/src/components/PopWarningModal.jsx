@@ -108,6 +108,8 @@ const PopWarningModal = () => {
         }
       );
       if (res.ok) {
+        // Notify WarningPage (and any other listener) so they can refresh data
+        window.dispatchEvent(new CustomEvent('warning-acknowledged'));
         setDone(true);
         setTimeout(() => {
           if (!mountedRef.current) return;

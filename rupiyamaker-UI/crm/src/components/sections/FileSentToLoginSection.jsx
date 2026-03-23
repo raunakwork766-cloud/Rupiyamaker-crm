@@ -65,7 +65,7 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
       try {
         setLoadingUsers(true);
         const userId = localStorage.getItem('userId');
-        const response = await fetch(`${API_BASE_URL}/users/?department_id=${selectedDepartment}`, {
+        const response = await fetch(`${API_BASE_URL}/users/?department_id=${selectedDepartment}&is_active=true`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`

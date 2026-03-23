@@ -156,6 +156,7 @@ class InterviewCreate(BaseModel):
     alternate_number: Optional[str] = Field(None, max_length=15)
     gender: str = Field(..., pattern="^(Male|Female|Other)$")
     qualification: Optional[str] = Field(None, max_length=200)  # Added qualification field
+    qualification_status: Optional[str] = Field(None, max_length=50)  # Pursuing or Completed
     job_opening: str = Field(..., min_length=1, max_length=200)
     interview_type: str = Field(..., min_length=1, max_length=100)  # Allow any interview type from settings
     source_portal: Optional[str] = Field(None, max_length=100)
@@ -184,6 +185,7 @@ class InterviewUpdate(BaseModel):
     alternate_number: Optional[str] = Field(None, max_length=15)
     gender: Optional[str] = Field(None, pattern="^(Male|Female|Other)$")
     qualification: Optional[str] = Field(None, max_length=200)  # Added qualification field
+    qualification_status: Optional[str] = Field(None, max_length=50)  # Pursuing or Completed
     job_opening: Optional[str] = Field(None, min_length=1, max_length=200)
     interview_type: Optional[str] = Field(None, min_length=1, max_length=100)  # Allow any interview type from settings
     source_portal: Optional[str] = Field(None, max_length=100)
@@ -211,6 +213,7 @@ class InterviewResponse(BaseModel):
     alternate_number: Optional[str]
     gender: str
     qualification: Optional[str]  # Added qualification field
+    qualification_status: Optional[str]  # Pursuing or Completed
     job_opening: str
     interview_type: str
     source_portal: Optional[str]
@@ -1690,4 +1693,42 @@ async def download_interview_attachment(
         )
     except Exception as e:
         logger.error(f"Error downloading interview attachment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/interviews/{interview_id}/attachments/{attachment_id}")
+async def rename_interview_attachment(
+    interview_id: str,
+    attachment_id: str,
+    body: dict,
+    user_id: str = Query(..., description="User ID"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db)
+):
+    """Rename (update label) of an interview attachment"""
+    try:
+        if not ObjectId.is_valid(interview_id):
+            raise HTTPException(status_code=400, detail="Invalid interview ID")
+        interview = await interviews_db.get_interview_by_id(interview_id)
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+
+        new_label = (body.get("label") or "").strip()
+        if not new_label:
+            raise HTTPException(status_code=400, detail="label is required")
+
+        attachments = interview.get("attachments", [])
+        target = next((a for a in attachments if a.get("id") == attachment_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+
+        await interviews_db.collection.update_one(
+            {"_id": ObjectId(interview_id), "attachments.id": attachment_id},
+            {"$set": {"attachments.$.label": new_label, "updated_at": get_ist_now()}}
+        )
+
+        return {"success": True, "message": "Attachment renamed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error renaming interview attachment: {e}")
         raise HTTPException(status_code=500, detail=str(e))

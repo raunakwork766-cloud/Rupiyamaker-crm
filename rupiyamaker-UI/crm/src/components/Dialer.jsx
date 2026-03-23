@@ -411,7 +411,7 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                 <td className="px-2 py-1.5 align-middle">
                                     {/* 3-State Status: No Review / Warned / Justified */}
                                     {(() => {
-                                        const warnKey = isMultiDate ? `${a.ext}_${a.date}` : a.ext;
+                                        const warnKey = `${a.ext}_${a.date}`;
                                         const status = (warnToggle && warnToggle[warnKey]) || 'off';
                                         const isWarned = status === 'on';
                                         const isJustified = status === 'justified';
@@ -569,7 +569,7 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                         </div>
                         {/* Body */}
                         <div className="px-6 pb-6 space-y-3">
-                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Action / Reason <span className="text-[#f59e0b]">*</span></div>
+                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Action / Reason <span className="text-[#888] font-normal normal-case">(optional)</span></div>
                             <textarea value={warnRemarks} onChange={e => { setWarnRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={3}
                                 placeholder="Describe the performance issue and action taken..."
                                 autoFocus
@@ -578,12 +578,11 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                 <button onClick={() => setWarnPopup(null)}
                                     className="px-4 py-2 bg-[#111] border border-[#2a2a2a] text-[#888] text-[11px] font-bold rounded-xl hover:border-[#444] hover:text-white transition-all">Cancel</button>
                                 <button onClick={() => {
-                                    if (!warnRemarks.trim()) return;
                                     onToggle(warnPopup.ext, warnPopup.name, warnPopup.date, warnPopup.isMultiDate, 'on', warnRemarks.trim());
                                     setWarnPopup(null);
                                     setWarnRemarks('');
-                                }} disabled={!warnRemarks.trim()}
-                                    className="px-5 py-2 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-black text-[11px] font-black rounded-xl hover:from-[#fbbf24] hover:to-[#f59e0b] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4px_16px_rgba(245,158,11,.35)] flex items-center gap-1.5">
+                                }}
+                                    className="px-5 py-2 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-black text-[11px] font-black rounded-xl hover:from-[#fbbf24] hover:to-[#f59e0b] transition-all shadow-[0_4px_16px_rgba(245,158,11,.35)] flex items-center gap-1.5">
                                     <span className="text-[13px]">⚠</span> Submit Warning
                                 </button>
                             </div>
@@ -621,7 +620,7 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                         </div>
                         {/* Body */}
                         <div className="px-6 pb-6 space-y-3">
-                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Justification Reason <span className="text-[#22c55e]">*</span></div>
+                            <div className="text-[11px] font-black text-[#ccc] tracking-wide uppercase">Justification Reason <span className="text-[#888] font-normal normal-case">(optional)</span></div>
                             <textarea value={justifyRemarks} onChange={e => { setJustifyRemarks(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} rows={3}
                                 placeholder="Explain why this agent's performance is justified..."
                                 autoFocus
@@ -630,12 +629,11 @@ function AgentTable({ list, sortKey, sortDir, onSort, isMultiDate, isSingleAgent
                                 <button onClick={() => setJustifyPopup(null)}
                                     className="px-4 py-2 bg-[#111] border border-[#2a2a2a] text-[#888] text-[11px] font-bold rounded-xl hover:border-[#444] hover:text-white transition-all">Cancel</button>
                                 <button onClick={() => {
-                                    if (!justifyRemarks.trim()) return;
                                     onToggle(justifyPopup.ext, justifyPopup.name, justifyPopup.date, justifyPopup.isMultiDate, 'justified', justifyRemarks.trim());
                                     setJustifyPopup(null);
                                     setJustifyRemarks('');
-                                }} disabled={!justifyRemarks.trim()}
-                                    className="px-5 py-2 bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-black text-[11px] font-black rounded-xl hover:from-[#4ade80] hover:to-[#22c55e] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4px_16px_rgba(34,197,94,.3)] flex items-center gap-1.5">
+                                }}
+                                    className="px-5 py-2 bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-black text-[11px] font-black rounded-xl hover:from-[#4ade80] hover:to-[#22c55e] transition-all shadow-[0_4px_16px_rgba(34,197,94,.3)] flex items-center gap-1.5">
                                     <span className="text-[13px]">✓</span> Submit Justified
                                 </button>
                             </div>
@@ -1830,6 +1828,15 @@ function DateCalendarPicker({ dates, selectedFrom, selectedTo, onFromChange, onT
     const [showCalendar, setShowCalendar] = useState(false);
     const [selectingFor, setSelectingFor] = useState('from'); // 'from' or 'to'
     const [dateMode, setDateMode] = useState(selectedFrom === selectedTo ? 'single' : 'range'); // 'single' or 'range'
+    // Track which month is displayed (year, month index)
+    const [viewYear, setViewYear] = useState(() => {
+        const d = selectedFrom ? new Date(selectedFrom) : new Date();
+        return d.getFullYear();
+    });
+    const [viewMonth, setViewMonth] = useState(() => {
+        const d = selectedFrom ? new Date(selectedFrom) : new Date();
+        return d.getMonth();
+    });
     
     if (!dates || dates.length === 0) return null;
     
@@ -1838,40 +1845,32 @@ function DateCalendarPicker({ dates, selectedFrom, selectedTo, onFromChange, onT
     const minDate = new Date(allDates[0]);
     const maxDate = new Date(allDates[allDates.length - 1]);
     
-    // Generate calendar grid for the month(s) containing our data
+    // Navigation helpers
+    const canGoPrev = viewYear > minDate.getFullYear() || (viewYear === minDate.getFullYear() && viewMonth > minDate.getMonth());
+    const canGoNext = viewYear < maxDate.getFullYear() || (viewYear === maxDate.getFullYear() && viewMonth < maxDate.getMonth());
+    const goPrev = () => {
+        if (!canGoPrev) return;
+        if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+        else setViewMonth(viewMonth - 1);
+    };
+    const goNext = () => {
+        if (!canGoNext) return;
+        if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+        else setViewMonth(viewMonth + 1);
+    };
+    
+    // Generate calendar for the single viewed month
     const generateCalendar = () => {
-        const months = [];
-        const currentMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-        const endMonth = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
-        
-        while (currentMonth <= endMonth) {
-            const year = currentMonth.getFullYear();
-            const month = currentMonth.getMonth();
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const startingDayOfWeek = firstDay.getDay();
-            
-            const days = [];
-            // Add empty cells for days before month starts
-            for (let i = 0; i < startingDayOfWeek; i++) {
-                days.push(null);
-            }
-            // Add all days of the month
-            for (let day = 1; day <= lastDay.getDate(); day++) {
-                days.push(new Date(year, month, day));
-            }
-            
-            months.push({
-                year,
-                month,
-                monthName: firstDay.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }),
-                days
-            });
-            
-            currentMonth.setMonth(currentMonth.getMonth() + 1);
-        }
-        
-        return months;
+        const firstDay = new Date(viewYear, viewMonth, 1);
+        const lastDay = new Date(viewYear, viewMonth + 1, 0);
+        const startingDayOfWeek = firstDay.getDay();
+        const days = [];
+        for (let i = 0; i < startingDayOfWeek; i++) days.push(null);
+        for (let day = 1; day <= lastDay.getDate(); day++) days.push(new Date(viewYear, viewMonth, day));
+        return {
+            monthName: firstDay.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }),
+            days
+        };
     };
     
     // Helper to format a local Date object to YYYY-MM-DD without UTC shift
@@ -1924,7 +1923,7 @@ function DateCalendarPicker({ dates, selectedFrom, selectedTo, onFromChange, onT
         return dateStr >= selectedFrom && dateStr <= selectedTo;
     };
     
-    const calendars = generateCalendar();
+    const cal = generateCalendar();
     
     return (
         <div className="relative">
@@ -1944,7 +1943,7 @@ function DateCalendarPicker({ dates, selectedFrom, selectedTo, onFromChange, onT
                 <div className="fixed inset-0 z-[10000]" onClick={() => setShowCalendar(false)}>
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-b from-[#0f1419] to-[#080c10] border border-[#00BCD4]/40 rounded-2xl shadow-[0_20px_80px_rgba(0,188,212,.2),0_0_0_1px_rgba(0,188,212,.1)] p-5"
-                        style={{ minWidth: '340px', maxWidth: '660px' }}
+                        style={{ minWidth: '340px', maxWidth: '400px' }}
                         onClick={e => e.stopPropagation()}>
                         {/* Mode Toggle */}
                         <div className="flex items-center gap-0 mb-4 bg-[#0a0e12] rounded-xl p-1 border border-[#1a2430]">
@@ -1965,41 +1964,48 @@ function DateCalendarPicker({ dates, selectedFrom, selectedTo, onFromChange, onT
                             <button onClick={() => setShowCalendar(false)}
                                 className="w-7 h-7 rounded-lg bg-[#111820] border border-[#1a2430] text-[#00BCD4] hover:bg-[#00BCD4] hover:text-black transition-all flex items-center justify-center text-[12px] font-black">✕</button>
                         </div>
-                        {/* Calendar Grid */}
-                        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))' }}>
-                            {calendars.map((cal, idx) => (
-                                <div key={idx} className="bg-[#0a0e12] border border-[#1a2430] rounded-xl p-4">
-                                    <div className="text-center text-[12px] font-black text-white mb-3 tracking-wide">{cal.monthName}</div>
-                                    <div className="grid grid-cols-7 gap-1.5">
-                                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, di) => (
-                                            <div key={di} className="text-center text-[9px] font-black text-[#445] py-1 uppercase">{day}</div>
-                                        ))}
-                                        {cal.days.map((date, dayIdx) => {
-                                            if (!date) return <div key={`empty-${dayIdx}`} />;
-                                            const available = isDateAvailable(date);
-                                            const selected = isDateSelected(date);
-                                            const inRange = isDateInRange(date);
-                                            const isToday = toLocalDateStr(date) === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-                                            return (
-                                                <button key={dayIdx}
-                                                    onClick={() => available && handleDateClick(date)}
-                                                    disabled={!available}
-                                                    className={`
-                                                        w-full aspect-square text-[11px] font-bold rounded-lg transition-all duration-150
-                                                        ${available ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed opacity-20'}
-                                                        ${selected ? 'bg-gradient-to-br from-[#00BCD4] to-[#0097A7] text-black font-black shadow-[0_0_14px_rgba(0,188,212,.5)] ring-2 ring-[#00BCD4]/40 scale-105' : ''}
-                                                        ${!selected && inRange ? 'bg-[#00BCD4]/15 text-[#00BCD4] border border-[#00BCD4]/20' : ''}
-                                                        ${!selected && !inRange && available ? 'bg-[#111820] text-[#ccd] hover:bg-[#00BCD4]/20 hover:text-[#00BCD4] border border-transparent hover:border-[#00BCD4]/30' : ''}
-                                                        ${!available ? 'bg-transparent text-[#222]' : ''}
-                                                        ${isToday && !selected ? 'ring-1 ring-[#00BCD4]/30' : ''}
-                                                    `}>
-                                                    {date.getDate()}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ))}
+                        {/* Single Month Calendar with Navigation */}
+                        <div className="bg-[#0a0e12] border border-[#1a2430] rounded-xl p-4">
+                            {/* Month header with arrows */}
+                            <div className="flex items-center justify-between mb-3">
+                                <button onClick={goPrev} disabled={!canGoPrev}
+                                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-[14px] font-black transition-all ${canGoPrev ? 'bg-[#111820] border border-[#1a2430] text-[#00BCD4] hover:bg-[#00BCD4] hover:text-black cursor-pointer' : 'text-[#222] cursor-not-allowed'}`}>
+                                    ‹
+                                </button>
+                                <div className="text-[12px] font-black text-white tracking-wide">{cal.monthName}</div>
+                                <button onClick={goNext} disabled={!canGoNext}
+                                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-[14px] font-black transition-all ${canGoNext ? 'bg-[#111820] border border-[#1a2430] text-[#00BCD4] hover:bg-[#00BCD4] hover:text-black cursor-pointer' : 'text-[#222] cursor-not-allowed'}`}>
+                                    ›
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-7 gap-1.5">
+                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, di) => (
+                                    <div key={di} className="text-center text-[9px] font-black text-[#445] py-1 uppercase">{day}</div>
+                                ))}
+                                {cal.days.map((date, dayIdx) => {
+                                    if (!date) return <div key={`empty-${dayIdx}`} />;
+                                    const available = isDateAvailable(date);
+                                    const selected = isDateSelected(date);
+                                    const inRange = isDateInRange(date);
+                                    const isToday = toLocalDateStr(date) === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                                    return (
+                                        <button key={dayIdx}
+                                            onClick={() => available && handleDateClick(date)}
+                                            disabled={!available}
+                                            className={`
+                                                w-full aspect-square text-[11px] font-bold rounded-lg transition-all duration-150
+                                                ${available ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed opacity-20'}
+                                                ${selected ? 'bg-gradient-to-br from-[#00BCD4] to-[#0097A7] text-black font-black shadow-[0_0_14px_rgba(0,188,212,.5)] ring-2 ring-[#00BCD4]/40 scale-105' : ''}
+                                                ${!selected && inRange ? 'bg-[#00BCD4]/15 text-[#00BCD4] border border-[#00BCD4]/20' : ''}
+                                                ${!selected && !inRange && available ? 'bg-[#111820] text-[#ccd] hover:bg-[#00BCD4]/20 hover:text-[#00BCD4] border border-transparent hover:border-[#00BCD4]/30' : ''}
+                                                ${!available ? 'bg-transparent text-[#222]' : ''}
+                                                ${isToday && !selected ? 'ring-1 ring-[#00BCD4]/30' : ''}
+                                            `}>
+                                            {date.getDate()}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                         {/* Legend */}
                         <div className="mt-4 pt-3 border-t border-[#1a2430] flex items-center gap-4 text-[9px]">
@@ -2058,14 +2064,18 @@ function ControlsBar({ agents, dates, selectedAgent, filterFrom, filterTo, onAge
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
-    // Count agents per status
+    // Count agents per status (date-aware: check date-specific key, fallback to plain ext for old data)
     const warnedExts = new Set();
     const justifiedExts = new Set();
+    const filteredDates = (dates || []).filter(d => d >= filterFrom && d <= filterTo);
     agents.forEach(a => {
-        const key = Object.keys(warnToggle || {}).find(k => k === a.ext || k.startsWith(`${a.ext}_`));
-        const s = key ? warnToggle[key] : null;
-        if (s === 'on') warnedExts.add(a.ext);
-        else if (s === 'justified') justifiedExts.add(a.ext);
+        let found = null;
+        for (const d of filteredDates) {
+            const s = (warnToggle || {})[`${a.ext}_${d}`];
+            if (s === 'on' || s === 'justified') { found = s; break; }
+        }
+        if (found === 'on') warnedExts.add(a.ext);
+        else if (found === 'justified') justifiedExts.add(a.ext);
     });
     const agentsWarned = warnedExts.size;
     const agentsJustified = justifiedExts.size;
@@ -2869,7 +2879,9 @@ export default function Dashboard() {
     const [currentHistoryId, setCurrentHistoryId] = useState(null); // Track which history item is currently loaded
     const [warnings, setWarnings] = useState(() => lsGet(LS_WARN) || {});
     const [uploadHistory, setUploadHistory] = useState([]);
-    const [warnToggle, setWarnToggle] = useState({});   // { ext: bool } — current state
+    const [warnToggle, setWarnToggle] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('dialer_warn_v2') || '{}'); } catch { return {}; }
+    });   // { "ext_date": action } — loaded from localStorage, synced to DB
     const [warnToggleHistory, setWarnToggleHistory] = useState({});  // { ext: [events] }
     const [warningFilter, setWarningFilter] = useState('');
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -2882,13 +2894,31 @@ export default function Dashboard() {
     const [mappingModalOpen, setMappingModalOpen] = useState(false);
     const [designationFilter, setDesignationFilter] = useState('');
     const [teamFilter, setTeamFilter] = useState('');
+    const [toggleSaveError, setToggleSaveError] = useState(''); // brief error toast for warn save failure
+
+    // Sync warnToggle to localStorage whenever it changes
+    useEffect(() => {
+        try { localStorage.setItem('dialer_warn_v2', JSON.stringify(warnToggle)); } catch {}
+    }, [warnToggle]);
 
     // ── Backend: load toggle state, toggle history + upload history on mount ──
     useEffect(() => {
         // Toggle current state
         fetchWithAuth('/api/dialer/toggle/state')
             .then(r => r.ok ? r.json() : null)
-            .then(d => { if (d?.success) setWarnToggle(d.state || {}); })
+            .then(d => {
+                if (d?.success) {
+                    // MERGE: DB state is truth for known keys; keep local-only entries (pending saves)
+                    setWarnToggle(prev => {
+                        const merged = { ...prev };
+                        Object.entries(d.state || {}).forEach(([k, v]) => { merged[k] = v; });
+                        // Remove keys that are in local but DB shows cleared (if DB explicitly has action=off it's deleted)
+                        // DB only returns active (on/justified) entries, so keys NOT in d.state could be pending-local or cleared
+                        // We keep pending-local entries (they'll be confirmed/rejected after retry)
+                        return merged;
+                    });
+                }
+            })
             .catch(() => { });
         // Toggle history — grouped by ext
         fetchWithAuth('/api/dialer/toggle/history')
@@ -3106,29 +3136,32 @@ export default function Dashboard() {
     // ── Warning toggle — calls backend ───────────────────────────────────────
     // targetAction: 'on' (warn), 'justified', 'off' (clear)
     const handleToggleWarn = useCallback(async (ext, agentName, date, isMultiDate, targetAction, remarks = '') => {
-        // Use composite key for multi-date scenarios
-        const warnKey = isMultiDate ? `${ext}_${date}` : ext;
+        // Always use composite key ext_date for date-aware warnings
+        const warnKey = `${ext}_${date}`;
         // If no targetAction given, toggle between 'on' and 'off'
         const currentState = warnToggle[warnKey] || 'off';
         const newAction = targetAction || (currentState === 'off' ? 'on' : 'off');
+        // TRUE OPTIMISTIC UPDATE: show badge immediately, revert on failure
+        const prevValue = warnToggle[warnKey];
+        setWarnToggle(prev => {
+            const next = { ...prev };
+            if (newAction === 'off') { delete next[warnKey]; } else { next[warnKey] = newAction; }
+            return next;
+        });
         const uid = getCurrentUser()?._id || getCurrentUser()?.id || getCurrentUser()?.user_id || '';
         try {
             const res = await fetchWithAuth('/api/dialer/toggle', {
                 method: 'POST',
-                body: JSON.stringify({ ext, agent_name: agentName, date, action: newAction, user_id: uid, remarks: remarks || '' }),
+                body: JSON.stringify({ ext: warnKey, agent_name: agentName, date, action: newAction, user_id: uid, remarks: remarks || '' }),
             });
             const data = await res.json();
             if (data.success) {
-                // Optimistically update local state with actual action string
-                setWarnToggle(prev => ({ ...prev, [warnKey]: newAction === 'off' ? null : newAction }));
                 if (newAction === 'off') {
                     // Backend deletes all toggle events — clear local history too
                     setWarnToggleHistory(prev => ({ ...prev, [warnKey]: [] }));
                 } else {
                     // Refresh history for this agent+date combination
-                    const historyUrl = isMultiDate 
-                        ? `/api/dialer/toggle/history?ext=${encodeURIComponent(ext)}&date=${encodeURIComponent(date)}`
-                        : `/api/dialer/toggle/history?ext=${encodeURIComponent(ext)}`;
+                    const historyUrl = `/api/dialer/toggle/history?ext=${encodeURIComponent(warnKey)}`;
                     fetchWithAuth(historyUrl)
                         .then(r => r.json())
                         .then(d => {
@@ -3137,9 +3170,25 @@ export default function Dashboard() {
                             }
                         }).catch(() => { });
                 }
+            } else {
+                // Server rejected — revert optimistic update
+                setWarnToggle(prev => {
+                    const next = { ...prev };
+                    if (prevValue == null) { delete next[warnKey]; } else { next[warnKey] = prevValue; }
+                    return next;
+                });
+                setToggleSaveError('Save failed. Please try again.');
+                setTimeout(() => setToggleSaveError(''), 4000);
             }
         } catch (e) {
-            console.error('Toggle error', e);
+            // Network error — revert optimistic update
+            setWarnToggle(prev => {
+                const next = { ...prev };
+                if (prevValue == null) { delete next[warnKey]; } else { next[warnKey] = prevValue; }
+                return next;
+            });
+            setToggleSaveError('Network error. Please check connection and retry.');
+            setTimeout(() => setToggleSaveError(''), 4000);
         }
     }, [warnToggle]);
 
@@ -3192,20 +3241,6 @@ export default function Dashboard() {
             const r = await fetchWithAuth(`/api/dialer/upload/${h.id}/agents`);
             const d = await r.json();
             if (!d.success || !d.agents?.length) { alert('Cannot reload: data not found. Please re-upload the file.'); return; }
-            // Debug: check first agent loaded from backend
-            console.log('[handleHistoryLoad] First agent from backend:', {
-                name: d.agents[0].name,
-                manCalls: d.agents[0].manCalls,
-                manTT: d.agents[0].manTT,
-                outCalls: d.agents[0].outCalls,
-                outTT: d.agents[0].outTT
-            });
-            console.log('[handleHistoryLoad] ⚠️ CHECKING ALL AGENTS for manual data...');
-            const agentsWithManual = d.agents.filter(a => (a.manCalls && a.manCalls > 0) || (a.manTT && a.manTT !== '00:00:00'));
-            console.log(`[handleHistoryLoad] Found ${agentsWithManual.length} agents with manual calls/duration out of ${d.agents.length} total`);
-            if (agentsWithManual.length > 0) {
-                console.log('[handleHistoryLoad] Sample agents with manual data:', agentsWithManual.slice(0, 3));
-            }
             setUploadedAgents(d.agents);
             setCurrentHistoryId(h.id); // Track which history item is loaded
             const dates = [...new Set(d.agents.map(a => a.date))].sort();
@@ -3292,29 +3327,8 @@ export default function Dashboard() {
             const ai = activeAgentOrder.indexOf(a.ext), bi = activeAgentOrder.indexOf(b.ext);
             return ai !== bi ? ai - bi : a.date.localeCompare(b.date);
         });
-        // Debug: log first agent BEFORE proc()
-        if (raw.length > 0) {
-            console.log('[processed] First agent BEFORE proc():', {
-                name: raw[0].name,
-                manCalls: raw[0].manCalls,
-                manTT: raw[0].manTT,
-                outCalls: raw[0].outCalls,
-                outTT: raw[0].outTT
-            });
-        }
         // Run proc() on all rows
         let pd = raw.map(a => proc(a));
-        // Debug: log first agent AFTER proc()
-        if (pd.length > 0) {
-            console.log('[processed] First agent AFTER proc():', {
-                name: pd[0].name,
-                manCalls: pd[0].manCalls,
-                manTT: pd[0].manTT,
-                outCalls: pd[0].outCalls,
-                outTT: pd[0].outTT,
-                tc: pd[0].tc
-            });
-        }
         const rkMap = {};
         [...pd].sort((a, b) => b.outCalls - a.outCalls).forEach((a, i) => { rkMap[`${a.ext}_${a.date}`] = i + 1; });
         pd.forEach(a => { a._rank = rkMap[`${a.ext}_${a.date}`] || 99; });
@@ -3327,24 +3341,21 @@ export default function Dashboard() {
         // Apply warning filter (use composite key for multi-date scenarios)
         if (warningFilter === 'warned') {
             base = base.filter(a => {
-                const warnKey = isMultiDate ? `${a.ext}_${a.date}` : a.ext;
-                return warnToggle[warnKey] === 'on';
+                return warnToggle[`${a.ext}_${a.date}`] === 'on';
             });
         } else if (warningFilter === 'justified') {
             base = base.filter(a => {
-                const warnKey = isMultiDate ? `${a.ext}_${a.date}` : a.ext;
-                return warnToggle[warnKey] === 'justified';
+                return warnToggle[`${a.ext}_${a.date}`] === 'justified';
             });
         } else if (warningFilter === 'noReview') {
             base = base.filter(a => {
-                const warnKey = isMultiDate ? `${a.ext}_${a.date}` : a.ext;
-                const s = warnToggle[warnKey];
+                const s = warnToggle[`${a.ext}_${a.date}`];
                 return !s || s === 'off';
             });
         } else if (warningFilter === 'clean') {
             base = base.filter(a => {
-                const warnKey = isMultiDate ? `${a.ext}_${a.date}` : a.ext;
-                return (warnings[a.ext] || []).length === 0 && !warnToggle[warnKey];
+                const s = warnToggle[`${a.ext}_${a.date}`];
+                return (warnings[a.ext] || []).length === 0 && !s;
             });
         } else if (warningFilter === 'issues') {
             base = base.filter(a => a.isLate || a.isEarly || a.miBad || a.brkBad || a.wuBad || a.ttBad);
@@ -3441,6 +3452,13 @@ export default function Dashboard() {
 
     return (
         <div id="dialer-root" className="bg-black text-white h-full w-full flex flex-col overflow-hidden" style={{ fontSize: '11px', fontWeight: 600, fontFamily: '"Segoe UI", system-ui, sans-serif', lineHeight: 1.5 }}>
+            {/* Warn save error toast */}
+            {toggleSaveError && (
+                <div className="fixed top-4 left-1/2 z-[9999] -translate-x-1/2 px-5 py-3 bg-[#ef4444] text-white rounded-xl shadow-[0_8px_30px_rgba(239,68,68,.5)] text-[13px] font-black flex items-center gap-2.5 pointer-events-none">
+                    <span className="text-[16px]">✕</span>
+                    {toggleSaveError}
+                </div>
+            )}
             <style>{`
                 /* Reset rem base inside dialer to standard 16px so all rem calcs are correct */
                 #dialer-root { font-size: 13px !important; }

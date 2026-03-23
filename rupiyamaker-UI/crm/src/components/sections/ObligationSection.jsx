@@ -314,6 +314,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [autoSaveStatus, setAutoSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const autoSaveTimeoutRef = useRef(null);
+  const lastAutoSaveTimeRef = useRef(0); // Rate-limit: track last successful save timestamp
+  // Ref for persistenceCheck interval so it always reads current field values without stale closure
+  const persistenceFieldsRef = useRef({ salary: '', companyName: '', partnerSalary: '', yearlyBonus: '', loanRequired: '', cibilScore: '' });
   
   // Force re-render state for Credit Card button updates
   const [forceRender, setForceRender] = useState(0);
@@ -2520,41 +2523,48 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
     }
   }, [leadData?.file_sent_to_login, dataStableForFileSentToLogin, obligations.length]);
-  
+
+  // Keep persistenceFieldsRef in sync so the interval below reads current values without stale closure
+  useEffect(() => {
+    persistenceFieldsRef.current = { salary, companyName, partnerSalary, yearlyBonus, loanRequired, cibilScore };
+  }, [salary, companyName, partnerSalary, yearlyBonus, loanRequired, cibilScore]);
+
   // Force data persistence check for file_sent_to_login scenarios
   useEffect(() => {
     if (leadData?.file_sent_to_login && backupObligationData) {
       const persistenceCheck = setInterval(() => {
         console.log('🔍 FILE_SENT_TO_LOGIN: Periodic data persistence check');
+        // Read CURRENT field values via ref to avoid stale-closure overwrite of user edits
+        const cur = persistenceFieldsRef.current;
         
         // Check if any field has been unexpectedly cleared
         let recoveryNeeded = false;
-        if (backupObligationData?.salary && !salary) {
+        if (backupObligationData?.salary && !cur.salary) {
           console.log('🔄 Restoring salary from backup');
           setSalary(backupObligationData.salary);
           recoveryNeeded = true;
         }
-        if (backupObligationData?.companyName && !companyName) {
+        if (backupObligationData?.companyName && !cur.companyName) {
           console.log('🔄 Restoring company name from backup');
           setCompanyName(backupObligationData.companyName);
           recoveryNeeded = true;
         }
-        if (backupObligationData?.partnerSalary && !partnerSalary) {
+        if (backupObligationData?.partnerSalary && !cur.partnerSalary) {
           console.log('🔄 Restoring partner salary from backup');
           setPartnerSalary(backupObligationData.partnerSalary);
           recoveryNeeded = true;
         }
-        if (backupObligationData?.yearlyBonus && !yearlyBonus) {
+        if (backupObligationData?.yearlyBonus && !cur.yearlyBonus) {
           console.log('🔄 Restoring yearly bonus from backup');
           setYearlyBonus(backupObligationData.yearlyBonus);
           recoveryNeeded = true;
         }
-        if (backupObligationData?.loanRequired && !loanRequired) {
+        if (backupObligationData?.loanRequired && !cur.loanRequired) {
           console.log('🔄 Restoring loan required from backup');
           setLoanRequired(backupObligationData.loanRequired);
           recoveryNeeded = true;
         }
-        if (backupObligationData?.cibilScore && !cibilScore) {
+        if (backupObligationData?.cibilScore && !cur.cibilScore) {
           console.log('🔄 Restoring cibil score from backup');
           setCibilScore(backupObligationData.cibilScore);
           recoveryNeeded = true;
@@ -2572,7 +2582,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       
       return () => clearInterval(persistenceCheck);
     }
-  }, [leadData?.file_sent_to_login, backupObligationData, salary, companyName, partnerSalary, yearlyBonus, loanRequired, cibilScore]);
+  }, [leadData?.file_sent_to_login, backupObligationData]);
+  // NOTE: salary, companyName etc. are intentionally NOT in deps — they are read via persistenceFieldsRef
+  // (kept current by the sibling useEffect above) to avoid stale-closure overwrite of user edits.
+  // This also prevents the interval from being torn down/recreated on every field state change.
 
   // Function to check if current data differs from original data
   const hasDataChanged = () => {
@@ -3582,6 +3595,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       return;
     }
 
+    // Rate-limit: skip if last save was less than 5 seconds ago to prevent flooding
+    const now = Date.now();
+    if (now - lastAutoSaveTimeRef.current < 5000) {
+      console.log('⏭️ Skipping autosave: rate-limited (last save was', now - lastAutoSaveTimeRef.current, 'ms ago)');
+      return;
+    }
+
     console.log('💾 Auto-save triggered...');
     setIsAutoSaving(true);
     setAutoSaveStatus('saving');
@@ -3594,12 +3614,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       if (leadData?._id) {
         await saveObligationDataToAPI(obligationData);
         
-        // Update backend final eligibility with the current calculated value
-        if (eligibility?.finalEligibility) {
-          setBackendFinalEligibility(eligibility.finalEligibility);
-          setBackendEligibilityLoaded(true);
-          setJustSavedEligibility(true);
-        }
+        lastAutoSaveTimeRef.current = Date.now(); // Record save time for rate-limiting
         
         console.log('✅ AUTO-SAVE: Successfully saved to API');
         setAutoSaveStatus('saved');
@@ -3684,9 +3699,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     }
   }, [
     salary, partnerSalary, yearlyBonus, bonusDivision, loanRequired, companyName, companyType, companyCategory, cibilScore, obligations,
-    ceFoirPercent, ceCustomFoirPercent, totalBtPos, totalObligation, eligibility,
-    ceCompanyCategory, ceMonthlyEmiCanPay, ceTenureMonths, ceTenureYears, ceRoi, ceMultiplier, loanEligibilityStatus, 
+    ceFoirPercent, ceCustomFoirPercent, ceCompanyCategory, ceMonthlyEmiCanPay, ceTenureMonths, ceTenureYears, ceRoi, ceMultiplier,
     isInitialLoad, hasUserInteraction, leadData?.file_sent_to_login, dataLoaded
+    // NOTE: eligibility, totalBtPos, totalObligation, loanEligibilityStatus intentionally excluded —
+    // they are DERIVED/CALCULATED values and must not trigger "unsaved changes" (causes infinite loop)
   ]);
   
   // Data preservation effect - prevent data from being cleared after it has been loaded (more conservative)
@@ -6295,7 +6311,18 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     };
     
     console.log('📊 Setting eligibility state:', eligibilityData);
-    setEligibility(eligibilityData);
+    // Only update eligibility state if values actually changed to prevent re-render loops
+    setEligibility(prev => {
+      if (prev.totalIncome === eligibilityData.totalIncome &&
+          prev.foirAmount === eligibilityData.foirAmount &&
+          prev.totalObligations === eligibilityData.totalObligations &&
+          prev.totalBtPos === eligibilityData.totalBtPos &&
+          prev.finalEligibility === eligibilityData.finalEligibility &&
+          prev.multiplierEligibility === eligibilityData.multiplierEligibility) {
+        return prev; // Identical values — skip re-render
+      }
+      return eligibilityData;
+    });
 
     setTotalBtPos(formatINR(Math.round(totalBtPosValue).toString()));
 

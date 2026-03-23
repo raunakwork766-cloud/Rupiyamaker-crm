@@ -6,12 +6,15 @@ from pymongo import DESCENDING
 import math
 import logging
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_database_instances
 from app.database.Leads import LeadsDB
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
 from app.database.Notifications import NotificationsDB
+from app.database.Settings import SettingsDB
 from app.utils.permissions import permission_manager
 from app.utils.common_utils import convert_object_id
 from app.schemas.lead_schemas import LeadInDB
@@ -40,68 +43,9 @@ async def get_notifications_db():
     db_instances = get_database_instances()
     return db_instances["notifications"]
 
-async def get_all_subordinates(user_id: str, all_users: list, roles_db: RolesDB) -> set:
-    """Get all subordinate user IDs for a given user based on role hierarchy (recursive)"""
-    subordinates = set()
-    
-    # Debug: Log the user we're finding subordinates for
-    print(f"🔍 Finding subordinates for user: {user_id}")
-    
-    # Get the current user's role
-    current_user = next((user for user in all_users if str(user.get("_id")) == user_id), None)
-    if not current_user or not current_user.get("role_id"):
-        print(f"🔍 User {user_id} has no role_id")
-        return subordinates
-    
-    current_user_role_id = str(current_user["role_id"])
-    current_user_role = await roles_db.get_role(current_user_role_id)
-    if not current_user_role:
-        print(f"🔍 Role {current_user_role_id} not found")
-        return subordinates
-    
-    print(f"🔍 User {user_id} has role: {current_user_role.get('name')} (ID: {current_user_role_id})")
-    
-    # Get all roles for building hierarchy
-    all_roles = await roles_db.list_roles()
-    
-    # Create role hierarchy mapping: role_id -> [subordinate_role_ids]
-    role_hierarchy = {}
-    for role in all_roles:
-        role_id = str(role.get("_id"))
-        reporting_id = str(role.get("reporting_id")) if role.get("reporting_id") else None
-        
-        if reporting_id:
-            if reporting_id not in role_hierarchy:
-                role_hierarchy[reporting_id] = []
-            role_hierarchy[reporting_id].append(role_id)
-    
-    print(f"🔍 Role hierarchy map: {dict(list(role_hierarchy.items())[:5])}")
-    
-    # Find all subordinate roles recursively
-    subordinate_roles = set()
-    
-    def find_subordinate_roles(role_id: str):
-        if role_id in role_hierarchy:
-            direct_subordinates = role_hierarchy[role_id]
-            print(f"🔍 Role {role_id} has direct subordinate roles: {direct_subordinates}")
-            subordinate_roles.update(direct_subordinates)
-            # Recursively find subordinates of subordinates
-            for sub_role in direct_subordinates:
-                find_subordinate_roles(sub_role)
-    
-    find_subordinate_roles(current_user_role_id)
-    print(f"🔍 All subordinate roles: {subordinate_roles}")
-    
-    # Find users with subordinate roles
-    for user in all_users:
-        user_role_id = str(user.get("role_id")) if user.get("role_id") else None
-        if user_role_id and user_role_id in subordinate_roles:
-            user_id_str = str(user.get("_id"))
-            subordinates.add(user_id_str)
-            print(f"🔍 Found subordinate user: {user_id_str} with role: {user_role_id}")
-    
-    print(f"🔍 Final subordinates set for {user_id}: {subordinates}")
-    return subordinates
+async def get_settings_db():
+    db_instances = get_database_instances()
+    return db_instances["settings"]
 
 @router.get("/list", response_model=Dict[str, Any])
 async def list_reassignment_requests(
@@ -111,8 +55,35 @@ async def list_reassignment_requests(
     page_size: int = Query(20, description="Items per page"),
     leads_db: LeadsDB = Depends(get_leads_db),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
 ):
+    # Read configurable cooldown period (used for auto-expire + returned to frontend)
+    try:
+        _cd_doc = await leads_db.db["reassignment_settings"].find_one({"type": "cooldown_period"})
+        cooldown_hours = int(_cd_doc.get("hours", 24)) if _cd_doc else 24
+    except Exception:
+        cooldown_hours = 24
+
+    # Auto-reject pending requests older than cooldown period
+    try:
+        expiry_cutoff = get_ist_now() - timedelta(hours=cooldown_hours)
+        expire_result = await leads_db.collection.update_many(
+            {
+                "pending_reassignment": True,
+                "reassignment_requested_at": {"$lt": expiry_cutoff}
+            },
+            {"$set": {
+                "pending_reassignment": False,
+                "reassignment_status": "auto_rejected",
+                "reassignment_rejection_reason": f"System Auto-Rejected: No action taken within {cooldown_hours} hours",
+                "reassignment_rejected_at": get_ist_now(),
+            }}
+        )
+        if expire_result.modified_count:
+            logging.info(f"⏰ Auto-rejected {expire_result.modified_count} pending reassignment request(s) older than {cooldown_hours}h")
+    except Exception as _exp_err:
+        logging.warning(f"⚠️ Auto-rejection error (non-fatal): {_exp_err}")
     """List reassignment requests with filtering and pagination
     
     - Regular users: See only their own requests
@@ -126,52 +97,55 @@ async def list_reassignment_requests(
             detail="User not found"
         )
     
-    # Check for super admin or leads.assign permission
-    can_approve = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
-    
     # Check if user is super admin (super admins see everything)
     is_super_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
     
-    # Debug logging for permission checks
-    print(f"🔍 REASSIGNMENT DEBUG - User {user_id}: can_approve={can_approve}, is_super_admin={is_super_admin}")
+    # Approval authority comes ONLY from reassignment_approval_routes settings (+ super admin).
+    # The generic leads.assign permission does NOT grant approval access.
+    configured_routes = await settings_db.get_reassignment_approval_routes()
+    routes_for_me = [r for r in configured_routes if user_id in (r.get("approver_ids") or [])]
+    is_configured_approver = len(routes_for_me) > 0
+    
+    logger.debug(f"Reassignment list: user={user_id} is_super_admin={is_super_admin} is_configured_approver={is_configured_approver}")
+    logger.warning(f"REASSIGN_DEBUG: user={user_id} is_super_admin={is_super_admin} is_configured_approver={is_configured_approver} routes_count={len(configured_routes)} routes_for_me={len(routes_for_me)}")
     
     # Build filter query
     filter_dict = {}
     
-    # If not admin and cannot approve, only show their own requests
-    if not can_approve:
-        filter_dict["reassignment_requested_by"] = user_id
-        print(f"🔍 Regular user filter: only show requests by {user_id}")
-    elif is_super_admin:
-        # Super admins see all requests - no additional filter needed
-        print(f"🔍 Super admin: showing ALL requests")
-        pass
-    else:
-        # For managers with assign permission (but not super admin), 
-        # show requests from their hierarchy only
-        # Get all users to build reporting hierarchy
+    if is_super_admin:
+        # Super admins see all requests
+        logger.debug(f"Super admin: showing ALL reassignment requests")
+    elif is_configured_approver:
+        # Configured approver: see requests ONLY from their configured roles
+        # Roles with NO configured route (orphan) go to Super Admin only
+        role_ids_for_me = [r["role_id"] for r in routes_for_me]
         all_users = await users_db.list_users()
-        print(f"🔍 Found {len(all_users)} total users in database")
-        
-        # Get all subordinate user IDs (including nested subordinates)
-        subordinates = await get_all_subordinates(user_id, all_users, roles_db)
-        subordinates.add(user_id)  # Include manager's own requests too
-        
-        # Convert ObjectId to string for comparison
-        subordinate_strings = [str(sub) for sub in subordinates]
-        
-        # Debug logging
-        print(f"🔍 Manager {user_id} hierarchy: {subordinate_strings}")
-        
-        # Filter to show only requests from users in this manager's hierarchy
-        filter_dict["reassignment_requested_by"] = {"$in": subordinate_strings}
+        visible_user_ids = set()
+        for u in all_users:
+            u_role = str(u.get("role_id", ""))
+            u_id = str(u.get("_id"))
+            if u_role in role_ids_for_me:
+                # User's role is one I'm configured to approve
+                visible_user_ids.add(u_id)
+        visible_user_ids.add(user_id)  # Always include own requests
+        filter_dict["reassignment_requested_by"] = {"$in": list(visible_user_ids)}
+        logger.warning(f"REASSIGN_DEBUG: visible_user_ids count={len(visible_user_ids)}, filter_dict={filter_dict}")
+        logger.debug(f"Configured approver: showing requests from {len(visible_user_ids)} users (roles {role_ids_for_me})")
+    else:
+        # Regular user: only their own requests
+        filter_dict["reassignment_requested_by"] = user_id
+        logger.debug(f"Regular user: showing only own requests for {user_id}")
     
     # If a status filter is provided, add it to the query
     if status_filter and status_filter.lower() != "all":
         if status_filter.lower() == "pending":
             filter_dict["pending_reassignment"] = True
+        elif status_filter.lower() == "rejected":
+            # Include both manual rejections and system auto-rejections
+            filter_dict["pending_reassignment"] = False
+            filter_dict["reassignment_status"] = {"$in": ["rejected", "auto_rejected"]}
         else:
-            # For approved/rejected, we need to check if reassignment_status exists
+            # For approved (and anything else), filter by exact status
             filter_dict["pending_reassignment"] = False
             filter_dict["reassignment_status"] = status_filter.lower()
     else:
@@ -184,22 +158,6 @@ async def list_reassignment_requests(
     # Calculate pagination
     skip = (page - 1) * page_size
     
-    # Debug: Log the final filter being used
-    print(f"🔍 Final MongoDB filter: {filter_dict}")
-    
-    # Debug: Check how many reassignment requests exist in total
-    all_reassignment_requests = await leads_db.list_leads(
-        filter_dict={"$or": [
-            {"pending_reassignment": True},
-            {"reassignment_requested_by": {"$exists": True}}
-        ]},
-        limit=1000  # Get a reasonable sample
-    )
-    print(f"🔍 Total reassignment requests in DB: {len(all_reassignment_requests)}")
-    if all_reassignment_requests:
-        sample_requestors = [r.get("reassignment_requested_by") for r in all_reassignment_requests[:5]]
-        print(f"🔍 Sample request requestors: {sample_requestors}")
-    
     # Get leads with reassignment requests
     # CRITICAL: Pass explicit projection including ALL reassignment fields
     # Default projection in list_leads excludes these fields
@@ -208,6 +166,7 @@ async def list_reassignment_requests(
         "phone": 1, "mobile_number": 1, "email": 1, "alternative_phone": 1,
         "status": 1, "sub_status": 1, "loan_type": 1, "loan_type_name": 1,
         "assigned_to": 1, "created_by": 1, "created_by_name": 1,
+        "department_name": 1, "team_name": 1,
         "created_at": 1, "updated_at": 1,
         # Reassignment-specific fields
         "pending_reassignment": 1,
@@ -224,6 +183,7 @@ async def list_reassignment_requests(
         "reassignment_eligibility": 1,
         "reassignment_new_data_code": 1,
         "reassignment_new_campaign_name": 1,
+        "file_sent_to_login": 1,
     }
     leads = await leads_db.list_leads(
         filter_dict=filter_dict,
@@ -234,13 +194,17 @@ async def list_reassignment_requests(
         projection=reassignment_projection
     )
     
-    # Debug: Log results
-    print(f"🔍 Query returned {len(leads)} leads after filtering")
-    
     # Get total count
     total_leads = await leads_db.count_leads(filter_dict)
     
     # Enhance leads with user information
+    # Pre-compute: load all configured approval routes once for per-request can_approve_request flag
+    all_approval_routes = await settings_db.get_reassignment_approval_routes()
+    # Build map: role_id -> set of approver_ids
+    role_approver_map = {}
+    for rt in all_approval_routes:
+        role_approver_map[rt.get("role_id", "")] = set(rt.get("approver_ids") or [])
+
     enhanced_leads = []
     for lead in leads:
         lead_dict = convert_object_id(lead)
@@ -277,6 +241,19 @@ async def list_reassignment_requests(
                     "name": f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}",
                     "email": assigned_user.get("email", "")
                 }
+        
+        # Add approved_by name
+        if lead.get("reassignment_approved_by"):
+            approver = await users_db.get_user(lead["reassignment_approved_by"])
+            if approver:
+                lead_dict["approved_by_name"] = f"{approver.get('first_name', '')} {approver.get('last_name', '')}".strip()
+
+        # Add rejected_by name
+        if lead.get("reassignment_rejected_by"):
+            rejector = await users_db.get_user(lead["reassignment_rejected_by"])
+            if rejector:
+                lead_dict["rejected_by_name"] = f"{rejector.get('first_name', '')} {rejector.get('last_name', '')}".strip()
+
         if lead.get("status"):
             lead_dict["lead_status"] = lead["status"]
             
@@ -309,6 +286,35 @@ async def list_reassignment_requests(
         if lead.get("reassignment_new_campaign_name") is not None:
             lead_dict["reassignment_new_campaign_name"] = lead["reassignment_new_campaign_name"]
         
+        # ── Per-request visibility flags ──
+        requester_id = str(lead.get("reassignment_requested_by") or "")
+        assigned_to_id = str(lead.get("assigned_to") or "")
+        target_user_id_val = str(lead.get("reassignment_target_user") or "")
+        lead_dict["is_own_request"] = (requester_id == user_id)
+        lead_dict["is_own_lead"] = (assigned_to_id == user_id)
+        # Self-transfer: lead target == current assignee (transfer to yourself is meaningless)
+        lead_dict["is_self_transfer"] = (target_user_id_val == assigned_to_id) if (target_user_id_val and assigned_to_id) else False
+        # can_approve_request: only super_admin or configured approver for requester's role
+        if requester_id == user_id:
+            # Cannot approve your own request — no exceptions
+            lead_dict["can_approve_request"] = False
+        elif assigned_to_id == user_id:
+            # Cannot approve transfer of your own lead
+            lead_dict["can_approve_request"] = False
+        elif is_super_admin:
+            lead_dict["can_approve_request"] = True
+        else:
+            # Check if current user is a configured approver for the requester's role
+            if requester_id:
+                requester_user = await users_db.get_user(requester_id)
+                requester_role_id = str(requester_user.get("role_id") or "") if requester_user else ""
+                approvers_for_role = role_approver_map.get(requester_role_id, set())
+                # Only configured approvers for THIS specific role can approve
+                # Orphan roles (no configured route) → only Super Admin can approve
+                lead_dict["can_approve_request"] = (user_id in approvers_for_role)
+            else:
+                lead_dict["can_approve_request"] = False
+
         enhanced_leads.append(lead_dict)
 
     # ── Enrich each lead with duplicate leads (same phone) & reassignment history ──
@@ -438,6 +444,7 @@ async def list_reassignment_requests(
     
     return {
         "requests": enhanced_leads,
+        "cooldown_hours": cooldown_hours,
         "pagination": {
             "total": total_leads,
             "page": page,
@@ -490,10 +497,66 @@ async def create_reassignment_request(
     # Check if this is a direct reassignment (approved status)
     is_direct_reassignment = reassignment_status == "approved"
     
-    # Note: We intentionally allow a new pending request even if one already exists —
-    # the new request simply updates/overwrites the previous pending state.
-    # Only direct (approved) reassignments need special gating below.
-    
+    # ── Configurable reassignment cooldown lock ────────────────────────────────
+    # If a pending request was already submitted within the cooldown window,
+    # block any new request (pending OR direct) unless user has override permission.
+    # After the cooldown window with no manager action, the lead is automatically reopened.
+    try:
+        _cd_doc = await leads_db.db["reassignment_settings"].find_one({"type": "cooldown_period"})
+        cooldown_hours = int(_cd_doc.get("hours", 24)) if _cd_doc else 24
+    except Exception:
+        cooldown_hours = 24
+    req_at_raw = lead.get("reassignment_requested_at")
+    if lead.get("pending_reassignment") and req_at_raw:
+        try:
+            req_dt = req_at_raw if isinstance(req_at_raw, datetime) else datetime.fromisoformat(str(req_at_raw).replace("Z", "+00:00"))
+            # Strip timezone for arithmetic with get_ist_now() (which returns naive IST)
+            req_dt_naive = req_dt.replace(tzinfo=None)
+            elapsed_h = (get_ist_now() - req_dt_naive).total_seconds() / 3600
+            if elapsed_h >= cooldown_hours:
+                # Auto-reset: cooldown window passed without manager action → reopen lead
+                await leads_db.update_lead_reassignment_status(lead_id, {
+                    "pending_reassignment": False,
+                    "reassignment_status": "auto_rejected",
+                    "reassignment_rejection_reason": f"System Auto-Rejected: No action taken within {cooldown_hours} hours",
+                    "reassignment_rejected_at": get_ist_now(),
+                })
+                logging.info(f"⏰ Auto-reset lead {lead_id}: {cooldown_hours}h cooldown expired (elapsed={elapsed_h:.1f}h)")
+                # Reload lead after reset
+                lead = await leads_db.get_lead(lead_id)
+            else:
+                # Still within cooldown window — block new requests for non-overriders
+                can_override_24h = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
+                if not can_override_24h:
+                    hours_remaining = round(cooldown_hours - elapsed_h, 1)
+                    raise HTTPException(
+                        status_code=status.HTTP_423_LOCKED,
+                        detail=f"A reassignment request was already submitted {round(elapsed_h, 1):.1f}h ago. Locked for {hours_remaining}h more. No new request allowed until {cooldown_hours}h have passed."
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logging.warning(f"⚠️ Could not check cooldown reassignment lock for lead {lead_id}: {e}")
+    elif req_at_raw and lead.get("reassignment_status") not in ("approved", "none", None):
+        # A request was made recently and resolved (rejected/expired) — still within cooldown window.
+        # Nobody (regardless of who originally requested) can submit a new request within cooldown_hours.
+        can_override_24h = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
+        if not can_override_24h:
+            try:
+                req_dt = req_at_raw if isinstance(req_at_raw, datetime) else datetime.fromisoformat(str(req_at_raw).replace("Z", "+00:00"))
+                req_dt_naive = req_dt.replace(tzinfo=None)
+                elapsed_h = (get_ist_now() - req_dt_naive).total_seconds() / 3600
+                if elapsed_h < cooldown_hours:
+                    hours_remaining = round(cooldown_hours - elapsed_h, 1)
+                    raise HTTPException(
+                        status_code=status.HTTP_423_LOCKED,
+                        detail=f"You already submitted a request for this lead {round(elapsed_h, 1):.1f}h ago. Please wait {hours_remaining}h before requesting again."
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logging.warning(f"⚠️ Could not check re-request cooldown for lead {lead_id}: {e}")
+
     # Check reassignment eligibility based on status/sub-status settings
     eligibility = await leads_db.check_reassignment_eligibility(lead_id)
     
@@ -579,7 +642,8 @@ async def create_reassignment_request(
             "created_at": get_ist_now(),
             # Set status directly without lookup
             "status": "ACTIVE LEADS",
-            "sub_status": "NEW LEAD"
+            "sub_status": "NEW LEAD",
+            "file_sent_to_login": False
         }
         
         # Get requesting user's name for created_by_name
@@ -762,18 +826,42 @@ async def approve_reassignment(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
     departments_db: DepartmentsDB = Depends(get_departments_db),
-    notifications_db: NotificationsDB = Depends(get_notifications_db)
+    notifications_db: NotificationsDB = Depends(get_notifications_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
 ):
     """Approve a reassignment request
     
-    Only users with leads.assign permission or super admins can approve requests
+    Only super admins OR users specifically configured as approvers for the
+    requester's role can approve. If requester's role has no configured
+    approver, only super admin can approve.
     """
-    # Check if user has permission to approve
-    can_approve = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
+    # Step 1: Super admin can always approve
+    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
+    can_approve = is_admin
+
+    # Step 2: Check if user is a configured approver for the requester's specific role
+    if not can_approve:
+        lead_check = await leads_db.get_lead(lead_id)
+        if lead_check:
+            requester_id = lead_check.get("reassignment_requested_by")
+            if requester_id:
+                requester = await users_db.get_user(requester_id)
+                if requester:
+                    requester_role_id = str(requester.get("role_id") or "")
+                    if requester_role_id:
+                        approver_ids = await settings_db.get_reassignment_approvers_for_employee(requester_role_id)
+                        if user_id in approver_ids:
+                            can_approve = True
+                            logging.info(f"✅ User {user_id} is a configured reassignment approver for role {requester_role_id}")
+                        else:
+                            logging.info(f"❌ User {user_id} is NOT configured as approver for role {requester_role_id} (configured: {approver_ids})")
+                    else:
+                        logging.info(f"❌ Requester {requester_id} has no role_id — only super admin can approve")
+
     if not can_approve:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to approve reassignment requests"
+            detail="You don't have permission to approve reassignment requests for this role"
         )
     
     # Check if lead exists
@@ -782,6 +870,14 @@ async def approve_reassignment(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
+        )
+
+    # Prevent self-approval (requester cannot approve their own request)
+    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
+    if str(lead.get("reassignment_requested_by") or "") == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot approve your own reassignment request"
         )
     
     # Check if lead has a pending reassignment
@@ -796,103 +892,54 @@ async def approve_reassignment(
     
     # Get reassignment eligibility info for auditing purposes
     reassignment_eligibility = await leads_db.check_reassignment_eligibility(lead_id)
-    
+
+    # Fetch the requesting user's details to update ownership fields
+    requesting_user = await users_db.get_user(requesting_user_id)
+    requesting_user_name = ""
+    requesting_department_id = None
+    requesting_department_name = "Unknown Department"
+
+    if requesting_user:
+        first_name = requesting_user.get("first_name", "")
+        last_name = requesting_user.get("last_name", "")
+        requesting_user_name = f"{first_name} {last_name}".strip() or requesting_user.get("name", "") or requesting_user.get("username", "") or "Unknown"
+        requesting_department_id = requesting_user.get("department_id")
+        if requesting_department_id:
+            dept = await departments_db.get_department(requesting_department_id)
+            requesting_department_name = dept.get("name", "Unknown Department") if dept else "Unknown Department"
+        else:
+            requesting_department_name = "No Department"
+    else:
+        logging.warning(f"⚠️ Requesting user {requesting_user_id} not found when approving reassignment for lead {lead_id}")
+
     # Update lead with new assignment and clear reassignment request
+    # Also update ownership (created_by, created_by_name, created_at, department)
+    # so the lead appears under the new owner in lists with the reassignment date.
     update_data = {
-        "assigned_to": requesting_user_id,  # Assign to requesting user, not target user
+        "assigned_to": requesting_user_id,  # Assign to requesting user
         "pending_reassignment": False,
         "reassignment_status": "approved",
         "reassignment_approved_by": user_id,
         "reassignment_approved_at": get_ist_now(),
         # Record eligibility info for auditing purposes
         "reassignment_eligibility": reassignment_eligibility,
-        # Update ownership to requesting user (from the original request)
+        # Transfer ownership to the requesting user with today's date
         "created_by": requesting_user_id,
+        "created_by_name": requesting_user_name,
         "created_at": get_ist_now(),
-        # Set status directly without lookup
+        "department_id": requesting_department_id,
+        "department_name": requesting_department_name,
+        # Reset lead status
         "status": "ACTIVE LEADS",
-        "sub_status": "NEW LEAD"
+        "sub_status": "NEW LEAD",
+        "file_sent_to_login": False
     }
-    
-    # Get requesting user's name for created_by_name
-    logging.info(f"🔍 Looking up requesting user {requesting_user_id} for created_by_name (type: {type(requesting_user_id)})")
-    requesting_user = await users_db.get_user(requesting_user_id)
-    logging.info(f"🔍 User lookup result: {requesting_user is not None}")
-    
-    # If primary lookup failed, try alternative lookups
-    if not requesting_user:
-        logging.info(f"🔍 Primary lookup failed, trying alternative methods...")
-        # Try looking up by employee_id if user_id might be employee_id
-        try:
-            requesting_user = await users_db.get_user_by_employee_id(str(requesting_user_id))
-            if requesting_user:
-                logging.info(f"🔍 Found user by employee_id: {requesting_user_id}")
-        except:
-            pass
-            
-        # Try looking up by username if user_id might be username
-        if not requesting_user:
-            try:
-                requesting_user = await users_db.get_user_by_username(str(requesting_user_id))
-                if requesting_user:
-                    logging.info(f"🔍 Found user by username: {requesting_user_id}")
-            except:
-                pass
-        
-        # Final fallback: direct database query
-        if not requesting_user:
-            try:
-                from app.database import db
-                users_collection = db["users"]
-                # Try to find by string ID match in any relevant field
-                requesting_user = await users_collection.find_one({
-                    "$or": [
-                        {"_id": ObjectId(requesting_user_id) if ObjectId.is_valid(requesting_user_id) else None},
-                        {"employee_id": str(requesting_user_id)},
-                        {"username": str(requesting_user_id)},
-                        {"email": str(requesting_user_id)}
-                    ]
-                })
-                if requesting_user:
-                    logging.info(f"🔍 Found user by direct database query: {requesting_user_id}")
-            except Exception as e:
-                logging.error(f"🔍 Direct database query failed: {e}")
-                pass
-    
-    if requesting_user:
-        logging.info(f"🔍 User data keys: {list(requesting_user.keys())}")
-        first_name = requesting_user.get("first_name", "")
-        last_name = requesting_user.get("last_name", "")
-        full_name = f"{first_name} {last_name}".strip()
-        logging.info(f"🔍 Found user: first_name='{first_name}', last_name='{last_name}', full_name='{full_name}'")
-        update_data["created_by_name"] = full_name if full_name else "Unknown User"
-        
-        # Get department information
-        user_department_id = requesting_user.get("department_id")
-        if user_department_id:
-            update_data["department_id"] = user_department_id
-            # Get department name
-            department = await departments_db.get_department(user_department_id)
-            if department:
-                update_data["department_name"] = department.get("name", "Unknown Department")
-            else:
-                update_data["department_name"] = "Unknown Department"
-            logging.info(f"🔄 Setting department: {update_data['department_name']} (ID: {user_department_id})")
-        else:
-            update_data["department_id"] = None
-            update_data["department_name"] = "No Department"
-            logging.info(f"🔄 User has no department assigned")
-    else:
-        logging.warning(f"⚠️ Requesting user {requesting_user_id} not found in database by any method!")
-        update_data["created_by_name"] = "Unknown User"
-        update_data["department_id"] = None
-        update_data["department_name"] = "Unknown Department"
-        
-    logging.info(f"🔄 Setting lead ownership to user: {requesting_user_id} ({update_data['created_by_name']})")
-    logging.info(f"🔄 Setting assigned_to to requesting user: {requesting_user_id}")
+
+    logging.info(f"🔄 Setting assigned_to + created_by to requesting user: {requesting_user_id} ({requesting_user_name})")
+    logging.info(f"🔄 Setting created_at to reassignment date: {update_data['created_at']}")
+    logging.info(f"🔄 Setting department: {requesting_department_name} ({requesting_department_id})")
     logging.info(f"🔄 Setting status to: {update_data['status']}")
     logging.info(f"🔄 Setting sub_status to: {update_data['sub_status']}")
-    logging.info(f"🔄 Updating created_at to: {update_data['created_at']}")
     
     # Apply data_code and campaign_name changes if they were requested
     if lead.get("reassignment_new_data_code") is not None:
@@ -992,18 +1039,37 @@ async def reject_reassignment(
     leads_db: LeadsDB = Depends(get_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
-    notifications_db: NotificationsDB = Depends(get_notifications_db)
+    notifications_db: NotificationsDB = Depends(get_notifications_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
 ):
     """Reject a reassignment request
     
-    Only users with leads.assign permission or super admins can reject requests
+    Only super admins OR users specifically configured as approvers for the
+    requester's role can reject. If requester's role has no configured
+    approver, only super admin can reject.
     """
-    # Check if user has permission to reject
-    can_approve = await permission_manager.can_approve_lead_reassign(user_id, users_db, roles_db)
+    # Step 1: Super admin can always reject
+    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
+    can_approve = is_admin
+
+    # Step 2: Check if user is a configured approver for the requester's specific role
+    if not can_approve:
+        lead_check = await leads_db.get_lead(lead_id)
+        if lead_check:
+            requester_id = lead_check.get("reassignment_requested_by")
+            if requester_id:
+                requester = await users_db.get_user(requester_id)
+                if requester:
+                    requester_role_id = str(requester.get("role_id") or "")
+                    if requester_role_id:
+                        approver_ids = await settings_db.get_reassignment_approvers_for_employee(requester_role_id)
+                        if user_id in approver_ids:
+                            can_approve = True
+
     if not can_approve:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to reject reassignment requests"
+            detail="You don't have permission to reject reassignment requests for this role"
         )
     
     # Check if lead exists
@@ -1012,6 +1078,14 @@ async def reject_reassignment(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
+        )
+
+    # Prevent self-rejection (requester cannot reject their own request)
+    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
+    if str(lead.get("reassignment_requested_by") or "") == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot reject your own reassignment request"
         )
     
     # Check if lead has a pending reassignment

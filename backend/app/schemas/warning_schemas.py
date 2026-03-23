@@ -51,6 +51,9 @@ class WarningResponse(BaseModel):
     waived_at: Optional[str] = Field(None, description="Timestamp when penalty was waived")
     status: Optional[str] = Field(None, description="Warning status (Pending/Accepted)")
     employee_status: Optional[str] = Field(None, description="Employee response status")
+    is_acknowledged: bool = Field(default=False, description="Whether employee has acknowledged the warning")
+    acknowledged_at: Optional[str] = Field(None, description="Timestamp when warning was acknowledged")
+    employee_remark: Optional[str] = Field(None, description="Employee's remark upon acknowledgment")
 
 class WarningStats(BaseModel):
     total_warnings: int = Field(0, description="Total number of warnings")

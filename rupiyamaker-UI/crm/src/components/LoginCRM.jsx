@@ -653,6 +653,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const [filteredLeads, setFilteredLeads] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showingCachedData, setShowingCachedData] = useState(false);
+
+    // Column sort state
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     
     // Pagination for display (initial 50, then load 100 more)
     const [displayedCount, setDisplayedCount] = useState(50);
@@ -1298,6 +1301,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 (lead.name && lead.name.toLowerCase().includes(searchLower)) ||
                 (lead.phone && lead.phone.toString().includes(searchLower)) ||
                 (lead.mobile_number && lead.mobile_number.toString().includes(searchLower)) ||
+                (lead.alternative_phone && lead.alternative_phone.toString().includes(searchLower)) ||
                 (lead.email && lead.email.toLowerCase().includes(searchLower))
             );
         }
@@ -2478,10 +2482,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             const apiBaseUrl = '/api';
             // Try different possible endpoints for team leaders
             const endpoints = [
-                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader`,
-                `${apiBaseUrl}/users?user_id=${userId}`,
-                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader`,
-                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader`
+                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
+                `${apiBaseUrl}/users?user_id=${userId}&is_active=true`,
+                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader&employee_status=active`,
+                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader&employee_status=active`
             ];
             
             let data = null;
@@ -2650,17 +2654,93 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
-        return filtered;
-    }, [leads, selectedLoanType, selectedStatus, debouncedSearchTerm, filterOptions, filterRevision]);
+        // Assign TL filter – matches assign_report_to IDs against selected TL names
+        if (filterOptions.assignedTL && filterOptions.assignedTL.length > 0) {
+            // Build employee name → Set<id> lookup from employees state
+            const tlNameToIds = {};
+            if (Array.isArray(employees)) {
+                employees.forEach(emp => {
+                    const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                    const ids = [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).map(String);
+                    if (empName && ids.length > 0) {
+                        if (!tlNameToIds[empName]) tlNameToIds[empName] = new Set();
+                        ids.forEach(id => tlNameToIds[empName].add(id));
+                    }
+                });
+            }
 
-    // Pagination: Slice filteredLeadsData to show limited leads with "Show More" functionality
+            filtered = filtered.filter(lead => {
+                // For login leads: also check assigned_tl_name as direct name field
+                if (lead.assigned_tl_name) {
+                    return filterOptions.assignedTL.includes(lead.assigned_tl_name);
+                }
+
+                const rawTL = lead.assign_report_to || lead.assignReportTo;
+                const hasTLData = rawTL && (Array.isArray(rawTL) ? rawTL.length > 0 : String(rawTL).trim() !== '');
+
+                if (!hasTLData) {
+                    return filterOptions.assignedTL.includes('Not Assigned');
+                }
+
+                let leadTLIds;
+                if (Array.isArray(rawTL)) {
+                    leadTLIds = rawTL.map(id => String(id).trim()).filter(Boolean);
+                } else {
+                    try {
+                        const parsed = JSON.parse(rawTL);
+                        leadTLIds = Array.isArray(parsed)
+                            ? parsed.map(item => typeof item === 'object' ? String(item.id || item._id || '') : String(item).trim()).filter(Boolean)
+                            : [String(rawTL).trim()];
+                    } catch {
+                        leadTLIds = String(rawTL).split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+
+                return filterOptions.assignedTL.some(selectedName => {
+                    if (selectedName === 'Not Assigned') return false;
+                    const ids = tlNameToIds[selectedName];
+                    if (ids && ids.size > 0) {
+                        return leadTLIds.some(id => ids.has(id));
+                    }
+                    return leadTLIds.some(id => id.toLowerCase().replace(/_/g, ' ') === selectedName.toLowerCase());
+                });
+            });
+        }
+
+        return filtered;
+    }, [leads, selectedLoanType, selectedStatus, debouncedSearchTerm, filterOptions, filterRevision, employees]);
+
+    // Column-sorted leads: apply sortConfig on top of filteredLeadsData
+    const LOGIN_NUMERIC_KEYS = ['total_income', 'foir_eligibility', 'loan_amount', 'net_disbursement_amount'];
+    const columnSortedLeads = useMemo(() => {
+        if (!filteredLeadsData || !sortConfig.key) return filteredLeadsData;
+        const isNumeric = LOGIN_NUMERIC_KEYS.includes(sortConfig.key);
+        return [...filteredLeadsData].sort((a, b) => {
+            let aVal = a[sortConfig.key] ?? '';
+            let bVal = b[sortConfig.key] ?? '';
+            if (typeof aVal === 'object') aVal = aVal?.name ?? '';
+            if (typeof bVal === 'object') bVal = bVal?.name ?? '';
+            if (isNumeric) {
+                const aNum = parseFloat(String(aVal).replace(/[^\d.-]/g, '')) || 0;
+                const bNum = parseFloat(String(bVal).replace(/[^\d.-]/g, '')) || 0;
+                return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            if (aStr < bStr) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredLeadsData, sortConfig]);
+
+    // Pagination: Slice columnSortedLeads to show limited leads with "Show More" functionality
     const displayedLeads = useMemo(() => {
-        if (!filteredLeadsData || filteredLeadsData.length === 0) {
+        if (!columnSortedLeads || columnSortedLeads.length === 0) {
             return [];
         }
         // Return only the number of leads we want to display
-        return filteredLeadsData.slice(0, displayedCount);
-    }, [filteredLeadsData, displayedCount]);
+        return columnSortedLeads.slice(0, displayedCount);
+    }, [columnSortedLeads, displayedCount]);
 
     // Calculate if there are more leads to show
     const hasMoreToShow = useMemo(() => {
@@ -3153,6 +3233,15 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         } else {
             setSelectedLeads([]);
         }
+    };
+
+    // Column sorting handler
+    const handleSort = (key) => {
+        setSortConfig(prev =>
+            prev.key === key
+                ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+                : { key, direction: 'asc' }
+        );
     };
 
     // Handle clicking on a lead to open LeadDetails with fresh data
@@ -5296,16 +5385,33 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         </th>
                                     )}
                                     <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">#</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">LOGIN DATE</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">CREATED BY</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">TEAM NAME</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">CUSTOMER NAME</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">STATUS</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">TOTAL INCOME</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">FOIR ELIGIBILITY</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">LOAN AMOUNT REQUIRED</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">NET DISBURSEMENT AMOUNT</th>
-                                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">COMPANY NAME</th>
+                                    {[
+                                        { label: 'LOGIN DATE', key: 'login_date' },
+                                        { label: 'CREATED BY', key: 'creator_name' },
+                                        { label: 'TEAM NAME', key: 'team_name' },
+                                        { label: 'CUSTOMER NAME', key: 'customer_name' },
+                                        { label: 'STATUS', key: null },
+                                        { label: 'TOTAL INCOME', key: 'total_income' },
+                                        { label: 'FOIR ELIGIBILITY', key: 'foir_eligibility' },
+                                        { label: 'LOAN AMOUNT REQUIRED', key: 'loan_amount' },
+                                        { label: 'NET DISBURSEMENT AMOUNT', key: 'net_disbursement_amount' },
+                                        { label: 'COMPANY NAME', key: 'company_name' },
+                                    ].map(col => (
+                                        <th
+                                            key={col.label}
+                                            className={`py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th${col.key ? ' cursor-pointer select-none hover:bg-gray-50' : ''}`}
+                                            onClick={col.key ? () => handleSort(col.key) : undefined}
+                                        >
+                                            <span>{col.label}</span>
+                                            {col.key && (
+                                                <span className="text-xs ml-1">
+                                                    {sortConfig.key === col.key
+                                                        ? (sortConfig.direction === 'asc' ? '↑' : '↓')
+                                                        : '↕'}
+                                                </span>
+                                            )}
+                                        </th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
@@ -6160,7 +6266,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <FileText className="w-4 h-4" />
-                                                Quick Filters
+                                                Duplicate Lead
                                             </div>
                                             {getFilterCategoryCount('leadActivity') > 0 && (
                                                 <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -6509,7 +6615,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 {/* Quick Filters */}
                                 {selectedFilterCategory === 'leadActivity' && (
                                     <div>
-                                        <h3 className="text-base font-medium text-gray-300 mb-4">Quick Filters</h3>
+                                        <h3 className="text-base font-medium text-gray-300 mb-4">Duplicate Lead</h3>
                                         <div className="space-y-4">
                                             {/* Check Duplicate Leads Filter */}
                                             <div>
@@ -6526,10 +6632,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                         }}
                                                         className="accent-blue-500 mr-2"
                                                     />
-                                                    <span className="text-gray-300">Check Duplicate Leads</span>
+                                                    <span className="text-gray-300">Duplicate Check</span>
                                                 </label>
                                                 <p className="text-xs text-gray-500 mt-1 ml-6">
-                                                    Show leads with same phone number or alternative phone number
+                                                    Show leads with duplicate phone numbers (same mobile or alt number)
                                                 </p>
                                             </div>
                                         </div>

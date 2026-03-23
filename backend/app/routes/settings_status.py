@@ -154,3 +154,109 @@ async def update_sub_status_reassignment(
         )
     
     return {"message": "Sub-status reassignment period updated successfully"}
+
+
+# ============= Cooldown Period Routes =============
+
+@router.get("/cooldown-period")
+async def get_cooldown_period(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+):
+    """Get the global reassignment cooldown period (in hours)"""
+    doc = await leads_db.db["reassignment_settings"].find_one({"type": "cooldown_period"})
+    hours = doc.get("hours", 24) if doc else 24
+    return {"hours": hours}
+
+
+@router.put("/cooldown-period")
+async def update_cooldown_period(
+    data: Dict[str, Any],
+    user_id: str = Query(..., description="ID of the user making the request"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Update the global reassignment cooldown period (in hours)"""
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    try:
+        hours = int(data.get("hours", 24))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="hours must be a number")
+    if hours < 1 or hours > 168:
+        raise HTTPException(status_code=400, detail="Cooldown period must be between 1 and 168 hours")
+    await leads_db.db["reassignment_settings"].update_one(
+        {"type": "cooldown_period"},
+        {"$set": {"type": "cooldown_period", "hours": hours, "updated_at": get_ist_now()}},
+        upsert=True
+    )
+    return {"message": "Cooldown period updated", "hours": hours}
+
+
+# ============= Offer Letter Template Routes =============
+
+_OL_DEFAULT = {
+    "header_type": "logo",          # "logo" | "image" | "text"
+    "header_logo_text": "Fix Your Finance",
+    "header_image_base64": "",
+    "header_company_name": "Insta Credit Solution Pvt Ltd",
+    "header_tagline": "",
+    "header_address_line1": "Office No. 302, Third Floor, H160",
+    "header_address_line2": "Sector 63, Noida - 201301",
+    "header_address_line3": "Uttar Pradesh, India",
+    "header_website": "www.FixYourFinance.ai",
+    "header_bg_color": "#000000",
+    "header_text_color": "#ffffff",
+    "watermark_type": "text",        # "text" | "image" | "none"
+    "watermark_text": "CONFIDENTIAL",
+    "watermark_image_base64": "",
+    "watermark_opacity": 0.10,
+    "footer_text": "Fix Your Finance \u2022 Insta Credit Solution Pvt Ltd \u2022 Office No. 302, Third Floor, H160, Sector 63, Noida - 201301, UP",
+    "footer_sub_text": "www.FixYourFinance.ai \u00a0\u2022\u00a0 This document is confidential and intended solely for the named recipient.",
+    "footer_image_base64": "",
+    "footer_has_image": False,
+    "subject_line": "Offer of Appointment",
+    "greeting_intro": "We are absolutely delighted to extend this offer to you! Following our recent discussions, we have been highly impressed by your skills, drive, and potential. We are thrilled to invite you to partner with <strong>Fix Your Finance</strong>.",
+    "greeting_intro2": "Below are the details of your compensation, operational guidelines, and the terms of this professional association, thoughtfully designed to foster mutual growth, success, and long-term professional development.",
+    "show_header_page1_only": False,
+    "show_footer_page1_only": False,
+    "acceptance_note": "Replying with the above statement constitutes your <strong>legally binding acceptance</strong> under the Indian Contract Act, 1872. Please respond within <strong>48 hours</strong>.",
+}
+
+@router.get("/offer-letter-template")
+async def get_offer_letter_template(
+    user_id: str = Query(..., description="ID of the user"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+):
+    """Get the offer letter template configuration"""
+    doc = await leads_db.db["offer_letter_template"].find_one({"type": "template_config"})
+    if doc:
+        doc = convert_object_id(doc)
+        doc.pop("type", None)
+        # Merge with defaults so new fields always exist
+        merged = {**_OL_DEFAULT, **doc}
+        return merged
+    return _OL_DEFAULT
+
+
+@router.put("/offer-letter-template")
+async def update_offer_letter_template(
+    data: Dict[str, Any],
+    user_id: str = Query(..., description="ID of the user"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Update the offer letter template configuration"""
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    # Remove internal fields
+    data.pop("_id", None)
+    data.pop("type", None)
+    data["updated_at"] = get_ist_now()
+    await leads_db.db["offer_letter_template"].update_one(
+        {"type": "template_config"},
+        {"$set": {"type": "template_config", **data}},
+        upsert=True
+    )
+    return {"message": "Offer letter template updated"}
+

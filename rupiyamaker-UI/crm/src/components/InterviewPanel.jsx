@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter } from 'lucide-react';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
@@ -190,7 +190,8 @@ const InterviewPanel = () => {
     dateTo: '',
     hrManagerAdmin: '',
     interviewType: [],
-    jobOpening: []
+    jobOpening: [],
+    sourcePortal: []
   });
 
   // Job Opening Options from backend settings
@@ -482,52 +483,11 @@ const InterviewPanel = () => {
           });
           setJobOpeningOptions(apiOptions);
         } else {
-          // Fallback to default options only if API returns no data
-          const defaultJobOpenings = [
-            'Software Engineer',
-            'Frontend Developer', 
-            'Backend Developer',
-            'Full Stack Developer',
-            'Data Analyst',
-            'Business Analyst',
-            'Project Manager',
-            'UI/UX Designer',
-            'DevOps Engineer',
-            'Quality Assurance',
-            'Sales Executive',
-            'Marketing Executive',
-            'Customer Support',
-            'Human Resources',
-            'Finance Executive',
-            'Operations Manager',
-            'Content Writer',
-            'Digital Marketing',
-            'Business Development',
-            'Other'
-          ];
-          setJobOpeningOptions(defaultJobOpenings);
+          setJobOpeningOptions([]);
         }
       } catch (error) {
         console.error('Error loading job openings from API:', error);
-        // Fallback to default options only if API call fails
-        const defaultJobOpenings = [
-          'Software Engineer',
-          'Frontend Developer', 
-          'Backend Developer',
-          'Full Stack Developer',
-          'Data Analyst',
-          'Business Analyst',
-          'Project Manager',
-          'UI/UX Designer',
-          'DevOps Engineer',
-          'Quality Assurance',
-          'Sales Executive',
-          'Marketing Executive',
-          'Customer Support',
-          'Human Resources',
-          'Other'
-        ];
-        setJobOpeningOptions(defaultJobOpenings);
+        setJobOpeningOptions([]);
       }
 
       // Load Interview Type Options
@@ -575,36 +535,10 @@ const InterviewPanel = () => {
           const apiOptions = sourcePortalsResponse.data.map(item => item.name || item.value || item);
           setSourcePortalOptions(apiOptions);
         } else {
-          // Fallback to default options
-          const defaultSourcePortals = [
-            'LinkedIn',
-            'Naukri.com',
-            'Indeed',
-            'Monster.com',
-            'Glassdoor',
-            'AngelList',
-            'Referral',
-            'Company Website',
-            'Job Fair',
-            'Campus Placement',
-            'Social Media',
-            'Walk-in',
-            'Consultant',
-            'Other'
-          ];
-          setSourcePortalOptions(defaultSourcePortals);
+          setSourcePortalOptions([]);
         }
       } catch (error) {
-        const defaultSourcePortals = [
-          'LinkedIn',
-          'Naukri.com',
-          'Indeed',
-          'Monster.com',
-          'Referral',
-          'Walk-in',
-          'Other'
-        ];
-        setSourcePortalOptions(defaultSourcePortals);
+        setSourcePortalOptions([]);
       }
 
       // Load Status Options with Sub-Statuses
@@ -777,6 +711,7 @@ const InterviewPanel = () => {
     if (filterOptions.hrManagerAdmin && filterOptions.hrManagerAdmin.trim() !== '') count++;
     if (filterOptions.interviewType && Array.isArray(filterOptions.interviewType) && filterOptions.interviewType.length > 0) count++;
     if (filterOptions.jobOpening && Array.isArray(filterOptions.jobOpening) && filterOptions.jobOpening.length > 0) count++;
+    if (filterOptions.sourcePortal && Array.isArray(filterOptions.sourcePortal) && filterOptions.sourcePortal.length > 0) count++;
     if (searchTerm && searchTerm.trim() !== '') count++;
     return count;
   };
@@ -899,17 +834,20 @@ const InterviewPanel = () => {
   }, [interviews]);
 
   // Add a refresh trigger for when the component becomes visible again
+  // Skip refresh if create modal is open to prevent form from resetting on tab switch
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !showCreateModal && !isSettingsOpen) {
         console.log('🔄 Page became visible, refreshing interviews...');
         loadInterviews();
       }
     };
 
     const handleFocus = () => {
-      console.log('🔄 Window focused, refreshing interviews...');
-      loadInterviews();
+      if (!showCreateModal && !isSettingsOpen) {
+        console.log('🔄 Window focused, refreshing interviews...');
+        loadInterviews();
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -919,7 +857,7 @@ const InterviewPanel = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [loadInterviews]);
+  }, [loadInterviews, showCreateModal, isSettingsOpen]);
 
   // Helper function to get status type from status name
   const getStatusType = useCallback((statusName) => {
@@ -1193,6 +1131,15 @@ const InterviewPanel = () => {
       );
     }
 
+    // Filter by source portal
+    if (filterOptions.sourcePortal && Array.isArray(filterOptions.sourcePortal) && filterOptions.sourcePortal.length > 0) {
+      filtered = filtered.filter(interview =>
+        filterOptions.sourcePortal.some(portal =>
+          interview.source_portal?.toLowerCase() === portal.toLowerCase()
+        )
+      );
+    }
+
     // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(interview =>
@@ -1279,7 +1226,8 @@ const InterviewPanel = () => {
         dateTo: '',
         hrManagerAdmin: '',
         interviewType: [],
-        jobOpening: []
+        jobOpening: [],
+        sourcePortal: []
       });
       
       // Ensure the newly created interview is always visible even if API reload was slow
@@ -2074,7 +2022,7 @@ const InterviewPanel = () => {
     }
   };
 
-  if (loading && !isDetailModalOpen && !isHistoryModalOpen) {
+  if (loading && !isDetailModalOpen && !isHistoryModalOpen && !isSettingsOpen) {
     return (
       <div className="flex items-center justify-center h-64 bg-slate-50 min-h-screen">
         <div className="text-lg text-slate-600">Loading interviews...</div>
@@ -2145,6 +2093,105 @@ const InterviewPanel = () => {
                 <option value="All">All Rejection Reasons</option>
                 {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
+            )}
+
+            {/* Filter Button */}
+            {activeTab !== 'dashboard' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowFilterPopup(prev => !prev)}
+                  className={`px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                    (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0)
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Filter size={14} />
+                  Filter
+                  {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
+                    <span className="bg-white text-blue-600 text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                      {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
+                    </span>
+                  )}
+                </button>
+
+                {showFilterPopup && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[9999] overflow-hidden">
+                    {/* Header */}
+                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Filters</span>
+                      <button
+                        onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
+                        className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
+                      {/* Source Portal */}
+                      <div>
+                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Source Portal</div>
+                        {sourcePortalOptions.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">No sources configured in settings.</div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {sourcePortalOptions.map(portal => (
+                              <label key={portal} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={filterOptions.sourcePortal?.includes(portal) || false}
+                                  onChange={() => setFilterOptions(prev => {
+                                    const list = prev.sourcePortal || [];
+                                    return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
+                                  })}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                                />
+                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{portal}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Role / Job Opening */}
+                      <div>
+                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Role</div>
+                        {jobOpeningOptions.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">No roles configured in settings.</div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {jobOpeningOptions.map(role => (
+                              <label key={role} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={filterOptions.jobOpening?.includes(role) || false}
+                                  onChange={() => setFilterOptions(prev => {
+                                    const list = prev.jobOpening || [];
+                                    return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
+                                  })}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                                />
+                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{role}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                      <button
+                        onClick={() => setShowFilterPopup(false)}
+                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           {/* RIGHT: Action buttons */}
@@ -3399,6 +3446,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState(null); // {type:'success'|'error', text}
   const fileInputRef = useRef(null);
+  // Viewer
+  const [viewerDoc, setViewerDoc] = useState(null); // {blobUrl, downloadUrl, name, isPdf, isImage, loading, error}
+  // Rename
+  const [editingAttId, setEditingAttId] = useState(null);
+  const [editingAttName, setEditingAttName] = useState('');
 
   // Qualification
   const qualCatalog = [
@@ -3544,6 +3596,44 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
     }
   };
 
+  const handleViewAttachment = async (att) => {
+    const name = att.label || att.original_name || 'File';
+    const fname = (att.original_name || att.label || '').toLowerCase();
+    const ext = fname.split('.').pop();
+    const isPdf = ext === 'pdf';
+    const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext);
+    const downloadUrl = API.interviews.getAttachmentDownloadUrl(interviewId, att.id);
+    setViewerDoc({ blobUrl: null, downloadUrl, name, isPdf, isImage, loading: true, error: null });
+    try {
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+      const res = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arrayBuf = await res.arrayBuffer();
+      const mimeType = isPdf ? 'application/pdf'
+        : isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        : 'application/octet-stream';
+      const typedBlob = new Blob([arrayBuf], { type: mimeType });
+      const blobUrl = URL.createObjectURL(typedBlob);
+      setViewerDoc({ blobUrl, downloadUrl, name, isPdf, isImage, loading: false, error: null });
+    } catch (err) {
+      setViewerDoc(prev => prev ? { ...prev, loading: false, error: err.message } : null);
+    }
+  };
+
+  const handleRenameAttachment = async (attId, newLabel) => {
+    const trimmed = (newLabel || '').trim();
+    if (!trimmed) { setEditingAttId(null); setEditingAttName(''); return; }
+    try {
+      await API.interviews.renameAttachment(interviewId, attId, trimmed);
+      setAttachments(prev => prev.map(a => a.id === attId ? { ...a, label: trimmed } : a));
+    } catch (e) {
+      console.warn('Rename failed:', e);
+    } finally {
+      setEditingAttId(null);
+      setEditingAttName('');
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (!bytes) return '';
     if (bytes < 1024) return bytes + ' B';
@@ -3654,7 +3744,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       name="source_portal"
                       value={d.source_portal || ''}
                       onChange={e => handleFieldChange('source_portal', e.target.value)}
-                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      options={sourcePortalOptions}
                       placeholder="Select source..."
                     />
                   </div>
@@ -3699,22 +3789,32 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       <option value="">Select...</option><option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
                     </select>
                   </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
-                    <div className="relative" ref={qualRef}>
-                      <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
-                      {qualOpen && filteredQualGroups.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
-                          {filteredQualGroups.map(g => (
-                            <div key={g.level}>
-                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
-                              {g.entries.map(entry => (
-                                <button type="button" key={entry} onClick={() => { handleFieldChange('qualification', entry); setQualSearch(''); setQualOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{entry}</button>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
+                      <div className="relative" ref={qualRef}>
+                        <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
+                        {qualOpen && filteredQualGroups.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                            {filteredQualGroups.map(g => (
+                              <div key={g.level}>
+                                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
+                                {g.entries.map(entry => (
+                                  <button type="button" key={entry} onClick={() => { handleFieldChange('qualification', entry); setQualSearch(''); setQualOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{entry}</button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-36">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                      <select value={d.qualification_status || ''} onChange={e => handleFieldChange('qualification_status', e.target.value)} className={inputCls}>
+                        <option value="">Select...</option>
+                        <option value="Pursuing">Pursuing</option>
+                        <option value="Completed">Completed</option>
+                      </select>
                     </div>
                   </div>
                   <div className="col-span-2">
@@ -3840,16 +3940,50 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                             <FileText size={14}/>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800 truncate">{att.label || att.original_name || 'File'}</div>
+                            {editingAttId === att.id ? (
+                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                  autoFocus
+                                  value={editingAttName}
+                                  onChange={e => setEditingAttName(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') { e.preventDefault(); handleRenameAttachment(att.id, editingAttName); }
+                                    else if (e.key === 'Escape') { setEditingAttId(null); setEditingAttName(''); }
+                                  }}
+                                  onBlur={() => handleRenameAttachment(att.id, editingAttName)}
+                                  className="text-xs font-bold text-slate-800 bg-blue-50 border border-blue-400 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-xs font-bold text-slate-800 truncate">{att.label || att.original_name || 'File'}</div>
+                            )}
                             <div className="text-[10px] text-slate-500 flex items-center gap-2">
                               <span>{formatFileSize(att.file_size)}</span>
                               {att.uploaded_by && <span>• {att.uploaded_by}</span>}
                               {att.uploaded_at && <span>• {new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</span>}
                             </div>
                           </div>
-                          <a href={API.interviews.getAttachmentDownloadUrl(interviewId, att.id)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Download">
+                          {/* Rename button */}
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditingAttId(att.id); setEditingAttName(att.label || att.original_name || ''); }}
+                            className="p-1.5 rounded-lg hover:bg-orange-50 text-slate-400 hover:text-orange-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Rename"
+                          >
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          {/* View button */}
+                          <button
+                            onClick={() => handleViewAttachment(att)}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
+                            title="View"
+                          >
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          </button>
+                          {/* Download button */}
+                          <a href={API.interviews.getAttachmentDownloadUrl(interviewId, att.id)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-green-50 text-slate-400 hover:text-green-600 transition-colors opacity-0 group-hover:opacity-100" title="Download">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                           </a>
+                          {/* Delete button */}
                           <button onClick={() => handleDeleteAttachment(att.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Delete">
                             <X size={14}/>
                           </button>
@@ -4016,6 +4150,69 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           </div>
         </div>{/* end RIGHT remarks panel */}
       </div>{/* end two-column body */}
+
+      {/* ── Inline File Viewer Modal ── */}
+      {viewerDoc && (
+        <div
+          className="fixed inset-0 z-[99999] flex flex-col bg-black/85"
+          onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+        >
+          <div
+            className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 shrink-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="text-white text-sm font-bold truncate max-w-[55vw]">
+              <i className="fa-solid fa-file mr-2 text-blue-400"></i>{viewerDoc.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <a
+                href={viewerDoc.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
+              <button
+                onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+                className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+              >
+                <X size={12}/> Close
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            {viewerDoc.loading ? (
+              <div className="flex flex-col items-center gap-3 text-white">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
+                <span className="text-sm text-gray-300">Loading file...</span>
+              </div>
+            ) : viewerDoc.error ? (
+              <div className="flex flex-col items-center gap-4 text-white">
+                <div className="text-5xl text-yellow-400">⚠</div>
+                <p className="text-sm text-gray-300">Failed to load: {viewerDoc.error}</p>
+                <a href={viewerDoc.downloadUrl} target="_blank" rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2">
+                  Download Instead
+                </a>
+              </div>
+            ) : (viewerDoc.isPdf || viewerDoc.isImage) ? (
+              <iframe src={viewerDoc.blobUrl} title={viewerDoc.name} className="w-full h-full border-0 bg-white" style={{ display: 'block' }}/>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-white gap-5">
+                <FileText size={56} className="text-gray-400"/>
+                <p className="text-base font-medium text-gray-300">Preview not available for this file type.</p>
+                <a href={viewerDoc.downloadUrl} target="_blank" rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2">
+                  Download to View
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -4420,6 +4617,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     gender: 'Male',
     qualification: '',
     qualificationLevel: '',
+    qualification_status: '',
     job_opening: '',
     marital_status: 'Single',
     age: '',
@@ -4636,7 +4834,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     const excludeFromUppercase = [
       'mobile_number', 'alternate_number', 'total_experience', 
       'old_salary', 'monthly_salary_offered', 'experience_type', 'gender',
-      'interview_type', 'status', 'qualification', 'marital_status',
+      'interview_type', 'status', 'qualification', 'qualification_status', 'marital_status',
       'living_arrangement', 'primary_earning_member', 'type_of_business',
       'banking_experience', 'source_portal', 'age', 'interview_date', 
       'interview_time', 'date_time', 'job_opening'
@@ -4748,6 +4946,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         
         // Professional fields
         qualification: formData.qualification || '',
+        qualification_status: formData.qualification_status || '',
         experience_type: formData.experience_type || 'fresher',
         total_experience: formData.total_experience || '',
         
@@ -5049,7 +5248,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       name="source_portal"
                       value={formData.source_portal}
                       onChange={handleInputChange}
-                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      options={sourcePortalOptions}
                       placeholder="Select source..."
                     />
                   </div>
@@ -5103,36 +5302,46 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                     </select>
                   </div>
                   {/* Qualification — searchable grouped */}
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
-                    <div className="relative" ref={qualRef}>
-                      <input
-                        value={qualSearch !== '' ? qualSearch : formData.qualification}
-                        onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
-                        onFocus={() => { setQualSearch(''); setQualOpen(true); }}
-                        placeholder="Type to search e.g. MBA, BA, ITI..."
-                        className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
-                      />
-                      {formData.qualificationLevel && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
-                      )}
-                      {qualOpen && filteredQualGroups.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
-                          {filteredQualGroups.map(group => (
-                            <div key={group.level}>
-                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
-                              {group.entries.map(entry => (
-                                <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
-                                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
-                                  {entry}
-                                </button>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
+                      <div className="relative" ref={qualRef}>
+                        <input
+                          value={qualSearch !== '' ? qualSearch : formData.qualification}
+                          onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
+                          onFocus={() => { setQualSearch(''); setQualOpen(true); }}
+                          placeholder="Type to search e.g. MBA, BA, ITI..."
+                          className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                        />
+                        {formData.qualificationLevel && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
+                        )}
+                        {qualOpen && filteredQualGroups.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                            {filteredQualGroups.map(group => (
+                              <div key={group.level}>
+                                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
+                                {group.entries.map(entry => (
+                                  <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                                    {entry}
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
                     </div>
-                    {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
+                    <div className="w-36">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                      <select name="qualification_status" value={formData.qualification_status || ''} onChange={handleInputChange} className={drawerInputCls}>
+                        <option value="">Select...</option>
+                        <option value="Pursuing">Pursuing</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </div>
                   </div>
                   {/* Banking experience toggle */}
                   <div className="col-span-2">
@@ -5150,7 +5359,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               </div>
 
               {/* ── Professional Details ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
                   <span className="text-base">💼</span>
                   <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
@@ -5163,7 +5372,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       name="job_opening"
                       value={formData.job_opening}
                       onChange={handleInputChange}
-                      options={jobOpeningOptions.length > 0 ? jobOpeningOptions : ['Sales Executive', 'Back Office Exec', 'Telecaller', 'Floor Manager']}
+                      options={jobOpeningOptions}
                       placeholder="Select role..."
                     />
                   </div>

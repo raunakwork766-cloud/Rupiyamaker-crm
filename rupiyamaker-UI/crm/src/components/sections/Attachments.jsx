@@ -1999,13 +1999,13 @@ export default function Attachments({ leadId, userId }) {
                         </div>
                         {showTooltip[attachmentType.id || attachmentType._id] && (
                           <div
-                            className="absolute z-[9999] p-3 text-xs text-white bg-gray-800 rounded-lg shadow-2xl"
-                            style={{ left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: 8, minWidth: 220, maxWidth: 360, border: '1px solid rgba(255,255,255,0.15)' }}
+                            className="absolute z-[9999] p-3 text-xs text-gray-900 bg-white rounded-lg shadow-2xl"
+                            style={{ left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: 8, minWidth: 220, maxWidth: 360, border: '1px solid #dbeafe' }}
                           >
                             {attachmentType.description.split(/\r?\n/).map((line, i, arr) => (
                               <React.Fragment key={i}>{line}{i < arr.length - 1 && <br />}</React.Fragment>
                             ))}
-                            <div className="absolute w-0 h-0" style={{ top: '100%', left: '50%', transform: 'translateX(-50%)', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #1f2937' }}></div>
+                            <div className="absolute w-0 h-0" style={{ top: '100%', left: '50%', transform: 'translateX(-50%)', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #dbeafe' }}></div>
                           </div>
                         )}
                       </div>
@@ -2069,16 +2069,8 @@ export default function Attachments({ leadId, userId }) {
                                   );
                                 })() : (
                                   <span
-                                    className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight cursor-text select-none"
-                                    title={`${fname} — double-click to rename`}
-                                    onDoubleClick={e => {
-                                      e.stopPropagation();
-                                      const origName = doc.filename || doc.file_name || '';
-                                      const lastDot = origName.lastIndexOf('.');
-                                      const base = lastDot >= 0 ? origName.substring(0, lastDot) : origName;
-                                      setEditingFileId(doc._id);
-                                      setEditingFileName(base);
-                                    }}
+                                    className="text-[12px] font-bold text-gray-800 break-all w-full line-clamp-2 leading-tight select-none"
+                                    title={fname}
                                   >
                                     {fname}
                                   </span>
@@ -2113,6 +2105,22 @@ export default function Attachments({ leadId, userId }) {
                                   </button>
                                 </>
                               )}
+                              {/* Pencil/rename button */}
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const origName = doc.filename || doc.file_name || '';
+                                  const lastDot = origName.lastIndexOf('.');
+                                  const base = lastDot >= 0 ? origName.substring(0, lastDot) : origName;
+                                  setEditingFileId(doc._id);
+                                  setEditingFileName(base);
+                                }}
+                                className="bg-gray-50 border border-gray-200 rounded p-1 text-gray-500 hover:text-orange-500 hover:bg-orange-50 transition shadow-sm"
+                                title="Rename"
+                              >
+                                <i className="fa-solid fa-pencil text-[10px]"></i>
+                              </button>
+                              {/* View button */}
                               <button
                                 onClick={async () => {
                                   const fname2 = (doc.filename || doc.file_name || '').toLowerCase();
@@ -2121,7 +2129,6 @@ export default function Attachments({ leadId, userId }) {
                                   const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext2);
                                   const downloadUrl = `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`;
                                   const docName = doc.filename || doc.file_name || 'Document';
-                                  // Show loading state immediately
                                   setViewerDoc({ blobUrl: null, downloadUrl, name: docName, isPdf, isImage, loading: true, error: null });
                                   try {
                                     const res = await fetch(
@@ -2129,8 +2136,12 @@ export default function Attachments({ leadId, userId }) {
                                       { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
                                     );
                                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                                    const blob = await res.blob();
-                                    const blobUrl = URL.createObjectURL(blob);
+                                    const arrayBuf = await res.arrayBuffer();
+                                    const mimeType = isPdf ? 'application/pdf'
+                                      : isImage ? `image/${ext2 === 'jpg' ? 'jpeg' : ext2}`
+                                      : 'application/octet-stream';
+                                    const typedBlob = new Blob([arrayBuf], { type: mimeType });
+                                    const blobUrl = URL.createObjectURL(typedBlob);
                                     setViewerDoc({ blobUrl, downloadUrl, name: docName, isPdf, isImage, loading: false, error: null });
                                   } catch (err) {
                                     setViewerDoc(prev => prev ? { ...prev, loading: false, error: err.message } : null);
@@ -2181,7 +2192,7 @@ export default function Attachments({ leadId, userId }) {
                     <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-2 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1.5 transition uppercase pointer-events-none whitespace-nowrap">
                       {isLoading
                         ? <><i className="fa-solid fa-spinner fa-spin"></i> Uploading…</>
-                        : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach Files</>
+                        : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach</>
                       }
                     </button>
                   </div>

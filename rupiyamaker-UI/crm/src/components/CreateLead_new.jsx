@@ -15,6 +15,8 @@ import {
 import { leadEvents } from "../utils/auth";
 import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 import ReassignmentPanel from './sections/ReassignmentPanel';
+import TransferRequestsPage from './sections/TransferRequestsPage';
+import { canApproveLeadReassignment } from '../utils/permissions';
 
 // API base URL
 const API_BASE_URL = '/api';
@@ -810,9 +812,11 @@ function useCreateLeadLogic() {
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [campaignName, setCampaignName] = useState("");
   const [dataCode, setDataCode] = useState("");
+  const [selectedDataCodes, setSelectedDataCodes] = useState([]); // multi-select for create form
   const [companyCategory, setCompanyCategory] = useState("");
   const [assignedTo, setAssignedTo] = useState([]);
   const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [status, setStatus] = useState("not_a_lead"); // Set default status to enable Create Lead button
   const [customerName, setCustomerName] = useState("");
   const [alternateNumber, setAlternateNumber] = useState("");
@@ -1481,7 +1485,7 @@ const handleMobileNumberChange = (e) => {
       mobileNumber: !mobileNumber || mobileNumber.length !== 10 || !/^[6-9]/.test(mobileNumber),
       customerName: !customerName || !customerName.trim(),
       campaignName: !campaignName,
-      status: !status,
+      status: false,
       assignedTo: !assignedTo || assignedTo.length === 0 // Allow "none" as valid selection
     };
     
@@ -1497,8 +1501,7 @@ const handleMobileNumberChange = (e) => {
       productType &&
       mobileNumber && mobileNumber.length === 10 && /^[6-9]/.test(mobileNumber) &&
       customerName && customerName.trim() &&
-      campaignName &&
-      status
+      campaignName
     );
   };
 
@@ -1630,14 +1633,14 @@ const handleMobileNumberChange = (e) => {
       }
     } else {
       // Regular users - follow standard eligibility rules
+      // Always use the unified duplicate table UI (same for all roles)
+      setShowLeadDetails(false);
       if (canReassign) {
         // If user can reassign, show reassignment popup instead of lead details
         setShowReassignmentOption(true);
-        setShowLeadDetails(false);
       } else {
-        // If user cannot reassign, show lead details popup
+        // If user cannot reassign, still use the unified duplicate table (no old popup card)
         setShowReassignmentOption(false);
-        setShowLeadDetails(true);
       }
     }
     
@@ -2387,7 +2390,7 @@ const handleMobileNumberChange = (e) => {
   // --- Enhanced Lead Submission Handler ---
   // Updated handleSubmit function with comprehensive error handling and validation
   // This function ensures both Lead Info and Obligation section data are properly combined and sent to the API
-  const handleSubmit = async () => {
+  const handleSubmit = async (statusOverride) => {
     // CRITICAL: Check if user has permission to create/add leads
     console.log('🔒 Checking CREATE LEAD permission before submission...');
     
@@ -2488,8 +2491,8 @@ const handleMobileNumberChange = (e) => {
         companyType,
         companyCategory,
         campaignName,
-        dataCode,
-        status,
+        dataCode: selectedDataCodes.length > 0 ? selectedDataCodes.join(', ') : dataCode,
+        status: statusOverride || status,
         assignedTo,
         loanRequired,
         // Find the selected loan type ID from the loan types array
@@ -2563,7 +2566,7 @@ const handleMobileNumberChange = (e) => {
           companyCategory,
           campaignName,
           dataCode,
-          status,
+          status: statusOverride || status,
           assignedTo,
           loanRequired,
           selectedLoanTypeId: loanTypes.find(lt => lt.name === productType)?._id ||
@@ -2956,6 +2959,7 @@ const handleMobileNumberChange = (e) => {
     currentDateTime, productType, setProductType,
     mobileNumber, setMobileNumber, mobileValidationError, setMobileValidationError, handleMobileNumberChange, showLeadForm,
     campaignName, setCampaignName, dataCode, setDataCode,
+    selectedDataCodes, setSelectedDataCodes,
     companyCategory, setCompanyCategory, assignedTo, setAssignedTo, handleRemoveAssignee, handleAddAssignee,
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
@@ -3005,7 +3009,10 @@ const handleMobileNumberChange = (e) => {
     newDataCode, setNewDataCode, newCampaignName, setNewCampaignName,
     changeDataCode, setChangeDataCode, changeCampaignName, setChangeCampaignName,
     // Lead creation
-    createLead, handleSubmit,
+    createLead, handleSubmit, validateFormFields,
+    // Form state
+    showStatusPopup, setShowStatusPopup, setShowLeadForm,
+    setObligationDataSaved, setObligationHasUnsavedChanges, setObligationIsSaving,
     // Form validation
     formValidationErrors, setFormValidationErrors, showValidationErrors, setShowValidationErrors,
     // Button states and animations
@@ -4617,6 +4624,7 @@ function CreateLead() {
     currentDateTime, productType, setProductType,
     mobileNumber, setMobileNumber, mobileValidationError, setMobileValidationError, handleMobileNumberChange, showLeadForm,
     campaignName, setCampaignName, dataCode, setDataCode,
+    selectedDataCodes, setSelectedDataCodes,
     companyCategory, setCompanyCategory, assignedTo, setAssignedTo,
     handleRemoveAssignee, handleAddAssignee,
     showAssignPopup, setShowAssignPopup,
@@ -4670,7 +4678,10 @@ function CreateLead() {
     newDataCode, setNewDataCode, newCampaignName, setNewCampaignName,
     changeDataCode, setChangeDataCode, changeCampaignName, setChangeCampaignName,
     // Lead creation
-    createLead, handleSubmit,
+    createLead, handleSubmit, validateFormFields,
+    // Form state
+    showStatusPopup, setShowStatusPopup, setShowLeadForm,
+    setObligationDataSaved, setObligationHasUnsavedChanges, setObligationIsSaving,
     // Form validation
     formValidationErrors, setFormValidationErrors, showValidationErrors, setShowValidationErrors,
     // Button states and animations
@@ -4685,21 +4696,16 @@ function CreateLead() {
 
   // Local UI state: controls visibility of Transfer Lead popup modal
   const [showReassignForm, setShowReassignForm] = useState(false);
+  const [showDataCodePopup, setShowDataCodePopup] = useState(false);
+  const [dataCodePopupSearch, setDataCodePopupSearch] = useState("");
   const [transferModalTab, setTransferModalTab] = useState('details'); // 'details' | 'activity'
   const [showAllDuplicates, setShowAllDuplicates] = useState(false); // Show all duplicate leads or just latest
   const [showAllLoginDuplicates, setShowAllLoginDuplicates] = useState(false); // Show all login duplicate leads or just latest
-  // Auto-expand transfer popup when a non-locked duplicate is detected; reset otherwise
+  // Reset transfer popup when duplicate clears; no longer auto-opens (opens via Review button)
   useEffect(() => {
     if (!existingLeadData) {
       setShowReassignForm(false);
-      return;
-    }
-    const isLocked = (existingLeadData.days_remaining ?? 0) > 0;
-    if (hasReassignmentPopupPermission && !isLocked) {
-      setShowReassignForm(true);
-      setTransferModalTab('details');
-    } else {
-      setShowReassignForm(false);
+      setShowReviewModal(false);
     }
   }, [existingLeadData?.id]);
 
@@ -4714,7 +4720,19 @@ function CreateLead() {
     setTransferModalTab('details');
     setShowAllDuplicates(false);
     setShowAllLoginDuplicates(false);
+    setShowReviewModal(false);
+    setReviewActiveLead(null);
+    setReviewRightLeadData(null);
+    setReviewRightHistory([]);
   };
+
+  // Review Modal state — split-screen popup with left lead cards + right lead details
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewActiveLead, setReviewActiveLead] = useState(null);
+  const [reviewRightLeadData, setReviewRightLeadData] = useState(null);
+  const [reviewRightLeadLoading, setReviewRightLeadLoading] = useState(false);
+  const [reviewRightHistory, setReviewRightHistory] = useState([]);
+  const [reviewRightHistoryLoading, setReviewRightHistoryLoading] = useState(false);
 
   // Read-only lead view overlay state
   const [viewLeadId, setViewLeadId] = useState(null);
@@ -4722,6 +4740,10 @@ function CreateLead() {
   const [viewLeadLoading, setViewLeadLoading] = useState(false);
   const [viewLeadFromLogin, setViewLeadFromLogin] = useState(false);
   const [viewLeadIsReassignment, setViewLeadIsReassignment] = useState(false);
+  const [dupModalBankLogins, setDupModalBankLogins] = useState([]);
+  const [dupModalBankLoading, setDupModalBankLoading] = useState(false);
+  const [dupModalHistory, setDupModalHistory] = useState([]);
+  const [dupModalHistoryLoading, setDupModalHistoryLoading] = useState(false);
 
   // Duplicate tab state
   const [dupActiveTab, setDupActiveTab] = useState('leads');
@@ -4748,6 +4770,33 @@ function CreateLead() {
     }
   }, [existingLeadData]);
 
+  // Load a lead into the Review Modal right panel
+  const handleReviewSelectLead = async (lead) => {
+    setReviewActiveLead(lead);
+    setReviewRightLeadData(null);
+    setReviewRightHistory([]);
+    const userId = localStorage.getItem('userId') || '';
+    // Fetch fresh lead data
+    setReviewRightLeadLoading(true);
+    try {
+      const resp = await fetch(`/api/leads/${lead.id}?user_id=${userId}`);
+      if (resp.ok) setReviewRightLeadData(await resp.json());
+    } catch(e) { console.error('Review lead fetch error', e); }
+    finally { setReviewRightLeadLoading(false); }
+    // Fetch transfer history
+    setReviewRightHistoryLoading(true);
+    try {
+      const histRes = await fetch(`/api/lead-login/login-leads/${lead.id}/assignment-history?user_id=${userId}`);
+      if (histRes.ok) { const hd = await histRes.json(); setReviewRightHistory(hd.history || []); }
+    } catch(e) {}
+    finally { setReviewRightHistoryLoading(false); }
+  };
+
+  const handleOpenReviewModal = (lead) => {
+    setShowReviewModal(true);
+    handleReviewSelectLead(lead);
+  };
+
   const handleViewDuplicateLead = async (leadId, fromLogin = false, fromReassignment = false) => {
     if (!leadId) return;
     setViewLeadId(leadId);
@@ -4755,6 +4804,8 @@ function CreateLead() {
     setViewLeadData(null);
     setViewLeadFromLogin(fromLogin);
     setViewLeadIsReassignment(fromReassignment);
+    setDupModalHistory([]);
+    setDupModalBankLogins([]);
     try {
       const userId = localStorage.getItem('userId') || '';
       const url = fromLogin
@@ -4770,11 +4821,32 @@ function CreateLead() {
           data.can_view = true;
         }
         setViewLeadData(data);
+        // Fetch assignment history
+        setDupModalHistoryLoading(true);
+        try {
+          const histRes = await fetch(`/api/lead-login/login-leads/${leadId}/assignment-history?user_id=${userId}`);
+          if (histRes.ok) { const hd = await histRes.json(); setDupModalHistory(hd.history || []); }
+        } catch(e) {}
+        setDupModalHistoryLoading(false);
+        // Fetch bank portfolio (managers only)
+        const isManagerDup = (() => { try { const raw = localStorage.getItem('userPermissions'); return canApproveLeadReassignment(raw ? JSON.parse(raw) : null); } catch { return false; } })();
+        if (isManagerDup) {
+          const phone = (data.phone || data.mobile_number || '').trim();
+          if (phone) {
+            setDupModalBankLoading(true);
+            try {
+              const br = await fetch(`/api/lead-login/check-phone/${encodeURIComponent(phone)}?user_id=${userId}`);
+              if (br.ok) { const bd = await br.json(); setDupModalBankLogins(bd.leads || []); }
+            } catch(e) {}
+            setDupModalBankLoading(false);
+          }
+        }
       }
     } catch (e) {
       console.error('Error fetching lead for view:', e);
     } finally {
       setViewLeadLoading(false);
+      setDupModalHistoryLoading(false);
     }
   };
 
@@ -4788,7 +4860,7 @@ function CreateLead() {
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
       <div className="flex-1 p-6 mx-auto main-content max-w-8xl min-h-screen">
         {/* Tab Selector - Fixed positioning to prevent shifts */}
-        <div className="flex items-center mb-8 space-x-2 sticky top-0 z-10 bg-black py-4 border-b border-gray-200">
+        <div className="flex items-center mb-3 space-x-2 sticky top-0 z-10 bg-black py-2 border-b border-gray-200">
           <button
             className={`px-6 py-2 rounded-t-md font-extrabold text-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${activeTab === "all"
               ? "bg-sky-400 text-white"
@@ -4959,58 +5031,59 @@ function CreateLead() {
                 const fmtAge = (d) => { if (!d) return '—'; const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return days === 0 ? 'Today' : `${days}d ago`; };
                 const refD = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date ? new Date(existingLeadData.login_department_sent_date) : new Date(existingLeadData?.created_date || Date.now());
                 const unlockD = new Date(refD); unlockD.setDate(unlockD.getDate() + (existingLeadData?.reassignment_period || 0));
-                const colCount = hasBankLogins ? 7 : 6;
+                const colCount = 8;
                 return (
                   <div className="mb-6 bg-[#0d1117] rounded-xl border border-neutral-700 overflow-hidden">
                     {/* Header strip */}
                     <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 bg-neutral-800 border-b border-neutral-700">
                       <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                       <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">Duplicate Lead Found</span>
-                      <span className="text-neutral-400 text-xs ml-1">
-                        {hasBankLogins
-                          ? `${bankLoginLeads.length} bank login${bankLoginLeads.length > 1 ? 's' : ''} — Latest: ${latestBank} (${fmtDate(latestBankDate)})`
-                          : `No bank login — locking from lead creation date`}
-                      </span>
                       <button className="ml-auto w-6 h-6 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700 transition" onClick={handleDuplicatePanelClose} title="Close duplicate panel">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                       </button>
                     </div>
 
-                    {/* ─── LEADS SECTION ─── */}
+                    {/* ─── LEADS TABLE ─── */}
                     <div className="border-b border-neutral-700">
-                      <div className="flex items-center gap-2 px-5 py-2 bg-neutral-800/50">
-                        <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider">📋 Leads</span>
-                        <span className="bg-neutral-700 text-neutral-300 rounded-full px-2 py-0.5 text-[10px]">{leads.length}</span>
-                      </div>
                     {/* Table */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm" style={{ minWidth: '1000px' }}>
                         <thead>
                           <tr className="bg-[#060d1a] border-b border-neutral-700">
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">{hasBankLogins ? 'Login Date & Age' : 'Lead Date & Age'}</th>
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">{hasBankLogins ? 'Login Status' : 'Lead Status'}</th>
-                            {hasBankLogins && <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Bank Name</th>}
-                            <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Availability</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap w-12">#</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Lead Date & Age</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Lead Status</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Cooldown</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Actions</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-neutral-800/50">
                           {(showAllDuplicates ? leads : leads.slice(0, 1)).map((lead, idx) => {
                             const isLockingRow = lead.is_locking_lead === true && leads.length > 1;
                             const displayDate = hasBankLogins ? (lead.login_department_sent_date || lead.created_at) : lead.created_at;
+                            const rowLead24hLocked = (() => {
+                              const reqAt = lead.reassignment_requested_at;
+                              if (!lead.pending_reassignment || !reqAt) return false;
+                              const hrs = (Date.now() - new Date(reqAt).getTime()) / 3600000;
+                              return hrs > 0 && hrs < 24;
+                            })();
+                            const rowBlocked = isLocked || rowLead24hLocked;
                             return (
                               <tr
                                 key={lead.id || idx}
-                                className="bg-neutral-900 hover:bg-neutral-800/50 transition-colors cursor-pointer border-b border-neutral-800/50"
-                                onClick={() => handleViewDuplicateLead(lead.id)}
-                                title="Click to view full lead details"
+                                className={`bg-neutral-900 hover:bg-neutral-800/20 transition-colors ${rowBlocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
+                                onClick={() => { if (rowBlocked) return; handleViewDuplicateLead(lead.id); }}
+                                title={isLocked ? `🔒 Lead is locked (${actualDR}d remaining) — cannot view details` : rowLead24hLocked ? '⏳ Reassignment pending — cannot view details' : 'Click to view full lead details'}
                               >
+                                {/* # */}
+                                <td className="px-4 py-3 text-center text-neutral-400 font-medium">{idx + 1}</td>
                                 {/* Date & Age */}
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="text-white font-semibold text-sm">{fmtDate(displayDate)}</div>
-                                  <div className="text-cyan-400 text-xs mt-0.5">{fmtAge(displayDate)}</div>
+                                  <div className="text-gray-200 font-medium text-sm">{fmtDate(displayDate)}</div>
+                                  <div className="text-gray-500 text-xs mt-1">{fmtAge(displayDate)}</div>
                                   {isLockingRow && (
                                     <div className="inline-flex items-center gap-1 mt-1 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-500/30 whitespace-nowrap">
                                       ★ EARLIEST — GOVERNS LOCK
@@ -5018,55 +5091,94 @@ function CreateLead() {
                                   )}
                                 </td>
                                 {/* Created By */}
-                                <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{lead.created_by_name || lead.assigned_to_name || '—'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-gray-300 text-sm">{lead.created_by_name || lead.assigned_to_name || '—'}</td>
                                 {/* Team */}
-                                <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-xs uppercase">{lead.department_name || '—'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-gray-300 text-sm">{lead.department_name || '—'}</td>
                                 {/* Customer */}
-                                <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{lead.name || '—'}</td>
-                                {/* Status */}
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                  {lead.sub_status ? (
-                                    <div>
-                                      <div className="text-white font-semibold text-sm">{lead.sub_status}</div>
-                                      <div className="text-neutral-400 text-xs mt-0.5">{lead.status}</div>
-                                    </div>
-                                  ) : <span className="text-white text-sm">{lead.status || '—'}</span>}
+                                  <div className="text-gray-200 font-medium text-sm">{lead.name || '—'}</div>
+                                  <div className="text-gray-500 text-xs mt-1">Assigned: <span className="text-cyan-400">{lead.assigned_to_name || lead.created_by_name || '—'}</span></div>
                                 </td>
-                                {/* Bank (bank-login scenario only) */}
-                                {hasBankLogins && (
-                                  <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                                    {lead.bank_name
-                                      ? <span className="inline-flex items-center gap-1.5 bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-lg px-2.5 py-1 text-xs font-bold">🏦 {lead.bank_name}</span>
-                                      : <span className="text-neutral-500 text-xs">—</span>}
-                                  </td>
-                                )}
-                                {/* Availability */}
-                                <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                                  {idx === 0 ? (
-                                    isLocked ? (
-                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold animate-pulse">
-                                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                                        Locked — {actualDR}d
-                                      </span>
-                                    ) : !hasReassignmentPopupPermission ? (
-                                      <span className="text-neutral-500 text-xs italic">No permission</span>
-                                    ) : mgr ? (
-                                      <button onClick={() => { setShowReassignForm(true); setTransferModalTab('details'); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold hover:bg-yellow-500/30 transition">
-                                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                                        Available — Manager Required
-                                      </button>
-                                    ) : (
-                                      <button onClick={() => { setShowReassignForm(true); setTransferModalTab('details'); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold hover:bg-green-500/30 transition">
-                                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a5 5 0 00-5 5h2a3 3 0 016 0h2a5 5 0 00-5-5zm-7 9a2 2 0 012-2h10a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z" clipRule="evenodd" /></svg>
-                                        Available
-                                      </button>
-                                    )
-                                  ) : isLocked ? (
-                                    <span className="text-red-400/70 text-xs font-medium">
-                                      Locked — {actualDR}d
-                                      {hasBankLogins && latestBank !== '—' && <span className="text-neutral-500 text-[10px] block">From {latestBank}</span>}
-                                    </span>
-                                  ) : null}
+                                {/* Lead Status — Card style */}
+                                <td className="px-4 py-3 text-center align-middle">
+                                  <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-neutral-700/50 bg-[#0B0E14] min-w-[130px]">
+                                    <span className="text-xs font-bold text-gray-200 mb-1">{lead.sub_status || lead.status || '—'}</span>
+                                    <span className="text-[10px] uppercase tracking-wider font-semibold text-blue-500">{lead.status || '—'}</span>
+                                  </div>
+                                </td>
+                                {/* Cooldown countdown */}
+                                <td className="px-4 py-3 text-center align-middle">
+                                  {lead.pending_reassignment && lead.reassignment_requested_at ? (() => {
+                                    const elapsed = (Date.now() - new Date(lead.reassignment_requested_at).getTime()) / 3600000;
+                                    const remaining = 24 - elapsed;
+                                    if (remaining <= 0) return <span className="text-green-400 text-xs font-medium">✓ Ready</span>;
+                                    const h = Math.floor(remaining);
+                                    const m = Math.floor((remaining - h) * 60);
+                                    return (
+                                      <div className="inline-flex flex-col items-center gap-0.5">
+                                        <span className="text-amber-400 font-mono font-bold text-sm">{h}h {m}m</span>
+                                        <span className="text-amber-500/70 text-[10px]">remaining</span>
+                                      </div>
+                                    );
+                                  })() : <span className="text-neutral-600 text-xs italic">—</span>}
+                                </td>
+                                {/* Actions */}
+                                <td className="px-4 py-3 text-center align-middle" onClick={e => e.stopPropagation()}>
+                                  {(() => {
+                                    const leadReqAt = lead.reassignment_requested_at;
+                                    const lead24hElapsed = lead.pending_reassignment && leadReqAt
+                                      ? (Date.now() - new Date(leadReqAt).getTime()) / 3600000
+                                      : 0;
+                                    const lead24hLocked = lead.pending_reassignment && lead24hElapsed > 0 && lead24hElapsed < 24;
+                                    const lead24hRemaining = lead24hLocked ? Math.ceil(24 - lead24hElapsed) : 0;
+                                    return (
+                                      <div className="flex flex-col gap-1.5">
+                                        {/* 24-hour reassignment lock badge */}
+                                        {lead24hLocked && (
+                                          <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-semibold px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs">
+                                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                                            LOCKED · {lead24hRemaining}h left
+                                          </div>
+                                        )}
+                                        {idx === 0 && !lead24hLocked && (
+                                          isLocked ? (
+                                            <div className="flex flex-col items-center gap-1.5">
+                                              <button disabled className="w-full bg-neutral-800 text-neutral-500 cursor-not-allowed font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm">
+                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                                                Locked
+                                              </button>
+                                              <span className="inline-flex items-center gap-1 bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
+                                                {actualDR} day{actualDR !== 1 ? 's' : ''} remaining
+                                              </span>
+                                            </div>
+                                          ) : !hasReassignmentPopupPermission ? (
+                                            <button disabled className="w-full bg-red-500/10 text-red-400 border border-red-500/20 cursor-not-allowed font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-xs">
+                                              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clipRule="evenodd" /></svg>
+                                              No Permission
+                                            </button>
+                                          ) : mgr ? (
+                                            <button
+                                              onClick={() => handleOpenReviewModal(existingLeadData)}
+                                              className="w-full bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 hover:text-orange-200 font-semibold px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-sm"
+                                            >
+                                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z"/></svg>
+                                              Request Transfer
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleOpenReviewModal(existingLeadData)}
+                                              className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 font-semibold px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-sm"
+                                            >
+                                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z"/></svg>
+                                              Transfer Lead
+                                            </button>
+                                          )
+                                        )}
+
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             );
@@ -5085,24 +5197,7 @@ function CreateLead() {
                               </td>
                             </tr>
                           )}
-                          {/* Footer info row */}
-                          <tr className={isLocked ? 'bg-red-950/20' : 'bg-neutral-800/20'}>
-                            <td colSpan={colCount} className="px-5 py-2.5">
-                              {isLocked ? (
-                                hasBankLogins ? (
-                                  <span className="text-red-300 text-xs">
-                                    <span className="text-red-200 font-bold">{bankLoginLeads.length} login{bankLoginLeads.length > 1 ? 's' : ''}</span> mein se latest: <span className="font-bold text-red-100">{latestBank} ({fmtDate(latestBankDate)})</span> + <span className="font-bold text-red-100">{existingLeadData?.reassignment_period || 0}d</span> = Unlocks <span className="font-bold text-red-100">{fmtDate(unlockD)}</span>. Other bank logins expire hone se unlock NAHI hoga — sirf latest ka expire matter karta hai.
-                                  </span>
-                                ) : (
-                                  <span className="text-red-300 text-xs">
-                                    No login found. Lock starts from <span className="font-bold text-red-100">lead creation: {fmtDate(existingLeadData?.created_date)}</span>. Unlocks <span className="font-bold text-red-100">{fmtDate(unlockD)}</span> <span className="text-red-400">({actualDR} days remaining)</span>.
-                                  </span>
-                                )
-                              ) : (
-                                <span className="text-green-400 text-xs font-medium">✓ This lead is available for transfer.</span>
-                              )}
-                            </td>
-                          </tr>
+
                         </tbody>
                       </table>
                     </div>
@@ -5115,13 +5210,13 @@ function CreateLead() {
                         {/* Modal */}
                         <div className="relative w-full max-w-xl mx-4 bg-[#0d1117] border border-neutral-700 rounded-2xl shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
                           {/* Header */}
-                          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700 bg-gradient-to-r from-cyan-500/10 to-transparent">
+                          <div className={`flex items-center justify-between px-6 py-4 border-b ${mgr ? 'border-orange-500/20 bg-orange-500/10' : 'border-emerald-500/20 bg-emerald-500/10'}`}>
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                                <svg className="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" /></svg>
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${mgr ? 'bg-orange-500/20' : 'bg-emerald-500/20'}`}>
+                                <svg className={`w-5 h-5 ${mgr ? 'text-orange-400' : 'text-emerald-400'}`} fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" /></svg>
                               </div>
                               <div>
-                                <h3 className="text-white text-base font-bold">Transfer Lead</h3>
+                                <h3 className="text-white text-base font-bold">{mgr ? 'Request Lead Transfer' : 'Direct Lead Transfer'}</h3>
                                 <p className="text-neutral-400 text-xs">{existingLeadData?.name || existingLeadData?.customer_name || 'Lead'} &bull; {existingLeadData?.mobile_number || mobileNumber}</p>
                               </div>
                             </div>
@@ -5214,12 +5309,12 @@ function CreateLead() {
                                 <div className="flex gap-3 justify-end pt-1">
                                   <button className="flex items-center gap-2 px-5 py-2.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 font-bold rounded-xl transition-all text-sm" onClick={() => { setShowReassignForm(false); handleReassignmentCancel(); }}>Cancel</button>
                                   <button
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    className={`flex items-center gap-2 px-5 py-2.5 font-bold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm ${mgr ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20'}`}
                                     onClick={() => handleReassignmentRequest(existingLeadData)}
                                     disabled={!reassignmentReason?.trim()}
                                   >
                                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                                    {mgr ? 'Request Manager Approval' : 'Transfer Lead'}
+                                    {mgr ? 'Submit Transfer Request' : 'Transfer Lead to Me'}
                                   </button>
                                 </div>
                               </div>
@@ -5306,889 +5401,542 @@ function CreateLead() {
                       </div>,
                       document.body
                     )}
+
+                    {/* ─── REVIEW MODAL — split screen: left = lead cards (click → full view), right = reassignment ─── */}
+                    {showReviewModal && ReactDOM.createPortal(
+                      <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4" onClick={() => setShowReviewModal(false)}>
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                        <div
+                          className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-200"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {/* Header */}
+                          {(() => {
+                            const otherLeads = leads.filter(lcard => lcard.id !== reviewActiveLead?.id);
+                            const totalOther = otherLeads.length + loginDuplicateLeads.length;
+                            return (
+                          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white shrink-0">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+                              </div>
+                              <div>
+                                <h3 className="text-gray-900 font-bold text-base">Transfer History</h3>
+                                <p className="text-gray-500 text-xs">{existingLeadData?.name || reviewActiveLead?.name || 'Lead'} — Transfer request & history</p>
+                              </div>
+                            </div>
+                            <button onClick={() => setShowReviewModal(false)} className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+                            </button>
+                          </div>
+                            );
+                          })()}
+                          {/* Body */}
+                          <div className="flex flex-1 overflow-hidden">
+                            {/* ── Left panel removed — only transfer history shown ── */}
+                            {(() => {
+                              const otherLeads = leads.filter(lcard => lcard.id !== reviewActiveLead?.id);
+                              return (
+                            <div className="hidden">
+                              {/* Regular duplicate leads */}
+                              {otherLeads.length > 0 && (
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold px-1 pt-1 pb-0.5">Duplicate Leads ({otherLeads.length}) — Click to open</p>
+                              )}
+                              {otherLeads.map((lcard, li) => {
+                                const hasLogin = lcard.file_sent_to_login || lcard.bank_name;
+                                const cardDate = hasBankLogins ? (lcard.login_department_sent_date || lcard.created_at) : lcard.created_at;
+                                const isEarliest = lcard.is_locking_lead === true && leads.length > 1;
+                                return (
+                                  <div
+                                    key={lcard.id || li}
+                                    onClick={() => { setShowReviewModal(false); handleViewDuplicateLead(lcard.id); }}
+                                    className="cursor-pointer rounded-xl p-3 border border-gray-200 bg-white hover:border-indigo-400 hover:shadow-md transition-all group"
+                                  >
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">#{li + 1}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        {isEarliest && <span className="text-[9px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full">EARLIEST</span>}
+                                        <svg className="w-3.5 h-3.5 text-gray-300 group-hover:text-indigo-400 transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
+                                      </div>
+                                    </div>
+                                    <p className="text-sm font-bold text-gray-900 truncate">{lcard.name || '—'}</p>
+                                    <p className="text-[11px] text-gray-500 truncate mt-0.5">{lcard.created_by_name || lcard.assigned_to_name || '—'}</p>
+                                    {(lcard.sub_status || lcard.status) && (
+                                      <span className="mt-1.5 inline-block text-[10px] font-bold text-cyan-700 bg-cyan-50 border border-cyan-200 px-1.5 py-0.5 rounded-full truncate max-w-full">
+                                        {lcard.sub_status || lcard.status}
+                                      </span>
+                                    )}
+                                    <p className="text-[10px] text-gray-400 mt-1.5 font-mono">{fmtDate(cardDate)}</p>
+                                    {hasLogin && (
+                                      <div className="mt-2 bg-indigo-50 border border-indigo-200 rounded-lg p-2">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                          <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wide truncate">{lcard.bank_name || 'Login Lead'}</p>
+                                        </div>
+                                        <p className="text-[9px] text-indigo-500 ml-3">{lcard.login_status || lcard.login_sub_status || 'ACTIVE LOGIN'}</p>
+                                        {lcard.login_department_sent_date && <p className="text-[9px] text-indigo-400 ml-3 mt-0.5 font-mono">{fmtDate(lcard.login_department_sent_date)}</p>}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {/* Login duplicate leads */}
+                              {loginDuplicateLeads.length > 0 && (
+                                <>
+                                  {otherLeads.length > 0 && <div className="border-t border-gray-200 my-1" />}
+                                  <p className="text-[10px] text-indigo-500 uppercase tracking-widest font-bold px-1 pt-1 pb-0.5">🏦 Login Leads ({loginDuplicateLeads.length})</p>
+                                  {loginDuplicateLeads.map((ll, li) => (
+                                    <div
+                                      key={ll.id || li}
+                                      onClick={() => { setShowReviewModal(false); handleViewDuplicateLead(ll.id, true); }}
+                                      className="cursor-pointer rounded-xl p-3 border border-indigo-200 bg-indigo-50/50 hover:border-indigo-400 hover:shadow-md transition-all group"
+                                    >
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-[10px] font-black text-indigo-400 bg-indigo-100 px-1.5 py-0.5 rounded-full">L{li + 1}</span>
+                                        <svg className="w-3.5 h-3.5 text-indigo-300 group-hover:text-indigo-500 transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
+                                      </div>
+                                      <p className="text-sm font-bold text-gray-900 truncate">{ll.name || '—'}</p>
+                                      <p className="text-[11px] text-gray-500 truncate mt-0.5">{ll.created_by_name || '—'}</p>
+                                      {ll.bank_name && (
+                                        <div className="mt-2 bg-indigo-100 border border-indigo-300 rounded-lg p-1.5">
+                                          <p className="text-[10px] text-indigo-700 font-bold truncate">🏦 {ll.bank_name}</p>
+                                          {(ll.login_status || ll.sub_status) && <p className="text-[9px] text-indigo-500 mt-0.5">{ll.login_status || ll.sub_status}</p>}
+                                        </div>
+                                      )}
+                                      <p className="text-[10px] text-gray-400 mt-1.5 font-mono">{fmtDate(ll.login_date || ll.login_created_at || ll.created_at)}</p>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                              {/* Empty state */}
+                              {otherLeads.length === 0 && loginDuplicateLeads.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                                  <svg className="w-8 h-8 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+                                  <p className="text-xs text-gray-400">No other leads found</p>
+                                </div>
+                              )}
+                            </div>
+                              );
+                            })()}
+                            {/* ── Right panel: transfer history (full width) ── */}
+                            <div className="w-full overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                              <div className="p-5 space-y-4">
+                                {/* Lead avatar + name header */}
+                                {reviewActiveLead && (
+                                  <div className="flex items-start gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-lg shrink-0">
+                                      {(reviewActiveLead.name || '?').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="text-gray-900 font-bold text-lg">{reviewActiveLead.name || '—'}</h4>
+                                        {(reviewActiveLead.sub_status || reviewActiveLead.status) && (
+                                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                            {reviewActiveLead.sub_status || reviewActiveLead.status}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(reviewRightLeadData?.phone || reviewRightLeadData?.mobile_number) && (
+                                        <p className="text-gray-500 text-sm mt-0.5">📞 {reviewRightLeadData.phone || reviewRightLeadData.mobile_number}</p>
+                                      )}
+                                      {reviewRightLeadLoading && <p className="text-gray-400 text-xs mt-0.5 flex items-center gap-1"><span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block"/> Loading details...</p>}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Transfer section — only if canRequest */}
+                                {canRequest && reviewActiveLead && (
+                                  <div className={`border rounded-xl p-4 ${mgr ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${mgr ? 'bg-orange-100' : 'bg-emerald-100'}`}>
+                                        <svg className={`w-4 h-4 ${mgr ? 'text-orange-600' : 'text-emerald-600'}`} fill="currentColor" viewBox="0 0 20 20"><path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z"/></svg>
+                                      </div>
+                                      <h5 className={`font-bold text-sm ${mgr ? 'text-orange-700' : 'text-emerald-700'}`}>{mgr ? 'Request Lead Transfer' : 'Transfer Lead to Me'}</h5>
+                                    </div>
+                                    {mgr && (
+                                      <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-3">
+                                        <svg className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
+                                        <p className="text-yellow-700 text-xs">Manager approval required. Your request will be sent for review before transfer.</p>
+                                      </div>
+                                    )}
+                                    <textarea
+                                      value={reassignmentReason}
+                                      onChange={e => setReassignmentReason(e.target.value)}
+                                      placeholder="Enter reason for transfer..."
+                                      className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 resize-none transition-colors mb-3"
+                                      rows={3}
+                                    />
+                                    <div className="flex gap-2 justify-end">
+                                      <button className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition-all" onClick={() => { setShowReviewModal(false); handleReassignmentCancel(); }}>Cancel</button>
+                                      <button
+                                        className={`px-5 py-2 font-bold rounded-xl text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${mgr ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
+                                        onClick={() => { setShowReviewModal(false); handleReassignmentRequest(existingLeadData); }}
+                                        disabled={!reassignmentReason?.trim()}
+                                      >
+                                        {mgr ? 'Submit Request' : 'Transfer to Me'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Transfer history */}
+                                <div>
+                                  <h5 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">Transfer History</h5>
+                                  {reviewRightHistoryLoading ? (
+                                    <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                                      <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />Loading history...
+                                    </div>
+                                  ) : reviewRightHistory.length === 0 ? (
+                                    <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                                      <p className="text-gray-400 text-sm">No transfer history for this lead</p>
+                                    </div>
+                                  ) : (
+                                    <div className="relative pl-5 space-y-3">
+                                      <div className="absolute left-1.5 top-0 bottom-0 w-px bg-gray-200" />
+                                      {reviewRightHistory.map((entry, hi) => {
+                                        const isRej = (entry.assignment_type || '').toLowerCase().includes('reject');
+                                        const isReq = (entry.assignment_type || '').toLowerCase().includes('request');
+                                        const isApp = (entry.assignment_type || '').toLowerCase().includes('approv');
+                                        const d3 = entry.assigned_date ? new Date(entry.assigned_date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
+                                        return (
+                                          <div key={hi} className="relative">
+                                            <div className={`absolute -left-[23px] top-3.5 w-3 h-3 rounded-full border-2 border-white shadow ${isRej ? 'bg-red-400' : isApp ? 'bg-green-400' : 'bg-gray-300'}`} />
+                                            <div className={`bg-white border rounded-xl p-3 ${isApp ? 'border-green-200' : isRej ? 'border-red-200' : 'border-gray-200'}`}>
+                                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                                <div>
+                                                  <span className="text-sm font-semibold text-gray-800">{entry.assigned_by_name || '—'}</span>
+                                                  <span className="text-sm text-gray-500 ml-1.5">{isReq ? 'requested transfer' : isRej ? 'rejected' : isApp ? 'approved' : (entry.assignment_type?.replace(/_/g, ' ') || 'transferred')}</span>
+                                                </div>
+                                                <span className="text-[10px] text-gray-400 font-mono whitespace-nowrap">{d3}</span>
+                                              </div>
+                                              {entry.remark && <p className="text-xs text-gray-500 mt-2 bg-gray-50 rounded-lg px-3 py-1.5">"{entry.remark}"</p>}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+
                     </div>
 
-                    {/* ─── LOGIN IN LEADS SECTION ─── */}
-                    <div>
-                      <div className="flex items-center gap-2 px-5 py-2 bg-neutral-800/50 border-t border-b border-neutral-700">
-                        <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider">🏦 Login in Leads</span>
-                        {loginLeadsLoading
-                          ? <span className="text-neutral-500 text-[10px]">...</span>
-                          : <span className={`bg-neutral-700 rounded-full px-2 py-0.5 text-[10px] ${loginDuplicateLeads.length > 0 ? 'text-cyan-300' : 'text-neutral-400'}`}>{loginDuplicateLeads.length}</span>}
-                      </div>
-                      {loginLeadsLoading ? (
-                        <div className="flex items-center justify-center py-6 gap-3">
-                          <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-neutral-400 text-sm">Checking login leads...</span>
-                        </div>
-                      ) : loginDuplicateLeads.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-5 gap-2">
-                          <span className="text-neutral-500 text-xs">No login leads found for this number.</span>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-[#060d1a] border-b border-neutral-700">
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Login Date</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Bank Name</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Status</th>
-                                <th className="text-cyan-400 font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Loan Type</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(showAllLoginDuplicates ? loginDuplicateLeads : loginDuplicateLeads.slice(0, 1)).map((loginLead, idx) => (
-                                <tr
-                                  key={loginLead.id || idx}
-                                  className="bg-neutral-900 hover:bg-neutral-800/50 transition-colors cursor-pointer border-b border-neutral-800/50"
-                                  onClick={() => handleViewDuplicateLead(loginLead.id, true)}
-                                  title="Click to view login lead details (read-only)"
-                                >
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    <div className="text-white font-semibold text-sm">{fmtDate(loginLead.login_date || loginLead.login_created_at || loginLead.created_at)}</div>
-                                    <div className="text-cyan-400 text-xs mt-0.5">{fmtAge(loginLead.login_date || loginLead.login_created_at || loginLead.created_at)}</div>
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{loginLead.created_by_name || '—'}</td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-white text-xs uppercase tracking-wider">{loginLead.department_name || '—'}</td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-white font-semibold text-sm">{loginLead.name || '—'}</td>
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    {loginLead.bank_name
-                                      ? <span className="inline-flex items-center gap-1.5 bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-lg px-2.5 py-1 text-xs font-bold">🏦 {loginLead.bank_name}</span>
-                                      : <span className="text-neutral-500 text-xs">—</span>}
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    {loginLead.sub_status ? (
-                                      <div>
-                                        <div className="text-white font-semibold text-sm">{loginLead.sub_status}</div>
-                                        <div className="text-neutral-400 text-xs mt-0.5">{loginLead.status}</div>
-                                      </div>
-                                    ) : <span className="text-white text-sm">{loginLead.status || '—'}</span>}
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-neutral-300 text-sm">{loginLead.loan_type || '—'}</td>
-                                </tr>
-                              ))}
-                              {loginDuplicateLeads.length > 1 && (
-                                <tr className="bg-neutral-800/30 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setShowAllLoginDuplicates(p => !p)}>
-                                  <td colSpan={7} className="px-5 py-2">
-                                    <div className="flex items-center justify-center gap-2">
-                                      <svg className={`w-3.5 h-3.5 text-indigo-400 transition-transform ${showAllLoginDuplicates ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                                      <span className="text-indigo-400 text-xs font-bold">
-                                        {showAllLoginDuplicates ? 'Hide' : `Show ${loginDuplicateLeads.length - 1} more login lead${loginDuplicateLeads.length - 1 > 1 ? 's' : ''}`}
-                                      </span>
-                                      <span className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold">{loginDuplicateLeads.length}</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                              <tr className="bg-indigo-950/20">
-                                <td colSpan={7} className="px-5 py-2.5">
-                                  <span className="text-indigo-300 text-xs">🔒 Login leads are view-only. Click any row to view details.</span>
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 );
               })()}
             </div>
 
-            {showLeadDetails && existingLeadData && !showReassignmentOption && (
-              <div className="p-6 mb-6 bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-700">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-11 h-11 rounded-full flex items-center justify-center ${
-                      existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-500/20' :
-                      existingLeadData.days_remaining > 0 ? 'bg-red-500/20' : 'bg-neutral-700'
-                    }`}>
-                      <svg className={`w-6 h-6 ${
-                        existingLeadData.reassignment_status === 'requested' ? 'text-yellow-400' :
-                        existingLeadData.days_remaining > 0 ? 'text-red-400' : 'text-neutral-400'
-                      }`} fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-white">
-                        {existingLeadData.reassignment_status === 'requested' ? 'Transfer Already Requested' : 'Lead Already Exists'}
-                      </h2>
-                      <p className="text-sm text-neutral-400">
-                        {existingLeadData.reassignment_status === 'requested' ? 
-                          'Transfer request submitted. Awaiting manager approval.' : 
-                          existingLeadData.days_remaining > 0 ?
-                          `This lead is locked. Available for transfer in ${existingLeadData.days_remaining} days.` :
-                          'A lead with this mobile number already exists.'}}
-                      </p>
-                    </div>
-                  </div>
-                  {/* LOCKED / REQUESTED Badge */}
-                  <div className="flex items-center gap-3">
-                    {existingLeadData.days_remaining > 0 && (
-                      <span className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold uppercase tracking-wider animate-pulse">
-                        LOCKED — {existingLeadData.days_remaining}d
-                      </span>
-                    )}
-                    {existingLeadData.reassignment_status === 'requested' && (
-                      <span className="px-3 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold uppercase tracking-wider">
-                        PENDING APPROVAL
-                      </span>
-                    )}
-                    <button
-                      className="w-9 h-9 bg-neutral-800 hover:bg-neutral-700 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
-                      onClick={() => { setShowLeadDetails(false); setExistingLeadData(null); setMobileNumber(''); }}
-                    >
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Customer & Lead Info Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
-                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Customer</span>
-                    <p className="text-sm font-semibold text-white mt-0.5 truncate">{existingLeadData?.name || existingLeadData?.customer_name || 'Unknown'}</p>
-                  </div>
-                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
-                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Mobile</span>
-                    <p className="text-sm font-semibold text-white mt-0.5">{existingLeadData?.mobile_number || existingLeadData?.phone || mobileNumber || 'Unknown'}</p>
-                  </div>
-                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
-                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Current Owner</span>
-                    <p className="text-sm font-semibold text-white mt-0.5 truncate">
-                      {(() => {
-                        if (existingLeadData?.created_by_name) return existingLeadData.created_by_name;
-                        if (existingLeadData?.created_by) {
-                          const user = assignableUsers?.find(u => u.id === String(existingLeadData.created_by) || u._id === String(existingLeadData.created_by));
-                          if (user?.name) return user.name;
-                        }
-                        if (existingLeadData?.assigned_to_name) return existingLeadData.assigned_to_name;
-                        if (existingLeadData?.assigned_to_user?.name) return existingLeadData.assigned_to_user.name;
-                        if (existingLeadData?.assigned_to) {
-                          const assignedTo = Array.isArray(existingLeadData.assigned_to) ? existingLeadData.assigned_to[0] : existingLeadData.assigned_to;
-                          const user = assignableUsers?.find(u => u.id === String(assignedTo) || u._id === String(assignedTo));
-                          if (user?.name) return user.name;
-                        }
-                        return 'Unassigned';
-                      })()}
-                    </p>
-                  </div>
-                  <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-700">
-                    <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Product</span>
-                    <p className="text-sm font-semibold text-white mt-0.5 truncate">{existingLeadData?.product_type || existingLeadData?.loan_type || 'N/A'}</p>
-                  </div>
-                </div>
-
-                {/* Status Row */}
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <span className="px-2.5 py-1 bg-neutral-700 text-neutral-200 text-xs rounded-md font-medium">
-                    {existingLeadData?.status || 'Unknown'}
-                  </span>
-                  {existingLeadData?.sub_status && (
-                    <span className="px-2.5 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-md font-medium">
-                      {existingLeadData.sub_status}
-                    </span>
-                  )}
-                  {existingLeadData?.file_sent_to_login && (
-                    <span className="px-2.5 py-1 bg-green-500/20 text-green-400 text-xs rounded-md font-medium">
-                      Sent to Login
-                    </span>
-                  )}
-                  <span className="text-xs text-neutral-500 ml-auto">
-                    {existingLeadData?.file_sent_to_login ? 'Login' : 'Created'}: {(() => {
-                      const dateToShow = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date
-                        ? existingLeadData.login_department_sent_date
-                        : existingLeadData?.created_date;
-                      return dateToShow ? new Date(dateToShow).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
-                    })()}
-                  </span>
-                </div>
-
-                {/* Reassignment Info Panel */}
-                {(existingLeadData.can_reassign !== undefined || existingLeadData.reassignment_status) && (
-                  <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-4 mb-4">
-                    <h4 className="text-sm font-bold text-neutral-300 mb-3">Reassignment Information</h4>
-
-                    {existingLeadData.can_reassign !== undefined && (
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xs text-neutral-400">Eligibility:</span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          existingLeadData.can_reassign ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {existingLeadData.can_reassign ? 'Eligible' : 'Not Eligible'}
-                        </span>
-                        {existingLeadData.reassignment_reason && (
-                          <span className="text-xs text-neutral-500 italic">— {existingLeadData.reassignment_reason}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {existingLeadData.reassignment_period > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                        <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
-                          <span className="text-[11px] text-neutral-500">Waiting Period</span>
-                          <p className="text-sm font-bold text-white">{existingLeadData.reassignment_period} days</p>
-                        </div>
-                        <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
-                          <span className="text-[11px] text-neutral-500">Days Elapsed</span>
-                          <p className="text-sm font-bold text-white">
-                            {(() => {
-                              if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                return Math.floor((new Date() - new Date(existingLeadData.login_department_sent_date)) / 86400000);
-                              }
-                              return existingLeadData?.created_date ? Math.floor((new Date() - new Date(existingLeadData.created_date)) / 86400000) : 0;
-                            })()}
-                          </p>
-                        </div>
-                        {existingLeadData.days_remaining > 0 && (
-                          <div className="bg-red-500/10 rounded-lg p-2.5 border border-red-500/20">
-                            <span className="text-[11px] text-red-400">Days Remaining</span>
-                            <p className="text-sm font-bold text-red-400">{existingLeadData.days_remaining}</p>
-                          </div>
-                        )}
-                        {existingLeadData.days_remaining > 0 && (
-                          <div className="bg-neutral-900 rounded-lg p-2.5 border border-neutral-700">
-                            <span className="text-[11px] text-neutral-500">Available On</span>
-                            <p className="text-xs font-bold text-white">
-                              {(() => {
-                                let d = new Date();
-                                if (existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date) {
-                                  d = new Date(existingLeadData.login_department_sent_date);
-                                  d.setDate(d.getDate() + existingLeadData.reassignment_period);
-                                } else {
-                                  d.setDate(d.getDate() + existingLeadData.days_remaining);
-                                }
-                                return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
-                              })()}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {existingLeadData.is_manager_permission_required && (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-3">
-                        <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        <span className="text-xs text-yellow-400 font-medium">Manager Permission Required for Reassignment</span>
-                      </div>
-                    )}
-
-                    {existingLeadData.reassignment_status && existingLeadData.reassignment_status !== 'none' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-neutral-400">Current Status:</span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          existingLeadData.reassignment_status === 'requested' ? 'bg-yellow-500/20 text-yellow-400' :
-                          existingLeadData.reassignment_status === 'approved' ? 'bg-green-500/20 text-green-400' :
-                          existingLeadData.reassignment_status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-neutral-700 text-neutral-300'
-                        }`}>
-                          {existingLeadData.reassignment_status.charAt(0).toUpperCase() + existingLeadData.reassignment_status.slice(1)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Close Button */}
-                <div className="flex justify-center">
-                  <button
-                    className="px-6 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white font-medium rounded-lg border border-neutral-600 transition-colors"
-                    onClick={() => { setShowLeadDetails(false); setExistingLeadData(null); setMobileNumber(''); }}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* LEAD FORM - Fixed height to prevent layout shifts */}
             {showLeadForm && (
-              <div className="p-6 mb-6 bg-white rounded-lg shadow-md card min-h-[800px]" id="leadForm" ref={leadFormRef}>
-                {/* Section Selector - Sticky positioning within form */}
-                <div className="flex gap-4 mb-8 sticky top-16 z-10 bg-white pt-2 pb-4 border-b border-gray-100">
-                  <button
-                    className={`flex-1 px-6 py-3 text-lg font-bold uppercase rounded-t-md border-b-4 transition ${leadSection === "leadinfo"
-                      ? "border-sky-400 text-[#03B0F5] bg-neutral-900"
-                      : "border-transparent text-[#03B0F5] bg-neutral-800 hover:text-sky-300"
-                      }`}
-                    onClick={() => handleSectionChange("leadinfo")}
-                  >
-                    Lead Information
-                  </button>
-                  {/* OBLIGATION TAB - COMMENTED OUT */}
-                  {/* <button
-                    className={`flex-1 px-6 py-3 text-lg font-bold uppercase rounded-t-md border-b-4 transition relative ${leadSection === "obligation"
-                      ? "border-sky-400 text-sky-400 bg-neutral-900"
-                      : "border-transparent text-[#03B0F5] bg-neutral-800 hover:text-sky-300"
-                      }`}
-                    onClick={() => handleSectionChange("obligation")}
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      Obligation
-                      {obligationIsSaving && (
-                        <span className="text-yellow-400 animate-pulse">⏳</span>
-                      )}
-                      {obligationHasUnsavedChanges && !obligationIsSaving && (
-                        <span className="text-orange-400">⚠️</span>
-                      )}
-                      {obligationDataSaved && !obligationHasUnsavedChanges && !obligationIsSaving && (
-                        <span className="text-green-400">✅</span>
-                      )}
-                      {!obligationDataSaved && !obligationHasUnsavedChanges && !obligationIsSaving && (
-                        <span className="text-red-400">❌</span>
-                      )}
-                    </span>
-                  </button> */}
+              <div className="mb-6 bg-white border-3 border-[#00bcd4] rounded-xl shadow-lg" id="leadForm" ref={leadFormRef}>
+                {/* Header */}
+                <div className="bg-[#00bcd4] rounded-t-xl px-8 py-4 flex items-center justify-between">
+                  <h2 className="text-white font-bold text-lg uppercase tracking-wide">New Lead Details</h2>
+                  <span className="text-white text-sm opacity-80">Fill all required fields (*)</span>
                 </div>
 
-                {/* Lead Information Section */}
-                {leadSection === "leadinfo" && (
-                  <>
-                    {/* Card 1: Lead Info */}
-                    <div className="mb-8 bg-white rounded-xl shadow-lg p-6 border border-neutral-200 card">
-                      <div className="mb-2 text-lg font-extrabold text-[#03B0F5]">Lead Information</div>
-                      <div className="form-section">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 form-row">
-                          {/* Column 1 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                              Campaign Name<span className="ml-1 text-red-400">*</span>
-                            </label>
-                            <SearchableSelect
-                              options={campaignNames.map(campaign => ({
-                                value: campaign.name,
-                                label: campaign.name
-                              }))}
-                              value={campaignName}
-                              onChange={(value) => {
-                                setCampaignName(value);
-                                // Clear form validation error for campaign name when user selects
-                                if (formValidationErrors.campaignName) {
-                                  setFormValidationErrors(prev => ({
-                                    ...prev,
-                                    campaignName: false
-                                  }));
-                                }
-                              }}
-                              placeholder={loadingSettings ? "Loading..." : "Select Campaign"}
-                              searchPlaceholder="Search campaigns..."
-                              disabled={loadingSettings}
-                              className={`form-select ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500' : ''}`}
-                            />
-                            {showValidationErrors && formValidationErrors.campaignName && (
-                              <p className="text-red-500 text-sm mt-1">Campaign Name is required</p>
-                            )}
-                          </div>
-                          {/* Column 2 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label">Data Code</label>
-                            <SearchableSelect
-                              options={dataCodes.map(dataCodeItem => ({
-                                value: dataCodeItem.name,
-                                label: dataCodeItem.name
-                              }))}
-                              value={dataCode}
-                              onChange={setDataCode}
-                              placeholder={loadingSettings ? "Loading..." : "Select Data Code"}
-                              searchPlaceholder="Search data codes..."
-                              disabled={loadingSettings}
-                              className="form-select"
-                            />
-                          </div>
-                          {/* Column 3 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                              Status<span className="ml-1 text-red-400">*</span>
-                            </label>
-                            <SearchableSelect
-                              options={[
-                                ...statusOptions.reduce((acc, opt) => {
-                                  acc.push({ value: opt.value, label: opt.label });
-                                  if (opt.subOptions && status === 'lead') {
-                                    opt.subOptions.forEach(subOpt => {
-                                      acc.push({ value: subOpt.value, label: `  ${subOpt.label}` });
-                                    });
-                                  }
-                                  return acc;
-                                }, [])
-                              ]}
-                              value={status}
-                              onChange={(value) => {
-                                setStatus(value);
-                                // Clear form validation error for status when user selects
-                                if (formValidationErrors.status) {
-                                  setFormValidationErrors(prev => ({
-                                    ...prev,
-                                    status: false
-                                  }));
-                                }
-                              }}
-                              placeholder="Select Status"
-                              searchPlaceholder="Search status..."
-                              className={`form-select ${showValidationErrors && formValidationErrors.status ? 'border-red-500' : ''}`}
-                            />
-                            {showValidationErrors && formValidationErrors.status && (
-                              <p className="text-red-500 text-sm mt-1">Status is required</p>
-                            )}
-                          </div>
+                <div className="p-8">
+                  {/* Row 1: Lead ID, Date, Created By */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>LEAD ID</label>
+                      <input
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                        value="Auto-generated"
+                        readOnly
+                        title="Lead ID will be auto-generated after creation"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>LEAD DATE & TIME</label>
+                      <input
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                        value={currentDateTime}
+                        readOnly
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CREATED BY</label>
+                      <input
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                        value={(() => { try { return localStorage.getItem('userName') || localStorage.getItem('userFullName') || 'Current User'; } catch { return 'Current User'; } })()}
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: Product Name (read-only from top), Source Name, Data Code */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PRODUCT NAME</label>
+                      <div className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed select-none">
+                        {productType || "—"}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>SOURCE NAME <span className="text-red-500">*</span></label>
+                      <div className="relative w-full">
+                        <select
+                          className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold appearance-none cursor-pointer focus:outline-none focus:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                          value={campaignName}
+                          onChange={(e) => {
+                            setCampaignName(e.target.value);
+                            if (formValidationErrors.campaignName) setFormValidationErrors(prev => ({ ...prev, campaignName: false }));
+                          }}
+                          disabled={loadingSettings}
+                        >
+                          <option value="">Select Source</option>
+                          {campaignNames.map(c => (
+                            <option key={c.name} value={c.name}>{c.name}</option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                         </div>
-                        {/* New Row for Assigned To */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 form-row mt-4">
-                          {/* Column 1 - Assignee with Multi-Select */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                              Assigned TL<span className="ml-1 text-red-400">*</span>
-                            </label>
-                            <div className="relative">
-                              <div
-                                className={`w-full px-3 py-2 text-white border rounded-lg min-h-[40px] flex flex-wrap gap-2 items-center cursor-pointer ${
-                                  showValidationErrors && formValidationErrors.assignedTo 
-                                    ? 'border-red-500 bg-neutral-800' 
-                                    : 'border-neutral-800 bg-neutral-800 focus:outline-none focus:border-sky-400'
-                                }`}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
+                        {showValidationErrors && formValidationErrors.campaignName && (
+                          <p className="text-red-500 text-xs mt-1">Source Name is required</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>DATA CODE</label>
+                      <div
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
+                        onClick={() => !loadingSettings && setShowDataCodePopup(true)}
+                      >
+                        {selectedDataCodes.length === 0 && (
+                          <span className="text-gray-400 font-normal text-sm">Click to select data code(s)</span>
+                        )}
+                        {selectedDataCodes.map(code => (
+                          <div key={code} className="flex items-center gap-1.5 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                            <span>{code}</span>
+                            <button
+                              type="button"
+                              className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-colors text-xs font-bold"
+                              onClick={(e) => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}
+                            >×</button>
+                          </div>
+                        ))}
+                        <div className="ml-auto flex-shrink-0">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                                  setShowAssignPopup(true);
+                  {/* Row 3: Customer Name, Mobile Number (read-only), Alternate Number */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CUSTOMER NAME <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${showValidationErrors && formValidationErrors.customerName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                        placeholder="Enter customer name"
+                        value={customerName}
+                        onChange={(e) => {
+                          setCustomerName(e.target.value.toUpperCase());
+                          if (formValidationErrors.customerName) setFormValidationErrors(prev => ({ ...prev, customerName: false }));
+                        }}
+                      />
+                      {showValidationErrors && formValidationErrors.customerName && (
+                        <p className="text-red-500 text-xs mt-1">Customer Name is required</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>MOBILE NUMBER</label>
+                      <input
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                        value={mobileNumber}
+                        readOnly
+                        title="Mobile number cannot be changed here"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ALTERNATE NUMBER</label>
+                      <input
+                        type="text"
+                        className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${alternateNumber && alternateNumber === mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                        placeholder="Enter 10-digit alternate number"
+                        value={alternateNumber}
+                        onChange={handleAlternateNumberChange}
+                        maxLength="10"
+                      />
+                      {alternateNumber && alternateNumber === mobileNumber && (
+                        <p className="text-red-500 text-xs mt-1">Must be different from mobile number</p>
+                      )}
+                    </div>
+                  </div>
 
-                                }}
-                              >
-                                {assignedTo.length === 0 && (
-                                  <span className="text-gray-400">Click to select assignee</span>
-                                )}
-
-                                {assignedTo.map((assignee) => {
-                                  const displayName = typeof assignee === 'object' ? assignee.name : assignee;
-                                  const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
-                                  const isNone = (typeof assignee === 'object' && assignee.id === 'none') || 
-                                                (typeof assignee === 'string' && assignee === 'None') ||
-                                                displayName === 'None';
-                                  
-                                  return (
-                                    <div
-                                      key={uniqueKey}
-                                      className={`flex items-center gap-2 pl-2 pr-1 py-1 rounded-md text-sm ${
-                                        isNone ? 'bg-gray-500' : 'bg-gray-700'
-                                      }`}
-                                    >
-                                      {/* Profile icon with initials or special icon for None */}
-                                      <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center flex-shrink-0 ${
-                                        isNone ? 'bg-gray-400' : 'bg-[#03B0F5]'
-                                      }`}>
-                                        {isNone ? '∅' : displayName.split(' ')
-                                          .map(part => part[0])
-                                          .slice(0, 2)
-                                          .join('')
-                                          .toUpperCase()}
-                                      </div>
-                                      <span>{displayName}</span>
-                                      <button
-                                        type="button"
-                                        className="text-gray-300 hover:text-white ml-1"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleRemoveAssignee(assignee);
-                                        }}
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-
-                                {/* Add button */}
-                                {assignedTo.length > 0 && (
-                                  <button
-                                    type="button"
-                                    className="w-6 h-6 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white flex items-center justify-center"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setShowAssignPopup(true);
-                                    }}
-                                  >
-                                    +
-                                  </button>
-                                )}
+                  {/* Row 4: Assigned Lead */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ASSIGNED LEAD <span className="text-red-500">*</span></label>
+                      <div
+                        className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
+                        onClick={() => setShowAssignPopup(true)}
+                      >
+                        {assignedTo.length === 0 && (
+                          <span className="text-gray-400 font-normal text-sm">Click to select assignee</span>
+                        )}
+                        {assignedTo.map((assignee) => {
+                          const displayName = typeof assignee === 'object' ? assignee.name : assignee;
+                          const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
+                          return (
+                            <div key={uniqueKey} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                              <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                                {displayName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                               </div>
+                              <span className="text-xs font-bold">{displayName}</span>
+                              <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
                             </div>
-                            {showValidationErrors && formValidationErrors.assignedTo && (
-                              <p className="text-red-500 text-sm mt-1">Please select a TL</p>
-                            )}
-                          </div>
-
-                          {/* Column 2 */}
-                          {/* Intentionally left empty */}
-                        </div>
+                          );
+                        })}
+                        {assignedTo.length > 0 && (
+                          <button type="button" className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm" onClick={(e) => { e.stopPropagation(); setShowAssignPopup(true); }}>+</button>
+                        )}
                       </div>
+                      {showValidationErrors && formValidationErrors.assignedTo && (
+                        <p className="text-red-500 text-xs mt-1">Please select an assignee</p>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Card 2: Personal */}
-                    <div className="mb-8 bg-white rounded-xl shadow-lg p-6 border border-neutral-200 card">
-                      <div className="mb-2 text-lg font-extrabold text-[#03B0F5]">Personal</div>
-                      <div className="form-section">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 form-row">
-                          {/* Column 1 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                              Customer Name<span className="ml-1 text-red-400">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              className={`w-full px-3 py-2 text-black border rounded-lg form-control border-neutral-800 text-semibold focus:outline-none ${
-                                showValidationErrors && formValidationErrors.customerName 
-                                  ? 'border-red-500 focus:border-red-500' 
-                                  : 'focus:border-sky-400'
-                              }`}
-                              placeholder="Full Name"
-                              value={customerName}
-                              onChange={(e) => {
-                                setCustomerName(e.target.value.toUpperCase());
-                                // Clear form validation error for customer name when user starts typing
-                                if (formValidationErrors.customerName) {
-                                  setFormValidationErrors(prev => ({
-                                    ...prev,
-                                    customerName: false
-                                  }));
-                                }
-                              }}
-                            />
-                            {showValidationErrors && formValidationErrors.customerName && (
-                              <p className="text-red-500 text-sm mt-1">Customer Name is required</p>
-                            )}
-                          </div>
-                          {/* Column 2 */}
-                          <div className="form-group">
-                            <label className="block mb-2 text-md font-bold text-black form-label">Alternate Number</label>
-                            <input
-                              type="text"
-                              className={`w-full px-3 py-2 text-black border rounded-lg form-control focus:outline-none focus:border-sky-400 ${
-                                alternateNumber && alternateNumber === mobileNumber 
-                                  ? 'border-red-500' 
-                                  : 'border-neutral-80'
-                              }`}
-                              placeholder="Alternate Mobile Number"
-                              value={alternateNumber}
-                              onChange={handleAlternateNumberChange}
-                            />
-                            {alternateNumber && alternateNumber === mobileNumber && (
-                              <p className="mt-1 text-sm text-red-500">
-                                Alternate number must be different from the main mobile number
-                              </p>
-                            )}
-                            {alternateNumber && alternateNumber.length > 0 && alternateNumber.length < 10 && (
-                              <p className="mt-1 text-sm text-orange-500">
-                                Alternate number must be exactly 10 digits
-                              </p>
-                            )}
-                            {alternateNumber && alternateNumber.length === 10 && !/^[6-9]/.test(alternateNumber) && (
-                              <p className="mt-1 text-sm text-red-500">
-                                Alternate number must start with 6, 7, 8, or 9
-                              </p>
-                            )}
-                          </div>
-                          {/* State input can go here if you decide to add it */}
-
-                          {/* <div className="form-group">
-          <label className="block mb-2 text-md font-bold text-black form-label required-field">
-            State<span className="ml-1 text-red-400">*</span>
-          </label>
-          <input
-            type="text"
-            className="w-full px-3 py-2 text-black border rounded-lg form-control border-neutral-800 focus:outline-none"
-            id="state"
-            placeholder="State"
-            value={state}
-            readOnly
-          />
-        </div> */}
-
-                         
-                        </div>
-
-                        {/* Second row for Company Category */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 form-row mt-4">
-
-                        </div>
-                      </div>
-                    </div>
-
-
-                  </>
-                )}
-
-                {/* OBLIGATION SECTION - CONSOLIDATED */}
-                {/* COMMENTED OUT - OBLIGATION TAB HIDDEN */}
-                {/* {leadSection === "obligation" && (
-                  <CustomerObligationForm 
-                    leadData={{
-                      _id: null, // Creating new lead, no ID yet
-                      dynamic_fields: {
-                        financial_details: {
-                          monthly_income: salary,
-                          partner_salary: partnerSalary,
-                          yearly_bonus: yearlyBonus,
-                          bonus_division: bonusDivision,
-                          foir_percent: foirPercent,
-                          custom_foir_percent: customFoirPercent
-                        },
-                        obligations: obligations,
-                        personal_details: {
-                          loan_required: loanRequired,
-                          company_name: companyName,
-                          company_type: companyType,
-                          company_category: companyCategory,
-                          cibil_score: cibilScore
-                        },
-                        check_eligibility: {
-                          company_category: ceCompanyCategory,
-                          foir_percent: ceFoirPercent,
-                          custom_foir_percent: ceCustomFoirPercent,
-                          monthly_emi_can_pay: ceMonthlyEmiCanPay,
-                          tenure_months: ceTenureMonths,
-                          tenure_years: ceTenureYears,
-                          roi: ceRoi,
-                          multiplier: ceMultiplier
-                        }
-                      }
-                    }}
-                    handleChangeFunc={(field, value) => {
-                      // Update parent component state when obligation data changes
-                      console.log('Obligation field changed:', field, value);
-                      
-                      // Handle different field updates
-                      if (field === 'salary') setSalary(value);
-                      else if (field === 'partnerSalary') setPartnerSalary(value);
-                      else if (field === 'yearlyBonus') setYearlyBonus(value);
-                      else if (field === 'bonusDivision') setBonusDivision(value);
-                      else if (field === 'foirPercent') setFoirPercent(value);
-                      else if (field === 'customFoirPercent') setCustomFoirPercent(value);
-                      else if (field === 'obligations') setObligations(value);
-                      else if (field === 'loanRequired') setLoanRequired(value);
-                      else if (field === 'companyName') setCompanyName(value);
-                      else if (field === 'companyType') setCompanyType(value);
-                      else if (field === 'companyCategory') setCompanyCategory(value);
-                      else if (field === 'cibilScore') setCibilScore(value);
-                      else if (field === 'totalBtPos') setTotalBtPos(value);
-                      else if (field === 'totalObligation') setTotalObligation(value);
-                      else if (field === 'ceCompanyCategory') setCeCompanyCategory(value);
-                      else if (field === 'ceFoirPercent') setCeFoirPercent(value);
-                      else if (field === 'ceCustomFoirPercent') setCeCustomFoirPercent(value);
-                      else if (field === 'ceMonthlyEmiCanPay') setCeMonthlyEmiCanPay(value);
-                      else if (field === 'ceTenureMonths') setCeTenureMonths(value);
-                      else if (field === 'ceTenureYears') setCeTenureYears(value);
-                      else if (field === 'ceRoi') setCeRoi(value);
-                      else if (field === 'ceMultiplier') setCeMultiplier(value);
-                      else if (field === 'loanEligibilityStatus') setLoanEligibilityStatus(value);
-                      else if (field === 'eligibility') {
-                        // Handle eligibility object updates
-                        setEligibility(value);
-                      }
-                      
-                    }}
-                    onDataUpdate={handleObligationDataUpdate}
-                    canEdit={true}
-                  />
-                )} */}
-                
-                {/* Save Obligation Data Button - Only shown during lead creation */}
-                {/* COMMENTED OUT - OBLIGATION TAB HIDDEN */}
-                {/* {leadSection === "obligation" && (
-                  <div className="flex justify-center mt-4 mb-4">
+                  {/* Action buttons */}
+                  <div className="flex justify-end gap-4 mt-4 pt-6 border-t border-gray-200">
                     <button
                       type="button"
-                      className="px-6 py-3 font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 shadow-lg"
+                      className="px-6 py-2.5 font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-all"
                       onClick={() => {
-                        const obligationDataToSave = {
-                          salary,
-                          partnerSalary,
-                          yearlyBonus,
-                          bonusDivision,
-                          foirPercent,
-                          customFoirPercent,
-                          obligations,
-                          loanRequired,
-                          companyName,
-                          companyType,
-                          companyCategory,
-                          cibilScore,
-                          totalBtPos,
-                          totalObligation,
-                          eligibility,
-                          ceCompanyCategory,
-                          ceFoirPercent,
-                          ceCustomFoirPercent,
-                          ceMonthlyEmiCanPay,
-                          ceTenureMonths,
-                          ceTenureYears,
-                          ceRoi,
-                          ceMultiplier,
-                          loanEligibilityStatus
-                        };
-                        
-                        console.log('💾 =====================================');
-                        console.log('💾 SAVING OBLIGATION DATA TO TEMP STORAGE');
-                        console.log('💾 =====================================');
-                        console.log('💾 Data being saved:', obligationDataToSave);
-                        console.log('💾 Salary:', obligationDataToSave.salary);
-                        console.log('💾 Obligations count:', obligationDataToSave.obligations?.length || 0);
-                        console.log('💾 Obligations array:', obligationDataToSave.obligations);
-                        console.log('💾 CIBIL Score:', obligationDataToSave.cibilScore);
-                        
-                        saveObligationData(obligationDataToSave);
-                        
-                        // Verify it was saved
-                        const savedData = getTempLeadData();
-                        console.log('✅ =====================================');
-                        console.log('✅ VERIFICATION AFTER SAVE');
-                        console.log('✅ =====================================');
-                        console.log('✅ All temp data:', savedData);
-                        console.log('✅ Obligation data specifically:', savedData.obligation);
-                        console.log('✅ Salary in saved data:', savedData.obligation?.salary);
-                        console.log('✅ Obligations in saved data:', savedData.obligation?.obligations);
-                        
-                        alert('✅ Obligation data saved successfully!\n\nNow click "Create Lead" to save the lead with this obligation data.');
+                        setShowLeadForm(false);
+                        setCustomerName('');
+                        setAlternateNumber('');
+                        setCampaignName('');
+                        setDataCode('');
+                        setStatus('not_a_lead');
+                        setAssignedTo([]);
+                        setLeadSection("leadinfo");
+                        setObligationDataSaved(false);
+                        setObligationHasUnsavedChanges(false);
+                        setObligationIsSaving(false);
+                        setPincodeError('');
                       }}
                     >
-                      💾 Save Changes
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      id="createLeadBtn"
+                      className={`px-6 py-2.5 font-bold text-white rounded-lg transition-all duration-300 transform ${
+                        createLeadLoading || !hasAddLeadPermission
+                          ? "bg-gray-400 cursor-not-allowed opacity-75"
+                          : "bg-[#00bcd4] hover:bg-[#0097a7] hover:scale-105 active:scale-95 shadow-lg"
+                      } ${buttonAnimations.createLeadBtn ? 'animate-pulse scale-95' : ''}`}
+                      onClick={() => {
+                        if (!hasAddLeadPermission) return;
+                        if (!validateFormFields()) { setShowValidationErrors(true); return; }
+                        setShowStatusPopup(true);
+                      }}
+                      disabled={createLeadLoading || !hasAddLeadPermission}
+                      title={!hasAddLeadPermission ? "🚫 No permission to create leads" : "Click to create lead"}
+                    >
+                      {createLeadLoading ? (
+                        <><i className="fas fa-spinner fa-spin mr-2"></i>Creating...</>
+                      ) : !hasAddLeadPermission ? (
+                        <>🚫 No Permission</>
+                      ) : (
+                        <>🚀 Create Lead</>
+                      )}
                     </button>
                   </div>
-                )} */}
-
-
-                <div className="flex justify-end gap-4 mt-8 form-actions">
-                  <button 
-                    type="button" 
-                    className="px-5 py-2 font-semibold text-white rounded-lg btn btn-secondary bg-neutral-800 hover:bg-neutral-700"
-                    onClick={() => {
-                      // Close the lead form but keep product type and mobile number
-                      setShowLeadForm(false);
-                      
-                      // Reset only the lead form data, NOT the product type and mobile number
-                      setCustomerName('');
-                      setAlternateNumber('');
-                      setCampaignName('');
-                      setDataCode('');
-                      setStatus('');
-                      setAssignedTo([]);
-                      
-                      // Reset lead section to default
-                      setLeadSection("leadinfo");
-                      
-                      // Reset obligation data
-                      setObligationDataSaved(false);
-                      setObligationHasUnsavedChanges(false);
-                      setObligationIsSaving(false);
-                      
-                      // Clear validation errors (except mobile validation)
-                      setPincodeError('');
-                      
-                      // Reset available cities
-                      setAvailableCities([]);
-                      
-                      // Keep the existing lead data and mobile/product validation intact
-                      // This ensures users don't have to re-validate mobile number and product type
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`px-5 py-2 font-bold text-white rounded-lg btn transition-all duration-300 transform ${
-                      createLeadLoading || !hasAddLeadPermission
-                        ? "bg-gray-400 cursor-not-allowed opacity-75 scale-95"
-                        : "bg-green-500 hover:bg-green-600 hover:scale-105 active:scale-95 shadow-lg hover:shadow-green-500/25"
-                    } ${buttonAnimations.createLeadBtn ? 'animate-pulse scale-95' : ''}`}
-                    onClick={handleSubmit}
-                    disabled={createLeadLoading || !hasAddLeadPermission}
-                    title={
-                      !hasAddLeadPermission
-                        ? "🚫 You don't have permission to create leads. Contact your administrator."
-                        : createLeadLoading
-                        ? "Creating lead, please wait..."
-                        : "Click to create lead. Required fields will be validated."
-                    }
-                  >
-                    {createLeadLoading ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin mr-2"></i>
-                        Creating...
-                      </>
-                    ) : !hasAddLeadPermission ? (
-                      <>
-                        <span className="mr-2">🚫</span>
-                        No Permission
-                      </>
-                    ) : (
-                      <>
-                        <span className="mr-2">🚀</span>
-                        Create Lead
-                      </>
-                    )}
-                  </button>
                 </div>
               </div>
             )}
           </div>
         )}
 
+        {/* Status Selection Popup */}
+        {showStatusPopup && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl border-2 border-[#00bcd4] w-full max-w-md mx-4 overflow-hidden">
+              <div className="bg-[#00bcd4] px-6 py-4">
+                <h3 className="text-white font-bold text-xl text-center">Select Lead Status</h3>
+                <p className="text-white/80 text-sm text-center mt-1">Choose the status for this new lead</p>
+              </div>
+              <div className="p-8 flex flex-col gap-4">
+                <button
+                  type="button"
+                  className="w-full py-4 rounded-xl border-2 border-[#00bcd4] bg-[#e0f7fa] hover:bg-[#00bcd4] hover:text-white text-[#00838f] font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3"
+                  onClick={() => { setStatus('lead'); setShowStatusPopup(false); handleSubmit('lead'); }}
+                >
+                  <span className="text-2xl">✅</span> Lead
+                </button>
+                <button
+                  type="button"
+                  className="w-full py-4 rounded-xl border-2 border-gray-300 bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3"
+                  onClick={() => { setStatus('not_a_lead'); setShowStatusPopup(false); handleSubmit('not_a_lead'); }}
+                >
+                  <span className="text-2xl">❌</span> Not a Lead
+                </button>
+                <button
+                  type="button"
+                  className="w-full py-2 text-gray-400 hover:text-gray-600 text-sm font-medium"
+                  onClick={() => setShowStatusPopup(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "reassignment" && (
-          <ReassignmentPanel 
-            userPermissions={null}
-            onLeadAction={() => {}}
-            onViewLead={(leadId) => handleViewDuplicateLead(leadId, false, true)}
-          />
+          <TransferRequestsPage />
         )}
       </div>
 
       {/* ─── LEAD VIEW PORTAL (mounted at document.body, outside tab conditions so it works on all tabs) ─── */}
       {viewLeadId && ReactDOM.createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.75)' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
-          <div style={{ width: '100%', maxWidth: 1100, height: '100%', background: '#0d1117', boxShadow: '0 0 40px rgba(0,0,0,0.8)', borderLeft: '1px solid #374151', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-            {/* Top bar */}
-            <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }}>
-              <svg style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{viewLeadFromLogin ? 'Login Lead Details — View Only' : 'Lead Details — View Only'}</span>
-              <button style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', background: '#374151', border: 'none', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => { setViewLeadId(null); setViewLeadData(null); }}>
-                ✕ Close
-              </button>
-            </div>
-            {/* Content */}
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              {viewLeadLoading && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0', gap: 12 }}>
-                  <div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                  <span style={{ color: '#9ca3af', fontSize: 14 }}>Loading lead details...</span>
+        (() => {
+          const closeModal = () => { setViewLeadId(null); setViewLeadData(null); setDupModalHistory([]); setDupModalBankLogins([]); };
+          return (
+            <div className="fixed inset-0 z-[9999] bg-black overflow-auto">
+              {(viewLeadLoading || !viewLeadData) ? (
+                <div className="flex items-center justify-center h-screen flex-col gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div>
+                  <p className="text-cyan-300">Loading lead details…</p>
                 </div>
-              )}
-              {!viewLeadLoading && viewLeadData && (
-                <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}><div style={{ width: 32, height: 32, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div></div>}>
+              ) : (
+                <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div></div>}>
                   <LeadDetails
                     lead={viewLeadData}
-                    user={JSON.parse(localStorage.getItem('userData') || '{}') || { id: localStorage.getItem('userId'), name: localStorage.getItem('userName') || 'User' }}
-                    onBack={() => { setViewLeadId(null); setViewLeadData(null); }}
-                    onLeadUpdate={(updated) => setViewLeadData(prev => ({ ...prev, ...updated }))}
+                    user={null}
                     readOnly={true}
-                    obligationsReadOnly={viewLeadFromLogin}
                     allowedTabs={['details', 'obligations']}
+                    onBack={closeModal}
                   />
                 </Suspense>
               )}
-              {!viewLeadLoading && !viewLeadData && (
-                <div style={{ textAlign: 'center', padding: '96px 0', color: '#6b7280' }}>Failed to load lead details.</div>
-              )}
             </div>
-          </div>
-        </div>,
+          );
+        })(),
         document.body
+      )}
+
+      {/* DataCodePopup component */}
+      {showDataCodePopup && (
+        <DataCodePopup
+          onClose={() => { setShowDataCodePopup(false); setDataCodePopupSearch(""); }}
+          dataCodes={dataCodes}
+          selectedDataCodes={selectedDataCodes}
+          onToggle={(code) => setSelectedDataCodes(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code])}
+          onClearAll={() => setSelectedDataCodes([])}
+          search={dataCodePopupSearch}
+          onSearchChange={setDataCodePopupSearch}
+        />
       )}
 
       {/* AssignPopup component */}
@@ -6393,6 +6141,92 @@ function AssignPopup({ onClose, onSelect, assignableUsers = [] }) {
         >
           ×
         </button>
+      </div>
+    </div>
+  );
+}
+
+// DataCodePopup — multi-select popup for Data Code field in Create Lead form
+function DataCodePopup({ onClose, dataCodes, selectedDataCodes, onToggle, onClearAll, search, onSearchChange }) {
+  const filtered = dataCodes.filter(d => (d.name || '').toLowerCase().includes((search || '').toLowerCase()));
+  return (
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white p-6 rounded-2xl shadow-2xl w-[90%] max-w-md mx-auto relative"
+        style={{ zIndex: 99999 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center mb-4">
+          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 flex-shrink-0">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-black">Select Data Code</h3>
+            <p className="text-sm text-gray-500">{selectedDataCodes.length} selected</p>
+          </div>
+          <button onClick={onClose} className="ml-auto w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+          </button>
+        </div>
+        {/* Search */}
+        <input
+          type="text"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 text-black focus:outline-none focus:border-[#03B0F5]"
+          placeholder="Search data codes..."
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+          autoFocus
+        />
+        {/* List */}
+        <div className="max-h-64 overflow-y-auto space-y-1">
+          {filtered.length > 0 ? filtered.map(d => {
+            const isSelected = selectedDataCodes.includes(d.name);
+            return (
+              <div
+                key={d.name}
+                onClick={() => onToggle(d.name)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                  isSelected ? 'bg-[#03B0F5] text-white' : 'hover:bg-gray-100 text-black'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                  isSelected ? 'border-white bg-white' : 'border-gray-400 bg-white'
+                }`}>
+                  {isSelected && (
+                    <svg className="w-3 h-3 text-[#03B0F5]" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                <span className="font-medium">{d.name}</span>
+              </div>
+            );
+          }) : (
+            <div className="text-center py-6 text-gray-400 text-sm">
+              {search ? `No results for "${search}"` : 'No data codes available'}
+            </div>
+          )}
+        </div>
+        {/* Footer */}
+        <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
+          <button
+            onClick={onClearAll}
+            className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+          >
+            Clear all
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-[#03B0F5] text-white rounded-lg font-bold hover:bg-[#0299d4] transition-colors"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -2399,3 +2399,137 @@ async def get_leave_approvers_for_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching approvers: {str(e)}"
         )
+
+
+# ── Reassignment Approval Routes ──────────────────────────────────────────────
+
+@router.get("/reassignment-approval-routes", response_model=Dict[str, Any])
+async def get_reassignment_approval_routes(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get all reassignment approval routing rules"""
+    try:
+        routes = await settings_db.get_reassignment_approval_routes()
+        return {"success": True, "data": routes}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching reassignment approval routes: {str(e)}"
+        )
+
+
+@router.get("/reassignment-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def get_reassignment_approval_route_by_role(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get reassignment approval route for a specific role"""
+    try:
+        route = await settings_db.get_reassignment_approval_route_by_role(role_id)
+        return {"success": True, "data": route}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching reassignment approval route: {str(e)}"
+        )
+
+
+@router.post("/reassignment-approval-routes", response_model=Dict[str, Any])
+async def upsert_reassignment_approval_route(
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Create or update reassignment approval routing for a role.
+    Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
+    """
+    try:
+        role_id = body.get("role_id")
+        role_name = body.get("role_name", "")
+        approver_ids = body.get("approver_ids", [])
+        approver_names = body.get("approver_names", [])
+
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+        if not approver_ids:
+            raise HTTPException(status_code=400, detail="At least one approver is required")
+
+        saved = await settings_db.upsert_reassignment_approval_route(
+            role_id=role_id,
+            role_name=role_name,
+            approver_ids=approver_ids,
+            approver_names=approver_names,
+        )
+        return {"success": True, "message": "Reassignment approval route saved", "data": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving reassignment approval route: {str(e)}"
+        )
+
+
+@router.delete("/reassignment-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def delete_reassignment_approval_route(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Delete reassignment approval route for a role"""
+    try:
+        deleted = await settings_db.delete_reassignment_approval_route(role_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Route not found for this role")
+        return {"success": True, "message": "Reassignment approval route deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting reassignment approval route: {str(e)}"
+        )
+
+
+@router.get("/reassignment-approvers-for-me", response_model=Dict[str, Any])
+async def get_reassignment_approvers_for_me(
+    user_id: str = Query(..., description="The current employee's user ID"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+):
+    """Get the list of reassignment approver employees for the current user based on their role"""
+    try:
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        role_id = user.get("role_id") or user.get("role")
+        if not role_id:
+            return {"success": True, "data": []}
+
+        approver_ids = await settings_db.get_reassignment_approvers_for_employee(str(role_id))
+        if not approver_ids:
+            return {"success": True, "data": []}
+
+        approvers = []
+        for aid in approver_ids:
+            emp = await users_db.get_user(aid)
+            if emp:
+                first = emp.get("first_name", "")
+                last = emp.get("last_name", "")
+                full_name = f"{first} {last}".strip() if (first or last) else emp.get("name", emp.get("username", "Unknown"))
+                approvers.append({
+                    "id": str(emp.get("_id", aid)),
+                    "name": full_name,
+                    "role": emp.get("role_name", emp.get("designation", "")),
+                })
+        return {"success": True, "data": approvers}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching reassignment approvers: {str(e)}"
+        )

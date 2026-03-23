@@ -412,6 +412,30 @@ async def delete_employee_attachment(
             detail=f"Error deleting attachment: {str(e)}"
         )
 
+@router.put("/{employee_id}/attachments/{attachment_id}", response_model=Dict[str, str])
+async def rename_employee_attachment(
+    employee_id: str,
+    attachment_id: str,
+    body: dict,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    employee_attachments_db: EmployeeAttachmentsDB = Depends(get_employee_attachments_db),
+):
+    """Rename an employee attachment (update original_file_name)"""
+    try:
+        new_name = (body.get("original_file_name") or "").strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="original_file_name is required")
+        attachment = await employee_attachments_db.get_attachment_by_id(attachment_id)
+        if not attachment:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+        await employee_attachments_db.update_attachment(attachment_id, {"original_file_name": new_name})
+        return {"message": "Attachment renamed successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error renaming attachment: {str(e)}")
+
+
 @router.get("/{employee_id}/attachments/bulk-download")
 async def bulk_download_employee_attachments(
     employee_id: str,

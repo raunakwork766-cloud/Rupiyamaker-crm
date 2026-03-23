@@ -276,6 +276,21 @@ const Login = ({ onLogin }) => {
                                 }
                                 permissions[perm.page][perm.actions] = true;
                             }
+
+                            // PARENT KEY PROPAGATION: If page uses dot-notation (e.g. "leads.create_lead"),
+                            // also set the parent page key so route guards & sidebar can find it.
+                            if (perm.page.includes('.')) {
+                                const parentPage = perm.page.split('.')[0];
+                                if (!permissions[parentPage]) {
+                                    permissions[parentPage] = {};
+                                }
+                                if (typeof permissions[parentPage] === 'object') {
+                                    const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                                    if (actions.includes('show') || actions.includes('*') || actions.includes('all')) {
+                                        permissions[parentPage]['show'] = true;
+                                    }
+                                }
+                            }
                         }
                     });
                 }

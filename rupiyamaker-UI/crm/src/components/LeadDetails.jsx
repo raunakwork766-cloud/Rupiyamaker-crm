@@ -452,11 +452,16 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        {!effectiveReadOnly && (
+                        {!readOnly && (
                         <RequestReassignmentButton 
                             leadId={leadData._id}
                             buttonClassName="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center mr-2"
                             assignableUsers={assignableUsers}
+                            pendingReassignment={!!leadData.pending_reassignment}
+                            reassignmentRequestedAt={leadData.reassignment_requested_at || null}
+                            reassignmentStatus={leadData.reassignment_status || null}
+                            assignedTo={leadData.assigned_to}
+                            assignReportTo={leadData.assign_report_to}
                             onRequestSubmitted={() => {
                                 setSuccess('Lead reassignment requested successfully');
                                 setTimeout(() => setSuccess(''), 3000);
@@ -738,11 +743,16 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     </div>
                                 )}
                                 
-                                {!effectiveReadOnly && (
+                                {!readOnly && (
                                 <div className="mt-6">
                                     <RequestReassignmentButton
-                                        leadId={lead._id}
+                                        leadId={leadData._id}
                                         assignableUsers={assignableUsers}
+                                        pendingReassignment={!!leadData.pending_reassignment}
+                                        reassignmentRequestedAt={leadData.reassignment_requested_at || null}
+                                        reassignmentStatus={leadData.reassignment_status || null}
+                                        assignedTo={leadData.assigned_to}
+                                        assignReportTo={leadData.assign_report_to}
                                         onRequestSubmitted={() => {
                                             setSuccess('Lead reassignment requested successfully');
                                             setTimeout(() => setSuccess(''), 3000);

@@ -88,6 +88,7 @@ class UploadUpdateRequest(BaseModel):
 @router.post("/toggle")
 async def add_toggle_event(body: ToggleRequest):
     """Record a warning toggle ON event or remove warning (OFF)."""
+    logger.warning(f"TOGGLE POST: ext={body.ext!r}, action={body.action!r}, user_id={body.user_id!r}, agent={body.agent_name!r}")
     db = get_dialer_db()
     if not db:
         raise HTTPException(status_code=503, detail="Dialer DB not available")

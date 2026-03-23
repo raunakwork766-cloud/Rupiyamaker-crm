@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload, Maximize, Minimize } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
@@ -8,6 +9,17 @@ import hrmsService from "../services/hrmsService";
 // v2 - attendance without face recognition
 const API_BASE_URL = '/api'; // Always use proxy
 const _BUILD = 'v20260220-2'; // cache bust
+
+// Convert 24h HH:MM:SS to 12h hh:mm AM/PM
+const formatTime12h = (timeStr) => {
+  if (!timeStr || timeStr === '—') return '—'
+  try {
+    const [h, m] = timeStr.split(':').map(Number)
+    const period = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${String(m).padStart(2, '0')} ${period}`
+  } catch { return timeStr }
+}
 
 // Floating Dropdown Component (for time and user menus)
 const FloatingDropdown = ({ isOpen, triggerRef, children, width = 'w-96' }) => {
@@ -302,7 +314,7 @@ const CameraModal = ({
       <div className="bg-white border border-gray-300 rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-sm sm:max-w-lg relative">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-black text-base sm:text-lg font-semibold">
-            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'} — Capture Photo
+            {pendingAction === 'checkin' ? '✅ Check In' : '👋 Check Out'}
           </h3>
           <button
             onClick={closeCameraModal}
@@ -323,13 +335,10 @@ const CameraModal = ({
                 <li>• Camera permissions blocked</li>
                 <li>• HTTPS required (accessing via HTTP)</li>
               </ul>
-              <p className="text-yellow-800 text-xs sm:text-sm mt-2 font-semibold">
-                ⬆️ Please upload a photo instead:
-              </p>
             </div>
           )}
           
-          <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '4/3', maxHeight: '250px' }}>
+          <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '3/4', maxHeight: '420px' }}>
             <video
               ref={videoRef}
               autoPlay
@@ -343,16 +352,18 @@ const CameraModal = ({
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
 
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
+
           <div className="flex gap-2 sm:gap-3">
             {!capturedPhoto ? (
               <>
-                <button
-                  onClick={closeCameraModal}
-                  className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                
                 {/* Show camera capture button only if camera is available */}
                 {cameraAvailable && (
                   <button
@@ -360,29 +371,9 @@ const CameraModal = ({
                     className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                   >
                     <Camera className="w-4 h-4" />
-                    <span className="hidden sm:inline">📷 Capture Photo</span>
-                    <span className="sm:hidden">Capture</span>
+                    <span>📷 Capture Photo</span>
                   </button>
                 )}
-                
-                {/* Show file upload button when camera not available or as alternative */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span className="hidden sm:inline">📁 Upload Photo</span>
-                  <span className="sm:hidden">Upload</span>
-                </button>
-                
-                {/* Hidden file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
               </>
             ) : (
               <>
@@ -431,6 +422,7 @@ export default function TopNavbar({
   onLogout,
   user,
 }) {
+  const navigate = useNavigate();
   const [time, setTime] = useState(new Date());
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showTimeMenu, setShowTimeMenu] = useState(false);
@@ -1302,8 +1294,8 @@ export default function TopNavbar({
         checkAttendanceStatus();
         
         // Extract attendance details
-        const checkInTime = data.check_in_time || data.checkInTime || data.check_in || null;
-        const checkOutTime = data.check_out_time || data.checkOutTime || data.check_out || null;
+        const checkInTime = formatTime12h(data.check_in_time || data.checkInTime || data.check_in || null);
+        const checkOutTime = formatTime12h(data.check_out_time || data.checkOutTime || data.check_out || null);
         const workHours = data.work_hours || data.workHours || data.total_hours || null;
         const photoForModal = capturedPhoto; // save before closeCameraModal clears it
         const dateForModal = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -1444,6 +1436,19 @@ export default function TopNavbar({
       
       {/* Right side - Actions */}
       <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
+        {/* FAQ Button */}
+        <button
+          type="button"
+          onClick={() => navigate('/faq')}
+          className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1"
+          title="FAQ"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+          </svg>
+          <span className="text-xs font-bold">FAQ</span>
+        </button>
+
         {/* Fullscreen Toggle */}
         <button
           type="button"
@@ -1483,7 +1488,7 @@ export default function TopNavbar({
           >
             <div className="flex items-center gap-0">
               <p className="text-4xl sm:text-4xl lg:text-5xl font-semibold text-white tracking-tighter">{numericTime}</p>
-              <p className="text-xs sm:text-sm  -mt-15 sm:-mt-3 font-medium text-white">{period}</p>
+              <p className="text-xs sm:text-sm -mt-4 sm:-mt-3 font-medium text-white">{period}</p>
             </div>
           </button>
           <FloatingDropdown isOpen={showTimeMenu} triggerRef={timeRef} width="w-80 sm:w-80">
@@ -1493,14 +1498,14 @@ export default function TopNavbar({
                 <div className="text-xs sm:text-sm text-gray-700 mt-2 space-y-2 sm:space-y-3">
                   {attendanceData.check_in_time && (
                     <div className="space-y-1 sm:space-y-2">
-                      <p className="break-words">Check-in: <span className="text-green-600">{attendanceData.check_in_time}</span></p>
+                      <p className="break-words">Check-in: <span className="text-green-600">{formatTime12h(attendanceData.check_in_time)}</span></p>
                       {attendanceData.check_in_photo_path && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600 text-xs">Photo:</span>
+                        <div className="mt-1">
                           <img
                             src={`${API_BASE_URL}/${attendanceData.check_in_photo_path}`}
                             alt="Check-in"
-                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-md object-cover border border-gray-300"
+                            className="w-full rounded-lg object-cover border border-gray-300"
+                            style={{ maxHeight: '180px', objectPosition: 'center top' }}
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         </div>
@@ -1509,14 +1514,14 @@ export default function TopNavbar({
                   )}
                   {attendanceData.check_out_time && (
                     <div className="space-y-1 sm:space-y-2">
-                      <p className="break-words">Check-out: <span className="text-red-600">{attendanceData.check_out_time}</span></p>
+                      <p className="break-words">Check-out: <span className="text-red-600">{formatTime12h(attendanceData.check_out_time)}</span></p>
                       {attendanceData.check_out_photo_path && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600 text-xs">Photo:</span>
+                        <div className="mt-1">
                           <img
                             src={`${API_BASE_URL}/${attendanceData.check_out_photo_path}`}
                             alt="Check-out"
-                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-md object-cover border border-gray-300"
+                            className="w-full rounded-lg object-cover border border-gray-300"
+                            style={{ maxHeight: '180px', objectPosition: 'center top' }}
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         </div>

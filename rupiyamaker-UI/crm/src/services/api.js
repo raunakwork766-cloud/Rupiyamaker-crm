@@ -142,7 +142,16 @@ export const apiCall = async (endpoint, options = {}) => {
         }
         
         // Create a proper Error object with response data attached
-        const apiError = new Error(error.detail || `HTTP error! status: ${response.status}`);
+        // When error.detail is an array (FastAPI validation errors), convert to readable string
+        let errorMessage;
+        if (Array.isArray(error.detail)) {
+            errorMessage = error.detail
+                .map(e => e.msg || e.message || JSON.stringify(e))
+                .join('; ');
+        } else {
+            errorMessage = error.detail || `HTTP error! status: ${response.status}`;
+        }
+        const apiError = new Error(errorMessage);
         apiError.response = { status: response.status, data: error };
         throw apiError;
     }
@@ -977,6 +986,15 @@ export const interviewsAPI = {
     getAttachmentDownloadUrl: (interviewId, attachmentId) => {
         const userId = getUserId();
         return `/api/interviews/${interviewId}/attachments/${attachmentId}/download?user_id=${userId}`;
+    },
+
+    renameAttachment: async (interviewId, attachmentId, newLabel) => {
+        const userId = getUserId();
+        if (!userId) throw new Error('User not authenticated');
+        return apiCall(`/interviews/${interviewId}/attachments/${attachmentId}?user_id=${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ label: newLabel }),
+        });
     }
 };
 

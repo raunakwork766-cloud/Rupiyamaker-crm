@@ -258,6 +258,7 @@ const WarningPage = memo(() => {
   const [editingMistakeType, setEditingMistakeType] = useState(null);
   const [editMistakeTitle, setEditMistakeTitle] = useState('');
   const [editMistakeDescription, setEditMistakeDescription] = useState('');
+  const [viewMistakeData, setViewMistakeData] = useState(null); // { title, description }
 
   // Employee App View modal state
   const [employeeAppViewOpen, setEmployeeAppViewOpen] = useState(false);
@@ -340,11 +341,21 @@ const WarningPage = memo(() => {
   const hasStrictWarningsAction = (action) => {
     try {
       const userPerms = JSON.parse(localStorage.getItem('userPermissions') || '[]');
-      // Handle object-format super admin permissions (e.g. {"*": "*"}, {Global: "*"})
+      // Handle object-format permissions (stored by Login.jsx at login time)
       if (!Array.isArray(userPerms)) {
-        if (typeof userPerms === 'object' && userPerms !== null &&
-            (userPerms['*'] === '*' || userPerms.Global === '*' || userPerms.global === '*')) {
-          return true;
+        if (typeof userPerms === 'object' && userPerms !== null) {
+          // Super admin object format
+          if (userPerms['*'] === '*' || userPerms.Global === '*' || userPerms.global === '*' || userPerms.pages === '*') {
+            return true;
+          }
+          // Regular object-format: {warnings: {issue: true, show: true}}
+          const warnPerms = userPerms['warnings'] || userPerms['Warnings'];
+          if (warnPerms) {
+            if (warnPerms === '*') return true;
+            if (typeof warnPerms === 'object') {
+              return warnPerms[action] === true || warnPerms['*'] === true;
+            }
+          }
         }
         return false;
       }
@@ -476,6 +487,30 @@ const WarningPage = memo(() => {
     loadWarnings();
     loadRankings();
   }, [filters, page, rowsPerPage, selectedTab]);
+
+  // Sync selectedWarning with fresh data after loadWarnings
+  useEffect(() => {
+    if (viewDialogOpen && selectedWarning) {
+      const updated = warnings.find(w => w.id === selectedWarning.id);
+      if (updated) setSelectedWarning(updated);
+    }
+  }, [warnings]);
+
+  // Reload warnings when add dialog opens (so similar-warnings shows latest acknowledgment state)
+  useEffect(() => {
+    if (addDialogOpen) {
+      loadWarnings();
+    }
+  }, [addDialogOpen]);
+
+  // Listen for warning acknowledgment events (fired by PopWarningModal)
+  useEffect(() => {
+    const handleAcknowledged = () => {
+      loadWarnings();
+    };
+    window.addEventListener('warning-acknowledged', handleAcknowledged);
+    return () => window.removeEventListener('warning-acknowledged', handleAcknowledged);
+  }, []);
 
   // Resolve department names once departments have loaded
   useEffect(() => {
@@ -928,20 +963,6 @@ const WarningPage = memo(() => {
       setSimilarWarnings(employeesWarningsWithSameMistakeType);
       setShowingSimilarWarnings(employeesWarningsWithSameMistakeType.length > 0);
       
-      if (employeesWarningsWithSameMistakeType.length > 0) {
-        const uniqueEmployeesWithWarnings = [...new Set(employeesWarningsWithSameMistakeType.map(w => w.issued_to_name))];
-        const selectedEmployeeNames = currentEmployeeIds.map(empId => 
-          employees.find(emp => emp._id === empId)?.name || 'Unknown'
-        );
-        
-        if (currentEmployeeIds.length === 1) {
-          // Single employee selected
-          showNotification(`Found ${employeesWarningsWithSameMistakeType.length} previous "${currentMistakeType}" warning(s) for ${selectedEmployeeNames[0]}`, 'info');
-        } else {
-          // Multiple employees selected
-          showNotification(`Found ${employeesWarningsWithSameMistakeType.length} previous "${currentMistakeType}" warning(s) across ${uniqueEmployeesWithWarnings.length} of the selected employees`, 'info');
-        }
-      }
     }
   };
 
@@ -985,20 +1006,6 @@ const WarningPage = memo(() => {
       setSimilarWarnings(employeesWarningsWithSameMistakeType);
       setShowingSimilarWarnings(employeesWarningsWithSameMistakeType.length > 0);
       
-      if (employeesWarningsWithSameMistakeType.length > 0) {
-        const uniqueEmployeesWithWarnings = [...new Set(employeesWarningsWithSameMistakeType.map(w => w.issued_to_name))];
-        const selectedEmployeeNames = currentEmployeeIds.map(empId => 
-          employees.find(emp => emp._id === empId)?.name || 'Unknown'
-        );
-        
-        if (currentEmployeeIds.length === 1) {
-          // Single employee selected
-          showNotification(`Found ${employeesWarningsWithSameMistakeType.length} previous "${currentMistakeType}" warning(s) for ${selectedEmployeeNames[0]}`, 'info');
-        } else {
-          // Multiple employees selected
-          showNotification(`Found ${employeesWarningsWithSameMistakeType.length} previous "${currentMistakeType}" warning(s) across ${uniqueEmployeesWithWarnings.length} of the selected employees`, 'info');
-        }
-      }
     }
   };
 
@@ -1023,7 +1030,6 @@ const WarningPage = memo(() => {
     setShowingSimilarWarnings(selectedWarnings.length > 0);
     
     if (selectedWarnings.length > 0) {
-      showNotification(`Found ${selectedWarnings.length} previous warning(s) for selected employee(s)`, 'info');
       console.log(`Found ${selectedWarnings.length} previous warnings for selected employees`);
     } else {
       console.log('No previous warnings found for selected employees');
@@ -1363,11 +1369,10 @@ const WarningPage = memo(() => {
   const handleSubmit = async () => {
     try {
       
-      if (!formData.warning_type || !formData.issued_to.length || !formData.penalty_amount) {
+      if (!formData.warning_type || !formData.issued_to.length) {
         const missingFields = [];
         if (!formData.warning_type) missingFields.push('Warning Type');
         if (!formData.issued_to.length) missingFields.push('Employee(s)');
-        if (!formData.penalty_amount) missingFields.push('Penalty Amount');
         
         const message = `Please fill in all required fields: ${missingFields.join(', ')}`;
         showNotification(message, 'error');
@@ -1381,7 +1386,7 @@ const WarningPage = memo(() => {
         const warningData = {
           warning_type: formData.warning_type,
           issued_to: employeeId, // Individual employee ID
-          penalty_amount: parseFloat(formData.penalty_amount),
+          penalty_amount: parseFloat(formData.penalty_amount) || 0,
           warning_message: formData.warning_message || ''
         };
         
@@ -1423,7 +1428,13 @@ const WarningPage = memo(() => {
         loadWarnings();
       } else {
         const failedCount = formData.issued_to.length - successCount;
-        showNotification(`Created ${successCount} warnings, but ${failedCount} failed`, 'warning');
+        // Surface specific failure reasons (e.g. duplicate warning)
+        const failedResults = results.filter(result => !result.success);
+        const failReason = failedResults.length > 0 ? failedResults[0].message : null;
+        const msg = failReason
+          ? `Warning not sent: ${failReason}`
+          : `Created ${successCount} warnings, but ${failedCount} failed`;
+        showNotification(msg, 'warning');
         loadWarnings(); // Refresh to show successful ones
       }
     } catch (error) {
@@ -2060,7 +2071,12 @@ const WarningPage = memo(() => {
                           <div className="p-6">
                             <div className="flex justify-between items-center mb-6">
                               <div>
-                                <h2 className="text-lg font-bold text-white">Master Mistakes Directory</h2>
+                                <div className="flex items-center gap-3">
+                                  <h2 className="text-lg font-bold text-white">Master Mistakes Directory</h2>
+                                  <span className="px-2.5 py-0.5 bg-[#03b0f5]/20 text-[#03b0f5] text-xs font-black rounded-full border border-[#03b0f5]/30">
+                                    {mistakeTypes.length} Total
+                                  </span>
+                                </div>
                                 <p className="text-sm text-gray-400">Manage all standardized mistake categories used for issuing warnings.</p>
                               </div>
                               <div className="relative w-80">
@@ -2083,26 +2099,39 @@ const WarningPage = memo(() => {
                                   const title = type.label || type.value || type;
                                   const description = type.description || 'No description provided for this mistake category.';
                                   return (
-                                    <div key={type.value || index} className="border border-gray-700 rounded-lg p-4 hover:border-[#03b0f5] hover:shadow-lg transition-all group bg-gray-900/50">
-                                      <h3 className="font-bold text-white text-base mb-2">{title}</h3>
-                                      <p className="text-sm text-gray-400 line-clamp-2">{description}</p>
-                                      <div className="mt-4 pt-3 border-t border-gray-800 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {permissions.can_edit_mistake_category && (
-                                          <button
-                                            onClick={() => openEditMistake(type)}
-                                            className="text-xs font-medium text-[#03b0f5] hover:underline"
-                                          >
-                                            Edit
-                                          </button>
-                                        )}
-                                        {(type._id || type.id) && permissions.can_delete_mistake_category && (
-                                          <button
-                                            onClick={() => handleDeleteMistakeCategory(type)}
-                                            className="text-xs font-medium text-red-400 hover:underline"
-                                          >
-                                            Delete
-                                          </button>
-                                        )}
+                                    <div
+                                      key={type.value || index}
+                                      className="border border-gray-700 rounded-lg p-4 hover:border-[#03b0f5] hover:shadow-lg transition-all group bg-gray-900/50 cursor-pointer select-none"
+                                      onDoubleClick={() => setViewMistakeData({ title, description })}
+                                      title="Double-click to view full description"
+                                    >
+                                      <div className="flex items-start gap-3 mb-2">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-[#03b0f5]/20 text-[#03b0f5] text-[10px] font-black flex items-center justify-center border border-[#03b0f5]/30">
+                                          {index + 1}
+                                        </span>
+                                        <h3 className="font-bold text-white text-base leading-tight">{title}</h3>
+                                      </div>
+                                      <p className="text-sm text-gray-400 line-clamp-2 pl-9">{description}</p>
+                                      <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <span className="text-[10px] text-gray-600 italic">Double-click to view</span>
+                                        <div className="flex gap-2">
+                                          {permissions.can_edit_mistake_category && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); openEditMistake(type); }}
+                                              className="text-xs font-medium text-[#03b0f5] hover:underline"
+                                            >
+                                              Edit
+                                            </button>
+                                          )}
+                                          {(type._id || type.id) && permissions.can_delete_mistake_category && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); handleDeleteMistakeCategory(type); }}
+                                              className="text-xs font-medium text-red-400 hover:underline"
+                                            >
+                                              Delete
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   );
@@ -2972,11 +3001,14 @@ const WarningPage = memo(() => {
                     )}
                   </div>
 
-                  <div className="relative" ref={employeeDropdownRef}>
+                  <div className={`relative${!selectedDepartmentName ? ' opacity-60 pointer-events-none' : ''}`} ref={employeeDropdownRef}>
                     <label className="block text-[11px] font-black text-gray-500 uppercase tracking-wide mb-1.5">
                       Issued To <span className="text-red-500">*</span>
+                      {!selectedDepartmentName && (
+                        <span className="ml-2 text-[10px] text-orange-500 font-bold normal-case">(Select department first)</span>
+                      )}
                     </label>
-                    <div className="flex flex-wrap items-center gap-1.5 border border-gray-300 rounded-lg bg-white p-1.5 min-h-[42px] hover:border-blue-400 transition-colors shadow-sm cursor-text">
+                    <div className={`flex flex-wrap items-center gap-1.5 border rounded-lg p-1.5 min-h-[42px] transition-colors shadow-sm cursor-text ${!selectedDepartmentName ? 'border-gray-200 bg-gray-50' : 'border-gray-300 bg-white hover:border-blue-400'}`}>
                       {selectedEmployeeNames.length > 0 ? (
                         selectedEmployeeNames.map((emp) => (
                           <div
@@ -3239,8 +3271,16 @@ const WarningPage = memo(() => {
                     <span className="px-3 py-2.5 text-gray-500 bg-gray-100 border-r border-gray-300 font-bold text-sm">₹</span>
                     <input
                       type="text"
-                      value={formData.penalty_amount}
-                      onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
+                      inputMode="numeric"
+                      value={(() => {
+                        const raw = String(formData.penalty_amount || '').replace(/,/g, '');
+                        if (!raw || isNaN(raw)) return '';
+                        return Number(raw).toLocaleString('en-IN');
+                      })()}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        handleFormChange('penalty_amount', raw);
+                      }}
                       className="w-full text-sm text-gray-800 outline-none px-3 py-2.5 bg-transparent font-medium"
                       placeholder="0"
                     />
@@ -3440,11 +3480,18 @@ const WarningPage = memo(() => {
               {/* Employee's Remark */}
               <div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Employee's Remark</p>
-                <div className="bg-green-900/30 border border-green-700/40 p-4 rounded-lg">
-                  <p className="text-sm text-green-300 italic">
-                    {getEmployeeRemark(selectedWarning) || 'Waiting for employee response...'}
-                  </p>
-                </div>
+                {getEmployeeRemark(selectedWarning) ? (
+                  <div className="bg-green-900/30 border border-green-700/40 p-4 rounded-lg">
+                    <p className="text-sm text-green-300 italic">
+                      "{getEmployeeRemark(selectedWarning)}"
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-amber-900/30 border border-amber-700/40 p-4 rounded-lg flex items-center gap-2">
+                    <svg className="w-4 h-4 text-amber-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
+                    <p className="text-sm text-amber-300">Waiting for employee response...</p>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -3544,13 +3591,20 @@ const WarningPage = memo(() => {
                   <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden">
                     <span className="px-3 py-2.5 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
                     <input
-                      type="number"
-                      value={formData.penalty_amount}
-                      onChange={(e) => handleFormChange('penalty_amount', e.target.value)}
+                      type="text"
+                      inputMode="numeric"
+                      value={(() => {
+                        const raw = String(formData.penalty_amount || '').replace(/,/g, '');
+                        if (!raw || isNaN(raw)) return '';
+                        return Number(raw).toLocaleString('en-IN');
+                      })()}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        handleFormChange('penalty_amount', raw);
+                      }}
                       className="w-full text-sm text-gray-200 outline-none px-3 py-2.5 bg-transparent font-medium"
                       placeholder="0"
                       required
-                      min="0"
                     />
                   </div>
                 </div>
@@ -4117,6 +4171,40 @@ const WarningPage = memo(() => {
       )}
 
       {/* Edit Mistake Category Modal */}
+      {/* View Mistake Description Modal (double-click) */}
+      {viewMistakeData && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          onClick={() => setViewMistakeData(null)}
+        >
+          <div
+            className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg border border-gray-700 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
+              <h2 className="text-base font-bold text-white">{viewMistakeData.title}</h2>
+              <button
+                onClick={() => setViewMistakeData(null)}
+                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{viewMistakeData.description}</p>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-700 bg-gray-800/80 flex justify-end">
+              <button
+                onClick={() => setViewMistakeData(null)}
+                className="px-5 py-2 text-sm font-semibold text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editMistakeOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
@@ -4147,8 +4235,8 @@ const WarningPage = memo(() => {
                 <textarea
                   value={editMistakeDescription}
                   onChange={(e) => setEditMistakeDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all resize-none leading-relaxed"
+                  rows={7}
+                  className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg text-gray-200 outline-none focus:border-cyan-500 transition-all resize-y leading-relaxed min-h-[120px] max-h-[320px]"
                   placeholder="Describe when this mistake type should be used..."
                 />
               </div>

@@ -1,0 +1,1221 @@
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+
+const API_BASE_URL = '/api';
+
+// ===== HELPERS =====
+function formatIndian(n) {
+  const s = Math.round(n).toString();
+  const last3 = s.slice(-3);
+  const rest = s.slice(0, -3);
+  return rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3 : last3;
+}
+function parseIndian(str) { return parseInt(String(str).replace(/,/g, '')) || 0; }
+function numberToWords(num) {
+  if (num === 0) return 'Zero';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  function chunk(n) {
+    if (n === 0) return '';
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + chunk(n % 100) : '');
+  }
+  let r = '';
+  if (num >= 10000000) { r += chunk(Math.floor(num / 10000000)) + ' Crore '; num %= 10000000; }
+  if (num >= 100000) { r += chunk(Math.floor(num / 100000)) + ' Lakh '; num %= 100000; }
+  if (num >= 1000) { r += chunk(Math.floor(num / 1000)) + ' Thousand '; num %= 1000; }
+  r += chunk(num);
+  return 'Rupees ' + r.trim() + ' Only';
+}
+function formatDate(dateStr) {
+  if (!dateStr) return '15 March 2026';
+  const m = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getDate() + ' ' + m[d.getMonth()] + ' ' + d.getFullYear();
+}
+function titleCase(str) { return str.replace(/\b\w/g, c => c.toUpperCase()); }
+
+// ===== DEFAULT TEMPLATE =====
+const DEFAULT_TPL = {
+  header_type: 'logo',
+  header_logo_text: 'Fix Your Finance',
+  header_image_base64: '',
+  header_company_name: 'Insta Credit Solution Pvt Ltd',
+  header_tagline: '',
+  header_address_line1: 'Office No. 302, Third Floor, H160',
+  header_address_line2: 'Sector 63, Noida - 201301',
+  header_address_line3: 'Uttar Pradesh, India',
+  header_website: 'www.FixYourFinance.ai',
+  header_bg_color: '#000000',
+  header_text_color: '#ffffff',
+  watermark_type: 'text',
+  watermark_text: 'CONFIDENTIAL',
+  watermark_image_base64: '',
+  watermark_opacity: 0.10,
+  footer_text: 'Fix Your Finance \u2022 Insta Credit Solution Pvt Ltd \u2022 Office No. 302, Third Floor, H160, Sector 63, Noida - 201301, UP',
+  footer_sub_text: 'www.FixYourFinance.ai  \u2022  This document is confidential and intended solely for the named recipient.',
+  footer_image_base64: '',
+  footer_has_image: false,
+  subject_line: 'Offer of Appointment',
+  greeting_intro: 'We are absolutely delighted to extend this offer to you! Following our recent discussions, we have been highly impressed by your skills, drive, and potential. We are thrilled to invite you to partner with <strong>Fix Your Finance</strong>.',
+  greeting_intro2: 'Below are the details of your compensation, operational guidelines, and the terms of this professional association, thoughtfully designed to foster mutual growth, success, and long-term professional development.',
+  show_header_page1_only: false,
+  show_footer_page1_only: false,
+  acceptance_note: "Replying with the above statement constitutes your <strong>legally binding acceptance</strong> under the Indian Contract Act, 1872. Please respond within <strong>48 hours</strong>.",
+
+  consultant_sections: [
+    { title: 'Professional Role &amp; Compensation Structure', clauses: [
+      '<strong>Designation:</strong> You are being engaged as a {{designation}}.',
+      '<strong>Fixed Compensation:</strong> You will receive a consolidated monthly compensation of <strong>INR \u20b9{{salary}}/- ({{salaryWords}})</strong>.',
+      '<strong>Monthly Business Target:</strong> Your assigned monthly disbursement target is <strong>INR \u20b9{{target}}/-</strong>. Achieving this target every month is mandatory. Any shortfall will be carried forward and added to the following month\'s target without exception.',
+      '<strong>Incentives &amp; Growth Bonus:</strong> In addition to your fixed compensation, you will be eligible for highly rewarding, performance-based variable incentives as per the company\'s ongoing business policies and targeted milestones.',
+      '<strong>Taxation:</strong> Your compensation will be subject to applicable Tax Deducted at Source (TDS) as per Indian Income Tax regulations.',
+    ]},
+    { title: 'Financial Rewards &amp; Compensation Cycle', clauses: [
+      '<strong>Cycle Date:</strong> Monthly compensation and incentives are credited by the 10th of every month.',
+      '<strong>Incentive Discretion:</strong> Incentives are variable and represent a performance-based financial reward. If you are serving your notice period or marked absent without authorization during the cycle, all pending incentives will be forfeited.',
+      '<strong>Incentive Adjustments:</strong> Any disputed, cancelled, or rejected loan case that was previously counted in disbursement will be deducted from your targets. If incentives for such cases have already been paid, the equivalent amount will be recovered in the next payout cycle.',
+    ]},
+    { title: 'Wellness &amp; Monthly Time-Off Guidelines', clauses: [
+      '<strong>Authorized Time-Off:</strong> You are entitled to 1 authorized paid day off per month, subject to a minimum of 24 active days of service completed in that calendar month.',
+      '<strong>Carry Forward:</strong> Unused time-off will carry forward to the next month.',
+      '<strong>Extra Time-Off:</strong> Any unavailability beyond 1 day per month will require valid proof of reason (e.g., medical certificate), failing which standard deduction norms will apply.',
+      '<strong>First Month Rule:</strong> No planned time-off will be permitted during the first month of your engagement.',
+    ]},
+    { title: 'Key Deliverables &amp; Performance Metrics', clauses: [
+      '<strong>Products We Deal In:</strong> Personal Loans, Home Loans, Car Loans, Credit Cards, and Insurance.',
+      '<strong>Core Objective:</strong> Your role is to close deals — convince customers, collect documentation, log files with banks, and manage them until disbursement.',
+      '<strong>Performance Metric:</strong> Services are billable and compensation-linked only when a case is officially disbursed by a financial institution.',
+    ]},
+    { title: 'Operational Sync &amp; Floor Access', clauses: [
+      '<strong>Standard Availability:</strong> 10:00 AM to 7:00 PM.',
+      '<strong>Operational Access:</strong> Floor access is mandatory during operational hours.',
+      '<strong>Operational Breaks:</strong> A total of 45 minutes is permitted: one 30-minute break and one 15-minute break.',
+      '<strong>Flexibility:</strong> Brief additional breaks may be taken when operationally feasible.',
+    ]},
+    { title: 'Reporting &amp; Punctuality Standards', clauses: [
+      '<strong>Strict Reporting Time:</strong> Report to the operational floor by <strong>10:00 AM</strong>.',
+      '<strong>Operational Cut-off:</strong> Arrival after 10:15 AM will be marked as a Half-Day Absence — no exceptions.',
+    ], note: '<strong>The 45-Minute Buffer Privilege:</strong> Late arrivals up to 10:45 AM will be counted as the Buffer Privilege, applicable a maximum of 3 times per month. The 1st Buffer is waived at 15+ active days; the 2nd at 20+ active days; and the 3rd at 24+ active days of attendance in the same month.'},
+    { title: 'Attendance Adherence &amp; Unplanned Unavailability', clauses: [
+      '<strong>Authorization Process:</strong> All planned time-off must be formally requested at least 1 day in advance and may only be taken upon approval.',
+      '<strong>Service Continuity:</strong> 2 consecutive days of unauthorized absence may result in immediate closure of the professional association without Final &amp; Full Settlement.',
+      '<strong>Impact:</strong> 2 calendar days will be deducted for every 1 day of unauthorized absence.',
+      '<strong>Weekend Sync Rule:</strong> An unauthorized absence on either Saturday or Monday will automatically render the intervening Sunday as an unpaid non-working day.',
+    ]},
+    { title: 'Payout Adjustments &amp; Target Continuity', clauses: [
+      '<strong>Cycle Adjustments (Unauthorized Absence 1st–10th):</strong> 1 day unauthorized absence: Payout delayed to the 15th; 2 days: Payout delayed to the 20th; 3 days: Immediate closure without FNF.',
+      '<strong>Target Continuity:</strong> Any shortfall in monthly targets will be carried forward. If accumulated shortfall exceeds 2× the monthly target, compensation may be withheld until targets are normalized.',
+    ]},
+    { title: 'Career Progression &amp; Separation Policy', clauses: [
+      '<strong>Notice Period:</strong> A mandatory 45-day notice period must be served before disengagement.',
+      '<strong>FNF Settlement:</strong> Final &amp; Full Settlement will be processed within 60 days after your last active working day.',
+      '<strong>Handover:</strong> All company assets, leads, CRM data, and No Dues Certificate must be submitted before separation.',
+      '<strong>Dues:</strong> Any outstanding recovery or shortfall will be settled from the final payout.',
+      '<strong>Brand Protection:</strong> Upon exit, you must immediately remove the company name from all social media and professional profiles.',
+    ]},
+    { title: 'Association Continuity &amp; Company Rights', clauses: [
+      '<strong>Right to Conclude:</strong> The company reserves the right to conclude this professional association at any time with immediate effect, without notice, in case of policy violations.',
+      '<strong>Consequences of Breach:</strong> Any material breach of these terms will result in immediate closure of the association without FNF settlement.',
+    ]},
+    { title: 'Credential Verification &amp; Authenticity', clauses: [
+      '<strong>Document Verification:</strong> You must submit your Relieving Letter, Experience Letter, and Bank Statements. Your Offer Letter is NOT proof of experience or employment.',
+      '<strong>Zero Tolerance for Fabrication:</strong> Submission of fabricated, falsified, or tampered documents will result in immediate closure without FNF and may attract legal proceedings.',
+    ]},
+    { title: 'Information Security &amp; Device Protocol (NDA)', clauses: [
+      '<strong>Data Confidentiality:</strong> All customer data, leads, pricing strategies, and internal business information are the exclusive property of the company.',
+      '<strong>Mobile Device Policy:</strong> Personal mobile phones are <strong>strictly prohibited</strong> on the operational floor. Dedicated company devices will be provided if necessary.',
+      '<strong>Data Protection:</strong> Unauthorized sharing, extraction, or misuse of company data will lead to immediate closure without FNF and criminal prosecution.',
+    ]},
+    { title: 'Professional Exclusivity (No Dual Engagement)', clauses: [
+      '<strong>Exclusive Partnership:</strong> During this engagement, you are prohibited from providing financial advisory, loan processing, or any conflicting professional services to any other company, individual, or platform.',
+      '<strong>Consequences:</strong> If dual engagement is discovered at any point, the association will be immediately terminated without FNF.',
+    ]},
+    { title: 'Regulatory Compliance &amp; Financial Integrity', clauses: [
+      '<strong>Zero Tolerance for Mis-selling:</strong> Strict compliance with IRDAI, RBI, and company KYC/AML guidelines is mandatory. Deliberate mis-selling, false promises, or coercive practices will result in immediate closure without FNF.',
+      '<strong>Anti-Bribery:</strong> Accepting any form of kickback, commission, or bribe from customers, banks, or third parties will result in immediate termination and criminal prosecution.',
+    ]},
+    { title: 'Non-Solicitation &amp; Intellectual Property', clauses: [
+      '<strong>Data Ownership:</strong> All leads, customer databases, business processes, and proprietary tools are the intellectual property of the company.',
+      '<strong>Anti-Poaching:</strong> You are prohibited from directly or indirectly soliciting, poaching, or recruiting any company staff, associates, or clients for a period of 1 (One) Year after disengagement.',
+    ]},
+    { title: 'Asset Stewardship &amp; Workplace Harmony', clauses: [
+      '<strong>Asset Care:</strong> Any damage to or loss of company assets will result in the cost being deducted from your compensation or recovered through other legal means.',
+      '<strong>Workplace Etiquette:</strong> Professional, respectful, and constructive communication is mandatory at all times.',
+      '<strong>POSH:</strong> Zero tolerance for any form of sexual harassment or discrimination. Violations will result in immediate termination and may lead to criminal prosecution.',
+      '<strong>Compensation Confidentiality:</strong> Discussing your compensation with colleagues or third parties is strictly prohibited and will result in immediate closure without FNF.',
+    ]},
+    { title: 'Business Realignment, Attire &amp; Identity Protocol', clauses: [
+      '<strong>Location Alignment:</strong> The company reserves the right to transfer or redeploy you to any branch or city as per business requirements.',
+      '<strong>Corporate Attire:</strong> Formal or smart-formal wear is mandatory during all working hours.',
+      '<strong>Mandatory ID Card:</strong> Wearing your company-issued ID card is compulsory inside office premises at all times.',
+    ]},
+    { title: 'Nature of Professional Association &amp; Governing Law', clauses: [
+      '<strong>Professional Retainership:</strong> This constitutes a Principal-to-Principal consulting arrangement. No employer-employee relationship is created.',
+      '<strong>Consolidated Structure:</strong> The compensation mentioned herein is fully consolidated and encompasses all statutory and contractual obligations.',
+      '<strong>Governing Law:</strong> This letter is governed by the laws of India. All disputes will be subject to the exclusive jurisdiction of courts in Noida (Gautam Buddha Nagar), Uttar Pradesh.',
+      '<strong>Severability:</strong> If any clause is deemed invalid, all other clauses remain in full force.',
+    ]},
+  ],
+
+  hr_sections: [
+    { title: 'Professional Role &amp; Compensation Structure', clauses: [
+      '<strong>Designation:</strong> You are being engaged as a {{designation}}.',
+      '<strong>Fixed Compensation:</strong> You will receive a consolidated monthly compensation of <strong>INR \u20b9{{salary}}/- ({{salaryWords}})</strong>.',
+      '<strong>Taxation:</strong> Your compensation will be subject to applicable Tax Deducted at Source (TDS) as per Indian Income Tax regulations.',
+    ]},
+    { title: 'Floor Management &amp; HR Responsibilities', clauses: [
+      '<strong>Attendance Management:</strong> You are responsible for maintaining accurate, real-time daily and monthly attendance records for all floor staff without exception.',
+      '<strong>Payroll Coordination:</strong> Ensure the timely, accurate, and fully compliant processing of monthly salaries for all employees under your purview.',
+      '<strong>Grievance Resolution:</strong> Address all employee grievances and concerns promptly, fairly, and with complete confidentiality.',
+      '<strong>Discipline &amp; Decorum:</strong> You are responsible for enforcing professional discipline, compliance, and workplace etiquette across the entire operational floor.',
+      '<strong>Onboarding:</strong> Manage end-to-end onboarding documentation and orientation programs for all new joiners.',
+      '<strong>SPOC:</strong> You will serve as the primary and final point of contact for all HR-related matters on the operational floor.',
+    ], note: '<strong>Operational Accountability:</strong> Repeated unresolved grievances, payroll discrepancies, or compliance gaps will be treated as critical performance failures and may result in engagement review.'},
+    { title: 'Wellness &amp; Monthly Time-Off Guidelines', clauses: [
+      '<strong>Authorized Time-Off:</strong> You are entitled to 1 authorized paid day off per month, subject to a minimum of 24 active days of service completed.',
+      '<strong>First Month Rule:</strong> No planned time-off will be permitted during the first month of your engagement.',
+    ]},
+    { title: 'Key Deliverables &amp; Talent Acquisition Targets', clauses: [
+      '<strong>Weekly Batch Target:</strong> A minimum of 5 qualified candidates must be successfully onboarded each week, starting from the second week of engagement.',
+      '<strong>Monthly Floor Strength:</strong> Maintain a minimum of 10 active, deployed candidates on the operational floor by month-end.',
+      '<strong>Performance Metric:</strong> Only candidates who are physically present and operationally active on the floor by month-end will be counted toward performance.',
+    ], note: '<strong>Performance Accountability:</strong> Consistent failure to meet recruitment targets without valid justification will be treated as a performance gap and may result in engagement review or closure.'},
+    { title: 'Operational Hours &amp; Office Access', clauses: [
+      '<strong>Standard Availability:</strong> 9:50 AM to 7:00 PM.',
+      '<strong>Operational Breaks:</strong> A total of 45 minutes is permitted: one 30-minute break and one 15-minute break.',
+    ]},
+    { title: 'Reporting &amp; Punctuality Standards', clauses: [
+      '<strong>Strict Reporting Time:</strong> You must report to office by <strong>9:50 AM</strong>. No grace period is applicable for this role.',
+      '<strong>Operational Cut-off:</strong> Arrival after 10:00 AM will be marked as a Half-Day Absence — no exceptions.',
+    ], note: '<strong>Note:</strong> No buffer window or late-arrival privilege is applicable for this role.', noteType: 'ibox'},
+    { title: 'Attendance Adherence &amp; Leave Authorization', clauses: [
+      '<strong>Advance Notice Required:</strong> All planned leave must be formally requested and approved at least 3 working days in advance.',
+      '<strong>Unauthorized Absence:</strong> 2 days deduction per 1 day unauthorized. Repeated unauthorized absences may lead to immediate termination without FNF.',
+      '<strong>Weekend Sync Rule:</strong> Unauthorized absence on Saturday or Monday = Sunday rendered unpaid.',
+    ]},
+    { title: 'Career Progression &amp; Separation Policy', clauses: [
+      '<strong>Notice Period:</strong> A mandatory 45-day notice period must be served before separation.',
+      '<strong>FNF Settlement:</strong> Final &amp; Full Settlement processed within 60 days after your last active working day.',
+      '<strong>Handover:</strong> All assets, recruitment databases, and No Dues Certificate must be submitted before separation.',
+    ]},
+    { title: 'Association Continuity &amp; Company Rights', clauses: [
+      '<strong>Right to Conclude:</strong> The company reserves the right to terminate this engagement at any time with immediate effect in case of policy violations.',
+      '<strong>Breach Consequences:</strong> Material breach will result in immediate closure without FNF.',
+    ]},
+    { title: 'Credential Verification &amp; Authenticity', clauses: [
+      '<strong>Document Requirements:</strong> Relieving Letter + Experience Letter + Bank Statements. This Offer Letter is NOT proof of experience.',
+      '<strong>Zero Tolerance:</strong> Fabricated documents = immediate closure without FNF + legal action.',
+    ]},
+    { title: 'Information Security &amp; Confidentiality (NDA)', clauses: [
+      '<strong>Data Confidentiality:</strong> All candidate data, HR records, and business information are company property.',
+      '<strong>Data Breach:</strong> Unauthorized sharing will lead to immediate termination without FNF and criminal prosecution.',
+    ]},
+    { title: 'Professional Exclusivity (No Dual Employment)', clauses: [
+      '<strong>Exclusivity:</strong> Prohibited from taking any concurrent HR or recruitment role with any other organization.',
+      '<strong>Consequences:</strong> Dual engagement = immediate closure without FNF.',
+    ]},
+    { title: 'Non-Solicitation &amp; Intellectual Property', clauses: [
+      '<strong>Data Ownership:</strong> All recruitment databases, processes, and proprietary tools are company IP.',
+      '<strong>Anti-Poaching:</strong> Prohibited from soliciting company staff or clients for 1 Year after exit.',
+    ]},
+    { title: 'Asset Stewardship &amp; Workplace Harmony', clauses: [
+      '<strong>Asset Care:</strong> Damage or loss of company assets = replacement cost deducted.',
+      '<strong>POSH:</strong> Zero tolerance for harassment — immediate closure + legal proceedings.',
+      '<strong>Salary Confidentiality:</strong> Discussing compensation = immediate closure without FNF.',
+    ]},
+    { title: 'Business Realignment, Attire &amp; Identity Protocol', clauses: [
+      '<strong>Location:</strong> Company may redeploy to any branch or city.',
+      '<strong>Attire:</strong> Formal or smart-formal wear required.',
+      '<strong>ID Card:</strong> Compulsory inside office premises at all times.',
+    ]},
+    { title: 'Nature of Employment &amp; Governing Law', clauses: [
+      '<strong>Employment:</strong> Formal appointment under Insta Credit Solution Pvt Ltd.',
+      '<strong>Statutory Compliance:</strong> Subject to applicable Indian labour laws.',
+      '<strong>Governing Law:</strong> Jurisdiction — Noida (Gautam Buddha Nagar), Uttar Pradesh.',
+      '<strong>Severability:</strong> Invalid clause does not affect remaining provisions.',
+    ]},
+  ],
+};
+
+// ===== STYLES =====
+const cssStyles = `
+  .olg-root *,.olg-root *::before,.olg-root *::after{margin:0;padding:0;box-sizing:border-box}
+  .olg-root{
+    --primary:#0a1c3e;--primary-light:#1a5ba8;--accent:#cc1818;--blue:#0099cc;
+    --bg:#f0f2f7;--card:#fff;--dark:#0a1628;--body:#2d3748;--muted:#64748b;
+    --border:#dde4f0;--radius:10px;
+    font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--body);line-height:1.55;
+  }
+  .olg-split-layout{display:grid;grid-template-columns:320px 1fr;gap:0;height:100vh}
+  .olg-left-panel{background:#fff;border-right:1px solid var(--border);padding:0;position:sticky;top:0;height:100vh;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.04);display:flex;flex-direction:column}
+  .olg-tab-bar{display:flex;border-bottom:2px solid var(--border);background:#f8fafc;flex-shrink:0}
+  .olg-tab{flex:1;padding:11px 6px;border:none;background:transparent;font-size:.72rem;font-weight:700;color:var(--muted);cursor:pointer;letter-spacing:.04em;text-transform:uppercase;font-family:'Poppins',sans-serif;transition:all .18s;border-bottom:3px solid transparent;margin-bottom:-2px}
+  .olg-tab:hover{color:var(--primary)}
+  .olg-tab.olg-tab-active{color:var(--primary);border-bottom:3px solid var(--primary);background:#fff}
+  .olg-tab-content{flex:1;overflow-y:auto;padding:22px 20px 28px}
+  .olg-panel-title{font-family:'Poppins',sans-serif;font-size:.95rem;font-weight:700;color:var(--primary);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .olg-panel-title::before{content:'';width:4px;height:18px;background:var(--accent);border-radius:2px}
+  .olg-panel-desc{font-size:.78rem;color:var(--muted);margin-bottom:18px}
+  .olg-field{margin-bottom:14px}
+  .olg-field label{display:block;font-size:.68rem;font-weight:700;color:var(--dark);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;font-family:'Poppins',sans-serif}
+  .olg-field input,.olg-field select,.olg-field textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:.88rem;font-weight:500;color:var(--dark);background:#f8fafc;outline:none;transition:all .2s ease}
+  .olg-field textarea{resize:vertical;min-height:60px;line-height:1.55}
+  .olg-field input:focus,.olg-field select:focus,.olg-field textarea:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(0,153,204,.1)}
+  .olg-field input::placeholder,.olg-field textarea::placeholder{color:#a0aec0;font-weight:400}
+  .olg-salary-wrap{position:relative}
+  .olg-salary-wrap .olg-rupee{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.9rem;font-weight:700;color:var(--primary)}
+  .olg-salary-wrap input{padding-left:26px}
+  .olg-panel-btn{width:100%;padding:13px 18px;border:none;border-radius:8px;font-family:'Poppins',sans-serif;font-size:.88rem;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-light));box-shadow:0 4px 14px rgba(10,28,62,.3);display:flex;align-items:center;justify-content:center;gap:9px;transition:all .25s ease;margin-top:10px}
+  .olg-panel-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(10,28,62,.45)}
+  .olg-save-btn{background:linear-gradient(135deg,#059669,#10b981) !important;box-shadow:0 4px 14px rgba(5,150,105,.3) !important}
+  .olg-save-btn:hover{box-shadow:0 6px 20px rgba(5,150,105,.45) !important}
+  .olg-section-group{margin-bottom:18px;border:1px solid #e8edf5;border-radius:9px;overflow:hidden}
+  .olg-section-group-hd{padding:9px 14px;background:#f3f6fb;font-size:.72rem;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.07em;font-family:'Poppins',sans-serif;display:flex;align-items:center;gap:7px}
+  .olg-section-group-body{padding:14px}
+  .olg-radio-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .olg-radio-chip{padding:6px 12px;border-radius:20px;border:1.5px solid var(--border);font-size:.75rem;font-weight:700;cursor:pointer;transition:all .15s;background:#f8fafc;color:var(--muted);font-family:'Poppins',sans-serif}
+  .olg-radio-chip.olg-selected{border-color:var(--blue);background:rgba(0,153,204,.1);color:var(--blue)}
+  .olg-img-uploader{border:2px dashed #cbd5e1;border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color .2s;position:relative;overflow:hidden;background:#f8fafc}
+  .olg-img-uploader:hover{border-color:var(--blue)}
+  .olg-img-uploader input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+  .olg-img-preview{max-width:100%;max-height:80px;object-fit:contain;border-radius:4px;margin-top:6px}
+  .olg-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+  .olg-toggle{position:relative;width:38px;height:20px;flex-shrink:0}
+  .olg-toggle input{opacity:0;width:0;height:0;position:absolute}
+  .olg-toggle-slider{position:absolute;inset:0;background:#cbd5e1;border-radius:20px;cursor:pointer;transition:background .2s}
+  .olg-toggle input:checked + .olg-toggle-slider{background:#0099cc}
+  .olg-toggle-slider::before{content:'';position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+  .olg-toggle input:checked + .olg-toggle-slider::before{transform:translateX(18px)}
+  .olg-toggle-label{font-size:.76rem;color:var(--dark);font-weight:600}
+  .olg-color-row{display:flex;align-items:center;gap:8px}
+  .olg-color-row input[type=color]{width:36px;height:36px;border:1.5px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:#f8fafc}
+  .olg-color-row span{font-size:.8rem;color:var(--muted);font-family:'Inter',sans-serif}
+  .olg-save-status{text-align:center;font-size:.75rem;padding:6px 0;font-weight:600;min-height:24px}
+  .olg-save-success{color:#059669}
+  .olg-save-error{color:#dc2626}
+
+  /* Rich text editor */
+  .olg-rte-wrap{border:none}
+  .olg-rte-toolbar{display:flex;gap:4px;margin-bottom:5px;flex-wrap:wrap}
+  .olg-rte-btn{padding:3px 8px;border-radius:5px;border:1.5px solid var(--border);background:#f8fafc;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--dark);font-family:'Inter',sans-serif;line-height:1.6;transition:all .12s;user-select:none}
+  .olg-rte-btn:hover{background:#dbeafe;border-color:var(--blue);color:var(--blue)}
+  .olg-rte-editor{min-height:52px;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:.85rem;line-height:1.65;color:var(--dark);background:#f8fafc;outline:none;font-family:'Inter',sans-serif;overflow-y:auto;transition:border-color .2s,background .2s;word-break:break-word}
+  .olg-rte-editor:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(0,153,204,.1)}
+  .olg-rte-editor:empty::before{content:attr(data-placeholder);color:#a0aec0;pointer-events:none}
+
+  /* Sections editor */
+  .olg-sections-editor{display:flex;flex-direction:column}
+  .olg-sec-card{border:1px solid #e2eaf4;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#fff;transition:box-shadow .2s}
+  .olg-sec-card:hover{box-shadow:0 2px 12px rgba(10,28,62,.07)}
+  .olg-sec-card-hd{display:flex;align-items:center;gap:7px;padding:9px 11px;background:#f4f7fc;cursor:pointer;user-select:none}
+  .olg-sec-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:var(--blue);color:#fff;border-radius:5px;font-size:.65rem;font-weight:800;flex-shrink:0;font-family:'Poppins',sans-serif}
+  .olg-sec-card-label{flex:1;font-size:.73rem;font-weight:600;color:var(--primary);font-family:'Poppins',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .olg-sec-chevron{font-size:.6rem;color:var(--muted);transition:transform .18s;flex-shrink:0}
+  .olg-sec-chevron.open{transform:rotate(180deg)}
+  .olg-sec-card-body{padding:10px 12px 14px;border-top:1px solid #e8edf5}
+  .olg-clause-row{display:flex;gap:5px;margin-bottom:8px;align-items:flex-start}
+  .olg-clause-alpha{font-size:.62rem;font-weight:800;color:var(--blue);font-family:'Poppins',sans-serif;min-width:14px;padding-top:10px;flex-shrink:0}
+  .olg-clause-del{padding:3px 6px;border:1px solid #fecaca;background:#fff5f5;border-radius:5px;font-size:.68rem;color:#dc2626;cursor:pointer;flex-shrink:0;margin-top:6px;line-height:1;font-weight:700}
+  .olg-clause-del:hover{background:#dc2626;color:#fff;border-color:#dc2626}
+  .olg-add-clause-btn,.olg-add-note-btn{width:100%;padding:6px;border:1.5px dashed #cbd5e1;border-radius:7px;background:#f8fafc;font-size:.72rem;font-weight:700;color:var(--muted);cursor:pointer;margin-top:4px;transition:all .15s;font-family:'Poppins',sans-serif}
+  .olg-add-clause-btn:hover,.olg-add-note-btn:hover{border-color:var(--blue);color:var(--blue);background:#f0f9ff}
+  .olg-add-note-btn{border-color:#a7f3d0;color:#059669;background:#f0fdf9;margin-top:6px}
+  .olg-add-note-btn:hover{border-color:#059669;background:#dcfce7}
+  .olg-add-section-btn{width:100%;padding:9px;border:2px dashed #b8d4f5;border-radius:9px;background:rgba(0,153,204,.04);font-size:.78rem;font-weight:700;color:var(--blue);cursor:pointer;margin-top:4px;transition:all .15s;font-family:'Poppins',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px}
+  .olg-add-section-btn:hover{background:rgba(0,153,204,.1);border-color:var(--blue)}
+  .olg-sec-actions{display:flex;gap:4px;flex-shrink:0}
+  .olg-sec-action-btn{padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:#f8fafc;color:var(--muted);font-size:.68rem;cursor:pointer;line-height:1.6;font-weight:700;transition:all .12s}
+  .olg-sec-action-btn:hover{background:#fee2e2;border-color:#fca5a5;color:#dc2626}
+  .olg-sec-action-btn.olg-pb-active{background:#dbeafe;border-color:#93c5fd;color:#1d4ed8}
+  .olg-pb-badge{display:flex;align-items:center;gap:7px;padding:5px 12px;margin:6px 0 0;background:rgba(204,24,24,.05);border:1.5px dashed rgba(204,24,24,.4);border-radius:5px;font-size:.62rem;font-weight:700;color:rgba(180,20,20,.75);font-family:'Poppins',sans-serif;letter-spacing:.04em;pointer-events:none}
+  .olg-note-row{display:flex;gap:5px;margin-top:8px;align-items:flex-start}
+  .olg-note-tag{font-size:.6rem;font-weight:800;color:#059669;font-family:'Poppins',sans-serif;min-width:28px;padding-top:10px;flex-shrink:0}
+
+  /* A4 page break guide in preview */
+  .olg-right-panel{padding:28px 32px 50px;display:flex;justify-content:center;overflow:auto;background:var(--bg);min-width:0;align-items:flex-start}
+  .olg-paper{width:210mm;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.18);border-radius:4px;position:relative;overflow:visible}
+  .olg-page-break-guide{width:100%;height:0;border-top:2.5px dashed rgba(204,24,24,.28);position:relative;margin:0;pointer-events:none;display:block}
+  .olg-page-break-guide::after{content:'— page break —';position:absolute;right:10px;top:-9px;font-size:.58rem;color:rgba(204,24,24,.5);font-family:'Poppins',sans-serif;font-weight:700;letter-spacing:.06em;background:#fff;padding:0 4px}
+  .olg-paper-content{padding:0;position:relative;z-index:1}
+  .olg-watermark{position:absolute;top:60%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:120px;font-weight:900;pointer-events:none;z-index:1;white-space:nowrap;letter-spacing:14px;font-family:'Arial Black','Arial',sans-serif;user-select:none}
+  .olg-watermark-img{position:absolute;top:52%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);pointer-events:none;z-index:1;user-select:none;max-width:60%;max-height:200px;object-fit:contain}
+  .olg-letterhead-bar{padding:18px 40px 16px;display:flex;align-items:center;justify-content:space-between;gap:36px}
+  .olg-lh-left{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .olg-logo-fix{font-family:'Arial Black','Arial',sans-serif;font-size:78px;font-weight:900;line-height:1;letter-spacing:-3px;align-self:center}
+  .olg-logo-sep{width:5px;align-self:stretch;background:#cc1818;border-radius:3px;flex-shrink:0}
+  .olg-logo-yf{display:flex;flex-direction:column;justify-content:center;gap:2px;align-self:center}
+  .olg-logo-your{font-family:'Arial','Helvetica',sans-serif;font-size:18px;font-weight:700;line-height:1;letter-spacing:5px;text-transform:uppercase}
+  .olg-logo-finance{font-family:'Arial Black','Arial',sans-serif;font-size:44px;font-weight:900;line-height:1;letter-spacing:-1px}
+  .olg-lh-legal-sub{font-size:.82rem;font-weight:700;font-family:'Arial',sans-serif;letter-spacing:.3px}
+  .olg-lh-header-image{max-height:80px;max-width:280px;object-fit:contain}
+  .olg-lh-right{text-align:left;font-size:.76rem;line-height:1.6;font-family:'Arial',sans-serif}
+  .olg-lh-right strong{display:block;font-weight:700;font-size:.8rem;margin-bottom:2px;letter-spacing:.02em}
+  .olg-brand-strip{height:5px;background:linear-gradient(90deg,var(--primary) 0%,var(--accent) 40%,var(--blue) 100%)}
+  .olg-letter-body{padding:30px 44px 38px}
+  .olg-letter-date{text-align:right;font-size:.84rem;color:var(--muted);margin-bottom:18px;font-weight:500}
+  .olg-letter-subject-banner{font-family:'Poppins',sans-serif;font-size:1rem;font-weight:800;color:var(--primary);text-align:center;padding:10px 0 16px;letter-spacing:.02em;border-bottom:2px solid var(--primary);margin-bottom:14px}
+  .olg-letter-greeting{font-size:.88rem;margin-bottom:6px;color:#1a2540;font-weight:600}
+  .olg-letter-greeting strong{color:var(--primary);font-weight:700}
+  .olg-letter-intro{font-size:.85rem;line-height:1.72;color:#2a3650;margin-bottom:14px;text-align:justify;font-weight:400}
+  .olg-section{margin-bottom:14px;page-break-inside:auto;break-inside:auto}
+  .olg-section-title{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:700;color:var(--primary);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid #e2e8f4;display:flex;align-items:center;gap:8px}
+  .olg-sn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--blue);color:#fff;border-radius:7px;font-size:.72rem;font-weight:800;flex-shrink:0;font-family:'Poppins',sans-serif}
+  .olg-section ul{padding-left:0;margin-top:6px;list-style:none;counter-reset:alpha-list}
+  .olg-section li{font-size:.84rem;line-height:1.72;color:#1f2d45;margin-bottom:6px;text-align:justify;padding-left:28px;position:relative;counter-increment:alpha-list}
+  .olg-section li::before{content:counter(alpha-list,lower-alpha) '. ';position:absolute;left:0;top:0;font-weight:700;color:var(--blue);font-size:.84rem;font-family:'Poppins',sans-serif}
+  .olg-section li strong{color:#0a1628;font-weight:700;font-size:.85rem}
+  .olg-sub-items{padding-left:20px;margin-top:5px;list-style:none;counter-reset:sub-num}
+  .olg-sub-items li{font-size:.81rem;margin-bottom:3px;padding-left:24px;position:relative;counter-increment:sub-num;color:#1f2d45}
+  .olg-sub-items li::before{content:counter(sub-num) '. ';position:absolute;left:0;font-weight:600;color:#1f2d45;font-size:.79rem}
+  .olg-hbox{background:rgba(0,153,204,.06);border-left:3px solid var(--blue);padding:10px 14px;border-radius:0 5px 5px 0;margin:8px 0;font-size:.83rem;color:#1f2d45;font-weight:500}
+  .olg-ibox{background:rgba(204,24,24,.04);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 5px 5px 0;margin:8px 0;font-size:.83rem;font-weight:600;color:var(--primary)}
+  .olg-accept{margin-top:22px;padding-top:16px;border-top:2px solid var(--primary);page-break-inside:avoid;break-inside:avoid}
+  .olg-accept-title{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:700;color:var(--primary);margin-bottom:10px;text-align:center}
+  .olg-email-accept-box{margin-top:14px;padding:14px 18px;background:#f0f5ff;border:1.5px solid #b8cfe8;border-radius:8px}
+  .olg-email-accept-title{font-family:'Poppins',sans-serif;font-size:.85rem;font-weight:700;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px;border-bottom:1px dashed #c5d5ea;padding-bottom:8px}
+  .olg-email-accept-title::before{content:'\u2709';font-size:.95rem}
+  .olg-email-accept-label{font-size:.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .olg-email-accept-quote{font-size:.83rem;font-style:normal;color:#162240;background:#fff;border-left:3px solid var(--blue);padding:12px 16px;border-radius:0 6px 6px 0;line-height:1.75;font-weight:500}
+  .olg-email-accept-quote .olg-reply-name{color:var(--blue);font-weight:700}
+  .olg-email-accept-quote .olg-reply-desig{color:var(--accent);font-weight:700}
+  .olg-email-accept-quote .olg-reply-date{color:var(--blue);font-weight:700}
+  .olg-email-accept-note{font-size:.75rem;color:var(--muted);margin-top:10px;line-height:1.55;text-align:right}
+  .olg-letter-footer{margin-top:22px;padding-top:12px;border-top:1.5px solid #edf2f7;text-align:center;font-size:.66rem;color:var(--muted);line-height:1.65}
+  .olg-letter-footer strong{color:var(--primary)}
+  .olg-footer-image{max-height:50px;max-width:180px;object-fit:contain;margin-bottom:6px}
+  .olg-dv{color:var(--blue);font-weight:700}
+  .olg-loading-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,28,62,.88);z-index:9999;justify-content:center;align-items:center;flex-direction:column;gap:18px}
+  .olg-loading-overlay.olg-active{display:flex}
+  .olg-spinner{width:46px;height:46px;border:4px solid rgba(255,255,255,.15);border-top-color:var(--blue);border-radius:50%;animation:olg-spin .7s linear infinite}
+  @keyframes olg-spin{to{transform:rotate(360deg)}}
+  .olg-loading-text{color:#fff;font-size:.95rem;font-weight:500}
+  @media(max-width:1100px){
+    .olg-split-layout{grid-template-columns:1fr;gap:0}
+    .olg-left-panel{position:relative;top:auto;height:auto;border-right:none;border-bottom:1px solid var(--border)}
+    .olg-paper{width:100%!important;min-height:auto}
+  }
+`;
+
+// ===== RICH TEXT EDITOR =====
+function RichEditor({ value, onChange, placeholder, rows = 2 }) {
+  const ref = useRef(null);
+  const lastHtml = useRef(value || '');
+
+  // Sync external value → DOM (only when truly different)
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const current = ref.current.innerHTML;
+    if (current !== (value || '') && document.activeElement !== ref.current) {
+      ref.current.innerHTML = value || '';
+      lastHtml.current = value || '';
+    }
+  }, [value]);
+
+  const exec = (cmd) => {
+    ref.current?.focus();
+    document.execCommand(cmd, false, null);
+    const html = ref.current?.innerHTML || '';
+    lastHtml.current = html;
+    onChange(html);
+  };
+
+  const handleInput = () => {
+    const html = ref.current?.innerHTML || '';
+    if (html !== lastHtml.current) {
+      lastHtml.current = html;
+      onChange(html);
+    }
+  };
+
+  return (
+    <div className="olg-rte-wrap">
+      <div className="olg-rte-toolbar">
+        <button type="button" className="olg-rte-btn" onMouseDown={e => { e.preventDefault(); exec('bold'); }}><b>B</b></button>
+        <button type="button" className="olg-rte-btn" onMouseDown={e => { e.preventDefault(); exec('italic'); }}><i>I</i></button>
+        <button type="button" className="olg-rte-btn" onMouseDown={e => { e.preventDefault(); exec('underline'); }}><u>U</u></button>
+        <button type="button" className="olg-rte-btn" onMouseDown={e => { e.preventDefault(); exec('removeFormat'); }}>✕</button>
+      </div>
+      <div
+        ref={ref}
+        className="olg-rte-editor"
+        contentEditable
+        suppressContentEditableWarning
+        data-placeholder={placeholder || ''}
+        style={{ minHeight: `${rows * 24 + 20}px` }}
+        onInput={handleInput}
+        onBlur={handleInput}
+      />
+    </div>
+  );
+}
+
+// ===== SECTIONS EDITOR =====
+function SectionsEditor({ sections, onChange }) {
+  const [openIdx, setOpenIdx] = useState(null);
+
+  const updateSection = (i, key, val) =>
+    onChange(sections.map((s, si) => si === i ? { ...s, [key]: val } : s));
+
+  const updateClause = (si, ci, val) =>
+    onChange(sections.map((s, i) => i === si ? { ...s, clauses: s.clauses.map((c, j) => j === ci ? val : c) } : s));
+
+  const delClause = (si, ci) =>
+    onChange(sections.map((s, i) => i === si ? { ...s, clauses: s.clauses.filter((_, j) => j !== ci) } : s));
+
+  const addClause = (si) => {
+    onChange(sections.map((s, i) => i === si ? { ...s, clauses: [...s.clauses, '<strong>New point:</strong> Edit this clause text.'] } : s));
+    setOpenIdx(si);
+  };
+
+  const delSection = (si) => {
+    onChange(sections.filter((_, i) => i !== si));
+    if (openIdx === si) setOpenIdx(null);
+    else if (openIdx > si) setOpenIdx(openIdx - 1);
+  };
+
+  const moveSection = (si, dir) => {
+    const to = si + dir;
+    if (to < 0 || to >= sections.length) return;
+    const next = [...sections];
+    [next[si], next[to]] = [next[to], next[si]];
+    onChange(next);
+    setOpenIdx(to);
+  };
+
+  const addSection = () => {
+    onChange([...sections, { title: 'New Section', clauses: ['<strong>Point:</strong> Edit this clause.'] }]);
+    setOpenIdx(sections.length);
+  };
+
+  return (
+    <div className="olg-sections-editor">
+      {sections.map((sec, si) => (
+        <div key={si} className="olg-sec-card">
+          <div className="olg-sec-card-hd" onClick={() => setOpenIdx(openIdx === si ? null : si)}>
+            <span className="olg-sec-num">{si + 1}</span>
+            <span className="olg-sec-card-label" dangerouslySetInnerHTML={{ __html: sec.title }} />
+            <div className="olg-sec-actions" onClick={e => e.stopPropagation()}>
+              <button
+                className={`olg-sec-action-btn${sec.pageBreakBefore ? ' olg-pb-active' : ''}`}
+                title={sec.pageBreakBefore ? 'Remove forced page break' : 'Force new page before this section'}
+                onClick={() => updateSection(si, 'pageBreakBefore', !sec.pageBreakBefore)}
+              >📄</button>
+              <button className="olg-sec-action-btn" title="Move up" onClick={() => moveSection(si, -1)}>↑</button>
+              <button className="olg-sec-action-btn" title="Move down" onClick={() => moveSection(si, 1)}>↓</button>
+              <button className="olg-sec-action-btn" title="Delete section" onClick={() => delSection(si)} style={{ color: '#dc2626', borderColor: '#fecaca' }}>✕</button>
+            </div>
+            <span className={`olg-sec-chevron ${openIdx === si ? 'open' : ''}`}>▼</span>
+          </div>
+          {openIdx === si && (
+            <div className="olg-sec-card-body">
+              <div className="olg-field" style={{ marginBottom: 10 }}>
+                <label>Section Title</label>
+                <RichEditor value={sec.title} onChange={v => updateSection(si, 'title', v)} placeholder="Section title" rows={1} />
+              </div>
+              <label style={{ display: 'block', fontSize: '.62rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6, fontFamily: "'Poppins',sans-serif" }}>
+                Clauses ({sec.clauses.length})
+              </label>
+              {sec.clauses.map((cl, ci) => (
+                <div key={ci} className="olg-clause-row">
+                  <span className="olg-clause-alpha">{String.fromCharCode(97 + ci)}.</span>
+                  <div style={{ flex: 1 }}>
+                    <RichEditor value={cl} onChange={v => updateClause(si, ci, v)} placeholder="Clause text..." rows={2} />
+                  </div>
+                  <button className="olg-clause-del" title="Remove clause" onClick={() => delClause(si, ci)}>✕</button>
+                </div>
+              ))}
+              <button className="olg-add-clause-btn" onClick={() => addClause(si)}>+ Add Clause</button>
+              {sec.note !== undefined ? (
+                <div className="olg-note-row">
+                  <span className="olg-note-tag">NOTE</span>
+                  <div style={{ flex: 1 }}>
+                    <RichEditor value={sec.note} onChange={v => updateSection(si, 'note', v)} placeholder="Note text (shown in colour box below section)..." rows={2} />
+                  </div>
+                  <button className="olg-clause-del" title="Remove note" onClick={() => updateSection(si, 'note', undefined)} style={{ marginTop: 6 }}>✕</button>
+                </div>
+              ) : (
+                <button className="olg-add-note-btn" onClick={() => updateSection(si, 'note', '<strong>Note:</strong> Add your note here.')}>+ Add Note Box</button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+      <button className="olg-add-section-btn" onClick={addSection}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Section
+      </button>
+    </div>
+  );
+}
+
+// ===== IMAGE UPLOADER =====
+function ImageUploader({ value, onChange, label, hint }) {
+  return (
+    <div className="olg-field">
+      {label && <label>{label}</label>}
+      <div className="olg-img-uploader">
+        <input type="file" accept="image/*" onChange={e => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const r = new FileReader();
+          r.onload = ev => onChange(ev.target.result);
+          r.readAsDataURL(f);
+        }} />
+        {value
+          ? <img src={value} alt="preview" className="olg-img-preview" />
+          : <div style={{ pointerEvents: 'none' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p style={{ fontSize: '.72rem', color: '#94a3b8', marginTop: 4 }}>{hint || 'Click to upload image'}</p>
+            </div>
+        }
+      </div>
+      {value && (
+        <button onClick={() => onChange('')} style={{ marginTop: 4, fontSize: '.7rem', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+          ✕ Remove
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ===== TEMPLATE SETTINGS PANEL =====
+function TemplateSettingsPanel({ tpl, onChange, onSave, saveStatus }) {
+  const [activeLetterType, setActiveLetterType] = useState('consultant');
+  const set = (key, val) => onChange({ ...tpl, [key]: val });
+  return (
+    <div className="olg-tab-content">
+      <div className="olg-panel-title">Template Settings</div>
+      <p className="olg-panel-desc">Customize header, watermark, footer and letter content. Changes preview instantly.</p>
+
+      {/* HEADER */}
+      <div className="olg-section-group">
+        <div className="olg-section-group-hd">🏢 Header</div>
+        <div className="olg-section-group-body">
+          <div className="olg-field">
+            <label>Header Type</label>
+            <div className="olg-radio-row">
+              {[['logo','🔠 Logo Text'],['image','🖼 Image'],['text','📝 Plain Text']].map(([t, label]) => (
+                <div key={t} className={`olg-radio-chip ${tpl.header_type === t ? 'olg-selected' : ''}`} onClick={() => set('header_type', t)}>{label}</div>
+              ))}
+            </div>
+          </div>
+          {(tpl.header_type === 'logo' || tpl.header_type === 'text') && (
+            <div className="olg-field">
+              <label>{tpl.header_type === 'logo' ? 'Logo Text (e.g. Fix Your Finance)' : 'Company Name'}</label>
+              <input value={tpl.header_logo_text || ''} onChange={e => set('header_logo_text', e.target.value)} placeholder="Fix Your Finance" />
+            </div>
+          )}
+          {tpl.header_type === 'image' && (
+            <ImageUploader value={tpl.header_image_base64} onChange={v => set('header_image_base64', v)} label="Header Logo Image" hint="Upload PNG/JPG logo" />
+          )}
+          <div className="olg-field"><label>Sub-company / Legal Name</label>
+            <input value={tpl.header_company_name || ''} onChange={e => set('header_company_name', e.target.value)} placeholder="Insta Credit Solution Pvt Ltd" />
+          </div>
+          <div className="olg-field"><label>Tagline (optional)</label>
+            <input value={tpl.header_tagline || ''} onChange={e => set('header_tagline', e.target.value)} placeholder="Your tagline here" />
+          </div>
+          <div className="olg-field"><label>Address Line 1</label>
+            <input value={tpl.header_address_line1 || ''} onChange={e => set('header_address_line1', e.target.value)} />
+          </div>
+          <div className="olg-field"><label>Address Line 2</label>
+            <input value={tpl.header_address_line2 || ''} onChange={e => set('header_address_line2', e.target.value)} />
+          </div>
+          <div className="olg-field"><label>Address Line 3</label>
+            <input value={tpl.header_address_line3 || ''} onChange={e => set('header_address_line3', e.target.value)} />
+          </div>
+          <div className="olg-field"><label>Website</label>
+            <input value={tpl.header_website || ''} onChange={e => set('header_website', e.target.value)} placeholder="www.example.com" />
+          </div>
+          <div className="olg-field"><label>Background Color</label>
+            <div className="olg-color-row">
+              <input type="color" value={tpl.header_bg_color || '#000000'} onChange={e => set('header_bg_color', e.target.value)} />
+              <span>{tpl.header_bg_color || '#000000'}</span>
+            </div>
+          </div>
+          <div className="olg-field"><label>Text Color</label>
+            <div className="olg-color-row">
+              <input type="color" value={tpl.header_text_color || '#ffffff'} onChange={e => set('header_text_color', e.target.value)} />
+              <span>{tpl.header_text_color || '#ffffff'}</span>
+            </div>
+          </div>
+          <div className="olg-toggle-row">
+            <span className="olg-toggle-label">Show header on 1st page only</span>
+            <label className="olg-toggle">
+              <input type="checkbox" checked={!!tpl.show_header_page1_only} onChange={e => set('show_header_page1_only', e.target.checked)} />
+              <span className="olg-toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* WATERMARK */}
+      <div className="olg-section-group">
+        <div className="olg-section-group-hd">💧 Watermark</div>
+        <div className="olg-section-group-body">
+          <div className="olg-field"><label>Watermark Type</label>
+            <div className="olg-radio-row">
+              {[['text','📝 Text'],['image','🖼 Image'],['none','🚫 None']].map(([t, label]) => (
+                <div key={t} className={`olg-radio-chip ${tpl.watermark_type === t ? 'olg-selected' : ''}`} onClick={() => set('watermark_type', t)}>{label}</div>
+              ))}
+            </div>
+          </div>
+          {tpl.watermark_type === 'text' && (
+            <div className="olg-field"><label>Watermark Text</label>
+              <input value={tpl.watermark_text || ''} onChange={e => set('watermark_text', e.target.value)} placeholder="CONFIDENTIAL" />
+            </div>
+          )}
+          {tpl.watermark_type === 'image' && (
+            <ImageUploader value={tpl.watermark_image_base64} onChange={v => set('watermark_image_base64', v)} label="Watermark Image" hint="Upload watermark image (semi-transparent effect)" />
+          )}
+          {tpl.watermark_type !== 'none' && (
+            <div className="olg-field">
+              <label>Opacity ({Math.round((tpl.watermark_opacity || 0.1) * 100)}%)</label>
+              <input type="range" min="3" max="40" value={Math.round((tpl.watermark_opacity || 0.1) * 100)}
+                onChange={e => set('watermark_opacity', parseInt(e.target.value) / 100)}
+                style={{ width: '100%' }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* FOOTER */}
+      <div className="olg-section-group">
+        <div className="olg-section-group-hd">📄 Footer</div>
+        <div className="olg-section-group-body">
+          <div className="olg-toggle-row" style={{ marginBottom: 10 }}>
+            <span className="olg-toggle-label">Show footer image</span>
+            <label className="olg-toggle">
+              <input type="checkbox" checked={!!tpl.footer_has_image} onChange={e => set('footer_has_image', e.target.checked)} />
+              <span className="olg-toggle-slider"></span>
+            </label>
+          </div>
+          {tpl.footer_has_image && (
+            <ImageUploader value={tpl.footer_image_base64} onChange={v => set('footer_image_base64', v)} label="Footer Image" hint="Upload footer logo/image" />
+          )}
+          <div className="olg-field"><label>Footer Main Text</label>
+            <textarea value={tpl.footer_text || ''} onChange={e => set('footer_text', e.target.value)} rows={2} />
+          </div>
+          <div className="olg-field"><label>Footer Sub Text</label>
+            <textarea value={tpl.footer_sub_text || ''} onChange={e => set('footer_sub_text', e.target.value)} rows={2} />
+          </div>
+          <div className="olg-toggle-row">
+            <span className="olg-toggle-label">Show footer on 1st page only</span>
+            <label className="olg-toggle">
+              <input type="checkbox" checked={!!tpl.show_footer_page1_only} onChange={e => set('show_footer_page1_only', e.target.checked)} />
+              <span className="olg-toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* CONTENT */}
+      <div className="olg-section-group">
+        <div className="olg-section-group-hd">📝 Letter Content</div>
+        <div className="olg-section-group-body">
+          <div className="olg-field"><label>Subject Line</label>
+            <input value={tpl.subject_line || ''} onChange={e => set('subject_line', e.target.value)} placeholder="Offer of Appointment" />
+          </div>
+          <div className="olg-field"><label>Opening Paragraph</label>
+            <RichEditor value={tpl.greeting_intro || ''} onChange={v => set('greeting_intro', v)} placeholder="Opening paragraph..." rows={4} />
+          </div>
+          <div className="olg-field"><label>Second Paragraph</label>
+            <RichEditor value={tpl.greeting_intro2 || ''} onChange={v => set('greeting_intro2', v)} placeholder="Second paragraph..." rows={3} />
+          </div>
+          <div className="olg-field"><label>Acceptance Note</label>
+            <RichEditor value={tpl.acceptance_note || ''} onChange={v => set('acceptance_note', v)} placeholder="Acceptance note..." rows={3} />
+          </div>
+        </div>
+      </div>
+
+      {/* SECTIONS EDITOR */}
+      <div className="olg-section-group">
+        <div className="olg-section-group-hd">📑 Letter Sections</div>
+        <div className="olg-section-group-body" style={{ paddingTop: 10 }}>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 10, lineHeight: 1.55 }}>
+            Edit section titles, clause text &amp; note boxes. Supports <strong>Bold</strong>, <em>Italic</em>, <u>Underline</u>.
+          </p>
+          <div className="olg-radio-row" style={{ marginBottom: 12 }}>
+            {[['consultant','💼 Consultant'],['hr','👤 HR']].map(([t, label]) => (
+              <div key={t} className={`olg-radio-chip ${activeLetterType === t ? 'olg-selected' : ''}`} onClick={() => setActiveLetterType(t)}>{label}</div>
+            ))}
+          </div>
+          <SectionsEditor
+            sections={activeLetterType === 'hr' ? (tpl.hr_sections || DEFAULT_TPL.hr_sections) : (tpl.consultant_sections || DEFAULT_TPL.consultant_sections)}
+            onChange={secs => set(activeLetterType === 'hr' ? 'hr_sections' : 'consultant_sections', secs)}
+          />
+        </div>
+      </div>
+
+      {saveStatus && (
+        <div className="olg-save-status">
+          <span className={saveStatus === 'saved' ? 'olg-save-success' : 'olg-save-error'}>
+            {saveStatus === 'saved' ? '✓ Template saved successfully' : '✗ Failed to save. Please try again.'}
+          </span>
+        </div>
+      )}
+      <button className="olg-panel-btn olg-save-btn" onClick={onSave}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Template
+      </button>
+    </div>
+  );
+}
+
+// ===== MAIN COMPONENT =====
+const OfferLetterGenerator = ({ user }) => {
+  const [activeTab, setActiveTab] = useState('details');
+  const [letterType, setLetterType] = useState('consultant');
+  const [candidateName, setCandidateName] = useState('');
+  const [monthlySalary, setMonthlySalary] = useState('');
+  const [monthlyTarget, setMonthlyTarget] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+  const [designation, setDesignation] = useState('Financial Consultant');
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [tpl, setTpl] = useState(DEFAULT_TPL);
+  const [saveStatus, setSaveStatus] = useState('');
+
+  const paperRef = useRef(null);
+  const [pageGuides, setPageGuides] = useState([]);
+  const userId = user?._id || user?.id || '';
+
+  // Compute A4 page break guide positions after each render
+  useEffect(() => {
+    const el = paperRef.current;
+    if (!el) return;
+    const totalH = el.getBoundingClientRect().height;
+    // 297mm in px at the rendered scale
+    const a4Px = el.getBoundingClientRect().height / (el.scrollHeight / el.scrollHeight) || 1;
+    // Use 297mm / 210mm × paper width in px
+    const paperW = el.getBoundingClientRect().width;
+    const a4HeightPx = paperW * (297 / 210);
+    const guides = [];
+    let pos = a4HeightPx;
+    while (pos < totalH - 10) {
+      guides.push(pos);
+      pos += a4HeightPx;
+    }
+    setPageGuides(guides);
+  });
+
+  // Load template on mount
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`${API_BASE_URL}/settings/offer-letter-template?user_id=${userId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setTpl(prev => ({ ...DEFAULT_TPL, ...d })); })
+      .catch(() => {});
+  }, [userId]);
+
+  const handleSaveTemplate = useCallback(async () => {
+    if (!userId) return;
+    setSaveStatus('');
+    try {
+      const r = await fetch(`${API_BASE_URL}/settings/offer-letter-template?user_id=${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tpl),
+      });
+      setSaveStatus(r.ok ? 'saved' : 'error');
+    } catch { setSaveStatus('error'); }
+    setTimeout(() => setSaveStatus(''), 3500);
+  }, [tpl, userId]);
+
+  // Derived values
+  const displayName = candidateName.trim() || 'Candidate Name';
+  const salaryRaw = parseIndian(monthlySalary);
+  const formattedSalary = salaryRaw > 0 ? formatIndian(salaryRaw) : '';
+  const salaryWords = salaryRaw > 0 ? numberToWords(salaryRaw) : '';
+  const targetRaw = parseIndian(monthlyTarget);
+  const formattedTarget = targetRaw > 0 ? formatIndian(targetRaw) : '';
+  const formattedDate = formatDate(joiningDate);
+  const currentDesignation = letterType === 'hr' ? 'Human Resources' : designation;
+
+  const handleSalaryChange = useCallback((e) => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    setMonthlySalary(raw ? formatIndian(parseInt(raw)) : '');
+  }, []);
+  const handleTargetChange = useCallback((e) => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    setMonthlyTarget(raw ? formatIndian(parseInt(raw)) : '');
+  }, []);
+  const handleNameChange = useCallback((e) => { setCandidateName(titleCase(e.target.value)); }, []);
+  const handleLetterTypeChange = useCallback((e) => {
+    const type = e.target.value;
+    setLetterType(type);
+    setDesignation(type === 'hr' ? 'Human Resources' : 'Financial Consultant');
+  }, []);
+  const handleDesignationChange = useCallback((e) => {
+    const d = e.target.value;
+    setDesignation(d);
+    setLetterType(d === 'Human Resources' ? 'hr' : 'consultant');
+  }, []);
+
+  // ===== PDF DOWNLOAD =====
+  const downloadPDF = useCallback(async () => {
+    setPdfLoading(true);
+    const candName = candidateName.trim() || 'Candidate';
+    const typeLabel = letterType === 'hr' ? 'Human_Resources' : 'Consultant';
+    const filename = 'Offer_Letter_' + typeLabel + '_' + candName.replace(/\s+/g, '_') + '.pdf';
+    const origPaper = paperRef.current;
+    if (!origPaper) { setPdfLoading(false); return; }
+
+    const clone = origPaper.cloneNode(true);
+    clone.querySelectorAll('.olg-page-guide, .olg-page-break-guide, .olg-pb-badge').forEach(e => e.remove());
+    const wmEl = clone.querySelector('.olg-watermark, .olg-watermark-img');
+    if (wmEl) wmEl.remove();
+    clone.style.cssText = 'width:794px;min-width:794px;max-width:794px;margin:0;padding:0;display:block;box-shadow:none;border-radius:0;overflow:visible;background:#fff';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:fixed;top:0;left:0;width:794px;height:auto;overflow:visible;z-index:999999;background:#fff;pointer-events:none;margin:0;padding:0;border:none';
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    window.scrollTo(0, 0);
+
+    const cleanup = () => { if (document.body.contains(wrapper)) document.body.removeChild(wrapper); setPdfLoading(false); };
+    const SCALE = 2;
+    const A4_W = 794;
+    const A4_H = 1122;
+
+    try {
+      await document.fonts.ready;
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise(r => setTimeout(r, 600));
+
+      const cloneTop = clone.getBoundingClientRect().top;
+      const breakEls = [...clone.querySelectorAll('li,.olg-section,.olg-section-title,.olg-hbox,.olg-ibox,.olg-accept,.olg-email-accept-box,.olg-letter-footer,.olg-letter-date,.olg-letter-greeting,.olg-letter-subject-banner,p')];
+      const breakSet = new Set([0]);
+      breakEls.forEach(el => { const py = Math.floor((el.getBoundingClientRect().top - cloneTop) * SCALE); if (py > 10) breakSet.add(py); });
+      const sortedBreaks = [...breakSet].sort((a, b) => a - b);
+
+      // Collect forced page-break positions (sections marked 'start on new page')
+      const forcedBreakEls = [...clone.querySelectorAll('.olg-pb-before')];
+      const sortedForced = forcedBreakEls
+        .map(el => Math.floor((el.getBoundingClientRect().top - cloneTop) * SCALE))
+        .filter(py => py > 10)
+        .sort((a, b) => a - b);
+
+      const lhBarEl = clone.querySelector('.olg-letterhead-bar');
+      const bsStEl = clone.querySelector('.olg-brand-strip');
+      const lhPxCss = (lhBarEl ? lhBarEl.offsetHeight : 100) + (bsStEl ? bsStEl.offsetHeight : 6);
+      const lhMM = lhPxCss * (210 / 794);
+
+      const fullCanvas = await html2canvas(clone, { scale: SCALE, useCORS: true, allowTaint: false, letterRendering: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, width: A4_W, windowWidth: A4_W, backgroundColor: '#ffffff' });
+
+      const pageH = A4_H * SCALE;
+      const totalH = fullCanvas.height;
+      const sliceStarts = [];
+      let startY = 0;
+
+      while (startY < totalH) {
+        sliceStarts.push(startY);
+        const maxEndY = startY + pageH;
+        if (maxEndY >= totalH) break;
+
+        // Check for a forced break anywhere in this page range
+        const nextForced = sortedForced.find(b => b > startY + 20 && b <= maxEndY);
+        if (nextForced !== undefined) {
+          startY = nextForced;
+          continue;
+        }
+
+        // Normal smart break — prefer a natural break point close to the bottom
+        const minUse = startY + pageH * 0.55;
+        const valid = sortedBreaks.filter(b => b > startY + 20 && b <= maxEndY);
+        let cutY = maxEndY;
+        if (valid.length > 0) { const good = valid.filter(b => b >= minUse); cutY = good.length > 0 ? good[good.length - 1] : valid[valid.length - 1]; }
+        startY = cutY;
+      }
+
+      const totalPages = sliceStarts.length;
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+      sliceStarts.forEach((sliceStart, idx) => {
+        if (idx > 0) pdf.addPage();
+        const nextStart = idx + 1 < sliceStarts.length ? sliceStarts[idx + 1] : totalH;
+        const sliceH = nextStart - sliceStart;
+        const topPadPx = idx > 0 ? Math.round(pageH * 0.04) : 0;
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = A4_W * SCALE;
+        pageCanvas.height = pageH;
+        const ctx = pageCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(fullCanvas, 0, sliceStart, A4_W * SCALE, sliceH, 0, topPadPx, A4_W * SCALE, sliceH - topPadPx);
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.97), 'JPEG', 0, 0, 210, 297);
+
+        const wmType = tpl.watermark_type;
+        const wmOpacity = tpl.watermark_opacity || 0.1;
+        const topPadMM = idx > 0 ? (topPadPx / pageH) * 297 : 0;
+        const wmY = idx === 0 ? lhMM + (297 - lhMM) / 2 : topPadMM + (297 - topPadMM) / 2;
+
+        if (wmType === 'text' && tpl.watermark_text) {
+          const wmFontSize = idx === 0 ? 60 : 72;
+          try {
+            pdf.saveGraphicsState();
+            pdf.setGState(new pdf.GState({ opacity: wmOpacity, 'stroke-opacity': wmOpacity }));
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(wmFontSize);
+            pdf.setTextColor(20, 45, 115);
+            pdf.text(tpl.watermark_text, 105, wmY, { angle: 30, align: 'center' });
+            pdf.restoreGraphicsState();
+          } catch {
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(wmFontSize);
+            pdf.setTextColor(200, 210, 230);
+            pdf.text(tpl.watermark_text, 105, wmY, { angle: 30, align: 'center' });
+          }
+        } else if (wmType === 'image' && tpl.watermark_image_base64) {
+          try {
+            pdf.saveGraphicsState();
+            pdf.setGState(new pdf.GState({ opacity: wmOpacity }));
+            pdf.addImage(tpl.watermark_image_base64, 'JPEG', 55, wmY - 30, 100, 60);
+            pdf.restoreGraphicsState();
+          } catch {}
+        }
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(155, 155, 155);
+        pdf.text(`\u2014 Page ${idx + 1} of ${totalPages} \u2014`, 105, 293, { align: 'center' });
+      });
+
+      pdf.save(filename);
+      cleanup();
+    } catch (err) {
+      console.error('PDF error:', err);
+      cleanup();
+      alert('PDF generation failed. Please try again.');
+    }
+  }, [candidateName, letterType, tpl]);
+
+  // ===== RENDER HEADER =====
+  const renderHeader = () => {
+    const bg = tpl.header_bg_color || '#000000';
+    const tc = tpl.header_text_color || '#ffffff';
+
+    let leftContent;
+    if (tpl.header_type === 'image' && tpl.header_image_base64) {
+      leftContent = (
+        <div className="olg-lh-left">
+          <img src={tpl.header_image_base64} alt="logo" className="olg-lh-header-image" />
+          {tpl.header_company_name && <div className="olg-lh-legal-sub" style={{ color: `${tc}cc` }}>{tpl.header_company_name}</div>}
+        </div>
+      );
+    } else if (tpl.header_type === 'text') {
+      leftContent = (
+        <div className="olg-lh-left">
+          <div style={{ fontFamily: "'Arial Black','Arial',sans-serif", fontSize: '36px', fontWeight: 900, color: tc, lineHeight: 1 }}>{tpl.header_logo_text || 'Company'}</div>
+          {tpl.header_company_name && <div className="olg-lh-legal-sub" style={{ color: `${tc}cc` }}>{tpl.header_company_name}</div>}
+          {tpl.header_tagline && <div style={{ fontSize: '.75rem', color: `${tc}99`, fontStyle: 'italic', marginTop: 2 }}>{tpl.header_tagline}</div>}
+        </div>
+      );
+    } else {
+      // Logo style
+      const parts = (tpl.header_logo_text || 'Fix Your Finance').split(' ');
+      const p1 = parts[0] || 'Fix';
+      const p2 = parts[1] || 'Your';
+      const p3 = parts.slice(2).join(' ') || 'Finance';
+      leftContent = (
+        <div className="olg-lh-left">
+          <div style={{ display: 'flex', alignItems: 'stretch', gap: 14 }}>
+            <span className="olg-logo-fix" style={{ color: tc }}>{p1}</span>
+            <span className="olg-logo-sep"></span>
+            <div className="olg-logo-yf">
+              <span className="olg-logo-your" style={{ color: '#00bfff' }}>{p2.toUpperCase()}</span>
+              <span className="olg-logo-finance" style={{ color: '#00bfff' }}>{p3}</span>
+            </div>
+          </div>
+          {tpl.header_company_name && <div className="olg-lh-legal-sub" style={{ color: `${tc}cc` }}>{tpl.header_company_name}</div>}
+          {tpl.header_tagline && <div style={{ fontSize: '.75rem', color: `${tc}99`, fontStyle: 'italic', marginTop: 2 }}>{tpl.header_tagline}</div>}
+        </div>
+      );
+    }
+
+    return (
+      <div className="olg-letterhead-bar" style={{ background: bg }}>
+        {leftContent}
+        <div className="olg-lh-right" style={{ color: `${tc}e6` }}>
+          <strong style={{ color: tc }}>Registered Office</strong>
+          {tpl.header_address_line1 && <>{tpl.header_address_line1}<br/></>}
+          {tpl.header_address_line2 && <>{tpl.header_address_line2}<br/></>}
+          {tpl.header_address_line3 && <>{tpl.header_address_line3}<br/></>}
+          {tpl.header_website && <span style={{ color: '#4dc9e6', fontWeight: 700 }}>{tpl.header_website}</span>}
+        </div>
+      </div>
+    );
+  };
+
+  const renderWatermark = () => {
+    const op = tpl.watermark_opacity || 0.1;
+    if (tpl.watermark_type === 'none') return null;
+    if (tpl.watermark_type === 'image' && tpl.watermark_image_base64)
+      return <img src={tpl.watermark_image_base64} alt="" className="olg-watermark-img" style={{ opacity: op }} />;
+    if (tpl.watermark_type === 'text' && tpl.watermark_text)
+      return <div className="olg-watermark" style={{ color: `rgba(10,28,62,${op})` }}>{tpl.watermark_text}</div>;
+    return null;
+  };
+
+  const renderFooter = () => (
+    <div className="olg-letter-footer">
+      {tpl.footer_has_image && tpl.footer_image_base64 && (
+        <><img src={tpl.footer_image_base64} alt="footer" className="olg-footer-image" /><br/></>
+      )}
+      {tpl.footer_text && <><strong>{tpl.footer_text}</strong><br/></>}
+      {tpl.footer_sub_text && <span>{tpl.footer_sub_text}</span>}
+    </div>
+  );
+
+  return (
+    <div className="olg-root">
+      <style>{cssStyles}</style>
+
+      <div className={`olg-loading-overlay ${pdfLoading ? 'olg-active' : ''}`}>
+        <div className="olg-spinner"></div>
+        <div className="olg-loading-text">Generating PDF... Please wait</div>
+      </div>
+
+      <div className="olg-split-layout">
+
+        {/* LEFT PANEL — tabs: Details | Template */}
+        <aside className="olg-left-panel">
+          <div className="olg-tab-bar">
+            <button className={`olg-tab ${activeTab === 'details' ? 'olg-tab-active' : ''}`} onClick={() => setActiveTab('details')}>📋 Details</button>
+            <button className={`olg-tab ${activeTab === 'template' ? 'olg-tab-active' : ''}`} onClick={() => setActiveTab('template')}>⚙ Template</button>
+          </div>
+
+          {activeTab === 'details' ? (
+            <div className="olg-tab-content">
+              <div className="olg-panel-title">Candidate Details</div>
+              <p className="olg-panel-desc">Fill the fields — preview updates live.</p>
+
+              <div className="olg-field">
+                <label>Letter Type</label>
+                <select value={letterType} onChange={handleLetterTypeChange}>
+                  <option value="consultant">Financial Consultant</option>
+                  <option value="hr">Human Resources</option>
+                </select>
+              </div>
+              <div className="olg-field">
+                <label>Candidate Full Name</label>
+                <input type="text" placeholder="e.g. Candidate Name" autoComplete="off" style={{ textTransform: 'capitalize' }} value={candidateName} onChange={handleNameChange} />
+              </div>
+              <div className="olg-field">
+                <label>Monthly Salary (₹)</label>
+                <div className="olg-salary-wrap">
+                  <span className="olg-rupee">₹</span>
+                  <input type="text" placeholder="e.g. 20,000" inputMode="numeric" autoComplete="off" value={monthlySalary} onChange={handleSalaryChange} />
+                </div>
+              </div>
+              {letterType !== 'hr' && (
+                <div className="olg-field">
+                  <label>Monthly Business Target (₹)</label>
+                  <div className="olg-salary-wrap">
+                    <span className="olg-rupee">₹</span>
+                    <input type="text" placeholder="e.g. 5,00,000" inputMode="numeric" autoComplete="off" value={monthlyTarget} onChange={handleTargetChange} />
+                  </div>
+                </div>
+              )}
+              <div className="olg-field">
+                <label>Joining Date</label>
+                <input type="date" value={joiningDate} onChange={e => setJoiningDate(e.target.value)} />
+              </div>
+              <div className="olg-field">
+                <label>Designation</label>
+                <select value={designation} onChange={handleDesignationChange}>
+                  <option value="Financial Consultant">Financial Consultant</option>
+                  <option value="Human Resources">Human Resources</option>
+                </select>
+              </div>
+
+              <button className="olg-panel-btn" onClick={downloadPDF}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Generate &amp; Download PDF
+              </button>
+            </div>
+          ) : (
+            <TemplateSettingsPanel tpl={tpl} onChange={setTpl} onSave={handleSaveTemplate} saveStatus={saveStatus} />
+          )}
+        </aside>
+
+        {/* RIGHT: Live Preview */}
+        <main className="olg-right-panel">
+          <div className="olg-paper" ref={paperRef} style={{ position: 'relative' }}>
+            {/* A4 page break guides (visual only, stripped before PDF) */}
+            {pageGuides.map((top, i) => (
+              <div key={i} className="olg-page-break-guide" style={{ position: 'absolute', top, left: 0, right: 0, zIndex: 20 }} />
+            ))}
+            {renderWatermark()}
+            <div className="olg-paper-content">
+
+              {renderHeader()}
+              <div className="olg-brand-strip"></div>
+
+              <div className="olg-letter-body">
+                <div className="olg-letter-date">Date: <span className="olg-dv">{formattedDate}</span></div>
+                <div className="olg-letter-subject-banner" dangerouslySetInnerHTML={{ __html: tpl.subject_line || 'Offer of Appointment' }} />
+                <div className="olg-letter-greeting">Dear <strong><span className="olg-dv">{displayName}</span></strong>,</div>
+                {tpl.greeting_intro && <p className="olg-letter-intro" dangerouslySetInnerHTML={{ __html: tpl.greeting_intro }} />}
+                {tpl.greeting_intro2 && <p className="olg-letter-intro" dangerouslySetInnerHTML={{ __html: tpl.greeting_intro2 }} />}
+
+                {/* DYNAMIC SECTIONS - rendered from tpl.consultant_sections / tpl.hr_sections */}
+                {(() => {
+                  const activeSecs = letterType === 'hr'
+                    ? (tpl.hr_sections || DEFAULT_TPL.hr_sections)
+                    : (tpl.consultant_sections || DEFAULT_TPL.consultant_sections);
+                  return activeSecs.map((sec, si) => {
+                    const renderClause = (cl) => cl
+                      .replace(/\{\{designation\}\}/g, `<span class="olg-dv">${currentDesignation}</span>`)
+                      .replace(/\{\{salary\}\}/g, `<span class="olg-dv">${formattedSalary || '\u2014'}</span>`)
+                      .replace(/\{\{salaryWords\}\}/g, `<span class="olg-dv">${salaryWords || '\u2014'}</span>`)
+                      .replace(/\{\{target\}\}/g, `<span class="olg-dv">${formattedTarget || '\u2014'}</span>`);
+                    return (
+                      <React.Fragment key={si}>
+                        {sec.pageBreakBefore && (
+                          <div className="olg-pb-badge">📄 New page — this section starts on a fresh page in the PDF</div>
+                        )}
+                        <div className={`olg-section${sec.pageBreakBefore ? ' olg-pb-before' : ''}`}>
+                          <div className="olg-section-title">
+                            <span className="olg-sn">{si + 1}</span>
+                            <span dangerouslySetInnerHTML={{ __html: sec.title }} />
+                          </div>
+                          <ul>
+                            {sec.clauses.map((cl, ci) => (
+                              <li key={ci} dangerouslySetInnerHTML={{ __html: renderClause(cl) }} />
+                            ))}
+                          </ul>
+                          {sec.note && (
+                            <div className={sec.noteType === 'ibox' ? 'olg-ibox' : 'olg-hbox'}
+                              dangerouslySetInnerHTML={{ __html: sec.note }} />
+                          )}
+                        </div>
+                      </React.Fragment>
+                    );
+                  });
+                })()}
+                {/* ACCEPTANCE */}
+                <div className="olg-accept">
+                  <div className="olg-accept-title">Acceptance of Offer</div>
+                  <div className="olg-email-accept-box">
+                    <div className="olg-email-accept-title">Reply to confirm your acceptance:</div>
+                    <div className="olg-email-accept-label">Copy &amp; reply via email —</div>
+                    <div className="olg-email-accept-quote">
+                      I, <span className="olg-reply-name">{displayName}</span>, accept the Offer of Appointment for the role of <span className="olg-reply-desig">{currentDesignation}</span> at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated <span className="olg-reply-date">{formattedDate}</span>. I have read and agree to all terms and conditions.
+                    </div>
+                    {tpl.acceptance_note && <p className="olg-email-accept-note" dangerouslySetInnerHTML={{ __html: tpl.acceptance_note }} />}
+                  </div>
+                </div>
+
+                {renderFooter()}
+              </div>{/* /letter-body */}
+            </div>{/* /paper-content */}
+          </div>{/* /paper */}
+        </main>
+      </div>{/* /split-layout */}
+    </div>
+  );
+};
+
+export default OfferLetterGenerator;

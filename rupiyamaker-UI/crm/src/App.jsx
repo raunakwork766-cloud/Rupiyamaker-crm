@@ -173,12 +173,14 @@ function App() {
       'Warning Dashboard': '/warnings',
       'All Warnings': '/warnings',
       'My Warnings': '/warnings',
+      'Transfer Requests': '/transfer-requests',
       'Add Task': '/add-task',
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
       'All Notifications': '/notifications',
-      'Knowledge Base': '/knowledge-base'
+      'Knowledge Base': '/knowledge-base',
+      'FAQ': '/faq'
     }).find(([_, path]) => path === currentPath)
     
     if (matchingLabel) {
@@ -359,12 +361,14 @@ function App() {
       'Warning Dashboard': '/warnings',
       'All Warnings': '/warnings',
       'My Warnings': '/warnings',
+      'Transfer Requests': '/transfer-requests',
       'Add Task': '/add-task',
       'Settings': '/settings',
       'Reports': '/reports',
       'Announcement': '/notifications',
       'All Notifications': '/notifications',
-      'Knowledge Base': '/knowledge-base'
+      'Knowledge Base': '/knowledge-base',
+      'FAQ': '/faq'
     }
     
     // Check if current selectedLabel already maps to the current path

@@ -322,19 +322,6 @@ async def create_warning(
                 detail="You can only issue warnings to your subordinates. Contact admin for other employees."
             )
         
-        # Check for duplicate warning
-        duplicate_check = await warnings_db.check_duplicate_warning(
-            warning_data.issued_to,
-            warning_data.warning_type
-        )
-        
-        if duplicate_check["has_duplicate"]:
-            return {
-                "success": False,
-                "message": f"Duplicate warning found. Employee already has a {warning_data.warning_type} warning today.",
-                "duplicate_warning": duplicate_check["existing_warning"]
-            }
-        
         # Get employee info to determine department
         employee = await user_db.get_user(warning_data.issued_to)
         if not employee:
@@ -525,7 +512,10 @@ async def get_user_warnings(
                 waived_by=warning.get("waived_by"),
                 waived_at=warning.get("waived_at"),
                 status=warning.get("status"),
-                employee_status=warning.get("employee_status")
+                employee_status=warning.get("employee_status"),
+                is_acknowledged=warning.get("is_acknowledged", False),
+                acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+                employee_remark=warning.get("employee_remark"),
             )
             warning_list.append(warning_response)
         
@@ -762,7 +752,10 @@ async def get_warnings(
                 waived_by=warning.get("waived_by"),
                 waived_at=warning.get("waived_at"),
                 status=warning.get("status"),
-                employee_status=warning.get("employee_status")
+                employee_status=warning.get("employee_status"),
+                is_acknowledged=warning.get("is_acknowledged", False),
+                acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+                employee_remark=warning.get("employee_remark"),
             )
             warning_list.append(warning_response)
         
@@ -885,7 +878,10 @@ async def get_warning(
             waived_by=warning.get("waived_by"),
             waived_at=warning.get("waived_at"),
             status=warning.get("status"),
-            employee_status=warning.get("employee_status")
+            employee_status=warning.get("employee_status"),
+            is_acknowledged=warning.get("is_acknowledged", False),
+            acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+            employee_remark=warning.get("employee_remark"),
         )
         
     except HTTPException:
@@ -1341,7 +1337,10 @@ async def check_duplicate_warning(
                 warning_message=existing_warning["warning_message"],
                 issued_date=existing_warning.get("issued_date", existing_warning["created_at"]),  # Use created_at as fallback
                 created_at=existing_warning["created_at"],
-                updated_at=existing_warning["updated_at"]
+                updated_at=existing_warning["updated_at"],
+                is_acknowledged=existing_warning.get("is_acknowledged", False),
+                acknowledged_at=str(existing_warning.get("acknowledged_at")) if existing_warning.get("acknowledged_at") else None,
+                employee_remark=existing_warning.get("employee_remark"),
             )
             
             return DuplicateWarningResponse(

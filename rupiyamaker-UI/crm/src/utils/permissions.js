@@ -380,6 +380,16 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
                     return true;
                 }
             }
+
+            // Check if a dot-notation sub-page (e.g. "leads.create_lead") satisfies the parent page request
+            // e.g. checking "leads" + "show" → matches "leads.create_lead" entry that has "show"
+            if (perm.page.toLowerCase().startsWith(page.toLowerCase() + '.')) {
+                const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                if (actions.includes('*') || actions.includes('all') || actions.includes(action)) {
+                    console.log(`✅ hasUniversalPermission: Sub-page ${perm.page} satisfies parent ${page}.${action}`);
+                    return true;
+                }
+            }
         }
     }
 

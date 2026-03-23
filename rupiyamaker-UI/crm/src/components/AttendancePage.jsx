@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, History } from "lucide-react"
 import axios from "axios"
 import { formatDateTime } from '../utils/dateUtils';
@@ -308,6 +308,17 @@ const attendanceAPI = {
   }
 }
 
+// Convert 24h HH:MM:SS to 12h hh:mm AM/PM
+const formatTime12h = (timeStr) => {
+  if (!timeStr || timeStr === '—') return '—'
+  try {
+    const [h, m] = timeStr.split(':').map(Number)
+    const period = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${String(m).padStart(2, '0')} ${period}`
+  } catch { return timeStr }
+}
+
 const getStatusBadge = (status, leaveStatus = null) => {
   // If there's a pending leave request, show "0" with white background and black text
   if (leaveStatus === 'pending') {
@@ -353,9 +364,9 @@ const getStatusBadge = (status, leaveStatus = null) => {
         </div>
       )
     case "SP":
-      // Sunday Paid — employee worked full week, Sunday is paid (+1, blue like Holiday)
+      // Sunday Paid — employee worked full week, Sunday is paid (+1, green like Present)
       return (
-        <div className="w-8 h-8 bg-blue-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
           1
         </div>
       )
@@ -648,7 +659,8 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
 
 // Holiday Management Modal Component
 const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, selectedYear, selectedMonth }) => {
-  const [newHolidayDate, setNewHolidayDate] = useState("")
+  const [newHolidayStartDate, setNewHolidayStartDate] = useState("")
+  const [newHolidayEndDate, setNewHolidayEndDate] = useState("")
   const [newHolidayName, setNewHolidayName] = useState("")
   const [newHolidayDescription, setNewHolidayDescription] = useState("")
   const [loading, setLoading] = useState(false)
@@ -699,33 +711,64 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
     return holidayDate.getFullYear() === selectedYear && holidayDate.getMonth() + 1 === selectedMonth
   })
 
+  // Generate all dates between start and end (inclusive)
+  const getDateRange = (start, end) => {
+    const dates = []
+    const current = new Date(start + 'T00:00:00')
+    const last = new Date((end || start) + 'T00:00:00')
+    while (current <= last) {
+      dates.push(current.toISOString().split('T')[0])
+      current.setDate(current.getDate() + 1)
+    }
+    return dates
+  }
+
   const handleAddHoliday = async () => {
-    if (!newHolidayDate || !newHolidayName || !user?.user_id) {
+    if (!newHolidayStartDate || !newHolidayName || !user?.user_id) {
       setError("Please fill in all required fields")
       return
     }
 
+    const endDate = newHolidayEndDate || newHolidayStartDate
+    if (new Date(endDate) < new Date(newHolidayStartDate)) {
+      setError("End date cannot be before start date")
+      return
+    }
+
+    const dates = getDateRange(newHolidayStartDate, endDate)
     setLoading(true)
     setError("")
     try {
-      const response = await attendanceAPI.addHoliday(
-        newHolidayName,
-        newHolidayDate,
-        newHolidayDescription,
-        user.user_id
-      )
-      
-      if (response.success) {
-        // Reload holidays to get updated list
-        await loadHolidays()
-        // Clear form
-        setNewHolidayDate("")
-        setNewHolidayName("")
-        setNewHolidayDescription("")
-        // Update parent component
-        onUpdateHolidays(localHolidays)
-      } else {
-        setError(response.message || "Failed to add holiday")
+      let addedCount = 0
+      let skippedCount = 0
+      for (const date of dates) {
+        try {
+          const response = await attendanceAPI.addHoliday(
+            newHolidayName,
+            date,
+            newHolidayDescription,
+            user.user_id
+          )
+          if (response.success) addedCount++
+          else skippedCount++
+        } catch (err) {
+          // Holiday already exists for this date — skip
+          skippedCount++
+        }
+      }
+
+      // Reload holidays to get updated list
+      await loadHolidays()
+      // Clear form
+      setNewHolidayStartDate("")
+      setNewHolidayEndDate("")
+      setNewHolidayName("")
+      setNewHolidayDescription("")
+      // Update parent component
+      onUpdateHolidays(localHolidays)
+
+      if (skippedCount > 0 && addedCount === 0) {
+        setError("Holiday(s) already exist for the selected date(s)")
       }
     } catch (error) {
       console.error('Error adding holiday:', error)
@@ -797,15 +840,31 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Holiday Date *</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Start Date *</label>
                   <input
                     type="date"
-                    value={newHolidayDate}
-                    onChange={(e) => setNewHolidayDate(e.target.value)}
-                    className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    value={newHolidayStartDate}
+                    onChange={(e) => setNewHolidayStartDate(e.target.value)}
+                    className="dark-date w-full p-3 border border-gray-600 rounded-lg bg-gray-800 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    style={{ colorScheme: 'dark' }}
                     disabled={loading}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">End Date <span className="text-gray-500">(optional, for multi-day)</span></label>
+                  <input
+                    type="date"
+                    value={newHolidayEndDate}
+                    onChange={(e) => setNewHolidayEndDate(e.target.value)}
+                    min={newHolidayStartDate || undefined}
+                    className="dark-date w-full p-3 border border-gray-600 rounded-lg bg-gray-800 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    style={{ colorScheme: 'dark' }}
+                    disabled={loading || !newHolidayStartDate}
+                    placeholder="Same as start date"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Holiday Name *</label>
                   <input
@@ -832,7 +891,7 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
             </div>
             <button
               onClick={handleAddHoliday}
-              disabled={loading || !newHolidayDate || !newHolidayName}
+              disabled={loading || !newHolidayStartDate || !newHolidayName}
               className="mt-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:from-gray-600 disabled:to-gray-700 text-white px-6 py-2 flex items-center gap-2 rounded-md transition-colors"
             >
               <Plus className="h-4 w-4" />
@@ -1519,6 +1578,29 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
   )
 }
 
+// Map numeric status value to human-readable label + CSS classes
+const statusValueToLabel = (val) => {
+  const n = parseFloat(String(val).trim())
+  if (n === 1)   return { text: 'Full Day',    cls: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' }
+  if (n === 0.5) return { text: 'Half Day',    cls: 'bg-amber-500/20  text-amber-400  border border-amber-500/30'  }
+  if (n === 0)   return { text: 'Absent',      cls: 'bg-zinc-500/20   text-zinc-400   border border-zinc-500/30'   }
+  if (n === -1)  return { text: 'Absconding',  cls: 'bg-rose-500/20   text-rose-400   border border-rose-500/30'   }
+  if (n === -2)  return { text: 'Absconding',  cls: 'bg-rose-500/20   text-rose-400   border border-rose-500/30'   }
+  return { text: String(val), cls: 'bg-zinc-700/20 text-zinc-400 border border-zinc-500/20' }
+}
+
+// Parse a status change out of a history entry's details.changes array
+const parseHistoryStatusChange = (entry) => {
+  if (!Array.isArray(entry?.details?.changes)) return null
+  for (const change of entry.details.changes) {
+    const match = String(change).match(/status:\s*([\-\d.]+)\s*→\s*([\-\d.]+)/)
+    if (match) {
+      return { old: statusValueToLabel(match[1]), new: statusValueToLabel(match[2]) }
+    }
+  }
+  return null
+}
+
 // Employee Detail Modal Component
 const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate, selectedYear, selectedMonth, canUserEdit }) => {
   const [selectedAttendance, setSelectedAttendance] = useState("")
@@ -1533,6 +1615,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   const [user, setUser] = useState(null)
   const [showReasonModal, setShowReasonModal] = useState(false)
   const [updateReason, setUpdateReason] = useState("")
+  const [lastSavedStatus, setLastSavedStatus] = useState(null)
 
   // Get user data
   useEffect(() => {
@@ -1561,6 +1644,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       const status = employee[`day${selectedDate}`] || 'A'
       setSelectedAttendance(status)
       setUpdateReason('')
+      setLastSavedStatus(null)
     }
   }, [isOpen, employee, selectedDate])
 
@@ -1588,8 +1672,15 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
     if (Array.isArray(userPermissions)) {
       const attendancePerm = userPermissions.find(p => p.page === 'attendance');
       if (attendancePerm && Array.isArray(attendancePerm.actions)) {
-        // Only return true if 'update' is explicitly in the actions array
         return attendancePerm.actions.includes('update');
+      }
+    }
+    // Handle object-format permissions (stored by Login.jsx at login time)
+    if (typeof userPermissions === 'object' && userPermissions !== null && !Array.isArray(userPermissions)) {
+      const attendPerms = userPermissions['attendance'] || userPermissions['Attendance'];
+      if (attendPerms === '*') return true;
+      if (typeof attendPerms === 'object' && attendPerms !== null) {
+        return attendPerms['update'] === true || attendPerms['*'] === true;
       }
     }
     
@@ -1656,6 +1747,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
     }
 
     if (!selectedAttendance || !user?.user_id) return
+
+    const appliedStatus = selectedAttendance // capture before async operations
     
     console.log('🔄 [UPDATE] Starting attendance update')
     console.log('📝 [UPDATE] Reason:', updateReason.trim())
@@ -1717,9 +1810,10 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       // Reload detail to get updated data
       await loadAttendanceDetail()
       
-      // Clear reason and reset status selector back to current (closes remark textarea)
+      // Reset reason; set dropdown to the newly saved status so it syncs with the displayed status
       setUpdateReason('')
-      setSelectedAttendance('')
+      setSelectedAttendance(appliedStatus)
+      setLastSavedStatus(appliedStatus)
       
       console.log('🎉 [UPDATE] Attendance update completed successfully')
     } catch (error) {
@@ -1865,7 +1959,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                 { value: 'AB', label: 'ABSCONDING', num: '-1',  dotClass: 'bg-rose-500',    badgeClass: 'bg-rose-500 text-rose-950' },
               ]
               const activeOpt = statusOptions.find(o => o.value === selectedAttendance)
-              const isStatusChanged = !!selectedAttendance && selectedAttendance !== currentStatus
+              const isStatusChanged = !!selectedAttendance && selectedAttendance !== (lastSavedStatus ?? currentStatus)
 
               return (
                 <>
@@ -1891,7 +1985,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Check In</span>
-                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time || '—'}</span>
+                        <span className="text-xs font-mono text-zinc-400">{formatTime12h(attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time) || '—'}</span>
                       </div>
                       <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
                         {(attendanceDetail?.check_in_photo_path || attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? (
@@ -1917,7 +2011,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">Check Out</span>
-                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time || '—'}</span>
+                        <span className="text-xs font-mono text-zinc-400">{formatTime12h(attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time) || '—'}</span>
                       </div>
                       <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
                         {(attendanceDetail?.check_out_photo_path || attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? (
@@ -1965,7 +2059,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                               <button
                                 key={opt.value}
                                 type="button"
-                                onClick={() => { setSelectedAttendance(opt.value); setStatusDropdownOpen(false) }}
+                                onClick={() => { setSelectedAttendance(opt.value); setStatusDropdownOpen(false); setShowReasonModal(false); setUpdateReason('') }}
                                 className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
                               >
                                 <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${opt.badgeClass}`}>
@@ -1978,8 +2072,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                         )}
                       </div>
 
-                      {/* Remark — only shown when status is changed, mandatory */}
-                      <div className={`overflow-hidden transition-all duration-300 ${isStatusChanged ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+                      {/* Remark — shown immediately when a different status is selected */}
+                      <div className={`overflow-hidden transition-all duration-300 ${isStatusChanged ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
                         <textarea
                           value={updateReason}
                           onChange={(e) => setUpdateReason(e.target.value)}
@@ -1994,17 +2088,20 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                         )}
                       </div>
 
-                      <button
-                        onClick={handleConfirmUpdate}
-                        disabled={loading || !isStatusChanged || updateReason.trim() === ''}
-                        className={`w-full py-3 rounded-lg font-bold text-xs tracking-widest uppercase transition-all duration-300 flex items-center justify-center gap-2
-                          ${(loading || !isStatusChanged || updateReason.trim() === '')
-                            ? 'bg-white/5 text-zinc-600 cursor-not-allowed'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.2)]'
-                          }`}
-                      >
-                        {loading ? 'Updating...' : 'Update Attendance'}
-                      </button>
+                      {/* Update button — shows when a different status is selected and remark is filled */}
+                      {isStatusChanged && (
+                        <button
+                          onClick={handleConfirmUpdate}
+                          disabled={loading || updateReason.trim() === ''}
+                          className={`w-full py-3 rounded-lg font-bold text-xs tracking-widest uppercase transition-all duration-300 flex items-center justify-center gap-2
+                            ${(loading || updateReason.trim() === '')
+                              ? 'bg-white/5 text-zinc-600 cursor-not-allowed'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.2)]'
+                            }`}
+                        >
+                          {loading ? 'Updating...' : 'Update Attendance'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
@@ -2013,31 +2110,66 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
           </div>
 
           {/* Right: Activity History */}
-          <div className="w-full md:w-80 bg-black flex flex-col flex-shrink-0">
+          <div className="w-full md:w-96 bg-black flex flex-col flex-shrink-0">
             <div className="flex items-center gap-2 px-4 py-4 border-b border-white/10">
               <History className="w-4 h-4 text-indigo-400" />
               <span className="text-zinc-300 font-bold text-xs tracking-widest uppercase">Activity History</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+            <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
               {history.length > 0 ? (
-                history.map((record, index) => (
-                  <div key={record._id || index} className="relative pl-4 border-l border-white/10 pb-2">
-                    <div className="absolute w-2 h-2 bg-indigo-500 rounded-full -left-[4.5px] top-1.5 ring-4 ring-black" />
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-500 font-mono">{record.changed_at ? formatDateTime(record.changed_at) : ''}</p>
-                      <p className="text-sm text-zinc-200">{record.action}</p>
-                      {record.old_value !== undefined && (
-                        <p className="text-zinc-500 text-xs">{record.old_value} → {record.new_value}</p>
-                      )}
-                      {record.reason && (
-                        <p className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mt-1 leading-relaxed">💬 {record.reason}</p>
-                      )}
-                      {record.changed_by_name && (
-                        <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {record.changed_by_name}</p>
-                      )}
-                    </div>
-                  </div>
-                ))
+                <div className="space-y-0">
+                  {history.map((record, index) => {
+                    const statusChange = parseHistoryStatusChange(record)
+                    const reason = record.reason || record.details?.reason
+                    const isCreated = record.action_type === 'attendance_created'
+                    const createdStatusLabel = isCreated && record.new_value ? statusValueToLabel(
+                      record.new_value === 'Present' ? 1 :
+                      record.new_value === 'Half Day' ? 0.5 :
+                      record.new_value === 'Absent' ? 0 :
+                      record.new_value === 'Absconding' ? -1 : record.new_value
+                    ) : null
+                    return (
+                      <div key={record._id || index} className="relative pl-5 border-l-2 border-white/10 pb-6 last:pb-2">
+                        <div className="absolute w-2.5 h-2.5 bg-indigo-500 rounded-full -left-[6px] top-1 ring-4 ring-black" />
+                        <div className="flex flex-col gap-2">
+                          {/* Who updated + when */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {record.created_by_name && (
+                              <span className="text-[11px] font-semibold text-zinc-300">By {record.created_by_name}</span>
+                            )}
+                            {record.created_by_name && record.created_at && (
+                              <span className="text-zinc-600 text-[10px]">·</span>
+                            )}
+                            {record.created_at && (
+                              <span className="text-[10px] text-zinc-500 font-mono">{formatDateTime(record.created_at)}</span>
+                            )}
+                          </div>
+                          {/* Status change badges */}
+                          {statusChange ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap inline-block ${statusChange.old.cls}`}>{statusChange.old.text}</span>
+                              <span className="text-zinc-500 text-sm font-bold">→</span>
+                              <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap inline-block ${statusChange.new.cls}`}>{statusChange.new.text}</span>
+                            </div>
+                          ) : isCreated && createdStatusLabel ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-zinc-500">Marked:</span>
+                              <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold inline-block ${createdStatusLabel.cls}`}>{createdStatusLabel.text}</span>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-zinc-200">{record.action}</p>
+                          )}
+                          {/* Reason / Remark */}
+                          {reason && (
+                            <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                              <p className="text-[11px] text-zinc-400 leading-relaxed break-words overflow-hidden">💬 {reason}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-50 py-12">
                   <History className="w-8 h-8 text-zinc-600" />
@@ -2156,6 +2288,8 @@ export default function MonthlyAttendanceTable() {
   const [selectedEmployeeHistory, setSelectedEmployeeHistory] = useState(null)
   const [editHistoryData, setEditHistoryData] = useState([])
   const [editCounts, setEditCounts] = useState({}) // { [empId]: count } — increments on each edit
+  const [sortCol, setSortCol] = useState(null)   // 'employeeId' | 'name' | 'department'
+  const [sortDir, setSortDir] = useState('asc')
 
   // Apply attendance rules to formatted records
   const applyAttendanceRules = (records, settings, year, month) => {
@@ -2338,8 +2472,15 @@ export default function MonthlyAttendanceTable() {
     if (Array.isArray(userPermissions)) {
       const attendancePerm = userPermissions.find(p => p.page === 'attendance');
       if (attendancePerm && Array.isArray(attendancePerm.actions)) {
-        // Only return true if 'update' is explicitly in the actions array
         return attendancePerm.actions.includes('update');
+      }
+    }
+    // Handle object-format permissions (stored by Login.jsx at login time)
+    if (typeof userPermissions === 'object' && userPermissions !== null && !Array.isArray(userPermissions)) {
+      const attendPerms = userPermissions['attendance'] || userPermissions['Attendance'];
+      if (attendPerms === '*') return true;
+      if (typeof attendPerms === 'object' && attendPerms !== null) {
+        return attendPerms['update'] === true || attendPerms['*'] === true;
       }
     }
     
@@ -2661,6 +2802,16 @@ export default function MonthlyAttendanceTable() {
   }, [selectedYear, selectedMonth, user])
 
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
+
+  const sortedData = useMemo(() => {
+    if (!sortCol) return attendanceData
+    return [...attendanceData].sort((a, b) => {
+      const aVal = (a[sortCol] || '').toString()
+      const bVal = (b[sortCol] || '').toString()
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: sortCol === 'employeeId', sensitivity: 'base' })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [attendanceData, sortCol, sortDir])
   
   // Calculate visible days (hide future dates in current month)
   const getVisibleDays = () => {
@@ -3176,14 +3327,26 @@ export default function MonthlyAttendanceTable() {
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
               <tr>
-                <th className="sticky left-0 px-2 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Emp ID
+                <th
+                  className="sticky left-0 px-2 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300 z-[3] cursor-pointer select-none hover:brightness-110 active:brightness-90"
+                  style={{backgroundColor: '#03b0f5'}}
+                  onClick={() => { if (sortCol === 'employeeId') { setSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setSortCol('employeeId'); setSortDir('asc') } }}
+                >
+                  <span className="flex items-center gap-1">Emp ID {sortCol === 'employeeId' ? (sortDir === 'asc' ? '↑' : '↓') : <span className="opacity-40">↕</span>}</span>
                 </th>
-                <th className="sticky left-[100px] px-2 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Name
+                <th
+                  className="sticky left-[100px] px-2 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300 z-[3] cursor-pointer select-none hover:brightness-110 active:brightness-90"
+                  style={{backgroundColor: '#03b0f5'}}
+                  onClick={() => { if (sortCol === 'name') { setSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setSortCol('name'); setSortDir('asc') } }}
+                >
+                  <span className="flex items-center gap-1">Name {sortCol === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : <span className="opacity-40">↕</span>}</span>
                 </th>
-                <th className="sticky left-[250px] px-2 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Team
+                <th
+                  className="sticky left-[250px] px-2 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300 z-[3] cursor-pointer select-none hover:brightness-110 active:brightness-90"
+                  style={{backgroundColor: '#03b0f5'}}
+                  onClick={() => { if (sortCol === 'department') { setSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setSortCol('department'); setSortDir('asc') } }}
+                >
+                  <span className="flex items-center gap-1">Team {sortCol === 'department' ? (sortDir === 'asc' ? '↑' : '↓') : <span className="opacity-40">↕</span>}</span>
                 </th>
                 <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#f59e0b'}}>EDIT</th>
                 <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>present</th>
@@ -3195,7 +3358,7 @@ export default function MonthlyAttendanceTable() {
               </tr>
             </thead>
             <tbody className="bg-black">
-              {attendanceData.map((record, index) => {
+              {sortedData.map((record, index) => {
                 const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
                 const isEvenRow = index % 2 === 0
                 

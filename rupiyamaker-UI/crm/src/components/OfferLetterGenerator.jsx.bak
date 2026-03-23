@@ -1,0 +1,940 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+
+// ===== HELPERS =====
+function formatIndian(n) {
+  const s = Math.round(n).toString();
+  const last3 = s.slice(-3);
+  const rest = s.slice(0, -3);
+  return rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3 : last3;
+}
+
+function parseIndian(str) {
+  return parseInt(String(str).replace(/,/g, '')) || 0;
+}
+
+function numberToWords(num) {
+  if (num === 0) return 'Zero';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  function chunk(n) {
+    if (n === 0) return '';
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + chunk(n % 100) : '');
+  }
+  let r = '';
+  if (num >= 10000000) { r += chunk(Math.floor(num / 10000000)) + ' Crore '; num %= 10000000; }
+  if (num >= 100000) { r += chunk(Math.floor(num / 100000)) + ' Lakh '; num %= 100000; }
+  if (num >= 1000) { r += chunk(Math.floor(num / 1000)) + ' Thousand '; num %= 1000; }
+  r += chunk(num);
+  return 'Rupees ' + r.trim() + ' Only';
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '15 March 2026';
+  const m = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getDate() + ' ' + m[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function titleCase(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ===== STYLES =====
+const cssStyles = `
+  .olg-root *,.olg-root *::before,.olg-root *::after{margin:0;padding:0;box-sizing:border-box}
+  .olg-root{
+    --primary:#0a1c3e;--primary-light:#1a5ba8;--accent:#cc1818;--blue:#0099cc;
+    --bg:#f0f2f7;--card:#fff;--dark:#0a1628;--body:#2d3748;--muted:#64748b;
+    --border:#dde4f0;--radius:10px;
+    font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--body);line-height:1.55;
+  }
+
+  .olg-split-layout{display:grid;grid-template-columns:320px 1fr;gap:0;height:100vh}
+
+  .olg-left-panel{background:#fff;border-right:1px solid var(--border);padding:28px 24px;position:sticky;top:0;height:100vh;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.04)}
+
+  .olg-logo-box{display:inline-flex;align-items:center;gap:12px;padding:12px 20px 12px 14px;background:rgba(255,255,255,.07);border-radius:8px;border:1px solid rgba(255,255,255,.12)}
+  .olg-logo-fix{font-family:'Arial Black','Arial',sans-serif;font-size:48px;font-weight:900;color:#fff;line-height:1;letter-spacing:-2px}
+  .olg-logo-sep{width:4px;height:58px;background:#cc1818;border-radius:2px;flex-shrink:0}
+  .olg-logo-yf{display:flex;flex-direction:column;justify-content:center;gap:3px}
+  .olg-logo-your{font-family:'Arial','Helvetica',sans-serif;font-size:16px;font-weight:700;color:#00bfff;line-height:1;letter-spacing:4px;text-transform:uppercase}
+  .olg-logo-finance{font-family:'Arial Black','Arial',sans-serif;font-size:28px;font-weight:900;color:#00bfff;line-height:1;letter-spacing:-1px}
+  .olg-lh-legal-sub{font-size:.75rem;font-weight:700;color:rgba(255,255,255,.78);font-family:'Arial',sans-serif;margin-top:8px;letter-spacing:.4px}
+  .olg-panel-title{font-family:'Poppins',sans-serif;font-size:.95rem;font-weight:700;color:var(--primary);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .olg-panel-title::before{content:'';width:4px;height:18px;background:var(--accent);border-radius:2px}
+  .olg-panel-desc{font-size:.78rem;color:var(--muted);margin-bottom:22px}
+  .olg-field{margin-bottom:18px}
+  .olg-field label{display:block;font-size:.7rem;font-weight:700;color:var(--dark);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em;font-family:'Poppins',sans-serif}
+  .olg-field input,.olg-field select{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:.92rem;font-weight:500;color:var(--dark);background:#f8fafc;outline:none;transition:all .2s ease}
+  .olg-field input:focus,.olg-field select:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(0,153,204,.1)}
+  .olg-field input::placeholder{color:#a0aec0;font-weight:400}
+  .olg-salary-wrap{position:relative}
+  .olg-salary-wrap .olg-rupee{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.92rem;font-weight:700;color:var(--primary)}
+  .olg-salary-wrap input{padding-left:28px}
+  .olg-panel-btn{width:100%;padding:14px 20px;border:none;border-radius:8px;font-family:'Poppins',sans-serif;font-size:.9rem;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-light));box-shadow:0 4px 14px rgba(10,28,62,.3);display:flex;align-items:center;justify-content:center;gap:9px;transition:all .25s ease;margin-top:8px}
+  .olg-panel-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(10,28,62,.45)}
+  .olg-panel-btn svg{flex-shrink:0}
+
+  .olg-right-panel{padding:28px 32px 50px;display:flex;justify-content:center;overflow:auto;background:var(--bg);min-width:0;align-items:flex-start}
+
+  .olg-paper{width:210mm;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.18);border-radius:4px;position:relative;overflow:visible}
+  .olg-paper-content{padding:0;position:relative;z-index:1}
+
+  .olg-watermark{position:absolute;top:60%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:120px;font-weight:900;color:rgba(10,28,62,.1);pointer-events:none;z-index:1;white-space:nowrap;letter-spacing:14px;font-family:'Arial Black','Arial',sans-serif;user-select:none}
+
+  .olg-letterhead-bar{background:#000;padding:18px 40px 16px;display:flex;align-items:center;justify-content:space-between;gap:36px}
+  .olg-lh-left{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .olg-letterhead-bar .olg-logo-box{display:flex;align-items:stretch;background:transparent;border:none;padding:0;gap:14px}
+  .olg-letterhead-bar .olg-logo-fix{font-family:'Arial Black','Arial',sans-serif;font-size:78px;font-weight:900;color:#fff;line-height:1;letter-spacing:-3px;align-self:center}
+  .olg-letterhead-bar .olg-logo-sep{width:5px;align-self:stretch;background:#cc1818;border-radius:3px;flex-shrink:0}
+  .olg-letterhead-bar .olg-logo-yf{display:flex;flex-direction:column;justify-content:center;gap:2px;align-self:center}
+  .olg-letterhead-bar .olg-logo-your{font-family:'Arial','Helvetica',sans-serif;font-size:18px;font-weight:700;color:#00bfff;line-height:1;letter-spacing:5px;text-transform:uppercase}
+  .olg-letterhead-bar .olg-logo-finance{font-family:'Arial Black','Arial',sans-serif;font-size:44px;font-weight:900;color:#00bfff;line-height:1;letter-spacing:-1px}
+  .olg-lh-legal-sub{font-size:.82rem;font-weight:700;color:rgba(255,255,255,.88);font-family:'Arial',sans-serif;letter-spacing:.3px}
+  .olg-lh-right{text-align:left;font-size:.76rem;color:rgba(255,255,255,.9);line-height:1.6;font-family:'Arial',sans-serif}
+  .olg-lh-right strong{display:block;color:#fff;font-weight:700;font-size:.8rem;margin-bottom:2px;letter-spacing:.02em}
+  .olg-lh-right .olg-web{color:#4dc9e6;font-weight:700}
+
+  .olg-brand-strip{height:5px;background:linear-gradient(90deg,var(--primary) 0%,var(--accent) 40%,var(--blue) 100%)}
+
+  .olg-letter-body{padding:30px 44px 38px}
+  .olg-letter-date{text-align:right;font-size:.84rem;color:var(--muted);margin-bottom:18px;font-weight:500}
+  .olg-letter-subject-banner{font-family:'Poppins',sans-serif;font-size:1rem;font-weight:800;color:var(--primary);text-align:center;padding:10px 0 16px;letter-spacing:.02em;border-bottom:2px solid var(--primary);margin-bottom:14px}
+  .olg-letter-greeting{font-size:.88rem;margin-bottom:6px;color:#1a2540;font-weight:600}
+  .olg-letter-greeting strong{color:var(--primary);font-weight:700}
+  .olg-letter-intro{font-size:.85rem;line-height:1.72;color:#2a3650;margin-bottom:14px;text-align:justify;font-weight:400}
+
+  .olg-section{margin-bottom:14px;page-break-inside:auto;break-inside:auto}
+  .olg-section-title{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:700;color:var(--primary);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid #e2e8f4;display:flex;align-items:center;gap:8px}
+  .olg-sn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--blue);color:#fff;border-radius:7px;font-size:.72rem;font-weight:800;flex-shrink:0;font-family:'Poppins',sans-serif}
+  .olg-section ul{padding-left:0;margin-top:6px;list-style:none;counter-reset:alpha-list}
+  .olg-section li{font-size:.84rem;line-height:1.72;color:#1f2d45;margin-bottom:6px;text-align:justify;padding-left:28px;position:relative;counter-increment:alpha-list}
+  .olg-section li::before{content:counter(alpha-list,lower-alpha) '. ';position:absolute;left:0;top:0;font-weight:700;color:var(--blue);font-size:.84rem;font-family:'Poppins',sans-serif}
+  .olg-section li strong{color:#0a1628;font-weight:700;font-size:.85rem}
+  .olg-sub-items{padding-left:20px;margin-top:5px;list-style:none;counter-reset:sub-num}
+  .olg-sub-items li{font-size:.81rem;margin-bottom:3px;padding-left:24px;position:relative;counter-increment:sub-num;color:#1f2d45}
+  .olg-sub-items li::before{content:counter(sub-num) '. ';position:absolute;left:0;font-weight:600;color:#1f2d45;font-size:.79rem}
+  .olg-hbox{background:rgba(0,153,204,.06);border-left:3px solid var(--blue);padding:10px 14px;border-radius:0 5px 5px 0;margin:8px 0;font-size:.83rem;color:#1f2d45;font-weight:500}
+  .olg-ibox{background:rgba(204,24,24,.04);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 5px 5px 0;margin:8px 0;font-size:.83rem;font-weight:600;color:var(--primary)}
+
+  .olg-accept{margin-top:22px;padding-top:16px;border-top:2px solid var(--primary);page-break-inside:avoid;break-inside:avoid}
+  .olg-accept-title{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:700;color:var(--primary);margin-bottom:10px;text-align:center}
+  .olg-email-accept-box{margin-top:14px;padding:14px 18px;background:#f0f5ff;border:1.5px solid #b8cfe8;border-radius:8px}
+  .olg-email-accept-title{font-family:'Poppins',sans-serif;font-size:.85rem;font-weight:700;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px;border-bottom:1px dashed #c5d5ea;padding-bottom:8px}
+  .olg-email-accept-title::before{content:'\\2709';font-size:.95rem}
+  .olg-email-accept-label{font-size:.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .olg-email-accept-quote{font-size:.83rem;font-style:normal;color:#162240;background:#fff;border-left:3px solid var(--blue);padding:12px 16px;border-radius:0 6px 6px 0;line-height:1.75;font-weight:500}
+  .olg-email-accept-quote .olg-reply-name{color:var(--blue);font-weight:700}
+  .olg-email-accept-quote .olg-reply-desig{color:var(--accent);font-weight:700}
+  .olg-email-accept-quote .olg-reply-date{color:var(--blue);font-weight:700}
+  .olg-email-accept-note{font-size:.75rem;color:var(--muted);margin-top:10px;line-height:1.55;text-align:right}
+
+  .olg-letter-footer{margin-top:22px;padding-top:12px;border-top:1.5px solid #edf2f7;text-align:center;font-size:.66rem;color:var(--muted);line-height:1.65}
+  .olg-letter-footer strong{color:var(--primary)}
+
+  .olg-dv{color:var(--blue);font-weight:700}
+
+  .olg-loading-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,28,62,.88);z-index:9999;justify-content:center;align-items:center;flex-direction:column;gap:18px}
+  .olg-loading-overlay.olg-active{display:flex}
+  .olg-spinner{width:46px;height:46px;border:4px solid rgba(255,255,255,.15);border-top-color:var(--blue);border-radius:50%;animation:olg-spin .7s linear infinite}
+  @keyframes olg-spin{to{transform:rotate(360deg)}}
+  .olg-loading-text{color:#fff;font-size:.95rem;font-weight:500}
+
+  @media(max-width:1100px){
+    .olg-split-layout{grid-template-columns:1fr;gap:0}
+    .olg-left-panel{position:relative;top:auto;height:auto;border-right:none;border-bottom:1px solid var(--border)}
+    .olg-paper{width:100%!important;min-height:auto}
+  }
+  @media(max-width:600px){
+    .olg-left-panel{padding:20px 14px}
+    .olg-right-panel{padding:16px 8px 40px}
+    .olg-letterhead-bar{padding:16px 18px 14px;flex-direction:column;align-items:flex-start;gap:12px}
+    .olg-lh-right{text-align:left}
+    .olg-letter-body{padding:20px 18px 28px}
+  }
+`;
+
+const OfferLetterGenerator = () => {
+  const [letterType, setLetterType] = useState('consultant');
+  const [candidateName, setCandidateName] = useState('');
+  const [monthlySalary, setMonthlySalary] = useState('');
+  const [monthlyTarget, setMonthlyTarget] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+  const [designation, setDesignation] = useState('Financial Consultant');
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const paperRef = useRef(null);
+
+  // Derived preview values
+  const displayName = candidateName.trim() || 'Candidate Name';
+  const salaryRaw = parseIndian(monthlySalary);
+  const formattedSalary = salaryRaw > 0 ? formatIndian(salaryRaw) : '';
+  const salaryWords = salaryRaw > 0 ? numberToWords(salaryRaw) : '';
+  const targetRaw = parseIndian(monthlyTarget);
+  const formattedTarget = targetRaw > 0 ? formatIndian(targetRaw) : '';
+  const formattedDate = formatDate(joiningDate);
+  const currentDesignation = letterType === 'hr' ? 'Human Resources' : designation;
+
+  // Salary input handler with Indian comma formatting
+  const handleSalaryChange = useCallback((e) => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    if (raw) {
+      setMonthlySalary(formatIndian(parseInt(raw)));
+    } else {
+      setMonthlySalary('');
+    }
+  }, []);
+
+  // Target input handler
+  const handleTargetChange = useCallback((e) => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    if (raw) {
+      setMonthlyTarget(formatIndian(parseInt(raw)));
+    } else {
+      setMonthlyTarget('');
+    }
+  }, []);
+
+  // Name input handler with title case
+  const handleNameChange = useCallback((e) => {
+    setCandidateName(titleCase(e.target.value));
+  }, []);
+
+  // Letter type change
+  const handleLetterTypeChange = useCallback((e) => {
+    const type = e.target.value;
+    setLetterType(type);
+    if (type === 'hr') {
+      setDesignation('Human Resources');
+    } else {
+      setDesignation('Financial Consultant');
+    }
+  }, []);
+
+  // Designation change
+  const handleDesignationChange = useCallback((e) => {
+    const desig = e.target.value;
+    setDesignation(desig);
+    if (desig === 'Human Resources') {
+      setLetterType('hr');
+    } else {
+      setLetterType('consultant');
+    }
+  }, []);
+
+  // PDF Download
+  const downloadPDF = useCallback(async () => {
+    setPdfLoading(true);
+
+    const candName = candidateName.trim() || 'Candidate';
+    const typeLabel = letterType === 'hr' ? 'Human_Resources' : 'Consultant';
+    const filename = 'Offer_Letter_' + typeLabel + '_' + candName.replace(/\s+/g, '_') + '.pdf';
+
+    const origPaper = paperRef.current;
+    if (!origPaper) { setPdfLoading(false); return; }
+
+    const clone = origPaper.cloneNode(true);
+    clone.querySelectorAll('.olg-page-guide').forEach(e => e.remove());
+    const wmEl = clone.querySelector('.olg-watermark');
+    if (wmEl) wmEl.remove();
+
+    clone.style.cssText = [
+      'width:794px', 'min-width:794px', 'max-width:794px',
+      'margin:0', 'padding:0', 'display:block',
+      'box-shadow:none', 'border-radius:0',
+      'overflow:visible', 'background:#fff'
+    ].join(';');
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = [
+      'position:fixed', 'top:0', 'left:0',
+      'width:794px', 'height:auto',
+      'overflow:visible', 'z-index:999999',
+      'background:#fff', 'pointer-events:none',
+      'margin:0', 'padding:0', 'border:none'
+    ].join(';');
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    window.scrollTo(0, 0);
+
+    function cleanup() {
+      if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+      setPdfLoading(false);
+    }
+
+    const SCALE = 2;
+    const A4_W = 794;
+    const A4_H = 1122;
+
+    try {
+      await document.fonts.ready;
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise(r => setTimeout(r, 600));
+
+      const cloneTop = clone.getBoundingClientRect().top;
+      const breakEls = [
+        ...clone.querySelectorAll(
+          'li, .olg-section, .olg-section-title, .olg-hbox, .olg-ibox, ' +
+          '.olg-accept, .olg-email-accept-box, .olg-letter-footer, ' +
+          '.olg-letter-date, .olg-letter-greeting, .olg-letter-subject-banner, p'
+        )
+      ];
+      const breakSet = new Set([0]);
+      breakEls.forEach(el => {
+        const r = el.getBoundingClientRect();
+        const py = Math.floor((r.top - cloneTop) * SCALE);
+        if (py > 10) breakSet.add(py);
+      });
+      const sortedBreaks = [...breakSet].sort((a, b) => a - b);
+
+      const lhBarEl = clone.querySelector('.olg-letterhead-bar');
+      const bsStEl = clone.querySelector('.olg-brand-strip');
+      const lhPxCss = (lhBarEl ? lhBarEl.offsetHeight : 100) + (bsStEl ? bsStEl.offsetHeight : 6);
+      const lhMM = lhPxCss * (210 / 794);
+
+      const fullCanvas = await html2canvas(clone, {
+        scale: SCALE,
+        useCORS: true,
+        allowTaint: false,
+        letterRendering: true,
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
+        width: A4_W,
+        windowWidth: A4_W,
+        backgroundColor: '#ffffff'
+      });
+
+      const pageH = A4_H * SCALE;
+      const totalH = fullCanvas.height;
+      const sliceStarts = [];
+      let startY = 0;
+
+      while (startY < totalH) {
+        sliceStarts.push(startY);
+        const maxEndY = startY + pageH;
+        if (maxEndY >= totalH) break;
+
+        const minUse = startY + pageH * 0.55;
+        const valid = sortedBreaks.filter(b => b > startY + 20 && b <= maxEndY);
+        let cutY = maxEndY;
+        if (valid.length > 0) {
+          const good = valid.filter(b => b >= minUse);
+          cutY = good.length > 0 ? good[good.length - 1] : valid[valid.length - 1];
+        }
+        startY = cutY;
+      }
+
+      const totalPages = sliceStarts.length;
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+      sliceStarts.forEach((sliceStart, idx) => {
+        if (idx > 0) pdf.addPage();
+
+        const nextStart = idx + 1 < sliceStarts.length ? sliceStarts[idx + 1] : totalH;
+        const sliceH = nextStart - sliceStart;
+
+        const topPadPx = idx > 0 ? Math.round(pageH * 0.04) : 0;
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = A4_W * SCALE;
+        pageCanvas.height = pageH;
+        const ctx = pageCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          fullCanvas,
+          0, sliceStart, A4_W * SCALE, sliceH,
+          0, topPadPx, A4_W * SCALE, sliceH - topPadPx
+        );
+
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.97), 'JPEG', 0, 0, 210, 297);
+
+        const wmFontSize = idx === 0 ? 60 : 72;
+        const wmAngle = idx === 0 ? 32 : 26;
+        const topPadMM = idx > 0 ? (topPadPx / pageH) * 297 : 0;
+        const wmY = idx === 0
+          ? lhMM + (297 - lhMM) / 2
+          : topPadMM + (297 - topPadMM) / 2;
+        try {
+          pdf.saveGraphicsState();
+          pdf.setGState(new pdf.GState({ opacity: 0.14, 'stroke-opacity': 0.14 }));
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(wmFontSize);
+          pdf.setTextColor(20, 45, 115);
+          pdf.text('CONFIDENTIAL', 105, wmY, { angle: wmAngle, align: 'center' });
+          pdf.restoreGraphicsState();
+        } catch (e) {
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(wmFontSize);
+          pdf.setTextColor(185, 200, 225);
+          pdf.text('CONFIDENTIAL', 105, wmY, { angle: wmAngle, align: 'center' });
+        }
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(155, 155, 155);
+        pdf.text(
+          '\u2014 Page ' + (idx + 1) + ' of ' + totalPages + ' \u2014',
+          105, 293, { align: 'center' }
+        );
+      });
+
+      pdf.save(filename);
+      cleanup();
+    } catch (err) {
+      console.error('PDF error:', err);
+      cleanup();
+      alert('PDF generation failed. Please try again.');
+    }
+  }, [candidateName, letterType]);
+
+  return (
+    <div className="olg-root">
+      <style>{cssStyles}</style>
+
+      {/* LOADING */}
+      <div className={`olg-loading-overlay ${pdfLoading ? 'olg-active' : ''}`}>
+        <div className="olg-spinner"></div>
+        <div className="olg-loading-text">Generating PDF... Please wait</div>
+      </div>
+
+      {/* SPLIT LAYOUT */}
+      <div className="olg-split-layout">
+
+        {/* LEFT: Input Form */}
+        <aside className="olg-left-panel">
+          <div className="olg-panel-title">Candidate Details</div>
+          <p className="olg-panel-desc">Fill the fields - preview updates live.</p>
+
+          <div className="olg-field">
+            <label>Letter Type</label>
+            <select value={letterType} onChange={handleLetterTypeChange}>
+              <option value="consultant">Financial Consultant</option>
+              <option value="hr">Human Resources</option>
+            </select>
+          </div>
+          <div className="olg-field">
+            <label>Candidate Full Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Candidate Name"
+              autoComplete="off"
+              style={{ textTransform: 'capitalize' }}
+              value={candidateName}
+              onChange={handleNameChange}
+            />
+          </div>
+          <div className="olg-field">
+            <label>Monthly Salary (₹)</label>
+            <div className="olg-salary-wrap">
+              <span className="olg-rupee">₹</span>
+              <input
+                type="text"
+                placeholder="e.g. 20,000"
+                inputMode="numeric"
+                autoComplete="off"
+                value={monthlySalary}
+                onChange={handleSalaryChange}
+              />
+            </div>
+          </div>
+          {letterType !== 'hr' && (
+            <div className="olg-field">
+              <label>Monthly Business Target (₹)</label>
+              <div className="olg-salary-wrap">
+                <span className="olg-rupee">₹</span>
+                <input
+                  type="text"
+                  placeholder="e.g. 5,00,000"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={monthlyTarget}
+                  onChange={handleTargetChange}
+                />
+              </div>
+            </div>
+          )}
+          <div className="olg-field">
+            <label>Joining Date</label>
+            <input
+              type="date"
+              value={joiningDate}
+              onChange={(e) => setJoiningDate(e.target.value)}
+            />
+          </div>
+          <div className="olg-field">
+            <label>Designation</label>
+            <select value={designation} onChange={handleDesignationChange}>
+              <option value="Financial Consultant">Financial Consultant</option>
+              <option value="Human Resources">Human Resources</option>
+            </select>
+          </div>
+
+          <button className="olg-panel-btn" onClick={downloadPDF}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Generate &amp; Download PDF
+          </button>
+        </aside>
+
+        {/* RIGHT: Live Preview */}
+        <main className="olg-right-panel">
+          <div className="olg-paper" ref={paperRef}>
+            <div className="olg-watermark">CONFIDENTIAL</div>
+            <div className="olg-paper-content">
+
+              {/* BLACK LETTERHEAD */}
+              <div className="olg-letterhead-bar">
+                <div className="olg-lh-left">
+                  <div className="olg-logo-box">
+                    <span className="olg-logo-fix">Fix</span>
+                    <span className="olg-logo-sep"></span>
+                    <div className="olg-logo-yf">
+                      <span className="olg-logo-your">Your</span>
+                      <span className="olg-logo-finance">Finance</span>
+                    </div>
+                  </div>
+                  <div className="olg-lh-legal-sub">Insta Credit Solution Pvt Ltd</div>
+                </div>
+                <div className="olg-lh-right">
+                  <strong>Registered Office</strong><br/>
+                  Office No. 302, Third Floor, H160<br/>
+                  Sector 63, Noida - 201301<br/>
+                  Uttar Pradesh, India<br/>
+                  <span className="olg-web">www.FixYourFinance.ai</span>
+                </div>
+              </div>
+              <div className="olg-brand-strip"></div>
+
+              {/* LETTER BODY */}
+              <div className="olg-letter-body">
+                <div className="olg-letter-date">Date: <span className="olg-dv">{formattedDate}</span></div>
+
+                <div className="olg-letter-subject-banner">Offer of Appointment</div>
+
+                <div className="olg-letter-greeting">
+                  Dear <strong><span className="olg-dv">{displayName}</span></strong>,
+                </div>
+
+                <p className="olg-letter-intro">
+                  We are absolutely delighted to extend this offer to you! Following our recent discussions, we have been highly impressed by your skills, drive, and potential. We are thrilled to invite you to partner with <strong>Fix Your Finance</strong>.
+                </p>
+                <p className="olg-letter-intro">
+                  Below are the details of your compensation, operational guidelines, and the terms of this professional association, thoughtfully designed to foster mutual growth, success, and long-term professional development.
+                </p>
+
+                {/* ======== FINANCIAL CONSULTANT SECTIONS ======== */}
+                {letterType === 'consultant' && (
+                  <div>
+                    {/* 1 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">1</span> Professional Role &amp; Compensation Structure</div>
+                      <ul>
+                        <li><strong>Designation:</strong> You are being engaged as a <span className="olg-dv">{currentDesignation}</span>.</li>
+                        <li><strong>Fixed Compensation:</strong> For your expert professional services, you will receive a consolidated monthly compensation of <strong>INR ₹<span className="olg-dv">{formattedSalary}</span>/- (<span className="olg-dv">{salaryWords}</span>)</strong>.</li>
+                        <li><strong>Monthly Business Target:</strong> Your assigned monthly disbursement target is <strong>INR ₹<span className="olg-dv">{formattedTarget}</span>/-</strong>. Achieving this target every month is mandatory. Any shortfall will be carried forward and added to the following month's target without exception.</li>
+                        <li><strong>Incentives &amp; Growth Bonus:</strong> In addition to your fixed compensation, you will be eligible for highly rewarding, performance-based variable incentives as per the company's ongoing business policies and targeted milestones.</li>
+                        <li><strong>Taxation:</strong> Your compensation will be subject to applicable Tax Deducted at Source (TDS) as per Indian Income Tax regulations.</li>
+                      </ul>
+                    </div>
+
+                    {/* 2 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">2</span> Financial Rewards &amp; Compensation Cycle</div>
+                      <ul>
+                        <li><strong>Cycle Date:</strong> Monthly compensation and performance incentives are credited by the 10th of every month.</li>
+                        <li><strong>Incentive Discretion:</strong> Incentives are variable and subject to business performance. If you are serving your notice period or are marked under unauthorized absence, all pending incentives will be automatically forfeited.</li>
+                        <li><strong>Incentive Adjustments (Disputed Cases):</strong> If a case you disbursed is later disputed, canceled, or recalled by the bank due to fraud or customer complaints, that case will be strictly deducted from your business targets. Furthermore, any incentive already paid to you for that specific case will be adjusted (recovered) in the subsequent cycle.</li>
+                      </ul>
+                    </div>
+
+                    {/* 3 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">3</span> Wellness &amp; Monthly Time-Off Guidelines</div>
+                      <ul>
+                        <li><strong>Authorized Time-Off:</strong> You are permitted 1 day of authorized time-off (paid) per month. To be eligible for this paid time-off, you must have rendered a minimum of 24 days of active service (including Sundays) in that month.</li>
+                        <li><strong>Carry Forward:</strong> Unused authorized time-off seamlessly carries forward to the next month for your convenience.</li>
+                        <li><strong>Extra Time-Off:</strong> Any unavailability beyond the 1 permitted day requires valid proof (e.g., medical certificate) for authorization to ensure smooth floor operations.</li>
+                        <li><strong>First Month Rule:</strong> Planned time-off is not permitted during your very first month of engagement to ensure proper onboarding and operational alignment.</li>
+                      </ul>
+                    </div>
+
+                    {/* 4 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">4</span> Key Deliverables &amp; Performance Metrics</div>
+                      <ul>
+                        <li><strong>Products We Deal In:</strong> Personal Loans, Home Loans, Car Loans, Credit Cards, and Insurance.</li>
+                        <li><strong>Your Core Objective ("Engaged to Close"):</strong> We are bringing you onboard to drive real business impact. Your primary mandate is to close deals. You will act as an expert consultant to convince customers, collect required documentation, log files with partner banks, and ensure the entire process is managed until the product is successfully disbursed.</li>
+                        <li><strong>Performance Metric:</strong> Your services will only be considered complete and billable when a case is officially disbursed by the bank. Purely calling or generating a lead does not count as completed business.</li>
+                      </ul>
+                    </div>
+
+                    {/* 5 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">5</span> Operational Sync &amp; Floor Access</div>
+                      <ul>
+                        <li><strong>Standard Availability:</strong> To seamlessly sync with banking operations, partner NBFCs, and client requirements, your core operational availability hours will be from <strong>10:00 AM to 7:00 PM</strong>.</li>
+                        <li><strong>Operational Access:</strong> You are expected to be present at the designated operational floor and actively providing services during these hours to ensure uninterrupted business flow.</li>
+                        <li><strong>Operational Breaks:</strong> You are entitled to a total of 45 minutes of wellness break time during your daily schedule (One main break of 30 minutes and one short break of 15 minutes).</li>
+                        <li><strong>Flexibility:</strong> Break timings and floor assignments are subject to business volume and operational necessities. You must align with the floor manager's instructions regarding operational flow.</li>
+                      </ul>
+                    </div>
+
+                    {/* 6 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">6</span> Reporting &amp; Punctuality Standards</div>
+                      <ul>
+                        <li><strong>Strict Reporting Time:</strong> You are required to report to the operational floor and be ready to render services strictly by <strong>10:00 AM</strong>.</li>
+                        <li><strong>Operational Cut-off:</strong> To maintain continuous business flow, any arrival after the 10:15 AM window will automatically and unconditionally be aligned as a Half-Day Absence for that operational day.</li>
+                      </ul>
+                      <div className="olg-hbox">
+                        <strong>The 45-Minute Buffer Privilege:</strong><br/>
+                        We understand that top professionals may occasionally face unexpected daily challenges. Therefore, Fix Your Finance provides a special 45-minute buffer window, allowing you to report strictly between 10:00 AM and 10:45 AM without facing an immediate deduction.<br/><br/>
+                        <strong>Usage Limit &amp; Month-End Reconciliation:</strong> You may utilize this buffer a maximum of 3 times a month. The final waiver is automatically applied at month-end based on active days:<br/>
+                        &bull; 1st Buffer: Waived on 15+ active days &nbsp;&bull; 2nd Buffer: Waived on 20+ active days &nbsp;&bull; 3rd Buffer: Waived on 24+ active days<br/><br/>
+                        <em>If you utilize a buffer but fail to meet the active days criteria by month-end, those instances will be retroactively adjusted as Half-Day Absences. Exceeding 3 buffers results in complete withdrawal of the privilege.</em>
+                      </div>
+                    </div>
+
+                    {/* 7 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">7</span> Attendance Adherence &amp; Unplanned Unavailability</div>
+                      <ul>
+                        <li><strong>Authorization Process:</strong> All planned time-off must be requested at least 1 day in advance. Same-day requests cannot be accommodated.</li>
+                        <li><strong>Service Continuity:</strong> Unplanned and unauthorized absence (without prior written approval) heavily disrupts business flow and is considered a material breach of this professional agreement (commonly termed as absconding).</li>
+                        <li><strong>Impact of Unauthorized Unavailability:</strong> To protect business interests, unauthorized absence authorizes the company to implement proportional financial deductions (equivalent to 2 days of your compensation for every 1 day of unauthorized absence) or initiate immediate engagement closure without any compensation or Full &amp; Final (FNF) settlement.</li>
+                        <li><strong>Weekend Sync Rule:</strong> If an unauthorized absence occurs on a Saturday or a Monday, the Sunday in between will automatically be treated as unpaid. To be eligible to receive compensation for any Sunday, a minimum of 4 active working days of service in that specific week is required.</li>
+                      </ul>
+                    </div>
+
+                    {/* 8 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">8</span> Payout Adjustments &amp; Target Continuity</div>
+                      <ul>
+                        <li><strong>Cycle Adjustments (Due to Unauthorized Absence):</strong> For unplanned and unauthorized unavailability specifically between the 1st and 10th of the month, your compensation payout cycle will be strictly delayed as follows:
+                          <ul className="olg-sub-items">
+                            <li>1 day of unauthorized absence: Payout delayed to the 15th of the month.</li>
+                            <li>2 days of unauthorized absence: Payout delayed to the 20th of the month.</li>
+                            <li>3 days of unauthorized absence: Immediate engagement closure without any compensation or Full &amp; Final (FNF) settlement.</li>
+                          </ul>
+                        </li>
+                        <li><strong>Target Continuity &amp; Holds:</strong> Your output is highly valued. If you fail to achieve your assigned business target in a given month, the remaining target will be carried forward to the next month. If your accumulated pending target exceeds two times your standard monthly target, the administration reserves the right to temporarily withhold disbursement of your professional compensation until the accrued operational deficit is fully reconciled and cleared.</li>
+                      </ul>
+                    </div>
+
+                    {/* 9 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">9</span> Career Progression &amp; Separation Policy</div>
+                      <ul>
+                        <li><strong>Notice Period:</strong> Should you decide to move on to other opportunities, you must serve a <strong>45-day notice period</strong>. Leaving without serving the notice period disrupts business and is treated as an unauthorized exit.</li>
+                        <li><strong>Settlement Timeline:</strong> Irrespective of whether you resign or the company concludes your engagement, your Full &amp; Final (FNF) settlement will be processed <strong>60 days</strong> after your last active day of service.</li>
+                        <li><strong>Handover Protocol:</strong> The final settlement is subject to handing over all company assets, leads, CRM data, and obtaining a signed 'No Dues Certificate'.</li>
+                        <li><strong>Dues &amp; Recoveries:</strong> The Company reserves the right to adjust any pending financial advances, personal debts, or notice-period recovery amounts directly against your pending compensation or FNF settlement.</li>
+                        <li><strong>Brand Protection Post-Exit:</strong> Upon conclusion of your engagement, you must immediately remove the company's name and your designation from all your social media profiles. Unauthorized use of the company's brand post-engagement will be considered misrepresentation and will result in strict civil and criminal legal proceedings.</li>
+                      </ul>
+                    </div>
+
+                    {/* 10 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">10</span> Association Continuity &amp; Company Rights</div>
+                      <ul>
+                        <li><strong>Right to Conclude:</strong> We believe in maintaining a mutually beneficial relationship. However, to uphold the highest standards of our business ecosystem, the Company retains the absolute right and discretion to conclude this professional engagement at any point, with immediate effect, without notice or assigning specific reasons.</li>
+                        <li><strong>Consequences of Breach:</strong> In cases of policy violation, misconduct, unauthorized absence, or performance misalignment, the conclusion of this engagement will be immediate, and it shall be executed without any pending compensation, operational fees, or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* 11 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">11</span> Credential Verification &amp; Authenticity</div>
+                      <ul>
+                        <li><strong>Document Verification:</strong> Your engagement is strictly contingent upon the accuracy of your provided documents. An "Offer Letter" is NOT accepted as proof of past experience. You must submit a valid Relieving Letter, Experience Letter, AND Bank Statements reflecting previous compensation.</li>
+                        <li><strong>Zero Tolerance for Fabrication:</strong> If any document, qualification, or experience claim is found to be false, fake, or fabricated, it will result in immediate engagement closure without any compensation or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* 12 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">12</span> Information Security &amp; Device Protocol (NDA)</div>
+                      <ul>
+                        <li><strong>Data Confidentiality:</strong> Customer data, leads, and internal business information are highly confidential assets of the company.</li>
+                        <li><strong>Mobile Device Policy:</strong> To ensure strict data security, the use of personal mobile phones on the operational floor is strictly prohibited.</li>
+                        <li><strong>Data Protection Measures:</strong> Unauthorized storage, transfer, or sharing of company data, customer details, or leads to personal devices, WhatsApp, or emails is a severe material breach. This will lead to immediate engagement closure without any settlement, and the company will initiate strict civil and criminal legal proceedings under applicable Data Protection and IT Laws.</li>
+                      </ul>
+                    </div>
+
+                    {/* 13 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">13</span> Professional Exclusivity (No Dual Engagement)</div>
+                      <ul>
+                        <li><strong>Exclusive Partnership:</strong> While engaged with us, you are strictly prohibited from providing services to any other company, DSA, or engaging in any freelance work or dual employment that conflicts with our business interests.</li>
+                        <li><strong>Consequences:</strong> If found working a dual engagement, your association with us will be immediately concluded without any compensation or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* 14 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">14</span> Regulatory Compliance &amp; Financial Integrity</div>
+                      <ul>
+                        <li><strong>Zero Tolerance for Mis-selling:</strong> You must strictly abide by all KYC, Anti-Money Laundering (AML), and partner Bank/NBFC regulatory policies. Mis-selling or submitting fraudulent documents will lead to immediate engagement closure without any compensation or Full &amp; Final (FNF) settlement.</li>
+                        <li><strong>Commitment Authenticity:</strong> You are solely responsible for ensuring that no false promises or miscommitments are made to customers.</li>
+                        <li><strong>Anti-Bribery Mandate:</strong> Asking for, accepting, or holding any money, bribes, gifts, or unauthorized kickbacks from a customer or partner institution is a severe offense. Detection of such activities will result in immediate engagement closure without settlement, followed by strict civil and criminal prosecution.</li>
+                      </ul>
+                    </div>
+
+                    {/* 15 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">15</span> Non-Solicitation &amp; Intellectual Property</div>
+                      <ul>
+                        <li><strong>Data Ownership:</strong> All leads generated, customer databases created, relationships established, and operational processes learned during your engagement are the absolute intellectual property of the Company. Using this proprietary data for personal benefit will invite strict civil and criminal legal prosecution.</li>
+                        <li><strong>Anti-Poaching Rule:</strong> During your engagement and for a strictly enforced period of <strong>1 Year (12 months)</strong> after the conclusion of your services, you are legally prohibited from soliciting, poaching, or attempting to hire any current consultant, employee, client, or banking partner of the Company.</li>
+                      </ul>
+                    </div>
+
+                    {/* 16 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">16</span> Asset Stewardship &amp; Workplace Harmony</div>
+                      <ul>
+                        <li><strong>Asset Care:</strong> Any physical damage, loss, or misplacement of company assets (headsets, systems, furniture) due to negligence will result in the company claiming the full replacement cost, adjusted directly from your compensation.</li>
+                        <li><strong>Workplace Etiquette:</strong> You must maintain strict discipline and professional decorum. Misbehavior, arguing, or using abusive language will lead to immediate engagement closure without any compensation.</li>
+                        <li><strong>Zero Tolerance for Harassment (POSH):</strong> The company strictly enforces Prevention of Sexual Harassment (POSH) guidelines. Any form of harassment or discrimination will result in immediate engagement closure without settlement and severe legal consequences.</li>
+                        <li><strong>Compensation Confidentiality:</strong> Your professional compensation and incentives are highly confidential. Discussing or sharing your commercial details with any colleague is strictly prohibited and will lead to immediate engagement closure without any pending compensation.</li>
+                      </ul>
+                    </div>
+
+                    {/* 17 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">17</span> Business Realignment, Attire &amp; Identity Protocol</div>
+                      <ul>
+                        <li><strong>Location Alignment:</strong> As the business scales, the Company reserves the absolute right to transfer or relocate your services to any other branch or city. Inability to relocate will be considered a limitation of service.</li>
+                        <li><strong>Corporate Attire:</strong> The standard dress code for all professionals is formal or smart-formal wear.</li>
+                        <li><strong>Mandatory ID Card:</strong> Wearing your official Company Identity (ID) Card is strictly compulsory at all times while inside the office premises.</li>
+                      </ul>
+                    </div>
+
+                    {/* 18 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">18</span> Nature of Professional Association &amp; Governing Law</div>
+                      <ul>
+                        <li><strong>Professional Retainership:</strong> This association is structured as a Principal-to-Principal professional retainership to offer you maximum flexibility and entrepreneurial growth. This engagement is strictly a professional consulting arrangement.</li>
+                        <li><strong>Consolidated Structure:</strong> As an independent professional partner, your consolidated compensation is structured to be fully inclusive of all applicable statutory components, contributions, and professional liabilities. You will be independently responsible for managing your personal tax filings and statutory compliances.</li>
+                        <li><strong>Governing Law &amp; Jurisdiction:</strong> This agreement shall be governed strictly by the laws of India. Any professional dispute, claim, or interpretation arising out of this engagement will be subject to the exclusive jurisdiction of the competent courts situated in Noida (Gautam Buddha Nagar), Uttar Pradesh. The Company also reserves the absolute right to resolve disputes amicably through binding arbitration.</li>
+                        <li><strong>Severability:</strong> If any single clause or rule of this agreement is held to be legally invalid, it shall not affect the enforceability of the remaining provisions. All other terms will remain 100% valid, binding, and strictly enforceable.</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* ======== HR HEAD SECTIONS ======== */}
+                {letterType === 'hr' && (
+                  <div>
+                    {/* HR 1 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">1</span> Professional Role &amp; Compensation Structure</div>
+                      <ul>
+                        <li><strong>Designation:</strong> You are being engaged as a <span className="olg-dv">{currentDesignation}</span>.</li>
+                        <li><strong>Fixed Compensation:</strong> For your professional services, you will receive a consolidated monthly compensation of <strong>INR ₹<span className="olg-dv">{formattedSalary}</span>/- (<span className="olg-dv">{salaryWords}</span>)</strong>.</li>
+                        <li><strong>Taxation:</strong> Your compensation will be subject to applicable Tax Deducted at Source (TDS) as per Indian Income Tax regulations.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 2 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">2</span> Floor Management &amp; HR Responsibilities</div>
+                      <ul>
+                        <li><strong>Attendance Management:</strong> You are responsible for maintaining accurate daily and monthly attendance sheets for all floor staff and associates. Records must be updated diligently without any error or discrepancy.</li>
+                        <li><strong>Payroll Coordination:</strong> You will ensure accurate and timely salary processing for all employees and associates each month, fully aligned with attendance data and applicable company policies.</li>
+                        <li><strong>Grievance &amp; Issue Resolution:</strong> As the HR point-of-contact for the entire floor, you are responsible for professionally, promptly, and confidentially addressing all employee concerns, queries, interpersonal conflicts, and operational grievances.</li>
+                        <li><strong>Discipline &amp; Decorum:</strong> You are accountable for enforcing and maintaining professional discipline, workplace decorum, and a positive, productive work environment across the entire floor at all times.</li>
+                        <li><strong>Onboarding &amp; Documentation:</strong> You will manage end-to-end onboarding of new joiners including offer documentation, policy orientation, and their seamless integration into floor operations.</li>
+                        <li><strong>Policy Compliance:</strong> As the custodian of all HR policies, it is your responsibility to ensure that all associates understand, acknowledge, and comply with company guidelines and regulations.</li>
+                        <li><strong>Single Point of Contact (SPOC):</strong> For all HR matters on the floor — attendance, compensation queries, conduct, conflicts, escalations, or compliance — you are the primary and final point of contact. No HR matter shall remain unaddressed or unresolved under your watch.</li>
+                      </ul>
+                      <div className="olg-hbox">
+                        <strong>Operational Accountability:</strong> The HR health and operational discipline of the entire floor is a direct reflection of your performance. Repeated unresolved grievances, attendance errors, or payroll discrepancies will be treated as a critical performance gap.
+                      </div>
+                    </div>
+
+                    {/* HR 3 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">3</span> Wellness &amp; Monthly Time-Off Guidelines</div>
+                      <ul>
+                        <li><strong>Authorized Time-Off:</strong> You are permitted 1 day of authorized time-off (paid) per month. To be eligible for this paid time-off, you must have rendered a minimum of 24 days of active service (including Sundays) in that month.</li>
+                        <li><strong>Carry Forward:</strong> Unused authorized time-off seamlessly carries forward to the next month for your convenience.</li>
+                        <li><strong>Extra Time-Off:</strong> Any unavailability beyond the 1 permitted day requires valid proof (e.g., medical certificate) for authorization to ensure smooth operations.</li>
+                        <li><strong>First Month Rule:</strong> Planned time-off is not permitted during your very first month of engagement to ensure proper onboarding and operational alignment.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 4 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">4</span> Key Deliverables &amp; Talent Acquisition Targets</div>
+                      <ul>
+                        <li><strong>Weekly Batch Mandate:</strong> Starting from the second week of joining, you are required to build and onboard a batch of minimum <strong>5 candidates every week</strong> onto the operational floor.</li>
+                        <li><strong>Monthly Floor Strength:</strong> Your monthly performance will be measured by the number of candidates successfully placed and active on the floor. A minimum of <strong>10 candidates per month</strong> must be onboarded and active by the end of the month.</li>
+                        <li><strong>Counting Metric:</strong> Only candidates who are officially present and active on the operational floor by month-end will be counted towards your monthly target. Interview counts or joining confirmations alone do not qualify.</li>
+                        <li><strong>Scope:</strong> This includes sourcing, screening, onboarding, and ensuring new joiners are fully functional on the floor within the stipulated timelines.</li>
+                      </ul>
+                      <div className="olg-hbox">
+                        <strong>Performance Accountability:</strong> Your output is directly tied to floor strength. Consistent failure to meet weekly batch or monthly floor targets will be treated as performance misalignment and may result in engagement review.
+                      </div>
+                    </div>
+
+                    {/* HR 5 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">5</span> Operational Hours &amp; Office Access</div>
+                      <ul>
+                        <li><strong>Standard Availability:</strong> Your core operational availability hours will be from <strong>9:50 AM to 7:00 PM</strong>.</li>
+                        <li><strong>Operational Access:</strong> You are expected to be present at the designated office and actively performing your HR duties during these hours to ensure uninterrupted business flow.</li>
+                        <li><strong>Operational Breaks:</strong> You are entitled to a total of 45 minutes of wellness break time during your daily schedule (One main break of 30 minutes and one short break of 15 minutes).</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 6 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">6</span> Reporting &amp; Punctuality Standards</div>
+                      <ul>
+                        <li><strong>Strict Reporting Time:</strong> You are required to report to the office and be ready to commence your duties strictly by <strong>9:50 AM</strong>. There is no grace period.</li>
+                        <li><strong>Operational Cut-off:</strong> Any arrival after <strong>10:00 AM</strong> will automatically and unconditionally be marked as a <strong>Half-Day Absence</strong> for that operational day, without exception.</li>
+                      </ul>
+                      <div className="olg-ibox">
+                        <strong>Note:</strong> Given the critical nature of the HR function in setting the operational tone for the entire floor, strict adherence to reporting time is non-negotiable. No buffer window is applicable for this role.
+                      </div>
+                    </div>
+
+                    {/* HR 7 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">7</span> Attendance Adherence &amp; Leave Authorization</div>
+                      <ul>
+                        <li><strong>Advance Notice Requirement:</strong> All planned leave must be formally requested and approved at least <strong>3 working days in advance</strong>. Last-minute or same-day leave requests will not be entertained under any circumstances.</li>
+                        <li><strong>Service Continuity:</strong> Unplanned and unauthorized absence (without prior written approval) heavily disrupts business flow and is considered a material breach of this employment agreement.</li>
+                        <li><strong>Impact of Unauthorized Absence:</strong> Unauthorized absence authorizes the company to implement proportional salary deductions (equivalent to 2 days of salary for every 1 day of unauthorized absence) or initiate immediate employment termination without any compensation or Full &amp; Final (FNF) settlement.</li>
+                        <li><strong>Weekend Sync Rule:</strong> If an unauthorized absence occurs on a Saturday or a Monday, the Sunday in between will automatically be treated as unpaid. To be eligible to receive salary for any Sunday, a minimum of 4 active working days of service in that specific week is required.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 8 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">8</span> Career Progression &amp; Separation Policy</div>
+                      <ul>
+                        <li><strong>Notice Period:</strong> Should you decide to move on to other opportunities, you must serve a <strong>45-day notice period</strong>. Leaving without serving the notice period disrupts business and is treated as an unauthorized exit.</li>
+                        <li><strong>Settlement Timeline:</strong> Irrespective of whether you resign or the company concludes your engagement, your Full &amp; Final (FNF) settlement will be processed <strong>60 days</strong> after your last active day of service.</li>
+                        <li><strong>Handover Protocol:</strong> The final settlement is subject to handing over all company assets, recruitment data, candidate pipelines, and obtaining a signed 'No Dues Certificate'.</li>
+                        <li><strong>Dues &amp; Recoveries:</strong> The Company reserves the right to adjust any pending financial advances, personal debts, or notice-period recovery amounts directly against your pending compensation or FNF settlement.</li>
+                        <li><strong>Brand Protection Post-Exit:</strong> Upon conclusion of your engagement, you must immediately remove the company's name and your designation from all your social media profiles. Unauthorized use of the company's brand post-engagement will be considered misrepresentation and will result in strict civil and criminal legal proceedings.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 9 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">9</span> Association Continuity &amp; Company Rights</div>
+                      <ul>
+                        <li><strong>Right to Conclude:</strong> We believe in maintaining a mutually beneficial relationship. However, to uphold the highest standards of our business ecosystem, the Company retains the absolute right and discretion to conclude this professional engagement at any point, with immediate effect, without notice or assigning specific reasons.</li>
+                        <li><strong>Consequences of Breach:</strong> In cases of policy violation, misconduct, unauthorized absence, or performance misalignment, the conclusion of this engagement will be immediate, and it shall be executed without any pending compensation, operational fees, or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 10 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">10</span> Credential Verification &amp; Authenticity</div>
+                      <ul>
+                        <li><strong>Document Verification:</strong> Your engagement is strictly contingent upon the accuracy of your provided documents. An "Offer Letter" is NOT accepted as proof of past experience. You must submit a valid Relieving Letter, Experience Letter, AND Bank Statements reflecting previous compensation.</li>
+                        <li><strong>Zero Tolerance for Fabrication:</strong> If any document, qualification, or experience claim is found to be false, fake, or fabricated, it will result in immediate engagement closure without any compensation or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 11 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">11</span> Information Security &amp; Confidentiality (NDA)</div>
+                      <ul>
+                        <li><strong>Data Confidentiality:</strong> Candidate data, recruitment pipelines, compensation structures, and all internal HR information are highly confidential assets of the company.</li>
+                        <li><strong>Data Protection:</strong> Unauthorized storage, transfer, or sharing of company data, candidate details, or internal HR processes to personal devices, WhatsApp, or personal emails is a severe material breach. This will lead to immediate engagement closure without any settlement, and the company will initiate strict civil and criminal legal proceedings under applicable Data Protection and IT Laws.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 12 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">12</span> Professional Exclusivity (No Dual Employment)</div>
+                      <ul>
+                        <li><strong>Exclusive Partnership:</strong> While engaged with us, you are strictly prohibited from providing HR or recruitment services to any other company or engaging in any freelance work that conflicts with our business interests.</li>
+                        <li><strong>Consequences:</strong> If found working a dual engagement, your association with us will be immediately concluded without any compensation or Full &amp; Final (FNF) settlement.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 13 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">13</span> Non-Solicitation &amp; Intellectual Property</div>
+                      <ul>
+                        <li><strong>Data Ownership:</strong> All candidate pipelines, recruitment databases, sourcing strategies, and operational HR processes developed during your engagement are the absolute intellectual property of the Company. Using this proprietary data for personal benefit will invite strict civil and criminal legal prosecution.</li>
+                        <li><strong>Anti-Poaching Rule:</strong> During your engagement and for a strictly enforced period of <strong>1 Year (12 months)</strong> after the conclusion of your services, you are legally prohibited from soliciting, poaching, or attempting to hire any current consultant, employee, client, or banking partner of the Company.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 14 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">14</span> Asset Stewardship &amp; Workplace Harmony</div>
+                      <ul>
+                        <li><strong>Asset Care:</strong> Any physical damage, loss, or misplacement of company assets due to negligence will result in the company claiming the full replacement cost, adjusted directly from your compensation.</li>
+                        <li><strong>Workplace Etiquette:</strong> You must maintain strict discipline and professional decorum. Misbehavior, arguing, or using abusive language will lead to immediate engagement closure without any compensation.</li>
+                        <li><strong>Zero Tolerance for Harassment (POSH):</strong> The company strictly enforces Prevention of Sexual Harassment (POSH) guidelines. Any form of harassment or discrimination will result in immediate engagement closure without settlement and severe legal consequences.</li>
+                        <li><strong>Compensation Confidentiality:</strong> Your professional compensation is strictly confidential. Discussing or sharing your commercial details with any colleague is prohibited and will lead to immediate engagement closure.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 15 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">15</span> Business Realignment, Attire &amp; Identity Protocol</div>
+                      <ul>
+                        <li><strong>Location Alignment:</strong> As the business scales, the Company reserves the absolute right to transfer or relocate your services to any other branch or city. Inability to relocate will be considered a limitation of service.</li>
+                        <li><strong>Corporate Attire:</strong> The standard dress code for all professionals is formal or smart-formal wear.</li>
+                        <li><strong>Mandatory ID Card:</strong> Wearing your official Company Identity (ID) Card is strictly compulsory at all times while inside the office premises.</li>
+                      </ul>
+                    </div>
+
+                    {/* HR 16 */}
+                    <div className="olg-section">
+                      <div className="olg-section-title"><span className="olg-sn">16</span> Nature of Employment &amp; Governing Law</div>
+                      <ul>
+                        <li><strong>Employment Terms:</strong> This letter represents your formal appointment as an employee of Insta Credit Solution Pvt Ltd (Fix Your Finance). You are entitled to all benefits, responsibilities, and obligations as described in this appointment letter.</li>
+                        <li><strong>Statutory Compliance:</strong> The company complies with all applicable Indian labor laws, including but not limited to the Industrial Employment (Standing Orders) Act, Payment of Wages Act, and relevant state labor regulations. Your employment shall be subject to applicable statutory requirements.</li>
+                        <li><strong>Governing Law &amp; Jurisdiction:</strong> This appointment letter is governed strictly by the laws of India. Any employment dispute, claim, or grievance will be subject to the exclusive jurisdiction of the competent courts situated in Noida (Gautam Buddha Nagar), Uttar Pradesh.</li>
+                        <li><strong>Severability:</strong> If any single clause of this letter is held to be legally invalid, it shall not affect the enforceability of the remaining provisions. All other terms will remain 100% valid, binding, and enforceable.</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* ACCEPTANCE (shared) */}
+                <div className="olg-accept">
+                  <div className="olg-accept-title">Acceptance of Offer</div>
+                  <div className="olg-email-accept-box">
+                    <div className="olg-email-accept-title">Reply to confirm your acceptance:</div>
+                    <div className="olg-email-accept-label">Copy &amp; reply via email &mdash;</div>
+                    <div className="olg-email-accept-quote">
+                      I, <span className="olg-reply-name">{displayName}</span>, accept the Offer of Appointment for the role of <span className="olg-reply-desig">{currentDesignation}</span> at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated <span className="olg-reply-date">{formattedDate}</span>. I have read and agree to all terms and conditions.
+                    </div>
+                    <p className="olg-email-accept-note">Replying with the above statement constitutes your <strong>legally binding acceptance</strong> under the Indian Contract Act, 1872. Please respond within <strong>48 hours</strong>.</p>
+                  </div>
+                </div>
+
+                {/* FOOTER */}
+                <div className="olg-letter-footer">
+                  <strong>Fix Your Finance</strong> &bull; Insta Credit Solution Pvt Ltd &bull; Office No. 302, Third Floor, H160, Sector 63, Noida - 201301, UP<br/>
+                  www.FixYourFinance.ai &nbsp;&bull;&nbsp; This document is confidential and intended solely for the named recipient.
+                </div>
+
+              </div>{/* /letter-body */}
+            </div>{/* /paper-content */}
+          </div>{/* /paper */}
+        </main>
+      </div>{/* /split-layout */}
+    </div>
+  );
+};
+
+export default OfferLetterGenerator;

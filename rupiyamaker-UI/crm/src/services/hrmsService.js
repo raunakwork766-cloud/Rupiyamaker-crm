@@ -121,9 +121,14 @@ export const hrmsService = {
             const params = new URLSearchParams();
             params.append('user_id', userId);
 
-            // Add status filter if provided
-            if (status) {
-                params.append('status', status);
+            // Add status filter — default to active only; pass 'all' to get everyone (e.g. AllEmployees management page)
+            if (status === 'all') {
+                // no is_active filter — return all employees including inactive
+            } else if (status === 'inactive') {
+                params.append('is_active', 'false');
+            } else {
+                // default: only active employees (covers null, 'active', or unrecognised values)
+                params.append('is_active', 'true');
             }
 
             // Add department filter if provided

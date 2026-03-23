@@ -256,6 +256,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       case 'pincode_city':
         return lead.pincode_city || "";
       
+      case 'createdDate':
+        return lead.created_at || lead.created_date || "";
+      
       default:
         return "";
     }
@@ -281,6 +284,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     mobileNumber: lead?.mobile_number || lead?.phone || lead?.mobileNumber || "",
     alternateNumber: lead?.alternative_phone || lead?.alternate_phone || lead?.alternateNumber || lead?.alternate_number || "",
     pincode_city: lead?.pincode_city || "",
+    createdDate: lead?.created_at || lead?.created_date || "",
   }));
   
   // Update local state if the lead prop changes from parent
@@ -305,6 +309,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           mobileNumber: extractFieldValue('mobileNumber') || prevFields.mobileNumber,
           alternateNumber: extractFieldValue('alternateNumber') || prevFields.alternateNumber,
           pincode_city: extractFieldValue('pincode_city') || prevFields.pincode_city,
+          createdDate: extractFieldValue('createdDate') || prevFields.createdDate,
         };
       });
       
@@ -1069,7 +1074,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         // Clear the error if they're now different
         setValidationErrors(prev => ({ ...prev, alternateNumber: null }));
       }
-    } else if (typeof value === 'string' && !['mobileNumber', 'alternateNumber'].includes(field)) {
+    } else if (typeof value === 'string' && !['mobileNumber', 'alternateNumber', 'createdDate'].includes(field)) {
       processedValue = value.toUpperCase();
     }
     
@@ -1176,7 +1181,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         customerName: 'name',
         mobileNumber: 'mobile_number',
         alternateNumber: 'alternative_phone',
-        pincode_city: 'pincode_city'
+        pincode_city: 'pincode_city',
+        createdDate: 'created_at',
       };
 
       const apiField = apiFieldMap[field] || field;
@@ -1684,13 +1690,39 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           {/* Date and Time Field */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
-            <input
-              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-              value={lead?.created_at ? formatDateTimeIST(lead.created_at) : 'N/A'}
-              readOnly={true}
-              placeholder="Date & Time (Read-only)"
-              title="Lead creation date and time (IST)"
-            />
+            {isUserSuperAdmin ? (
+              <input
+                type="datetime-local"
+                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
+                value={fields.createdDate ? (() => {
+                  const date = new Date(fields.createdDate);
+                  if (isNaN(date.getTime())) return '';
+                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
+                })() : ''}
+                onChange={e => {
+                  if (!e.target.value) return;
+                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                  const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                  handleChange('createdDate', utcISO);
+                }}
+                onBlur={e => {
+                  if (!e.target.value) return;
+                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                  const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                  handleBlur('createdDate', utcISO);
+                }}
+                title="Super Admin can edit lead creation date & time (IST)"
+              />
+            ) : (
+              <input
+                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                value={lead?.created_at ? formatDateTimeIST(lead.created_at) : 'N/A'}
+                readOnly={true}
+                placeholder="Date & Time (Read-only)"
+                title="Lead creation date and time (IST) — only Super Admin can edit"
+              />
+            )}
           </div>
 
           {/* Created By Field */}
@@ -1743,64 +1775,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
 
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>PRODUCT NAME</label>
-            <div className="relative w-full dropdown-container">
-              <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
-                onClick={() => {
-                  if (canEdit) {
-                    // Close all other dropdowns first
-                    setShowCampaignDropdown(false);
-                    setShowDataCodeDropdown(false);
-                    // Then toggle this dropdown
-                    setShowProductDropdown(!showProductDropdown);
-                  }
-                }}
-              >
-                <span>{fields.productName || "Select Product Type"}</span>
-                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
-                </svg>
-              </div>
-              {showProductDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
-                      placeholder="Search product types..."
-                      value={productSearchTerm}
-                      onChange={(e) => setProductSearchTerm(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {getFilteredLoanTypes().length > 0 ? (
-                      getFilteredLoanTypes().map(loanType => (
-                        <div
-                          key={loanType._id}
-                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
-                          onClick={() => {
-                            handleChange("productName", loanType.name);
-                            handleBlur("productName", loanType.name);
-                            setShowProductDropdown(false);
-                            setProductSearchTerm('');
-                          }}
-                        >
-                          {loanType.name}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-4 py-2 text-sm text-gray-500">No products found</div>
-                    )}
-                  </div>
-                </div>
-              )}
+            <div className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed select-none">
+              {fields.productName || "—"}
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>CAMPAIGN NAME</label>
+            <label className={labelClass} style={labelStyle}>SOURCE NAME</label>
             <div className="relative w-full dropdown-container">
               <div
                 className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
@@ -1861,23 +1841,54 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>DATA CODE</label>
             <div className="relative w-full dropdown-container">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                 onClick={() => {
                   if (canEdit) {
-                    // Close all other dropdowns first
                     setShowProductDropdown(false);
                     setShowCampaignDropdown(false);
-                    // Then toggle this dropdown
                     setShowDataCodeDropdown(!showDataCodeDropdown);
                   }
                 }}
               >
-                <span>{fields.dataCode || "Select Data Code"}</span>
-                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
-                </svg>
+                {(fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean) : []).length === 0 && (
+                  <span className="text-gray-400 font-normal text-sm">Click to select data codes</span>
+                )}
+                {(fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean) : []).map(code => (
+                  <div
+                    key={code}
+                    className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm"
+                  >
+                    <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                      {code.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="text-xs font-bold">{code}</span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="text-white hover:text-red-200 ml-1 text-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const codes = fields.dataCode.split(',').map(s => s.trim()).filter(c => c && c !== code);
+                          const newVal = codes.join(', ');
+                          handleChange("dataCode", newVal);
+                          handleBlur("dataCode", newVal);
+                        }}
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+                {canEdit && (fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean) : []).length > 0 && (
+                  <button
+                    type="button"
+                    className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowProductDropdown(false);
+                      setShowCampaignDropdown(false);
+                      setShowDataCodeDropdown(!showDataCodeDropdown);
+                    }}
+                  >+</button>
+                )}
               </div>
               {showDataCodeDropdown && canEdit && (
                 <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
@@ -1893,20 +1904,27 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   </div>
                   <div className="max-h-48 overflow-y-auto">
                     {getFilteredDataCodes().length > 0 ? (
-                      getFilteredDataCodes().map(dataCode => (
-                        <div
-                          key={dataCode._id}
-                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
-                          onClick={() => {
-                            handleChange("dataCode", dataCode.name);
-                            handleBlur("dataCode", dataCode.name);
-                            setShowDataCodeDropdown(false);
-                            setDataCodeSearchTerm('');
-                          }}
-                        >
-                          {dataCode.name}
-                        </div>
-                      ))
+                      getFilteredDataCodes().map(dataCode => {
+                        const selected = fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean).includes(dataCode.name) : false;
+                        return (
+                          <div
+                            key={dataCode._id}
+                            className={`px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer flex items-center justify-between ${selected ? 'bg-[#e0f7fa]' : ''}`}
+                            onClick={() => {
+                              const codes = fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean) : [];
+                              const newVal = selected
+                                ? codes.filter(c => c !== dataCode.name).join(', ')
+                                : [...codes, dataCode.name].join(', ');
+                              handleChange("dataCode", newVal);
+                              handleBlur("dataCode", newVal);
+                              setDataCodeSearchTerm('');
+                            }}
+                          >
+                            <span>{dataCode.name}</span>
+                            {selected && <span className="text-[#00bcd4] text-lg">✓</span>}
+                          </div>
+                        );
+                      })
                     ) : (
                       <div className="px-4 py-2 text-sm text-gray-500">No data codes found</div>
                     )}
@@ -2038,14 +2056,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>ASSIGNED TL</label>
+            <label className={labelClass} style={labelStyle}>ASSIGNED Lead</label>
             <div className="relative w-full dropdown-container">
               <div
                 className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
                 onClick={() => setShowAssignReportToPopup(true)}
               >
                 {assignReportTo.length === 0 && (
-                  <span className="text-gray-400">Click to select assignees</span>
+                  <span className="text-gray-400">Don't select Team Manager</span>
                 )}
 
                 {assignReportTo.map((assignee) => {

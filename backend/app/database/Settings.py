@@ -1093,3 +1093,52 @@ class SettingsDB:
         if route:
             return route.get("approver_ids", [])
         return []
+
+    # ── Reassignment Approval Routes ───────────────────────────────────────────
+    async def get_reassignment_approval_routes(self) -> list:
+        """Get all reassignment approval routing rules"""
+        cursor = self.db.reassignment_approval_routes.find({}).sort("created_at", -1)
+        routes = []
+        async for r in cursor:
+            r["_id"] = str(r["_id"])
+            routes.append(r)
+        return routes
+
+    async def get_reassignment_approval_route_by_role(self, role_id: str) -> dict:
+        """Get reassignment approval route for a specific role"""
+        route = await self.db.reassignment_approval_routes.find_one({"role_id": role_id})
+        if route:
+            route["_id"] = str(route["_id"])
+        return route
+
+    async def upsert_reassignment_approval_route(self, role_id: str, role_name: str, approver_ids: list, approver_names: list) -> dict:
+        """Create or update reassignment approval route for a role"""
+        now = get_ist_now()
+        doc = {
+            "role_id": role_id,
+            "role_name": role_name,
+            "approver_ids": approver_ids,
+            "approver_names": approver_names,
+            "updated_at": now,
+        }
+        await self.db.reassignment_approval_routes.update_one(
+            {"role_id": role_id},
+            {"$set": doc, "$setOnInsert": {"created_at": now}},
+            upsert=True
+        )
+        saved = await self.db.reassignment_approval_routes.find_one({"role_id": role_id})
+        if saved:
+            saved["_id"] = str(saved["_id"])
+        return saved
+
+    async def delete_reassignment_approval_route(self, role_id: str) -> bool:
+        """Delete reassignment approval route for a role"""
+        result = await self.db.reassignment_approval_routes.delete_one({"role_id": role_id})
+        return result.deleted_count > 0
+
+    async def get_reassignment_approvers_for_employee(self, employee_role_id: str) -> list:
+        """Get reassignment approver employee IDs for a given role"""
+        route = await self.db.reassignment_approval_routes.find_one({"role_id": employee_role_id})
+        if route:
+            return route.get("approver_ids", [])
+        return []

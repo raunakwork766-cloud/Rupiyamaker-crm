@@ -638,10 +638,15 @@ async def check_login_phone_number(
         if isinstance(dept_name, dict):
             dept_name = dept_name.get("name", "")
 
-        bank_name = lead.get("bank_name", "") or ""
+        bank_name = lead.get("bank_name", "") or lead.get("processing_bank", "") or ""
         if not bank_name:
             fin = lead.get("financial_details", {}) or {}
             bank_name = fin.get("bank_name", "") or ""
+        if not bank_name:
+            # Check processing_banks list
+            pb = lead.get("processing_banks", []) or []
+            if isinstance(pb, list) and pb:
+                bank_name = pb[0] if isinstance(pb[0], str) else (pb[0].get("bank_name", "") if isinstance(pb[0], dict) else "")
         if isinstance(bank_name, list):
             bank_name = bank_name[0] if bank_name else ""
 

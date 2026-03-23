@@ -407,6 +407,18 @@ class LeadsDB:
                 # Source
                 "source": 1,
                 
+                # Reassignment fields
+                "pending_reassignment": 1,
+                "reassignment_status": 1,
+                "reassignment_requested_at": 1,
+                "reassignment_requested_by": 1,
+                "reassignment_target_user": 1,
+                "reassignment_reason": 1,
+                "reassignment_approved_by": 1,
+                "reassignment_approved_at": 1,
+                "reassignment_rejected_at": 1,
+                "reassignment_rejection_reason": 1,
+                
                 # Additional important fields for display
                 "reference": 1,
                 "whatsapp_number": 1,
@@ -3054,9 +3066,13 @@ class LeadsDB:
                     sub_name = sub_status.get("name") if isinstance(sub_status, dict) else sub_status
                     if sub_name == sub_status_name:
                         if isinstance(sub_status, dict):
-                            if sub_status.get("reassignment_period") is not None:
-                                reassignment_period = sub_status.get("reassignment_period")
-                                is_manager_permission_required = sub_status.get("is_manager_permission_required", is_manager_permission_required)
+                            # Only override parent rp if sub-status explicitly set a positive value
+                            sub_rp = sub_status.get("reassignment_period")
+                            if sub_rp is not None and sub_rp > 0:
+                                reassignment_period = sub_rp
+                            # Only upgrade to manager-required, never downgrade
+                            if sub_status.get("is_manager_permission_required") is True:
+                                is_manager_permission_required = True
                         found_in_embedded = True
                         break
                 
@@ -3065,9 +3081,11 @@ class LeadsDB:
                     sub_statuses = await self.list_sub_statuses(str(status_obj.get("id", status_obj.get("_id"))))
                     for sub_status in sub_statuses:
                         if sub_status.get("name") == sub_status_name:
-                            if sub_status.get("reassignment_period") is not None:
-                                reassignment_period = sub_status.get("reassignment_period")
-                                is_manager_permission_required = sub_status.get("is_manager_permission_required", False)
+                            sub_rp = sub_status.get("reassignment_period")
+                            if sub_rp is not None and sub_rp > 0:
+                                reassignment_period = sub_rp
+                            if sub_status.get("is_manager_permission_required") is True:
+                                is_manager_permission_required = True
                             break
             
             # If reassignment period is None or 0, allow immediate reassignment

@@ -1223,25 +1223,25 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showCloseButton, setShowCloseButton] = useState(false);
 
+    // Column sort state
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
     // API-based status and sub-status data
     const [allStatuses, setAllStatuses] = useState([]);
+    const [allStatusObjects, setAllStatusObjects] = useState([]); // Full status objects with name, color, sub_statuses
     const [allSubStatuses, setAllSubStatuses] = useState([]);
     const [statusHierarchy, setStatusHierarchy] = useState({}); // Maps main status to its sub-statuses
     const [subStatusToMainStatus, setSubStatusToMainStatus] = useState({}); // Maps sub-status to main status
+
+    // Status card overview modal
+    const [activeCardModal, setActiveCardModal] = useState(null);
 
     // Data for dropdowns
     const [teams, setTeams] = useState([]);
     const [campaigns, setCampaigns] = useState([]);
     const [employees, setEmployees] = useState([]);
-    // ⚡ Start with zero counts for instant render, calculate in background
-    const [statusCounts, setStatusCounts] = useState({
-        "Not a lead": 0,
-        "Active Leads": 0,
-        "File sent to login": 0,
-        "FILE COMPLETED": 0,
-        "Lost By mistake": 0,
-        "Lost login": 0,
-    });
+    // ⚡ Start with empty counts for instant render, calculate in background
+    const [statusCounts, setStatusCounts] = useState({});
 
     // Sub-status states
     const [subStatuses, setSubStatuses] = useState([]);
@@ -1647,6 +1647,49 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // Default to Active Leads for unknown statuses
             return "Active Leads";
         }
+    };
+
+    // Sub-status breakdown for status card overview modal — uses settings-configured sub-statuses only
+    const getSubStatusBreakdown = (parentKey) => {
+        const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+        const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
+
+        // Filter leads whose main status directly matches parentKey
+        const inParent = allLeads.filter(lead => {
+            const statusVal = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
+            return statusVal.toLowerCase() === parentKey.toLowerCase();
+        });
+
+        // Get configured sub-statuses for this main status from settings
+        const configuredSubStatuses = statusHierarchy[parentKey] || [];
+
+        // Initialize groups for each configured sub-status
+        const groups = {};
+        configuredSubStatuses.forEach(sub => {
+            groups[sub] = { total: 0, noReview: 0, pendingMy: 0 };
+        });
+        groups['No Sub-Status'] = { total: 0, noReview: 0, pendingMy: 0 };
+
+        inParent.forEach(lead => {
+            const sub = typeof lead.sub_status === 'object'
+                ? (lead.sub_status?.name || '')
+                : (lead.sub_status || '');
+            // Map to configured sub-status if found, else "No Sub-Status"
+            const key = (sub && configuredSubStatuses.includes(sub)) ? sub : 'No Sub-Status';
+            if (!groups[key]) groups[key] = { total: 0, noReview: 0, pendingMy: 0 };
+            groups[key].total++;
+            if (!lead.last_activity_date) groups[key].noReview++;
+            const createdBy = String(lead.created_by || '').trim();
+            const assignedTo = String(lead.assigned_to || '').trim();
+            if (currentUserId && (createdBy === currentUserId || assignedTo === currentUserId)) {
+                groups[key].pendingMy++;
+            }
+        });
+
+        return Object.entries(groups)
+            .filter(([_, cnts]) => cnts.total > 0)
+            .map(([subStatus, cnts]) => ({ subStatus, ...cnts }))
+            .sort((a, b) => b.total - a.total);
     };
 
     // Helper functions for unsaved changes management
@@ -2539,14 +2582,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // ⚡ PERFORMANCE: Memoized status counts calculation based on filtered data
     const memoizedStatusCounts = useMemo(() => {
-        const counts = {
-            "Not a lead": 0,
-            "Active Leads": 0,
-            "File sent to login": 0,
-            "FILE COMPLETED": 0,
-            "Lost By mistake": 0,
-            "Lost login": 0,
-        };
+        // Build counts keyed by configured main status names (dynamic from settings)
+        const counts = {};
+        allStatuses.forEach(name => { counts[name] = 0; });
 
         // Use the same filtering logic as filteredLeadsData to ensure consistency
         let filtered = Array.isArray(leads) ? [...leads] : [];
@@ -2567,6 +2605,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
                         (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
                         (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
+                        (lead.alternative_phone !== undefined && lead.alternative_phone !== null && lead.alternative_phone.toString().includes(searchLower)) ||
                         (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
                         (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
                         ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
@@ -2642,135 +2681,52 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             });
         }
 
-        // STRICT STATUS COUNTS TL FILTER: Use assign_report_to field (matching AboutSection)
+        // TL filter – matches assign_report_to IDs against selected TL names
         if (filterOptions.assignedTL && filterOptions.assignedTL.length > 0) {
-            // ⚡ PERFORMANCE: Only log in development
-            const isDev = process.env.NODE_ENV === 'development';
-            if (isDev) {
-                console.log('🎯 ==================== STRICT ASSIGNREPRTS STATUS COUNTS FILTER ====================');
-                console.log('🎯 Selected TL filters:', filterOptions.assignedTL);
-                console.log('🎯 Filter options object:', filterOptions);
-                console.log('🎯 Total leads before TL filter:', filtered.length);
-            }
-            
-            // Debug: Check if leads actually have assign_report_to data
-            if (isDev) {
-                let leadsWithTLData = 0;
-                let leadsWithoutTLData = 0;
-                filtered.slice(0, 10).forEach((lead, i) => {
-                    const hasTLData = !!(lead.assign_report_to || lead.assignReportTo);
-                    if (hasTLData) leadsWithTLData++;
-                    else leadsWithoutTLData++;
-                    
-                    if (i < 5) {
-                        console.log(`🎯 SAMPLE Lead ${i+1} (${lead.custom_lead_id}):`, {
-                            assign_report_to: lead.assign_report_to,
-                            assignReportTo: lead.assignReportTo,
-                            created_by_name: lead.created_by_name,
-                            hasAnyTLField: hasTLData
-                        });
+            // Build employee name → Set<id> lookup
+            const tlNameToIds = {};
+            if (Array.isArray(employees)) {
+                employees.forEach(emp => {
+                    const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                    const ids = [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).map(String);
+                    if (empName && ids.length > 0) {
+                        if (!tlNameToIds[empName]) tlNameToIds[empName] = new Set();
+                        ids.forEach(id => tlNameToIds[empName].add(id));
                     }
                 });
-                console.log(`🎯 Sample leads: ${leadsWithTLData} with TL data, ${leadsWithoutTLData} without TL data`);
             }
-            
-            const originalCount = filtered.length;
-            
+
             filtered = filtered.filter(lead => {
-                // Use same field as AboutSection: assign_report_to (with fallback to assignReportTo)
-                const rawAssignReportTo = lead.assign_report_to || lead.assignReportTo;
-                
-                // Extract TL names using the same logic as AboutSection
-                let assignReportToTLNames = [];
-                if (rawAssignReportTo !== undefined && rawAssignReportTo !== null && rawAssignReportTo !== '') {
-                    // Parse the assign_report_to data same as AboutSection
-                    if (typeof rawAssignReportTo === 'string') {
-                        try {
-                            // Try to parse as JSON first
-                            const parsed = JSON.parse(rawAssignReportTo);
-                            if (Array.isArray(parsed)) {
-                                assignReportToTLNames = parsed.map(item => {
-                                    if (typeof item === 'object' && item.name) {
-                                        return item.name;
-                                    } else if (typeof item === 'string') {
-                                        return item.trim();
-                                    }
-                                    return null;
-                                }).filter(Boolean);
-                            }
-                        } catch {
-                            // If not JSON, treat as comma-separated string
-                            assignReportToTLNames = rawAssignReportTo.split(',').map(name => name.trim()).filter(Boolean);
-                        }
-                    } else if (Array.isArray(rawAssignReportTo)) {
-                        assignReportToTLNames = rawAssignReportTo.map(item => {
-                            if (typeof item === 'object' && item.name) {
-                                return item.name;
-                            } else if (typeof item === 'string') {
-                                return item.trim();
-                            }
-                            return null;
-                        }).filter(Boolean);
-                    } else {
-                        // Fallback to extractTLNames for other formats
-                        assignReportToTLNames = extractTLNames(rawAssignReportTo, lead);
-                    }
+                const rawTL = lead.assign_report_to || lead.assignReportTo;
+                const hasTLData = rawTL && (Array.isArray(rawTL) ? rawTL.length > 0 : String(rawTL).trim() !== '');
+
+                if (!hasTLData) {
+                    return filterOptions.assignedTL.includes('Not Assigned');
                 }
-                
-                // ⚡ PERFORMANCE: Only log details in development
-                if (isDev && originalCount <= 20) {
-                    console.log(`🎯 ABOUTSECTION MATCH - Lead ${lead.custom_lead_id}:`);
-                    console.log(`🎯   Raw assign_report_to:`, rawAssignReportTo, '(type:', typeof rawAssignReportTo, ')');
-                    console.log(`🎯   Extracted TL names:`, assignReportToTLNames);
-                    console.log(`🎯   Selected TL filters:`, filterOptions.assignedTL);
-                    console.log(`🎯   About section would show these TL names:`, assignReportToTLNames);
-                }
-                
-                // Handle filtering logic properly
-                let shouldIncludeLead = false;
-                
-                // Case 1: Lead has no TL data (empty assignReportToTLNames)
-                if (assignReportToTLNames.length === 0) {
-                    // Only include if "Not Assigned" is specifically selected
-                    if (filterOptions.assignedTL.includes('Not Assigned')) {
-                        shouldIncludeLead = true;
-                        if (isDev && originalCount <= 20) console.log(`🎯   ✅ MATCH: "Not Assigned" selected and lead has no TL data`);
-                    } else {
-                        shouldIncludeLead = false;
-                        if (isDev && originalCount <= 20) console.log(`🎯   ❌ EXCLUDE: Lead has no TL data but "Not Assigned" not selected`);
-                    }
+
+                let leadTLIds;
+                if (Array.isArray(rawTL)) {
+                    leadTLIds = rawTL.map(id => String(id).trim()).filter(Boolean);
                 } else {
-                    // Case 2: Lead has TL data - check if any TL name matches selected filters
-                    shouldIncludeLead = assignReportToTLNames.some(tlName => {
-                        const matches = filterOptions.assignedTL.includes(tlName);
-                        if (isDev && originalCount <= 20) console.log(`🎯   About section TL "${tlName}" matches filter: ${matches ? '✅ YES' : '❌ NO'}`);
-                        return matches;
-                    });
+                    try {
+                        const parsed = JSON.parse(rawTL);
+                        leadTLIds = Array.isArray(parsed)
+                            ? parsed.map(item => typeof item === 'object' ? String(item.id || item._id || '') : String(item).trim()).filter(Boolean)
+                            : [String(rawTL).trim()];
+                    } catch {
+                        leadTLIds = String(rawTL).split(',').map(s => s.trim()).filter(Boolean);
+                    }
                 }
-                
-                if (isDev && originalCount <= 20) {
-                    console.log(`🎯   FINAL ABOUTSECTION FILTER: ${shouldIncludeLead ? '✅ INCLUDE' : '❌ EXCLUDE'} - About section TLs will match filter selection`);
-                }
-                
-                return shouldIncludeLead;
+
+                return filterOptions.assignedTL.some(selectedName => {
+                    if (selectedName === 'Not Assigned') return false;
+                    const ids = tlNameToIds[selectedName];
+                    if (ids && ids.size > 0) {
+                        return leadTLIds.some(id => ids.has(id));
+                    }
+                    return leadTLIds.some(id => id.toLowerCase().replace(/_/g, ' ') === selectedName.toLowerCase());
+                });
             });
-            
-            if (isDev) {
-                console.log('🎯 ==================== ABOUTSECTION MATCHING TL FILTER END ====================');
-                console.log('🎯 Filtered results (About section TL matches filter):', filtered.length, 'out of', originalCount);
-                console.log('🎯 FILTER EFFECTIVENESS:', filtered.length < originalCount ? '✅ FILTER WORKING' : '❌ NO FILTERING OCCURRED');
-            }
-            
-            if (filtered.length === originalCount) {
-                console.log('🚨 PROBLEM: Filter did not reduce lead count! Possible issues:');
-                console.log('🚨 1. All leads match the selected TL filter');
-                console.log('🚨 2. Most leads have empty/null TL data');
-                console.log('🚨 3. TL field names don\'t match expected format');
-                console.log('🚨 4. Selected TL name doesn\'t match data format');
-            } else {
-                console.log('🎯 Now when you click on any lead, the Assigned TL in About section will match your filter selection');
-            }
-            console.log('🎯 ====================================================================');
         }
 
         if (filterOptions.createdBy && filterOptions.createdBy.length > 0) {
@@ -3015,57 +2971,22 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             console.log(`💰 ==================== STATUS COUNTS INCOME FILTER END ====================`);
         }
 
-        // Now count the statuses from the filtered data
-        let totalCounted = 0;
+        // Count leads by their direct main status name (dynamic from settings)
+        let loginCount = 0;
         filtered.forEach(lead => {
-            totalCounted++;
-            
-            // First check if parent_status is set and use it for counting
-            let parentStatusForCounting = lead.parent_status;
-            
-            // If no parent_status is set, determine it using the mapping logic
-            if (!parentStatusForCounting) {
-                const statusValue = typeof lead.status === 'object' ? (lead.status?.name || 'Unknown') : (lead.status || 'Unknown');
-                const subStatusValue = typeof lead.sub_status === 'object' ? (lead.sub_status?.name || null) : (lead.sub_status || null);
-                
-                // Use the same logic as getParentStatusForStatusCard
-                parentStatusForCounting = getParentStatusForStatusCard(statusValue, subStatusValue);
+            const statusValue = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
+            if (statusValue && counts.hasOwnProperty(statusValue)) {
+                counts[statusValue]++;
             }
-            
-            // Handle special case for file_sent_to_login condition
-            if (lead.file_sent_to_login === true && parentStatusForCounting !== "File sent to login") {
-                parentStatusForCounting = "File sent to login";
-            }
-            
-            // Ensure parentStatusForCounting is never null or undefined
-            if (!parentStatusForCounting || parentStatusForCounting === 'Unknown') {
-                parentStatusForCounting = "Active Leads"; // Default fallback
-            }
-            
-            // Count based on the determined parent status
-            if (counts.hasOwnProperty(parentStatusForCounting)) {
-                counts[parentStatusForCounting]++;
-            } else {
-                // For unknown statuses, increment Active Leads as default
-                counts["Active Leads"]++;
-                // Debug: Log unknown statuses
-                console.warn('Unknown parent status encountered:', parentStatusForCounting, 'for lead:', lead._id || lead.id);
+            // Count leads sent to login (green LOGIN badge)
+            if (lead.file_sent_to_login === true) {
+                loginCount++;
             }
         });
-        
-        // Debug: Log total counts to help identify discrepancies
-        const totalCountsSum = Object.values(counts).reduce((sum, count) => sum + count, 0);
-        if (totalCounted !== totalCountsSum) {
-            console.warn('Status count mismatch:', {
-                totalLeadsFiltered: totalCounted,
-                totalCountsSum: totalCountsSum,
-                difference: totalCounted - totalCountsSum,
-                counts: counts
-            });
-        }
+        counts['__LOGIN__'] = loginCount;
 
         return counts;
-    }, [leads, selectedLoanType, debouncedSearchTerm, filterOptions, filterRevision]); // ⚡ USE DEBOUNCED
+    }, [leads, selectedLoanType, debouncedSearchTerm, filterOptions, filterRevision, employees, allStatuses]); // ⚡ USE DEBOUNCED
 
     // ⚡ PERFORMANCE: Memoized filtered leads computation
     const filteredLeadsData = useMemo(() => {
@@ -3116,6 +3037,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         (typeof lead.last_name === 'string' && lead.last_name.toLowerCase().includes(searchLower)) ||
                         (lead.mobile_number !== undefined && lead.mobile_number !== null && lead.mobile_number.toString().includes(searchLower)) ||
                         (lead.phone !== undefined && lead.phone !== null && lead.phone.toString().includes(searchLower)) ||
+                        (lead.alternative_phone !== undefined && lead.alternative_phone !== null && lead.alternative_phone.toString().includes(searchLower)) ||
                         (typeof lead.email === 'string' && lead.email.toLowerCase().includes(searchLower)) ||
                         (typeof lead.campaign_name === 'string' && lead.campaign_name.toLowerCase().includes(searchLower)) ||
                         ((typeof lead.department_name === 'string' && lead.department_name.toLowerCase().includes(searchLower)) || 
@@ -3342,6 +3264,60 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             });
         }
 
+        // Assign TL filter – matches assign_report_to IDs against selected TL names
+        if (filterOptions.assignedTL && filterOptions.assignedTL.length > 0) {
+            // Build employee name → Set<id> lookup from employees state
+            const tlNameToIds = {};
+            if (Array.isArray(employees)) {
+                employees.forEach(emp => {
+                    const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                    const ids = [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).map(String);
+                    if (empName && ids.length > 0) {
+                        if (!tlNameToIds[empName]) tlNameToIds[empName] = new Set();
+                        ids.forEach(id => tlNameToIds[empName].add(id));
+                    }
+                });
+            }
+
+            filtered = filtered.filter(lead => {
+                const rawTL = lead.assign_report_to || lead.assignReportTo;
+                const hasTLData = rawTL && (Array.isArray(rawTL) ? rawTL.length > 0 : String(rawTL).trim() !== '');
+
+                // "Not Assigned" option
+                if (!hasTLData) {
+                    return filterOptions.assignedTL.includes('Not Assigned');
+                }
+
+                // Normalize to array of ID strings
+                let leadTLIds;
+                if (Array.isArray(rawTL)) {
+                    leadTLIds = rawTL.map(id => String(id).trim()).filter(Boolean);
+                } else {
+                    try {
+                        const parsed = JSON.parse(rawTL);
+                        leadTLIds = Array.isArray(parsed)
+                            ? parsed.map(item => typeof item === 'object' ? String(item.id || item._id || '') : String(item).trim()).filter(Boolean)
+                            : [String(rawTL).trim()];
+                    } catch {
+                        leadTLIds = String(rawTL).split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+
+                return filterOptions.assignedTL.some(selectedName => {
+                    if (selectedName === 'Not Assigned') return false;
+                    // ID-based matching using employee lookup
+                    const ids = tlNameToIds[selectedName];
+                    if (ids && ids.size > 0) {
+                        return leadTLIds.some(id => ids.has(id));
+                    }
+                    // Direct name/slug fallback (some leads may store names instead of IDs)
+                    return leadTLIds.some(id => {
+                        const normalized = id.toLowerCase().replace(/_/g, ' ');
+                        return normalized === selectedName.toLowerCase();
+                    });
+                });
+            });
+        }
 
         if (filterOptions.createdBy && filterOptions.createdBy.length > 0) {
             filtered = filtered.filter(lead => {
@@ -3844,7 +3820,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         }
 
         return filtered;
-    }, [leads, debouncedSearchTerm, filterOptions, selectedLoanType, filterRevision]); // ⚡ USE DEBOUNCED for performance
+    }, [leads, debouncedSearchTerm, filterOptions, selectedLoanType, filterRevision, employees]); // ⚡ USE DEBOUNCED for performance
 
     // Update filtered leads and status counts
     useEffect(() => {
@@ -3920,14 +3896,44 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         
     }, [memoizedStatusCounts, leads.length]); // Only depend on statusCounts, not filteredLeadsData!
 
-    // Pagination: Slice filteredLeadsData to show limited leads with "Show More" functionality
+    // Column-sorted leads: apply sortConfig on top of filteredLeadsData
+    const LEAD_NUMERIC_KEYS = ['totalIncome', 'eligibility_details.foir', 'financial_details.total_bt_pos', 'financial_details.cibil_score'];
+    const columnSortedLeads = useMemo(() => {
+        if (!filteredLeadsData || !sortConfig.key) return filteredLeadsData;
+        const getValue = (lead, key) => {
+            // Handle nested keys like "eligibility_details.foir"
+            const parts = key.split('.');
+            let val = lead;
+            for (const part of parts) val = val?.[part];
+            if (val === undefined || val === null) return '';
+            if (typeof val === 'object') return val?.name ?? '';
+            return val;
+        };
+        const isNumeric = LEAD_NUMERIC_KEYS.includes(sortConfig.key);
+        return [...filteredLeadsData].sort((a, b) => {
+            const aRaw = getValue(a, sortConfig.key);
+            const bRaw = getValue(b, sortConfig.key);
+            if (isNumeric) {
+                const aNum = parseFloat(String(aRaw).replace(/[^\d.-]/g, '')) || 0;
+                const bNum = parseFloat(String(bRaw).replace(/[^\d.-]/g, '')) || 0;
+                return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+            const aVal = String(aRaw).toLowerCase();
+            const bVal = String(bRaw).toLowerCase();
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredLeadsData, sortConfig]);
+
+    // Pagination: Slice columnSortedLeads to show limited leads with "Show More" functionality
     const displayedLeads = useMemo(() => {
-        if (!filteredLeadsData || filteredLeadsData.length === 0) {
+        if (!columnSortedLeads || columnSortedLeads.length === 0) {
             return [];
         }
         // Return only the number of leads we want to display
-        return filteredLeadsData.slice(0, displayedCount);
-    }, [filteredLeadsData, displayedCount]);
+        return columnSortedLeads.slice(0, displayedCount);
+    }, [columnSortedLeads, displayedCount]);
 
     // Calculate if there are more leads to show
     const hasMoreToShow = useMemo(() => {
@@ -4000,103 +4006,61 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     }, [uniqueTeams, debouncedTeamNameSearch]);
 
     const getFilteredAssignedTL = () => {
-        // Hybrid approach: Use employees data AND extract from lead data
-        const allTLNames = new Set();
+        // Show ONLY employees that are actually assigned in leads' assign_report_to field
+        const allNames = new Set();
         
-        console.log('🔧 [TL DROPDOWN] Building TL options from hybrid source...');
-        console.log('🔧 [TL DROPDOWN] Data availability:', {
-            employees: Array.isArray(employees) ? employees.length : 'Not available',
-            leads: Array.isArray(leads) ? leads.length : 'Not available'
-        });
-        
-        // Primary: Extract ONLY from assignReportTo field to ensure exact matching
-        console.log('🔧 [TL DROPDOWN] Extracting TL names ONLY from assignReportTo fields...');
-        
-        // Secondary: Extract actual TL names from lead data
-        if (Array.isArray(leads)) {
-            console.log('🔧 [TL DROPDOWN] ==================== ANALYZING ASSIGNREPORTTO FIELD ====================');
-            
-            leads.forEach((lead, index) => {
-                // Debug AssignReprtsTo field for first 10 leads to understand data format
-                if (index < 10) {
-                    console.log(`🔧 [TL DROPDOWN] Lead ${index + 1} (${lead.custom_lead_id}):`);
-                    console.log(`🔧   Raw assignReportTo:`, lead.assignReportTo, 'Type:', typeof lead.assignReportTo);
-                    
-                    if (lead.assignReportTo) {
-                        if (typeof lead.assignReportTo === 'object') {
-                            console.log(`🔧   assignReportTo object keys:`, Object.keys(lead.assignReportTo));
-                            console.log(`🔧   assignReportTo object:`, JSON.stringify(lead.assignReportTo, null, 2));
-                        }
-                    }
-                    
-                    // Show created_by_name for comparison
-                    console.log(`🔧   created_by_name (comparison):`, lead.created_by_name);
-                    console.log(`🔧   ---`);
-                }
-                
-                // Try assignReportTo first
-                const tlNames = extractTLNames(lead.assignReportTo, lead);
-                
-                tlNames.forEach(name => {
-                    if (name && name.trim()) {
-                        allTLNames.add(name.trim());
-                        
-                        // Debug first few entries
-                        if (index < 5) {
-                            console.log(`🔧 [TL DROPDOWN] Lead ${lead.custom_lead_id}: extracted TL name "${name}" from assignReportTo`);
-                        }
-                    }
-                });
-                
-                // Also try other TL fields as fallback
-                if (tlNames.length === 0) {
-                    const fallbackNames = extractTLNames(lead.assignReportTo || lead.assigned_tl || lead.team_leader || lead.tl, lead);
-                    fallbackNames.forEach(name => {
-                        if (name && name.trim()) {
-                            allTLNames.add(name.trim());
-                            
-                            if (index < 3) {
-                                console.log(`🔧 [TL DROPDOWN] Lead ${lead.custom_lead_id}: found TL "${name}" from fallback fields`);
-                            }
-                        }
-                    });
-                }
+        // Build ID → name lookup from employees list
+        const idToName = {};
+        if (Array.isArray(employees)) {
+            employees.forEach(emp => {
+                const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                const ids = [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).map(String);
+                ids.forEach(id => { if (empName) idToName[id] = empName; });
             });
         }
         
-        let tls = Array.from(allTLNames).sort();
-        
-        // If no TL names found in AssignReprtsTo, fallback to employee names
-        if (tls.length === 0) {
-            console.log('🔧 [TL DROPDOWN] ⚠️ No TL names found in assignReportTo fields, using employee names as fallback');
-            if (Array.isArray(employees) && employees.length > 0) {
-                employees.forEach(emp => {
-                    const empName = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
-                    if (empName) {
-                        allTLNames.add(empName);
-                        console.log(`🔧 [TL DROPDOWN] Added fallback employee: "${empName}"`);
+        // Extract names from leads' assignReportTo field
+        if (Array.isArray(leads)) {
+            leads.forEach(lead => {
+                const rawTL = lead.assign_report_to || lead.assignReportTo;
+                if (!rawTL) return;
+                
+                // First try extracting names directly
+                const extracted = extractTLNames(rawTL, lead);
+                extracted.forEach(name => {
+                    if (name && name.trim()) {
+                        // Check if this is an ID that can be resolved to a name
+                        const resolved = idToName[name.trim()];
+                        allNames.add(resolved || name.trim());
                     }
                 });
-                tls = Array.from(allTLNames).sort();
-            }
+                
+                // Also resolve raw IDs from the field
+                let ids = [];
+                if (Array.isArray(rawTL)) {
+                    ids = rawTL.map(item => typeof item === 'object' ? String(item.id || item._id || '') : String(item)).filter(Boolean);
+                } else if (typeof rawTL === 'string') {
+                    try {
+                        const parsed = JSON.parse(rawTL);
+                        if (Array.isArray(parsed)) {
+                            ids = parsed.map(item => typeof item === 'object' ? String(item.id || item._id || '') : String(item)).filter(Boolean);
+                        }
+                    } catch { ids = []; }
+                }
+                ids.forEach(id => {
+                    const name = idToName[id.trim()];
+                    if (name) allNames.add(name);
+                });
+            });
         }
         
-        // Final result
-        let finalResult;
-        if (tls.length > 0) {
-            finalResult = ['Not Assigned', ...tls];
-        } else {
-            console.log('🔧 [TL DROPDOWN] ⚠️ No TL names found anywhere - using test options');
-            // Provide basic fallback options for testing
-            finalResult = ['Not Assigned', 'No TLs Available'];
-        }
+        const sorted = Array.from(allNames).sort();
+        const finalResult = sorted.length > 0
+            ? ['Not Assigned', ...sorted]
+            : ['Not Assigned'];
         
-            console.log('INSPECT [TL DROPDOWN] Final TL options:', finalResult);
-            console.log('INSPECT [TL DROPDOWN] Total unique TLs found:', allTLNames.size);
-            console.log('INSPECT [TL DROPDOWN] All found TL names:', Array.from(allTLNames));        
-        // ⚡ PERFORMANCE: Use debounced search for smooth filtering
-        return finalResult.filter(tl => 
-            tl.toLowerCase().includes(debouncedAssignedTLSearch.toLowerCase())
+        return finalResult.filter(item => 
+            item.toLowerCase().includes(debouncedAssignedTLSearch.toLowerCase())
         );
     };
 
@@ -4262,6 +4226,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const exitFullscreen = () => {
         setIsFullscreen(false);
         setShowCloseButton(false);
+    };
+
+    // Column sorting handler
+    const handleSort = (key) => {
+        setSortConfig(prev =>
+            prev.key === key
+                ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+                : { key, direction: 'asc' }
+        );
     };
 
     // Handle escape key to exit fullscreen
@@ -4934,6 +4907,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
                 // Set the state with our extracted data
                 setAllStatuses(mainStatusesArray);
+                setAllStatusObjects(departmentStatuses); // Store full objects for dynamic cards
                 setAllSubStatuses(allSubStatusesArray);
                 setSubStatusToMainStatus(subToMainMap);
                 setStatusHierarchy(statusHierarchyMap);
@@ -6328,10 +6302,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         try {
             // Try different possible endpoints
             const endpoints = [
-                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader`,
-                `${apiBaseUrl}/users?user_id=${userId}`,
-                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader`,
-                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader`
+                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
+                `${apiBaseUrl}/users?user_id=${userId}&is_active=true`,
+                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader&employee_status=active`,
+                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader&employee_status=active`
             ];
             
             let data = null;
@@ -6369,19 +6343,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     employees = data.employees;
                 }
                 
-                // Filter for active employees first, then filter for team leaders
+                // Filter for active employees
                 const activeEmployees = employees.filter(emp => 
                     emp.employee_status === 'active' || 
                     emp.is_active === true || 
                     emp.employee_status === undefined
                 );
                 
-                const teamLeaders = activeEmployees.filter(emp => {
-                    const designation = emp.designation || emp.role || emp.position || emp.job_title;
-                    return designation && designation.toLowerCase().includes('team leader');
-                });
-                
-                setEmployees(teamLeaders);
+                setEmployees(activeEmployees);
                 
             } else {
                 setEmployees([]);
@@ -6984,22 +6953,154 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     </div>
                 )}
 
-                {/* Status Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-5 gap-6 mb-8">
-                    {statusCardConfig.map(({ key, label, icon: Icon, gradient, shadowColor }, index) => (
-                        <div key={index} className={`p-4 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor || 'shadow-lg'} flex-1`}>
-                            <div className="flex justify-between items-center">
-                                <Icon className="w-6 h-6 text-white" />
-                                {loadingLeads ? (
-                                    <div className="animate-spin h-5 w-5 border-2 border-white rounded-full border-t-transparent"></div>
-                                ) : (
-                                    <span className="text-xl font-bold text-white">{statusCounts[key] || 0}</span>
-                                )}
-                            </div>
-                            <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">{label}</p>
+                {/* Status Cards - Dynamic from Settings */}
+                {(() => {
+                    const cardGradients = [
+                        { gradient: 'from-blue-500 to-cyan-400',     shadow: 'shadow-blue-500/25' },
+                        { gradient: 'from-green-500 to-green-400',   shadow: 'shadow-green-500/25' },
+                        { gradient: 'from-orange-500 to-amber-400',  shadow: 'shadow-orange-500/25' },
+                        { gradient: 'from-red-500 to-pink-400',      shadow: 'shadow-red-500/25' },
+                        { gradient: 'from-purple-500 to-violet-400', shadow: 'shadow-purple-500/25' },
+                        { gradient: 'from-teal-500 to-cyan-400',     shadow: 'shadow-teal-500/25' },
+                        { gradient: 'from-indigo-500 to-blue-400',   shadow: 'shadow-indigo-500/25' },
+                        { gradient: 'from-pink-500 to-rose-400',     shadow: 'shadow-pink-500/25' },
+                        { gradient: 'from-gray-500 to-gray-400',     shadow: 'shadow-gray-500/25' },
+                        { gradient: 'from-yellow-500 to-amber-400',  shadow: 'shadow-yellow-500/25' },
+                    ];
+                    // Insert "Login" card right after "ACTIVE LEADS"
+                    const loginCard = {
+                        key: '__LOGIN__',
+                        name: 'Login',
+                        gradient: 'from-emerald-500 to-green-400',
+                        shadow: 'shadow-emerald-500/25',
+                    };
+                    return (
+                        <div className="flex flex-nowrap gap-3 mb-6 overflow-x-auto pb-1">
+                            {allStatusObjects.map((status, index) => {
+                                const { gradient, shadow } = cardGradients[index % cardGradients.length];
+                                const isActiveLeads = status.name && status.name.toUpperCase() === 'ACTIVE LEADS';
+                                return (
+                                    <React.Fragment key={index}>
+                                        <div
+                                            className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadow} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
+                                            onClick={() => setActiveCardModal(status.name)}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-sm text-white font-semibold uppercase tracking-wide leading-tight">{status.name}</p>
+                                                {loadingLeads ? (
+                                                    <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent flex-shrink-0"></div>
+                                                ) : (
+                                                    <span className="text-2xl font-extrabold text-white flex-shrink-0">{statusCounts[status.name] || 0}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {isActiveLeads && (
+                                            <div
+                                                className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl bg-gradient-to-r ${loginCard.gradient} shadow-lg ${loginCard.shadow} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
+                                                onClick={() => setActiveCardModal('__LOGIN__')}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <p className="text-sm text-white font-semibold uppercase tracking-wide leading-tight">LOGIN</p>
+                                                    {loadingLeads ? (
+                                                        <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent flex-shrink-0"></div>
+                                                    ) : (
+                                                        <span className="text-2xl font-extrabold text-white flex-shrink-0">{statusCounts['__LOGIN__'] || 0}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </div>
-                    ))}
-                </div>
+                    );
+                })()}
+
+                {/* Status Card Overview Modal */}
+                {activeCardModal && (() => {
+                    const cardGradients = [
+                        'from-blue-500 to-cyan-400',
+                        'from-green-500 to-green-400',
+                        'from-orange-500 to-amber-400',
+                        'from-red-500 to-pink-400',
+                        'from-purple-500 to-violet-400',
+                        'from-teal-500 to-cyan-400',
+                        'from-indigo-500 to-blue-400',
+                        'from-pink-500 to-rose-400',
+                        'from-gray-500 to-gray-400',
+                        'from-yellow-500 to-amber-400',
+                    ];
+                    const isLoginModal = activeCardModal === '__LOGIN__';
+                    const cardIdx = isLoginModal ? -1 : allStatusObjects.findIndex(s => s.name === activeCardModal);
+                    const cardGradient = isLoginModal ? 'from-emerald-500 to-green-400' : cardGradients[(cardIdx >= 0 ? cardIdx : 0) % cardGradients.length];
+                    const breakdown = isLoginModal ? (() => {
+                        const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+                        const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
+                        const loginLeads = allLeads.filter(l => l.file_sent_to_login === true);
+                        const groups = {};
+                        loginLeads.forEach(lead => {
+                            const sub = typeof lead.sub_status === 'object' ? (lead.sub_status?.name || '') : (lead.sub_status || '');
+                            const key = sub || 'No Sub-Status';
+                            if (!groups[key]) groups[key] = { total: 0, noReview: 0, pendingMy: 0 };
+                            groups[key].total++;
+                            if (!lead.last_activity_date) groups[key].noReview++;
+                            const createdBy = String(lead.created_by || '').trim();
+                            const assignedTo = String(lead.assigned_to || '').trim();
+                            if (currentUserId && (createdBy === currentUserId || assignedTo === currentUserId)) groups[key].pendingMy++;
+                        });
+                        return Object.entries(groups).filter(([_, c]) => c.total > 0).map(([subStatus, c]) => ({ subStatus, ...c })).sort((a, b) => b.total - a.total);
+                    })() : getSubStatusBreakdown(activeCardModal);
+                    return (
+                        <div
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70"
+                            onClick={() => setActiveCardModal(null)}
+                        >
+                            <div
+                                className="bg-[#111827] rounded-2xl shadow-2xl w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                {/* Header */}
+                                <div className={`bg-gradient-to-r ${cardGradient} px-5 py-4 flex items-center justify-between`}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-white font-bold text-base uppercase tracking-wide">{isLoginModal ? 'LOGIN' : activeCardModal} Overview</span>
+                                    </div>
+                                    <button onClick={() => setActiveCardModal(null)} className="text-white hover:text-gray-200 transition">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                {/* Table */}
+                                <div className="overflow-auto flex-1">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b border-gray-700">
+                                                <th className="text-left py-3 px-5 text-gray-400 text-xs font-semibold uppercase tracking-wider">SUB-STATUS</th>
+                                                <th className="text-right py-3 px-5 text-gray-300 text-xs font-semibold uppercase tracking-wider">TOTAL LEADS</th>
+                                                <th className="text-right py-3 px-5 text-red-400 text-xs font-semibold uppercase tracking-wider">NO REVIEW</th>
+                                                <th className="text-right py-3 px-5 text-yellow-400 text-xs font-semibold uppercase tracking-wider">PENDING MY</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {breakdown.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="text-center py-10 text-gray-500 text-sm">No leads found</td>
+                                                </tr>
+                                            ) : (
+                                                breakdown.map((row, i) => (
+                                                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition">
+                                                        <td className="py-3 px-5 text-white font-bold uppercase text-sm">{row.subStatus}</td>
+                                                        <td className="py-3 px-5 text-white font-bold text-right">{row.total}</td>
+                                                        <td className="py-3 px-5 text-red-400 font-bold text-right">{row.noReview}</td>
+                                                        <td className="py-3 px-5 text-yellow-400 font-bold text-right">{row.pendingMy}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Sections Loading Indicator */}
                 {loadingLeads && (
@@ -7187,9 +7288,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 {/* Table with sticky header - improved sticky positioning */}
                                 <table className="min-w-[1600px] w-full bg-black relative">
                                 <thead 
-                                    className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200 cursor-pointer select-none" 
-                                    onDoubleClick={toggleFullscreen}
-                                    title="Double-click to toggle fullscreen"
+                                    className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200"
                                 >
                                         <tr>
                                             {(canDeleteLeads() || isSuperAdmin()) && checkboxVisible && (
@@ -7205,20 +7304,19 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                             {columns.map((col, idx) => (
                                                 <th
                                                     key={idx}
-                                                    className={`bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 ${idx === 0 && !((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? "" : ""
-                                                        } ${idx === columns.length - 1 && !((canDeleteLeads() || isSuperAdmin()) && checkboxVisible)
-                                                            ? ""
-                                                            : ""
-                                                        } ${col.className || ""}`}
+                                                    className={`bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 ${col.key !== "index" && col.key !== "status" ? "cursor-pointer select-none hover:bg-gray-50" : ""} ${col.className || ""}`}
+                                                    onClick={col.key !== "index" && col.key !== "status" ? () => handleSort(col.key) : undefined}
                                                 >
-                                                    {col.key === "created_by" ? (
-                                                        <div className="flex items-left justify-left  gap-2">
-
-                                                            <span>{col.label}</span>
-                                                        </div>
-                                                    ) : (
-                                                        col.label
-                                                    )}
+                                                    <div className="flex items-center gap-1">
+                                                        <span>{col.label}</span>
+                                                        {col.key !== "index" && col.key !== "status" && (
+                                                            <span className="text-xs">
+                                                                {sortConfig.key === col.key
+                                                                    ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓')
+                                                                    : ' ↕'}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </th>
                                             ))}
                                         </tr>
@@ -8633,7 +8731,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <User className="w-4 h-4" />
-                                                Assigned TL
+                                                Assigned Lead
                                             </div>
                                             {getFilterCategoryCount('assignedTL') > 0 && (
                                                 <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -8656,7 +8754,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <FileText className="w-4 h-4" />
-                                                Quick Filters
+                                                Duplicate Lead
                                             </div>
                                             {getFilterCategoryCount('leadActivity') > 0 && (
                                                 <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -9259,7 +9357,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                 <div className="relative">
                                                     <input
                                                         type="text"
-                                                        placeholder="Search TLs..."
+                                                        placeholder="Search employees..."
                                                         value={assignedTLSearch}
                                                         onChange={(e) => setAssignedTLSearch(e.target.value)}
                                                         className="w-full bg-[#1b2230] border border-gray-600 rounded px-3 py-2 pl-10 text-gray-300 focus:outline-none focus:border-blue-500"
@@ -9280,7 +9378,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                 {loadingEmployees ? (
                                                     <div className="text-gray-500 text-sm py-2 flex items-center gap-2">
                                                         <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                                        Loading team leaders...
+                                                        Loading employees...
                                                     </div>
                                                 ) : (
                                                     getFilteredAssignedTL().map((tl) => (
@@ -9319,10 +9417,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                     ))
                                                 )}
                                                 {!loadingEmployees && getFilteredAssignedTL().length === 0 && assignedTLSearch && (
-                                                    <div className="text-gray-500 text-sm py-2">No team leaders found matching "{assignedTLSearch}"</div>
+                                                    <div className="text-gray-500 text-sm py-2">No employees found matching "{assignedTLSearch}"</div>
                                                 )}
                                                 {!loadingEmployees && getFilteredAssignedTL().length === 0 && !assignedTLSearch && (
-                                                    <div className="text-gray-500 text-sm py-2">No team leaders available</div>
+                                                    <div className="text-gray-500 text-sm py-2">No employees available</div>
                                                 )}
                                             </div>
                                         </div>
@@ -9333,7 +9431,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     {/* Lead Activity Filter */}
                                     {selectedFilterCategory === 'leadActivity' && (
                                         <div>
-                                            <h3 className="text-sm font-medium text-gray-300 mb-3">Quick Filters</h3>
+                                            <h3 className="text-sm font-medium text-gray-300 mb-3">Duplicate Lead</h3>
                                             <div className="space-y-4">
                                                 {/* Check Duplicate Leads */}
                                                 <label className="flex items-center cursor-pointer">
@@ -9354,10 +9452,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                         }}
                                                         className="accent-blue-500 mr-2 cursor-pointer"
                                                     />
-                                                    <span className="text-gray-300">Check Duplicate Leads</span>
+                                                    <span className="text-gray-300">Duplicate Check</span>
                                                 </label>
                                                 <p className="text-xs text-gray-500 mt-1 ml-6">
-                                                    Show leads with same phone number or alternative phone number
+                                                    Show leads with duplicate phone numbers (same mobile or alt number)
                                                 </p>
                                             </div>
                                         </div>

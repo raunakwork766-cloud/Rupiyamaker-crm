@@ -321,7 +321,7 @@ const SettingsPage = () => {
     const [warningActions, setWarningActions] = useState([]);
     
     // Attachment type filter and delete state
-    const [attachmentTypeFilter, setAttachmentTypeFilter] = useState('');
+    const [attachmentTypeFilter, setAttachmentTypeFilter] = useState('leads');
     const [deletingItems, setDeletingItems] = useState(new Set());
     // Attachment type drag-reorder & inline-edit state
     const [atDragIdx, setAtDragIdx]           = useState(null);
@@ -342,6 +342,7 @@ const SettingsPage = () => {
     const [atDocDrag, setAtDocDrag] = useState(null);
     const [atDocDragOver, setAtDocDragOver] = useState(null);
     const [atDraftKey, setAtDraftKey] = useState(0);
+    const [atDescPopover, setAtDescPopover] = useState(null); // 'catIdx-docIdx'
     const [attendanceSettings, setAttendanceSettings] = useState({
         check_in_time: '10:00',
         check_out_time: '19:00',
@@ -3051,13 +3052,51 @@ const updateStatus = async (statusId, statusData) => {
     );
 
     const renderAttachmentTypesTable = () => {
-        // ── Draft mutation helpers ──
+        // ── Draft mutation helpers (auto-save on every change) ──
+        const saveWithDraft = async (draftCats) => {
+            if (atSaving) { setAtDraftDirty(true); return; }
+            setAtSaving(true);
+            try {
+                const draftDocs = [];
+                draftCats.forEach((cat, catIdx) => {
+                    cat.docs.forEach((doc, docIdx) => {
+                        draftDocs.push({ ...doc, category: cat.title, sort_number: catIdx * 100 + docIdx + 1 });
+                    });
+                });
+                const originalIds = new Set(attachmentTypes.map(t => t._id || t.id));
+                const draftIds = new Set(draftDocs.filter(d => !d._isNew && (d._id || d.id)).map(d => d._id || d.id));
+                for (const id of originalIds) {
+                    if (!draftIds.has(id)) await hrmsService.deleteAttachmentType(id).catch(console.error);
+                }
+                for (const doc of draftDocs.filter(d => d._isNew)) {
+                    await hrmsService.createAttachmentType({
+                        name: doc.name, target_type: doc.target_type || 'leads',
+                        sort_number: doc.sort_number, description: doc.description || '',
+                        is_active: doc.is_active !== false, category: doc.category,
+                        is_primary: doc.is_primary !== false
+                    }).catch(console.error);
+                }
+                for (const doc of draftDocs.filter(d => !d._isNew && (d._id || d.id))) {
+                    await hrmsService.updateAttachmentType(doc._id || doc.id, {
+                        name: doc.name, target_type: doc.target_type,
+                        sort_number: doc.sort_number, description: doc.description || '',
+                        is_active: doc.is_active !== false, category: doc.category,
+                        is_primary: doc.is_primary !== false
+                    }).catch(console.error);
+                }
+                await loadAttachmentTypes();
+                setAtDraftDirty(false);
+            } catch (e) {
+                console.error('Error auto-saving attachment settings:', e);
+                setAtDraftDirty(true);
+            } finally {
+                setAtSaving(false);
+            }
+        };
         const updateDraft = (updater) => {
-            setAtDraftCategories(prev => {
-                const next = JSON.parse(JSON.stringify(prev));
-                return updater(next);
-            });
-            setAtDraftDirty(true);
+            const next = updater(JSON.parse(JSON.stringify(atDraftCategories)));
+            setAtDraftCategories(next);
+            saveWithDraft(next);
         };
 
         const toggleCatCollapse = (catTitle) => {
@@ -3147,60 +3186,6 @@ const updateStatus = async (statusId, statusData) => {
             setAtDocDrag(null); setAtDocDragOver(null);
         };
 
-        // ── Save changes to backend ──
-        const saveAllChanges = async () => {
-            setAtSaving(true);
-            try {
-                // Flatten all docs with their new category/sort info
-                const draftDocs = [];
-                atDraftCategories.forEach((cat, catIdx) => {
-                    cat.docs.forEach((doc, docIdx) => {
-                        draftDocs.push({ ...doc, category: cat.title, sort_number: catIdx * 100 + docIdx + 1 });
-                    });
-                });
-
-                const originalIds = new Set(attachmentTypes.map(t => t._id || t.id));
-                const draftIds = new Set(draftDocs.filter(d => !d._isNew && (d._id || d.id)).map(d => d._id || d.id));
-
-                // Delete removed items
-                for (const id of originalIds) {
-                    if (!draftIds.has(id)) await hrmsService.deleteAttachmentType(id).catch(console.error);
-                }
-                // Create new items
-                for (const doc of draftDocs.filter(d => d._isNew)) {
-                    await hrmsService.createAttachmentType({
-                        name: doc.name, target_type: doc.target_type || 'leads',
-                        sort_number: doc.sort_number, description: doc.description || '',
-                        is_active: doc.is_active !== false, category: doc.category,
-                        is_primary: doc.is_primary !== false
-                    }).catch(console.error);
-                }
-                // Update existing items
-                for (const doc of draftDocs.filter(d => !d._isNew && (d._id || d.id))) {
-                    await hrmsService.updateAttachmentType(doc._id || doc.id, {
-                        name: doc.name, target_type: doc.target_type,
-                        sort_number: doc.sort_number, description: doc.description || '',
-                        is_active: doc.is_active !== false, category: doc.category,
-                        is_primary: doc.is_primary !== false
-                    }).catch(console.error);
-                }
-                await loadAttachmentTypes();
-                setAtDraftDirty(false);
-                alert('Attachment settings saved successfully!');
-            } catch (e) {
-                console.error('Error saving attachment settings:', e);
-                alert('Error saving settings. Please try again.');
-            } finally {
-                setAtSaving(false);
-            }
-        };
-
-        const cancelChanges = () => {
-            setAtDraftCategories(buildDraftCategories(attachmentTypes));
-            setAtDraftDirty(false);
-            setAtDraftKey(k => k + 1);
-        };
-
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 {/* ── Header ── */}
@@ -3210,12 +3195,12 @@ const updateStatus = async (statusId, statusData) => {
                         DOCUMENT SETTINGS
                     </h3>
                     <div className="flex items-center gap-2 flex-wrap">
-                        {atDraftDirty && (
-                            <span className="text-[10px] text-amber-600 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded uppercase">Unsaved Changes</span>
+                        {atSaving && (
+                            <span className="text-[10px] text-blue-600 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded uppercase flex items-center gap-1"><Save size={9} className="animate-pulse" /> Saving...</span>
                         )}
                         {/* Filter tabs */}
                         <div className="flex rounded overflow-hidden border border-gray-200 shadow-sm">
-                            {[['', 'All'], ['leads', 'Leads'], ['employees', 'Employees']].map(([val, label]) => (
+                            {[['leads', 'Leads'], ['employees', 'Employees']].map(([val, label]) => (
                                 <button
                                     key={val}
                                     onClick={() => setAttachmentTypeFilter(val)}
@@ -3339,6 +3324,35 @@ const updateStatus = async (statusId, statusData) => {
                                                                 <option value="primary">OUTSIDE (DEFAULT)</option>
                                                                 <option value="extra">EXTRA DOC</option>
                                                             </select>
+                                                            {/* Info / Description icon */}
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => setAtDescPopover(atDescPopover === `${catIdx}-${docIdx}` ? null : `${catIdx}-${docIdx}`)}
+                                                                    className={`w-5 h-5 flex items-center justify-center rounded transition ${doc.description ? 'text-blue-500 bg-blue-50 hover:bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                                                    title={doc.description ? `Info: ${doc.description}` : 'Add info / description'}
+                                                                >
+                                                                    <HelpCircle size={10} />
+                                                                </button>
+                                                                {atDescPopover === `${catIdx}-${docIdx}` && (
+                                                                    <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-blue-200 rounded-lg shadow-xl p-2.5 w-56">
+                                                                        <div className="text-[9px] font-bold text-gray-500 mb-1.5 uppercase tracking-wide">ℹ Description (shown to users)</div>
+                                                                        <textarea
+                                                                            autoFocus
+                                                                            defaultValue={doc.description || ''}
+                                                                            onBlur={e => {
+                                                                                const desc = e.target.value.trim();
+                                                                                updateDraft(draft => { draft[catIdx].docs[docIdx].description = desc; return draft; });
+                                                                                setAtDescPopover(null);
+                                                                            }}
+                                                                            onKeyDown={e => { if (e.key === 'Escape') setAtDescPopover(null); }}
+                                                                            rows={3}
+                                                                            placeholder="What is this document for?"
+                                                                            className="w-full text-[10px] text-gray-900 border border-gray-200 rounded px-2 py-1 outline-none resize-none focus:border-blue-300"
+                                                                        />
+                                                                        <p className="text-[9px] text-gray-400 mt-1">Click outside to save &amp; close</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                             {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
                                                                 <button
                                                                     onClick={() => deleteDoc(catIdx, docIdx)}
@@ -3407,30 +3421,9 @@ const updateStatus = async (statusId, statusData) => {
                     )}
                 </div>
 
-                {/* ── Footer: Cancel + Save Changes ── */}
-                <div className="p-3 border-t border-gray-200 bg-white flex justify-end gap-2">
-                    <button
-                        onClick={cancelChanges}
-                        disabled={atSaving}
-                        className="px-4 py-1.5 rounded text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition uppercase disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={saveAllChanges}
-                        disabled={atSaving || !atDraftDirty}
-                        className="px-4 py-1.5 rounded text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5 uppercase disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {atSaving ? (
-                            <>
-                                <Save size={12} className="animate-pulse" /> Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save size={12} /> Save Changes
-                            </>
-                        )}
-                    </button>
+                {/* ── Footer: Auto-save note ── */}
+                <div className="p-2 border-t border-gray-100 bg-gray-50 flex items-center justify-end">
+                    <span className="text-[9px] text-gray-400 italic">✓ Changes are saved automatically</span>
                 </div>
             </div>
         );

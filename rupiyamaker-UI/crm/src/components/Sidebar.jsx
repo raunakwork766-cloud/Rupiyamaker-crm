@@ -70,6 +70,15 @@ const icons = {
       <path d="M16 2v6M13 5h6" />
     </svg>
   ),
+  "Offer Letter": (
+    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  ),
   "Daily Performance": (
     <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -213,6 +222,7 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
     if (label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) return true;
     if (label === 'All Warnings' && currentPath.includes('/warning/all')) return true;
     if (label === 'My Warnings' && currentPath.includes('/warning/my') && !isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '{}'))) return true;
+    if (label === 'Transfer Requests' && currentPath.includes('/transfer-requests')) return true;
     if (label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) return true;
     if (label === 'Create LEAD' && currentPath.includes('/create-lead')) return true;
     return false;
@@ -228,8 +238,8 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
   }, [label, onSelect, isLoanType, loanTypeId]);
 
   const subActiveStyle = isSelected ? {
-    boxShadow: '0 0 12px rgba(255,235,0,0.2), inset 0 0 6px rgba(255,235,0,0.05)',
-    border: '1px solid rgba(255,235,0,0.4)'
+    boxShadow: '0 2px 8px rgba(234,179,8,0.35)',
+    border: '1px solid rgba(234,179,8,0.5)'
   } : {};
 
   return (
@@ -237,8 +247,8 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
       className={cn(
         "flex items-center w-full p-2 text-left mb-0.5 rounded-lg transition-all duration-200 text-xs sm:text-[13px] font-medium animate-pop min-h-[38px] border border-transparent",
         isSelected
-          ? "bg-[#ffeb00] text-black translate-x-1.5"
-          : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:translate-x-1.5 hover:border-white/[0.12]"
+          ? "bg-yellow-400 text-gray-900 font-bold translate-x-1.5"
+          : "bg-transparent hover:bg-blue-50 text-gray-700 hover:text-[#1a56db] hover:translate-x-1.5 hover:border-blue-200"
       )}
       style={subActiveStyle}
       onClick={handleClick}
@@ -304,6 +314,7 @@ const DropdownHeader = React.memo(({
       if ((item.label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) ||
           (item.label === 'All Warnings' && currentPath.includes('/warning/all')) ||
           (item.label === 'My Warnings' && currentPath.includes('/warning/my'))) return true;
+      if (item.label === 'Transfer Requests' && currentPath.includes('/transfer-requests')) return true;
       if ((item.label === 'LEAD Dashboard' && currentPath.includes('/lead-dashboard')) ||
           (item.label === 'Create LEAD' && currentPath.includes('/create-lead'))) return true;
       return false;
@@ -365,9 +376,9 @@ const DropdownHeader = React.memo(({
           transition: 'max-height 0.35s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease'
         }}
       >
-        <div className="relative pl-9 pr-1 pt-1 pb-2 bg-white/[0.11] rounded-xl mx-1 my-1 border border-white/[0.10]">
+        <div className="relative pl-9 pr-1 pt-1 pb-2 bg-white rounded-xl mx-1 my-1 border border-gray-200 shadow-md">
           {/* Yellow left border hierarchy indicator */}
-          <div className="absolute left-5 top-2 bottom-2 w-[3px] bg-[#ffeb00] rounded-full opacity-50"></div>
+          <div className="absolute left-5 top-2 bottom-2 w-[3px] bg-[#1a56db] rounded-full opacity-70"></div>
           <ul className="flex flex-col gap-0.5">
             {items.map((item) => (
               <li key={`${label}-${item.label}-${item.id || 'static'}`}>
@@ -501,9 +512,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       "Attendance": "HRMS",
       "Daily Performance": "HRMS",
       "Dialer Report": "HRMS",
+      "Offer Letter": "HRMS",
       "Warning Dashboard": "Warning",
       "All Warnings": "Warning",
       "My Warnings": "Warning",
+      "Transfer Requests": "Login CRM",
     };
     
     // Add loan types to mapping
@@ -1043,6 +1056,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       }
     }
     
+    // Check for Transfer Requests
+    else if (currentPath.includes('/transfer-requests')) {
+      targetLabel = 'Transfer Requests';
+      parentDropdown = 'Login CRM';
+    }
     // Check for other main pages
     else if (currentPath.includes('/lead-dashboard') || currentPath.includes('/crm-dashboard')) {
       targetLabel = 'LEAD Dashboard';
@@ -1220,6 +1238,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     else if (currentPath.includes('/warning')) {
       shouldOpenDropdown = 'Warning';
     }
+    else if (currentPath.includes('/transfer-requests')) {
+      shouldOpenDropdown = 'Login CRM';
+    }
     else if (currentPath.includes('/lead-dashboard') || currentPath.includes('/create-lead')) {
       shouldOpenDropdown = 'LEAD CRM';
     }
@@ -1283,6 +1304,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         }
         else if (currentPath.includes('/performance')) {
           persistedLabel = 'Daily Performance';
+        }
+        else if (currentPath.includes('/transfer-requests')) {
+          persistedLabel = 'Transfer Requests';
         }
         else if (currentPath.includes('/warning/dashboard')) {
           persistedLabel = 'Warning Dashboard';
@@ -1487,11 +1511,13 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     console.log('🔐 ========================================');
     
     const perms = {
-      // LEAD CRM - Check multiple variations
+      // LEAD CRM - Check multiple variations including sub-page dot-notation
       canShowLeads: checkPermission('leads', 'show') ||
                     checkPermission('Leads', 'show') ||
                     checkPermission('LEADS', 'show') ||
                     checkPermission('lead', 'show') ||
+                    checkPermission('leads.create_lead', 'show') ||
+                    checkPermission('leads.pl_odd_leads', 'show') ||
                     isSuperAdmin(userPermissions),
       
       // Feed - Always visible
@@ -1509,11 +1535,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                       checkPermission('ticket', 'show') ||
                       isSuperAdmin(userPermissions),
       
-      // HRMS - Check multiple variations
+      // HRMS - Check multiple variations including sub-modules
       canShowHRMS: checkPermission('hrms', 'show') || 
                    checkPermission('HRMS', 'show') || 
                    checkPermission('employees', 'show') ||
                    checkPermission('Employees', 'show') ||
+                   checkPermission('warnings', 'show') ||
+                   checkPermission('attendance', 'show') ||
+                   checkPermission('leaves', 'show') ||
                    isSuperAdmin(userPermissions),
       
       // Employees
@@ -1565,6 +1594,25 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('Announcement', 'show') ||
                             isSuperAdmin(userPermissions),
 
+      // Warnings - Check permission or super admin
+      canShowWarnings: checkPermission('warnings', 'show') ||
+                       checkPermission('Warnings', 'show') ||
+                       checkPermission('warning', 'show') ||
+                       isSuperAdmin(userPermissions),
+
+      // Attendance - individual check for HRMS dropdown items
+      canShowAttendance: checkPermission('attendance', 'show') ||
+                         checkPermission('Attendance', 'show') ||
+                         checkPermission('hrms', 'show') ||
+                         isSuperAdmin(userPermissions),
+
+      // Leaves - individual check for HRMS dropdown items
+      canShowLeaves: checkPermission('leaves', 'show') ||
+                     checkPermission('Leaves', 'show') ||
+                     checkPermission('leave', 'show') ||
+                     checkPermission('hrms', 'show') ||
+                     isSuperAdmin(userPermissions),
+
       // Knowledge Base - admin always sees it, others need explicit permission
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
                             checkPermission('knowledge_base', 'show') ||
@@ -1597,12 +1645,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   }, [loanTypes]);
 
   const loginCrmLoanTypeItems = useMemo(() => {
-    return loanTypes.map(loanType => ({
-      label: `${loanType.name} Login`,
-      icon: icons["PL & ODD LEADS"],
-      id: loanType._id,
-      isLoanType: true
-    }));
+    return [
+      ...loanTypes.map(loanType => ({
+        label: `${loanType.name} Login`,
+        icon: icons["PL & ODD LEADS"],
+        id: loanType._id,
+        isLoanType: true
+      }))
+    ];
   }, [loanTypes]);
 
   if (!permissionsLoaded || !menuDataLoaded) {
@@ -1762,7 +1812,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               /> */}
             
 
-            {/* Warning - Direct Navigation */}
+            {/* Warning - Permission Guarded */}
+            {permissions.canShowWarnings && (
             <MenuItem 
               icon={icons["Warning"]} 
               label="Warning" 
@@ -1770,6 +1821,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               selectedLabel={selectedLabel} 
               onSelect={handleSelection} 
             />
+            )}
 
             {/* Interview Panel */}
             {permissions.canViewInterviewPanel && (
@@ -1793,25 +1845,15 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                 onToggle={toggleDropdown}
                 items={[
                   ...(permissions.canShowEmployees ? [{ label: "Employees", icon: icons["Employees"] }] : []),
-                  { label: "Leave", icon: icons["Leave"] },
-                  { label: "Attendance", icon: icons["Attendance"] },
+                  ...(permissions.canShowLeaves ? [{ label: "Leave", icon: icons["Leave"] }] : []),
+                  ...(permissions.canShowAttendance ? [{ label: "Attendance", icon: icons["Attendance"] }] : []),
                   ...(permissions.canShowDialerReport ? [{ label: "Dialer Report", icon: icons["Dialer Report"] }] : []),
+                  ...(isSuperAdmin(userPermissions) ? [{ label: "Offer Letter", icon: icons["Offer Letter"] }] : []),
                 ]}
                 onItemSelect={handleSelection}
               />
             )}
             
-            {/* Knowledge Base */}
-            {permissions.canShowKnowledgeBase && (
-              <MenuItem
-                icon={icons["Knowledge Base"]}
-                label="Knowledge Base"
-                isOpen={isOpen}
-                selectedLabel={selectedLabel}
-                onSelect={handleSelection}
-              />
-            )}
-
             {/* Apps */}
             {permissions.canShowApps && (
               <MenuItem 

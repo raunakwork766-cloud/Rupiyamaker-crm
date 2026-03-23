@@ -123,7 +123,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     processingBank: safetyProcess.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
     loanAmountRequired: safetyProcess.loan_amount_required ? formatINR(safetyProcess.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : ""),
     purposeOfLoan: safetyProcess.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
-    howToProcess: safetyProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
+    howToProcess: (() => { const v = safetyProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || ""; return (v === 'None' || v === 'none') ? '' : v; })(),
     loanType: safetyProcess.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
     requiredTenure: safetyProcess.required_tenure ? `${safetyProcess.required_tenure} months` : (lead?.dynamic_fields?.process?.required_tenure ? `${lead.dynamic_fields.process.required_tenure} months` : ""),
     caseType: safetyProcess.case_type || lead?.dynamic_fields?.process?.case_type || "",
@@ -193,7 +193,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       processingBank: currentProcess.processing_bank || lead?.process_data?.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
       loanAmountRequired: currentProcess.loan_amount_required ? formatINR(currentProcess.loan_amount_required) : (lead?.process_data?.loan_amount_required ? formatINR(lead.process_data.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : "")),
       purposeOfLoan: currentProcess.purpose_of_loan || lead?.process_data?.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
-      howToProcess: currentProcess.how_to_process || lead?.process_data?.how_to_process || lead?.dynamic_fields?.process?.how_to_process || "",
+      howToProcess: (() => { const v = currentProcess.how_to_process || lead?.process_data?.how_to_process || lead?.dynamic_fields?.process?.how_to_process || ""; return (v === 'None' || v === 'none') ? '' : v; })(),
       loanType: currentProcess.loan_type || lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
       requiredTenure: tenure ? `${tenure} months` : "",
       caseType: currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || "",
@@ -598,7 +598,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 items-start">
           {/* Processing Bank */}
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>PROCESSING BANK</label>
+            <label className={labelClass} style={labelStyle}>LOGIN BANK</label>
             <div className="relative dropdown-container">
               <div
                 className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${

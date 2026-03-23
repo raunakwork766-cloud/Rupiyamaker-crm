@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 
+/* Dark-theme date input text visibility fix for Chrome/Chromium */
+input[type="date"].dark-date::-webkit-datetime-edit,
+input[type="date"].dark-date::-webkit-datetime-edit-fields-wrapper,
+input[type="date"].dark-date::-webkit-datetime-edit-text,
+input[type="date"].dark-date::-webkit-datetime-edit-month-field,
+input[type="date"].dark-date::-webkit-datetime-edit-day-field,
+input[type="date"].dark-date::-webkit-datetime-edit-year-field {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+input[type="date"].dark-date::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
 /* Global defaults - allow text selection but use default cursor */
 * {
   cursor: default;

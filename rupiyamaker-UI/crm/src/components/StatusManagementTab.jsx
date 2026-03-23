@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, X, Edit, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, X, Edit, Trash2, Search, CheckCircle, Users, Shield } from 'lucide-react';
 
 const StatusManagementTab = ({
     statuses,
@@ -27,12 +27,159 @@ const StatusManagementTab = ({
     updateSubStatus,
     deleteSubStatus
 }) => {
+    // ── Active tab: 'statuses' or 'permissionRoles' ──
+    const [activeInnerTab, setActiveInnerTab] = useState('statuses');
+
     const [isStatusFormSubmitting, setIsStatusFormSubmitting] = useState(false);
     const [isSubStatusFormSubmitting, setIsSubStatusFormSubmitting] = useState(false);
     // Track saving state per-status for inline edits
     const [savingId, setSavingId] = useState(null);
     // Local edits for reassign days (status_id -> value)
     const [reassignEdits, setReassignEdits] = useState({});
+
+    // ── Permission Roles tab state ──
+    const [allRoles, setAllRoles] = useState([]);
+    const [allEmployees, setAllEmployees] = useState([]);
+    const [approvalRoutes, setApprovalRoutes] = useState([]);
+    const [permSelectedRole, setPermSelectedRole] = useState(null);
+    const [permSelectedApprovers, setPermSelectedApprovers] = useState([]);
+    const [permRoleSearch, setPermRoleSearch] = useState('');
+    const [permEmpSearch, setPermEmpSearch] = useState('');
+    const [permSaving, setPermSaving] = useState(false);
+
+    const getUserData = useCallback(() => {
+        try {
+            const raw = localStorage.getItem('userData');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return {
+                    userId: parsed.user_id || '',
+                    headers: parsed.access_token
+                        ? { 'Authorization': `Bearer ${parsed.access_token}`, 'Content-Type': 'application/json' }
+                        : { 'Content-Type': 'application/json' },
+                };
+            }
+        } catch (_) {}
+        const uid = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+        return { userId: uid, headers: { 'Content-Type': 'application/json' } };
+    }, []);
+
+    // Load roles, employees, and existing routes when Permission Roles tab is activated
+    useEffect(() => {
+        if (activeInnerTab !== 'permissionRoles') return;
+        const load = async () => {
+            try {
+                const { userId, headers } = getUserData();
+                const [rolesRes, empsRes, routesRes] = await Promise.all([
+                    fetch(`/api/roles/?user_id=${userId}`, { headers }).then(r => r.json()),
+                    fetch(`/api/users/?user_id=${userId}&is_active=true`, { headers }).then(r => r.json()),
+                    fetch(`/api/settings/reassignment-approval-routes?user_id=${userId}`, { headers }).then(r => r.json()),
+                ]);
+                setAllRoles(Array.isArray(rolesRes) ? rolesRes : []);
+                const users = Array.isArray(empsRes) ? empsRes : (empsRes.employees || empsRes.data || []);
+                setAllEmployees(
+                    users
+                        .filter(u => u.employee_status !== 'inactive' && String(u.login_enabled).toLowerCase() !== 'false')
+                        .map(u => ({
+                        ...u,
+                        id: u._id || u.id,
+                        name: u.name || [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || 'Unknown',
+                    }))
+                );
+                setApprovalRoutes(Array.isArray(routesRes.data) ? routesRes.data : []);
+            } catch (e) { console.error('Error loading permission roles data', e); }
+        };
+        load();
+    }, [activeInnerTab, getUserData]);
+
+    const handlePermRoleSelect = useCallback((roleId) => {
+        setPermSelectedRole(roleId);
+        setPermEmpSearch('');
+        const route = approvalRoutes.find(r => r.role_id === roleId);
+        setPermSelectedApprovers(route ? (route.approver_ids || []) : []);
+    }, [approvalRoutes]);
+
+    const toggleApprover = useCallback((empId) => {
+        setPermSelectedApprovers(prev =>
+            prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
+        );
+    }, []);
+
+    const handlePermSave = useCallback(async () => {
+        if (!permSelectedRole || permSelectedApprovers.length === 0) return;
+        setPermSaving(true);
+        try {
+            const { userId: uid, headers } = getUserData();
+            const role = allRoles.find(r => (r.id || r._id) === permSelectedRole);
+            const approverNames = permSelectedApprovers.map(id => {
+                const emp = allEmployees.find(e => String(e._id || e.id) === id);
+                if (!emp) return 'Unknown';
+                return emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+            });
+            const res = await fetch(`/api/settings/reassignment-approval-routes?user_id=${uid}`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    role_id: permSelectedRole,
+                    role_name: role?.name || '',
+                    approver_ids: permSelectedApprovers,
+                    approver_names: approverNames,
+                }),
+            });
+            if (res.ok) {
+                const d = await res.json();
+                setApprovalRoutes(prev => {
+                    const idx = prev.findIndex(r => r.role_id === permSelectedRole);
+                    if (idx >= 0) { const next = [...prev]; next[idx] = d.data; return next; }
+                    return [...prev, d.data];
+                });
+            }
+        } catch (e) { console.error(e); }
+        setPermSaving(false);
+    }, [permSelectedRole, permSelectedApprovers, allRoles, allEmployees, getUserData]);
+
+    const handlePermDelete = useCallback(async (roleId) => {
+        if (!window.confirm('Remove approval routing for this role?')) return;
+        try {
+            const { userId: uid, headers } = getUserData();
+            const res = await fetch(`/api/settings/reassignment-approval-routes/${roleId}?user_id=${uid}`, { method: 'DELETE', headers });
+            if (res.ok) {
+                setApprovalRoutes(prev => prev.filter(r => r.role_id !== roleId));
+                if (permSelectedRole === roleId) { setPermSelectedRole(null); setPermSelectedApprovers([]); }
+            }
+        } catch (e) { console.error(e); }
+    }, [getUserData, permSelectedRole]);
+
+    // ── Cooldown period state ──────────────────────────────────────────────────
+    const [cooldownHours, setCooldownHours] = useState(24);
+    const [cooldownInput, setCooldownInput] = useState('');
+    const [cooldownSaving, setCooldownSaving] = useState(false);
+    const [cooldownLoaded, setCooldownLoaded] = useState(false);
+
+    useEffect(() => {
+        const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+        fetch(`/api/settings/cooldown-period?user_id=${userId}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d) { setCooldownHours(d.hours); setCooldownInput(String(d.hours)); } })
+            .catch(() => {})
+            .finally(() => setCooldownLoaded(true));
+    }, []);
+
+    const handleCooldownSave = async () => {
+        const h = parseInt(cooldownInput, 10);
+        if (isNaN(h) || h < 1 || h > 168) return;
+        const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+        setCooldownSaving(true);
+        try {
+            const res = await fetch(`/api/settings/cooldown-period?user_id=${userId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hours: h })
+            });
+            if (res.ok) setCooldownHours(h);
+        } catch {}
+        setCooldownSaving(false);
+    };
 
     const statusesArray = Array.isArray(statuses) ? statuses : [];
 
@@ -60,6 +207,69 @@ const StatusManagementTab = ({
     return (
         <div className="p-6 bg-gray-900 text-white">
             <h2 className="text-2xl font-bold mb-4 text-white">Status Management</h2>
+
+            {/* ── Inner Tab Bar ──────────────────────────────────────────── */}
+            <div className="flex gap-1 mb-4 border-b border-gray-700 pb-1">
+                <button
+                    onClick={() => setActiveInnerTab('statuses')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-t text-sm font-semibold transition-colors ${
+                        activeInnerTab === 'statuses'
+                            ? 'bg-gray-800 text-white border-b-2 border-blue-500'
+                            : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                >
+                    <Edit className="w-4 h-4" /> Statuses
+                </button>
+                <button
+                    onClick={() => setActiveInnerTab('permissionRoles')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-t text-sm font-semibold transition-colors ${
+                        activeInnerTab === 'permissionRoles'
+                            ? 'bg-gray-800 text-white border-b-2 border-blue-500'
+                            : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                >
+                    <Shield className="w-4 h-4" /> Permission Roles
+                </button>
+            </div>
+
+            {/* ═══════ Statuses Tab ═══════ */}
+            {activeInnerTab === 'statuses' && (<>
+
+            {/* ── Cooldown Period Section ────────────────────────────────── */}
+            <div className="mb-6 p-4 bg-gray-800 border border-gray-600 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
+                    <span className="text-amber-400 font-bold text-sm uppercase tracking-wider">Cooldown Period</span>
+                    <span className="text-gray-400 text-xs ml-1">(After a transfer request is submitted, no new request can be made until this time passes)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="1"
+                            max="168"
+                            value={cooldownInput}
+                            onChange={e => setCooldownInput(e.target.value)}
+                            onBlur={handleCooldownSave}
+                            onKeyDown={e => e.key === 'Enter' && handleCooldownSave()}
+                            disabled={cooldownSaving || !cooldownLoaded}
+                            className="w-20 text-center px-2 py-1.5 rounded border border-gray-500 bg-black text-white text-sm disabled:opacity-50 focus:border-amber-400 outline-none"
+                        />
+                        <span className="text-gray-300 text-sm font-medium">hours</span>
+                    </div>
+                    <button
+                        onClick={handleCooldownSave}
+                        disabled={cooldownSaving || !cooldownLoaded}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded transition-colors disabled:opacity-50"
+                    >
+                        {cooldownSaving ? 'Saving...' : 'Save'}
+                    </button>
+                    <span className="text-gray-400 text-xs">
+                        {cooldownLoaded ? `Current: ${cooldownHours}h` : 'Loading...'}
+                    </span>
+                </div>
+            </div>
+
             <div className="flex gap-4 mb-4">
                 <select
                     value={selectedDepartment}
@@ -596,6 +806,185 @@ const StatusManagementTab = ({
                     </div>
                 </div>
             )}
+
+            </>)}
+
+            {/* ═══════ Permission Roles Tab ═══════ */}
+            {activeInnerTab === 'permissionRoles' && (
+                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="p-4 border-b border-gray-700">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <Shield className="w-5 h-5 text-blue-400" />
+                            Reassignment Approval Routing
+                        </h3>
+                        <p className="text-gray-400 text-sm mt-1">
+                            Configure which employees can approve reassignment/transfer requests for each role.
+                        </p>
+                    </div>
+
+                    <div className="flex" style={{ height: 'calc(100vh - 280px)', minHeight: 350, maxHeight: 600 }}>
+                        {/* ── Left: Roles list ── */}
+                        <div className="w-64 border-r border-gray-700 flex flex-col" style={{ minHeight: 0 }}>
+                            <div className="p-3 border-b border-gray-700">
+                                <div className="relative">
+                                    <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search roles..."
+                                        value={permRoleSearch}
+                                        onChange={e => setPermRoleSearch(e.target.value)}
+                                        className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto">
+                                {allRoles
+                                    .filter(r => (r.name || '').toLowerCase().includes(permRoleSearch.toLowerCase()))
+                                    .map(role => {
+                                        const roleId = role.id || role._id;
+                                        const route = approvalRoutes.find(rt => rt.role_id === roleId);
+                                        const approverCount = route ? (route.approver_ids || []).length : 0;
+                                        const isSelected = permSelectedRole === roleId;
+                                        return (
+                                            <div
+                                                key={roleId}
+                                                onClick={() => handlePermRoleSelect(roleId)}
+                                                className={`px-3 py-3 cursor-pointer border-b border-gray-700/50 flex items-center justify-between transition-colors ${
+                                                    isSelected ? 'bg-blue-900/40 border-l-2 border-l-blue-500' : 'hover:bg-gray-700/50'
+                                                }`}
+                                            >
+                                                <span className="text-sm font-medium truncate">{role.name}</span>
+                                                {approverCount > 0 && (
+                                                    <span className="flex items-center gap-1 text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full">
+                                                        <CheckCircle className="w-3 h-3" /> {approverCount}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                }
+                                {allRoles.filter(r => (r.name || '').toLowerCase().includes(permRoleSearch.toLowerCase())).length === 0 && (
+                                    <div className="p-4 text-center text-gray-500 text-sm">No roles found</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Right: Approvers panel ── */}
+                        <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
+                            {!permSelectedRole ? (
+                                <div className="flex-1 flex items-center justify-center text-gray-500">
+                                    <div className="text-center">
+                                        <Users className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                                        <p className="text-sm">Select a role to configure approvers</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="p-3 border-b border-gray-700 flex items-center justify-between">
+                                        <div>
+                                            <span className="text-sm font-semibold text-blue-300">
+                                                {allRoles.find(r => (r.id || r._id) === permSelectedRole)?.name || 'Role'}
+                                            </span>
+                                            <span className="text-xs text-gray-400 ml-2">
+                                                ({permSelectedApprovers.length} approver{permSelectedApprovers.length !== 1 ? 's' : ''} selected)
+                                            </span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handlePermSave}
+                                                disabled={permSaving || permSelectedApprovers.length === 0}
+                                                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                                                    permSaving || permSelectedApprovers.length === 0
+                                                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                }`}
+                                            >
+                                                {permSaving ? 'Saving...' : 'Save'}
+                                            </button>
+                                            {approvalRoutes.find(r => r.role_id === permSelectedRole) && (
+                                                <button
+                                                    onClick={() => handlePermDelete(permSelectedRole)}
+                                                    className="px-3 py-1.5 rounded text-xs font-semibold bg-red-900/50 hover:bg-red-800 text-red-400 hover:text-red-300 transition-colors"
+                                                >
+                                                    <Trash2 className="w-3 h-3 inline mr-1" /> Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Selected approvers chips */}
+                                    {permSelectedApprovers.length > 0 && (
+                                        <div className="p-3 border-b border-gray-700 flex flex-wrap gap-2">
+                                            {permSelectedApprovers.map(id => {
+                                                const emp = allEmployees.find(e => String(e._id || e.id) === id);
+                                                const name = emp ? (`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Unknown') : 'Unknown';
+                                                return (
+                                                    <span key={id} className="flex items-center gap-1 px-2 py-1 bg-blue-900/40 text-blue-300 rounded-full text-xs">
+                                                        {name}
+                                                        <X className="w-3 h-3 cursor-pointer hover:text-red-400" onClick={() => toggleApprover(id)} />
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Employee search */}
+                                    <div className="p-3 border-b border-gray-700">
+                                        <div className="relative">
+                                            <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search employees..."
+                                                value={permEmpSearch}
+                                                onChange={e => setPermEmpSearch(e.target.value)}
+                                                className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Employee list */}
+                                    <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                                        {allEmployees
+                                            .filter(emp => {
+                                                const name = `${emp.first_name || ''} ${emp.last_name || ''} ${emp.name || ''} ${emp.designation || ''}`.toLowerCase();
+                                                return name.includes(permEmpSearch.toLowerCase());
+                                            })
+                                            .map(emp => {
+                                                const empId = String(emp._id || emp.id);
+                                                const isChecked = permSelectedApprovers.includes(empId);
+                                                const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Unknown';
+                                                return (
+                                                    <div
+                                                        key={empId}
+                                                        onClick={() => toggleApprover(empId)}
+                                                        className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-colors ${
+                                                            isChecked ? 'bg-blue-900/30 border border-blue-700/50' : 'hover:bg-gray-700/50 border border-transparent'
+                                                        }`}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded flex items-center justify-center border ${
+                                                            isChecked ? 'bg-blue-600 border-blue-500' : 'border-gray-600'
+                                                        }`}>
+                                                            {isChecked && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-sm font-medium truncate">{fullName}</div>
+                                                            {emp.designation && <div className="text-xs text-gray-400 truncate">{emp.designation}</div>}
+                                                        </div>
+                                                        {emp.role_name && (
+                                                            <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">{emp.role_name}</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                        }
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };
