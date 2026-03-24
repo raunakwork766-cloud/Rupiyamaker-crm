@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, History } from "lucide-react"
 import axios from "axios"
 import { formatDateTime } from '../utils/dateUtils';
@@ -309,85 +309,48 @@ const attendanceAPI = {
 }
 
 const getStatusBadge = (status, leaveStatus = null) => {
-  // If there's a pending leave request, show "0" with white background and black text
+  const pill = (bg, color, text, extraStyle = {}) => (
+    <span style={{width:'32px',height:'20px',borderRadius:'12px',backgroundColor:bg,color:color,fontWeight:700,fontSize:'11px',display:'inline-flex',alignItems:'center',justifyContent:'center',...extraStyle}}>{text}</span>
+  )
+
+  // Pending leave: neutral gray pill "0"
   if (leaveStatus === 'pending') {
-    return (
-      <div className="w-8 h-8 bg-gray-200 text-gray-800 rounded-xl flex items-center justify-center text-xs font-bold border border-gray-400">
-        0
-      </div>
-    )
+    return pill('#d4d4d8', '#18181b', '0')
   }
-  
-  // If leave was rejected, show as absconding
+  // Rejected leave: absconding style
   if (leaveStatus === 'rejected') {
-    return (
-      <div className="w-8 h-8 bg-rose-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-        -1
-      </div>
-    )
+    return pill('#ff2a2a', '#ffffff', '-1')
   }
-  
+
   switch (status) {
     case "P":
-      return (
-        <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          1
-        </div>
-      )
+      return pill('#10b981', '#000000', '1')
     case "L":
-      return (
-        <div className="w-8 h-8 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          1
-        </div>
-      )
+      // Late = still counts as present
+      return pill('#10b981', '#000000', '1')
     case "LV":
-      return (
-        <div className="w-8 h-8 bg-orange-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          0
-        </div>
-      )
+      return pill('#ff7b00', '#000000', '0')
     case "H":
-      return (
-        <div className="w-8 h-8 bg-cyan-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          1
-        </div>
-      )
+      return pill('#06b6d4', '#000000', '1')
     case "SP":
-      // Sunday Paid — employee worked full week, Sunday is paid (+1, blue like Holiday)
-      return (
-        <div className="w-8 h-8 bg-blue-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          1
-        </div>
-      )
+      // Sunday Paid — full week present, Sunday is paid
+      return pill('#06b6d4', '#000000', '1')
     case "S0":
-      // Sunday Zero — Monday absconding, so Sunday is 0 (dark gray)
-      return (
-        <div className="w-8 h-8 bg-gray-600 text-gray-300 rounded-xl flex items-center justify-center text-xs font-bold">
-          0
-        </div>
-      )
+      // Sunday Zero — Monday absconding, Sunday = 0
+      return pill('#18181b', '#ffffff', '0')
     case "HD":
-      return (
-        <div className="w-8 h-8 bg-amber-400 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          0.5
-        </div>
-      )
+      return pill('#ffdd00', '#000000', '0.5')
     case "AB":
-      return (
-        <div className="w-8 h-8 bg-rose-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          -1
-        </div>
-      )
+      return pill('#ff2a2a', '#ffffff', '-1')
     case "A":
-      return (
-        <div className="w-8 h-8 bg-rose-500 text-white rounded-xl flex items-center justify-center text-xs font-bold">
-          -1
-        </div>
-      )
+      return pill('#ffffff', '#000000', '0')
+    case "WK":
+      // Checked-in / Working — blue pulse animation
+      return pill('#3b82f6', '#ffffff', 'IN', {animation:'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite'})
     case "W":
-      return <div className="w-8 h-8 bg-[#1c1c1e] rounded-xl flex items-center justify-center text-xs text-gray-600">—</div>
+      return <span style={{width:'32px',height:'20px',borderRadius:'12px',backgroundColor:'#18181b',color:'#52525b',fontWeight:700,fontSize:'11px',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>—</span>
     default:
-      return <div className="w-8 h-8 bg-[#111] rounded-xl flex items-center justify-center text-xs text-gray-700"></div>
+      return <span style={{width:'32px',height:'20px',display:'inline-flex'}}></span>
   }
 }
 
@@ -764,76 +727,82 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
   }
 
   return (
-    <div className="fixed inset-0 bg-transparent bg-opacity-70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl">
+    <div style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:50,padding:'16px'}}>
+      <div style={{backgroundColor:'#09090b',border:'1px solid #27272a',borderRadius:'10px',maxWidth:'640px',width:'100%',maxHeight:'80vh',overflowY:'auto',boxShadow:'0 25px 50px rgba(0,0,0,0.8)'}}>
         {/* Header */}
-        <div className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white p-4 rounded-t-lg relative">
-          <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-gray-200 transition-colors">
-            <X className="h-6 w-6" />
+        <div style={{padding:'16px 20px',borderBottom:'1px solid #27272a',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <h2 style={{color:'#ffffff',fontSize:'16px',fontWeight:700,margin:0}}>Holiday Management</h2>
+            <p style={{color:'#a1a1aa',fontSize:'12px',margin:'4px 0 0'}}>Manage company holidays for {months[selectedMonth - 1]} {selectedYear}</p>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#a1a1aa',cursor:'pointer',padding:'4px',display:'flex',alignItems:'center'}}>
+            <X className="h-5 w-5" />
           </button>
-          <h2 className="text-xl font-bold">Holiday Management</h2>
-          <p className="text-cyan-100 text-sm mt-1">Manage company holidays for {months[selectedMonth - 1]} {selectedYear}</p>
         </div>
 
-        <div className="p-6 bg-gray-900">
+        <div style={{padding:'20px'}}>
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg">
-              <p className="text-red-200 text-sm">{error}</p>
+            <div style={{marginBottom:'16px',padding:'12px',backgroundColor:'rgba(255,42,42,0.1)',border:'1px solid rgba(255,42,42,0.3)',borderRadius:'6px'}}>
+              <p style={{color:'#ff2a2a',fontSize:'12px',margin:0}}>{error}</p>
             </div>
           )}
 
           {/* Loading Indicator */}
           {loading && (
-            <div className="mb-4 flex items-center justify-center py-4">
-              <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-500"></div>
-              <span className="text-gray-300 ml-2">Processing...</span>
+            <div style={{marginBottom:'16px',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
+              <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-cyan-400"></div>
+              <span style={{color:'#a1a1aa',marginLeft:'8px',fontSize:'13px'}}>Processing...</span>
             </div>
           )}
 
           {/* Add New Holiday */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4">Add New Holiday</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Holiday Date *</label>
-                  <input
-                    type="date"
-                    value={newHolidayDate}
-                    onChange={(e) => setNewHolidayDate(e.target.value)}
-                    className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Holiday Name *</label>
-                  <input
-                    type="text"
-                    value={newHolidayName}
-                    onChange={(e) => setNewHolidayName(e.target.value)}
-                    placeholder="e.g., Independence Day"
-                    className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
+          <div style={{marginBottom:'24px'}}>
+            <h3 style={{color:'#ffffff',fontSize:'13px',fontWeight:700,marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.5px',margin:'0 0 14px'}}>Add New Holiday</h3>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'12px'}}>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description (Optional)</label>
+                <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Holiday Date *</label>
                 <input
-                  type="text"
-                  value={newHolidayDescription}
-                  onChange={(e) => setNewHolidayDescription(e.target.value)}
-                  placeholder="Additional details about the holiday"
-                  className="w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  type="date"
+                  value={newHolidayDate}
+                  onChange={(e) => setNewHolidayDate(e.target.value)}
                   disabled={loading}
+                  style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                  onFocus={e => e.target.style.borderColor='#06b6d4'}
+                  onBlur={e => e.target.style.borderColor='#27272a'}
                 />
               </div>
+              <div>
+                <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Holiday Name *</label>
+                <input
+                  type="text"
+                  value={newHolidayName}
+                  onChange={(e) => setNewHolidayName(e.target.value)}
+                  placeholder="e.g., Independence Day"
+                  disabled={loading}
+                  style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                  onFocus={e => e.target.style.borderColor='#06b6d4'}
+                  onBlur={e => e.target.style.borderColor='#27272a'}
+                />
+              </div>
+            </div>
+            <div style={{marginBottom:'12px'}}>
+              <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Description (Optional)</label>
+              <input
+                type="text"
+                value={newHolidayDescription}
+                onChange={(e) => setNewHolidayDescription(e.target.value)}
+                placeholder="Additional details about the holiday"
+                disabled={loading}
+                style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                onFocus={e => e.target.style.borderColor='#06b6d4'}
+                onBlur={e => e.target.style.borderColor='#27272a'}
+              />
             </div>
             <button
               onClick={handleAddHoliday}
               disabled={loading || !newHolidayDate || !newHolidayName}
-              className="mt-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:from-gray-600 disabled:to-gray-700 text-white px-6 py-2 flex items-center gap-2 rounded-md transition-colors"
+              style={{backgroundColor:'#06b6d4',color:'#000',border:'none',borderRadius:'6px',padding:'8px 16px',fontSize:'13px',fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:'6px',opacity:(loading || !newHolidayDate || !newHolidayName) ? 0.4 : 1,transition:'opacity 0.2s'}}
             >
               <Plus className="h-4 w-4" />
               {loading ? 'Adding...' : 'Add Holiday'}
@@ -841,29 +810,29 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
           </div>
 
           {/* Current Month Holidays */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4">
-              Holidays for {months[selectedMonth - 1]} {selectedYear}
+          <div style={{marginBottom:'24px'}}>
+            <h3 style={{color:'#ffffff',fontSize:'13px',fontWeight:700,marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.5px',margin:'0 0 14px'}}>
+              {months[selectedMonth - 1]} {selectedYear} Holidays
             </h3>
             {currentMonthHolidays.length === 0 ? (
-              <div className="text-center py-8 bg-gray-800 rounded-lg border border-gray-700">
-                <p className="text-gray-400">No holidays set for this month</p>
+              <div style={{textAlign:'center',padding:'24px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px'}}>
+                <p style={{color:'#52525b',fontSize:'13px',margin:0}}>No holidays set for this month</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div>
                 {currentMonthHolidays.map((holiday) => (
-                  <div key={holiday._id} className="flex items-center justify-between p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                  <div key={holiday._id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',marginBottom:'8px'}}>
                     <div>
-                      <div className="font-semibold text-gray-200">{holiday.name}</div>
-                      <div className="text-sm text-gray-400">{formatDate(holiday.date)}</div>
+                      <div style={{color:'#ffffff',fontWeight:600,fontSize:'13px'}}>{holiday.name}</div>
+                      <div style={{color:'#a1a1aa',fontSize:'11px',marginTop:'2px'}}>{formatDate(holiday.date)}</div>
                       {holiday.description && (
-                        <div className="text-sm text-gray-500 mt-1">{holiday.description}</div>
+                        <div style={{color:'#71717a',fontSize:'11px',marginTop:'2px'}}>{holiday.description}</div>
                       )}
                     </div>
                     <button
                       onClick={() => handleRemoveHoliday(holiday._id)}
                       disabled={loading}
-                      className="text-red-400 border border-red-700 hover:bg-red-900/50 disabled:opacity-50 px-3 py-1 rounded-md text-sm transition-colors flex items-center gap-1"
+                      style={{background:'transparent',border:'1px solid #3f3f46',borderRadius:'4px',padding:'5px 8px',cursor:'pointer',color:'#ff2a2a',display:'flex',alignItems:'center',opacity:loading?0.4:1,transition:'opacity 0.2s'}}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -875,31 +844,28 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
 
           {/* All Holidays */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-200 mb-4">All Company Holidays</h3>
+            <h3 style={{color:'#ffffff',fontSize:'13px',fontWeight:700,marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.5px',margin:'0 0 14px'}}>All Company Holidays</h3>
             {localHolidays.length === 0 ? (
-              <div className="text-center py-8 bg-gray-800 rounded-lg border border-gray-700">
-                <p className="text-gray-400">No holidays configured</p>
+              <div style={{textAlign:'center',padding:'24px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px'}}>
+                <p style={{color:'#52525b',fontSize:'13px',margin:0}}>No holidays configured</p>
               </div>
             ) : (
-              <div className="max-h-60 overflow-y-auto space-y-2 bg-gray-800 rounded-lg border border-gray-700 p-4">
+              <div style={{maxHeight:'200px',overflowY:'auto',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'8px'}}>
                 {localHolidays
                   .sort((a, b) => new Date(a.date) - new Date(b.date))
                   .map((holiday) => (
-                    <div
-                      key={holiday._id}
-                      className="flex items-center justify-between p-3 bg-gray-700 rounded border border-gray-600 text-sm"
-                    >
+                    <div key={holiday._id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'#111113',border:'1px solid #27272a',borderRadius:'4px',marginBottom:'6px',fontSize:'12px'}}>
                       <div>
-                        <span className="font-medium text-gray-200">{holiday.name}</span>
-                        <span className="text-gray-400 ml-2">{formatDate(holiday.date)}</span>
+                        <span style={{color:'#ffffff',fontWeight:600}}>{holiday.name}</span>
+                        <span style={{color:'#a1a1aa',marginLeft:'10px'}}>{formatDate(holiday.date)}</span>
                         {holiday.description && (
-                          <div className="text-gray-500 text-xs mt-1">{holiday.description}</div>
+                          <div style={{color:'#71717a',fontSize:'11px',marginTop:'2px'}}>{holiday.description}</div>
                         )}
                       </div>
                       <button
                         onClick={() => handleRemoveHoliday(holiday._id)}
                         disabled={loading}
-                        className="text-red-400 border border-red-700 hover:bg-red-900/50 disabled:opacity-50 px-2 py-1 rounded-md text-sm transition-colors"
+                        style={{background:'transparent',border:'1px solid #3f3f46',borderRadius:'4px',padding:'4px 6px',cursor:'pointer',color:'#ff2a2a',display:'flex',alignItems:'center',opacity:loading?0.4:1}}
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -910,8 +876,10 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
           </div>
 
           {/* Close Button */}
-          <div className="mt-6 flex justify-end">
-            <button onClick={onClose} className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-2 rounded-md transition-colors">
+          <div style={{marginTop:'20px',display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={onClose} style={{background:'#1f1f22',border:'1px solid #27272a',color:'#ffffff',borderRadius:'6px',padding:'8px 20px',fontSize:'13px',fontWeight:600,cursor:'pointer',transition:'background 0.2s'}}
+              onMouseEnter={e => e.target.style.background='#27272a'}
+              onMouseLeave={e => e.target.style.background='#1f1f22'}>
               Close
             </button>
           </div>
@@ -2156,6 +2124,10 @@ export default function MonthlyAttendanceTable() {
   const [selectedEmployeeHistory, setSelectedEmployeeHistory] = useState(null)
   const [editHistoryData, setEditHistoryData] = useState([])
   const [editCounts, setEditCounts] = useState({}) // { [empId]: count } — increments on each edit
+  const [searchQuery, setSearchQuery] = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' })
 
   // Apply attendance rules to formatted records
   const applyAttendanceRules = (records, settings, year, month) => {
@@ -2928,6 +2900,87 @@ export default function MonthlyAttendanceTable() {
     }
   }
 
+  // All unique teams for filter dropdown
+  const allTeams = useMemo(
+    () => [...new Set(attendanceData.map(r => r.department).filter(Boolean))].sort(),
+    [attendanceData]
+  )
+
+  // Sort handler for table columns
+  const handleSort = useCallback((key) => {
+    setSortConfig(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc'
+    }))
+  }, [])
+
+  // Compute today's attendance counts for stat strip
+  const today = new Date()
+  const isCurrentMonth = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
+  const todayDay = today.getDate()
+
+  // All aggregate stats — memoized so they don't recompute on every render
+  const stripStats = useMemo(() => {
+    let presentToday = 0, absentToday = 0
+    let totalAbsconding = 0, totalLeave = 0, totalGraceUsed = 0, totalAttendancePct = 0
+    attendanceData.forEach(r => {
+      if (isCurrentMonth) {
+        const s = r[`day${todayDay}`]
+        if (['P', 'L', 'SP', 'HD'].includes(s)) presentToday++
+        else if (['A', 'AB'].includes(s)) absentToday++
+      }
+      const st = calculateMonthlyStats(r, selectedYear, selectedMonth, daysInMonth, holidays)
+      totalAbsconding += st.absconding
+      totalLeave += (st.plDays || 0) + (st.elDays || 0)
+      totalGraceUsed += Math.max(0, (st.graceTotal || 0) - (st.graceRemaining || 0))
+      totalAttendancePct += parseFloat(st.attendancePercentage) || 0
+    })
+    const avgAttendancePct = attendanceData.length > 0
+      ? (totalAttendancePct / attendanceData.length).toFixed(1)
+      : '0.0'
+    return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct }
+  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay])
+
+  const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct } = stripStats
+
+  // Filtered + sorted data for table — memoized
+  const filteredData = useMemo(() => {
+    let data = [...attendanceData]
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      data = data.filter(r =>
+        r.name?.toLowerCase().includes(q) ||
+        String(r.employeeId || '').toLowerCase().includes(q)
+      )
+    }
+    if (teamFilter) {
+      data = data.filter(r => r.department === teamFilter)
+    }
+    if (statusFilter !== 'all' && isCurrentMonth) {
+      data = data.filter(r => {
+        const s = r[`day${todayDay}`]
+        if (statusFilter === 'present') return ['P', 'L', 'SP'].includes(s)
+        if (statusFilter === 'absent') return s === 'A'
+        if (statusFilter === 'leave') return s === 'LV'
+        if (statusFilter === 'absconding') return s === 'AB'
+        if (statusFilter === 'halfday') return s === 'HD'
+        return true
+      })
+    }
+    if (sortConfig.key) {
+      data.sort((a, b) => {
+        let av = a[sortConfig.key] ?? ''
+        let bv = b[sortConfig.key] ?? ''
+        if (typeof av === 'string') av = av.toLowerCase()
+        if (typeof bv === 'string') bv = bv.toLowerCase()
+        if (av < bv) return sortConfig.dir === 'asc' ? -1 : 1
+        if (av > bv) return sortConfig.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return data
+  }, [attendanceData, searchQuery, teamFilter, statusFilter, sortConfig, isCurrentMonth, todayDay])
+
   if (loading || (user && permissions === null && !isAdmin())) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black">
@@ -3009,95 +3062,154 @@ export default function MonthlyAttendanceTable() {
       </div>
 
       {/* Legend */}
-      <div className="bg-black mb-2 mt-2 py-3">
-        <div className="flex flex-wrap gap-4 items-center justify-center">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-7 bg-emerald-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md">1</div>
-            <span className="text-sm font-semibold text-white">FULL DAY</span>
+      <div style={{display:'flex',justifyContent:'center',gap:'24px',marginBottom:'20px',marginTop:'8px',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px',flexWrap:'wrap',padding:'6px 0'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#10b981',color:'#000',fontWeight:700,fontSize:'11px'}}>1</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>FULL DAY</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ffdd00',color:'#000',fontWeight:700,fontSize:'11px'}}>0.5</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>HALF DAY</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ffffff',color:'#000',fontWeight:700,fontSize:'11px'}}>0</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>ABSENT</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ff7b00',color:'#000',fontWeight:700,fontSize:'11px'}}>0</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>LEAVE</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ff2a2a',color:'#fff',fontWeight:700,fontSize:'11px'}}>-1</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>ABSCONDING</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#06b6d4',color:'#000',fontWeight:700,fontSize:'11px'}}>1</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>HOLIDAY</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <span className="animate-pulse" style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#3b82f6',color:'#fff',fontWeight:700,fontSize:'11px'}}>IN</span>
+          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>PUNCHED IN</span>
+        </div>
+      </div>
+
+      {/* Dashboard Stat Strip */}
+      <div style={{background:'#09090b',border:'1px solid #27272a',borderRadius:'10px',overflow:'hidden',display:'flex',flexWrap:'wrap',marginBottom:'16px',marginTop:'8px'}}>
+        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Employees</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{attendanceData.length}</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>{months[selectedMonth-1]} {selectedYear}</div>
+        </div>
+        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Attendance</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#10b981'}}>{avgAttendancePct}%</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>monthly average</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${Math.min(100,parseFloat(avgAttendancePct))}%`}}></div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-7 bg-amber-400 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md">0.5</div>
-            <span className="text-sm font-semibold text-white">HALF DAY</span>
+        </div>
+        <div style={{flex:'1 1 130px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Present Today</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#10b981',display:'flex',alignItems:'center',gap:'6px'}}>
+            {isCurrentMonth ? presentToday : '—'}
+            {isCurrentMonth && <span style={{fontSize:'11px',color:'#3b82f6',display:'inline-flex',alignItems:'center',gap:'3px'}}><span className="animate-pulse" style={{width:'6px',height:'6px',borderRadius:'50%',background:'#3b82f6',display:'inline-block'}}></span>IN</span>}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-7 bg-orange-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md">0</div>
-            <span className="text-sm font-semibold text-white">ABSENT</span>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {attendanceData.length} employees</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(presentToday/attendanceData.length)*100):0}%`}}></div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-7 bg-rose-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md">-1</div>
-            <span className="text-sm font-semibold text-white">ABSCONDING</span>
+        </div>
+        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Absent Today</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#e4e4e7'}}>{isCurrentMonth ? absentToday : '—'}</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>no check-in recorded</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(absentToday/attendanceData.length)*100):0}%`}}></div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-7 bg-cyan-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-md">1</div>
-            <span className="text-sm font-semibold text-white">HOLIDAY</span>
+        </div>
+        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Leave Taken</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff7b00'}}>{totalLeave}</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>days this month</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${attendanceData.length>0?Math.min(100,(totalLeave/attendanceData.length)*100):0}%`}}></div>
+          </div>
+        </div>
+        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Absconding</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff2a2a'}}>{totalAbsconding}</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>instances this month</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${attendanceData.length>0?Math.min(100,(totalAbsconding/attendanceData.length)*100):0}%`}}></div>
+          </div>
+        </div>
+        <div style={{flex:'1 1 110px',padding:'10px 14px'}}>
+          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Grace Used</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#06b6d4'}}>{totalGraceUsed}</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>mins consumed</div>
+          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:'2px',background:'#06b6d4',width:'20%'}}></div>
           </div>
         </div>
       </div>
 
-      {/* Monthly Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2 mb-3 mt-2">
-        <div className="bg-black rounded p-3 border border-gray-700">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-400">
-              {attendanceData.reduce(
-                (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).presentScore,
-                0,
-              ).toFixed(1)}
-            </div>
-            <div className="text-sm text-gray-300 mt-1">Total Present Score</div>
-          </div>
+      {/* Search & Filter Bar */}
+      <div style={{display:'flex',gap:'10px',marginBottom:'14px',flexWrap:'wrap',alignItems:'center'}}>
+        {/* Search input */}
+        <div style={{flex:'1',minWidth:'180px',position:'relative'}}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search by Name or Emp ID..."
+            style={{width:'100%',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 12px 7px 34px',color:'white',fontFamily:'inherit',fontSize:'12px',outline:'none',boxSizing:'border-box',transition:'border-color 0.2s'}}
+            onFocus={e => e.target.style.borderColor='#0ea5e9'}
+            onBlur={e => e.target.style.borderColor='#27272a'}
+          />
+          <svg style={{position:'absolute',left:'10px',top:'50%',transform:'translateY(-50%)',width:'14px',height:'14px',color:'#a1a1aa',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
         </div>
-        <div className="bg-black rounded p-3 border border-gray-700">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-400">
-              {attendanceData.reduce(
-                (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).absconding,
-                0,
-              )}
-            </div>
-            <div className="text-sm text-gray-300 mt-1">Total Absconding Days</div>
-          </div>
+        {/* Team filter */}
+        <select
+          value={teamFilter}
+          onChange={e => setTeamFilter(e.target.value)}
+          style={{background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 28px 7px 10px',color:'white',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 9px center',minWidth:'130px'}}
+        >
+          <option value="">All Teams</option>
+          {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {/* Status filter pills */}
+        <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+          {[
+            { val: 'all',         label: 'All',         activeColor: '#0ea5e9', activeText: '#ffffff' },
+            { val: 'present',     label: 'Present',     activeColor: '#10b981', activeText: '#000000' },
+            { val: 'absent',      label: 'Absent',      activeColor: '#e4e4e7', activeText: '#000000' },
+            { val: 'leave',       label: 'Leave',       activeColor: '#ff7b00', activeText: '#000000' },
+            { val: 'halfday',     label: 'Half Day',    activeColor: '#ffdd00', activeText: '#000000' },
+            { val: 'absconding',  label: 'Absconding',  activeColor: '#ff2a2a', activeText: '#ffffff' },
+          ].map(pill => (
+            <button
+              key={pill.val}
+              onClick={() => setStatusFilter(pill.val)}
+              style={{
+                background: statusFilter === pill.val ? pill.activeColor : '#0d0d10',
+                border: `1px solid ${statusFilter === pill.val ? 'transparent' : '#27272a'}`,
+                borderRadius: '20px',
+                padding: '5px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: statusFilter === pill.val ? pill.activeText : '#a1a1aa',
+                fontFamily: 'inherit',
+                transition: 'all 0.2s',
+              }}
+            >
+              {pill.label}
+            </button>
+          ))}
         </div>
-        <div className="bg-black rounded p-3 border border-gray-700">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-cyan-400">
-              {attendanceData.reduce(
-                (acc, record) => {
-                  const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-                  return acc + stats.graceRemaining
-                },
-                0,
-              )}
-            </div>
-            <div className="text-sm text-gray-300 mt-1">Total Grace Remaining</div>
-          </div>
-        </div>
-        <div className="bg-black rounded p-3 border border-gray-700">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-purple-400">
-              {attendanceData.reduce(
-                (acc, record) =>
-                  acc + calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays).plDays,
-                0,
-              )}
-            </div>
-            <div className="text-sm text-gray-300 mt-1">Total PL (Paid Leave)</div>
-          </div>
-        </div>
-        <div className="bg-black rounded p-3 border border-gray-700">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-400">
-              {attendanceData.length > 0 ? (
-                attendanceData.reduce((acc, record) => {
-                  const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-                  return acc + stats.finalScore
-                }, 0).toFixed(1)
-              ) : '0'}
-            </div>
-            <div className="text-sm text-gray-300 mt-1">Total FINAL Score</div>
-          </div>
+        {/* Results count */}
+        <div style={{fontSize:'11px',color:'#52525b',marginLeft:'auto',whiteSpace:'nowrap'}}>
+          {filteredData.length} / {attendanceData.length}
         </div>
       </div>
 
@@ -3141,10 +3253,10 @@ export default function MonthlyAttendanceTable() {
             onScroll={updateScrollButtons}
           >
             <table className="w-full bg-black border-collapse border border-gray-700" style={{ minWidth: '1200px' }}>
-            <thead style={{backgroundColor: '#03b0f5'}}>
+            <thead>
               {/* Row 1: main headers */}
               <tr>
-                <th colSpan={3} className="sticky left-0 px-2 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th colSpan={3} className="sticky left-0 z-[4]" style={{backgroundColor:'#ffffff',color:'#0ea5e9',padding:'10px',textAlign:'center',fontWeight:800,fontSize:'13px',border:'1px solid #27272a',borderRight:'2px solid #27272a'}}>
                   Employee Details
                 </th>
                 {Array.from({ length: visibleDays }, (_, i) => i + 1).map((day) => {
@@ -3154,48 +3266,53 @@ export default function MonthlyAttendanceTable() {
                   const isSunday = dayName === 'Sun'
                   
                   return (
-                    <th 
-                      key={day} 
-                      rowSpan={2} 
-                      className="px-3 py-1 text-center font-bold text-white min-w-[50px] border border-gray-300" 
+                    <th
+                      key={day}
+                      rowSpan={2}
                       style={{
-                        backgroundColor: (isSunday || isHoliday) ? '#6366f1' : '#03b0f5'
+                        backgroundColor: (isSunday || isHoliday) ? '#06b6d4' : '#ffffff',
+                        color: (isSunday || isHoliday) ? '#000000' : '#0ea5e9',
+                        padding: '6px 4px',
+                        minWidth: '34px',
+                        border: '1px solid #1f1f22',
+                        fontWeight: 800,
+                        textAlign: 'center',
+                        verticalAlign: 'middle',
                       }}
                     >
-                      <div className="flex flex-col items-center">
-                        <span className="text-sm font-bold">{day}</span>
-                        <span className="text-xs text-blue-100 opacity-80">{dayName}</span>
-                        {isHoliday && <span className="text-xs text-yellow-300">🎉</span>}
-                      </div>
+                      <div style={{fontSize:'13px',fontWeight:800,marginBottom:'2px'}}>{day}</div>
+                      <div style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase'}}>{dayName}</div>
+                      {isHoliday && <div style={{fontSize:'10px'}}>🎉</div>}
                     </th>
                   )
                 })}
-                <th colSpan={7} className="px-2 py-1 text-center font-bold text-white border border-gray-300" style={{backgroundColor: '#03b0f5'}}>
+                <th colSpan={8} style={{backgroundColor:'#ffffff',color:'#0ea5e9',padding:'10px',textAlign:'center',fontWeight:800,fontSize:'13px',border:'1px solid #27272a'}}>
                   Summary
                 </th>
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
-              <tr>
-                <th className="sticky left-0 px-2 py-1 text-left font-bold text-white min-w-[100px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Emp ID
+              <tr style={{backgroundColor:'#0c0c0e'}}>
+                <th className="cursor-pointer select-none" style={{position:'sticky',left:0,zIndex:3,backgroundColor:'#0d0d11',color:'#0ea5e9',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',minWidth:'90px',width:'90px',boxSizing:'border-box'}} onClick={() => handleSort('employeeId')}>
+                  <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Emp ID <span style={{opacity:sortConfig.key==='employeeId'?1:0.4}}>{sortConfig.key==='employeeId'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="sticky left-[100px] px-2 py-1 text-left font-bold text-white min-w-[150px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Name
+                <th className="cursor-pointer select-none" style={{position:'sticky',left:'90px',zIndex:3,backgroundColor:'#0d0d11',color:'#ffffff',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleSort('name')}>
+                  <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Name <span style={{opacity:sortConfig.key==='name'?1:0.4}}>{sortConfig.key==='name'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="sticky left-[250px] px-2 py-1 text-left font-bold text-white min-w-[130px] border border-gray-300 z-[3]" style={{backgroundColor: '#03b0f5'}}>
-                  Team
+                <th className="cursor-pointer select-none" style={{position:'sticky',left:'240px',zIndex:3,backgroundColor:'#0d0d11',color:'#0ea5e9',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',borderRight:'2px solid #3a3a42',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.8)'}} onClick={() => handleSort('department')}>
+                  <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Team <span style={{opacity:sortConfig.key==='department'?1:0.4}}>{sortConfig.key==='department'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#f59e0b'}}>EDIT</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#03b0f5'}}>present</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#17a2b8'}}>Grace</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#6f42c1'}}>PL</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[55px] border border-gray-300" style={{backgroundColor: '#1e7e34'}}>EL</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[65px] border border-gray-300" style={{backgroundColor: '#e67e22'}}>FINAL</th>
-                <th className="px-3 py-1 text-center font-bold text-white min-w-[75px] border border-gray-300" style={{backgroundColor: '#10b981'}}>SALARY</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>EDIT</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#06b6d4',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>present</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#ffffff',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>Grace</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#d946ef',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>PL</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>EL</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>FINAL</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#ff2a2a',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'75px',padding:'6px'}}>DEDUCTION</th>
+                <th style={{backgroundColor:'#0c0c0e',color:'#10b981',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'75px',padding:'6px'}}>SALARY</th>
               </tr>
             </thead>
             <tbody className="bg-black">
-              {attendanceData.map((record, index) => {
+              {filteredData.map((record, index) => {
                 const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
                 const isEvenRow = index % 2 === 0
                 
@@ -3203,53 +3320,61 @@ export default function MonthlyAttendanceTable() {
                 const monthlySalary = record.salary || 0
                 const perDaySalary = monthlySalary / daysInMonth
                 const calculatedSalary = Math.round(perDaySalary * stats.finalScore)
+                const deduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
                 
                 return (
                   <tr
                     key={record.id}
-                    className="bg-black hover:bg-gray-800 transition-colors border-b border-gray-700"
+                    className="hover:bg-[#0a0a0c] transition-colors"
+                    style={{borderBottom:'1px solid #1f1f22'}}
                   >
-                    <td className="sticky left-0 bg-black px-2 py-1 border border-gray-600 text-sm text-blue-300 font-medium cursor-pointer hover:bg-gray-700 transition-colors z-[2]" onClick={() => handleEmployeeClick(record)}>
+                    <td className="sticky left-0 z-[2] cursor-pointer" style={{backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',color:'#0ea5e9',fontWeight:600,fontSize:'11px',minWidth:'90px',width:'90px',boxSizing:'border-box',boxShadow:'2px 0 0 0 #2a2a30'}} onClick={() => handleEmployeeClick(record)}>
                       {record.employeeId}
                     </td>
-                    <td className="sticky left-[100px] bg-black px-2 py-1 border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors z-[2]" onClick={() => handleEmployeeClick(record)}>
-                      <div className="font-semibold text-white text-base">{record.name}</div>
+                    <td className="sticky z-[2] cursor-pointer" style={{left:'90px',backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',color:'#ffffff',fontWeight:700,fontSize:'11px',letterSpacing:'0.3px',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleEmployeeClick(record)}>
+                      {record.name}
                     </td>
-                    <td className="sticky left-[250px] bg-black px-2 py-1 border border-gray-600 z-[2]">
-                      <div className="text-sm text-gray-400">{record.department}</div>
+                    <td className="sticky z-[2]" style={{left:'240px',backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',borderRight:'2px solid #3a3a42',color:'rgba(255,255,255,0.75)',fontWeight:700,fontSize:'9px',textTransform:'uppercase',letterSpacing:'0.5px',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.8)'}}>
+                      {record.department}
                     </td>
                     {Array.from({ length: visibleDays }, (_, i) => i + 1).map((day) => {
                       const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
                       const mapKey = `${record.mongoId || record.id}_${dateKey}`
                       const leaveStatus = leavesMap.get(mapKey) || null
+                      const isSundayDay = getDayName(selectedYear, selectedMonth, day) === 'Sun'
+                      const isHolidayDay = holidays.some(h => h.date === dateKey)
                       
                       return (
                         <td
                           key={day}
-                          className="px-2 py-1 text-center cursor-pointer hover:bg-gray-700 border border-gray-600 transition-colors"
+                          className="text-center cursor-pointer transition-colors"
+                          style={{border:'1px solid #1f1f22',padding:'4px 2px',backgroundColor:(isSundayDay||isHolidayDay)?'rgba(6,182,212,0.12)':'transparent'}}
                           onClick={() => handleDayClick(record, day)}
                         >
                           {getStatusBadge(record[`day${day}`], leaveStatus)}
                         </td>
                       )
                     })}
-                    <td 
-                      className="px-2 py-1 text-center border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors"
+                    <td
+                      className="px-2 py-1 text-center cursor-pointer hover:bg-gray-700 transition-colors"
+                      style={{border:'1px solid #1f1f22'}}
                       onClick={() => handleEditHistoryClick(record)}
                     >
-                      <span style={{background:'#f59e0b',color:'#000',borderRadius:'999px',fontSize:'11px',fontWeight:800,padding:'1px 8px',lineHeight:'18px',minWidth:'20px',display:'inline-block',textAlign:'center'}}>
+                      <span style={{width:'20px',height:'20px',background:'#ffdd00',color:'#000',borderRadius:'50%',fontSize:'10px',fontWeight:700,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
                         {editCounts[record.id] || 0}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-sm">
-                      <span className={stats.presentScore >= 0 ? 'text-green-400' : 'text-red-400'}>{stats.presentScore}</span>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:stats.presentScore >= 0 ? '#10b981' : '#ff2a2a'}}>{stats.presentScore}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#e5e5e5'}}>{stats.graceRemaining}/{stats.graceTotal}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.plDays}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.elDays}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#ffdd00'}}>{stats.finalScore}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#ff2a2a'}}>
+                      ₹{deduction.toLocaleString('en-IN')}
                     </td>
-                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-cyan-300 text-sm">{stats.graceRemaining}/{stats.graceTotal}</td>
-                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-purple-300 text-sm">{stats.plDays}</td>
-                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-green-300 text-sm">{stats.elDays}</td>
-                    <td className="px-2 py-1 text-center border border-gray-600 font-bold text-orange-300 text-sm">{stats.finalScore}</td>
-                    <td 
-                      className="px-2 py-1 text-center border border-gray-600 font-bold text-green-400 text-sm cursor-pointer hover:bg-gray-700 transition-colors"
+                    <td
+                      className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-gray-700 transition-colors"
+                      style={{border:'1px solid #1f1f22',color:'#10b981'}}
                       onClick={() => handleSalaryClick(record, stats, calculatedSalary)}
                     >
                       ₹{calculatedSalary.toLocaleString('en-IN')}
