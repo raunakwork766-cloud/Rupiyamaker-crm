@@ -723,7 +723,21 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
   }
 
   const formatDate = (dateString) => {
-    return formatDateTime(dateString);
+    if (!dateString) return '-'
+    try {
+      // Parse as local date to avoid timezone shift on plain YYYY-MM-DD strings
+      const parts = String(dateString).split('T')[0].split('-')
+      if (parts.length === 3) {
+        const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+        const d = parseInt(parts[2], 10)
+        const m = parseInt(parts[1], 10) - 1
+        const y = parseInt(parts[0], 10)
+        return `${String(d).padStart(2,'0')} ${monthNames[m]} ${y}`
+      }
+      return dateString
+    } catch {
+      return dateString
+    }
   }
 
   return (
@@ -3012,9 +3026,9 @@ export default function MonthlyAttendanceTable() {
     )
   }
   return (
-    <div className="w-full bg-black leading-none" style={{lineHeight: '0'}}>
+    <div className="w-full bg-black" style={{lineHeight:'1.5',padding:'12px 16px'}}>
       {/* Header */}
-      <div className="bg-black mb-0" style={{marginBottom: '0', paddingBottom: '0'}}>
+      <div className="bg-black" style={{marginBottom:'8px'}}>
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center" style={{margin: '0', padding: '0'}}>
           <div></div>
 
@@ -3214,45 +3228,34 @@ export default function MonthlyAttendanceTable() {
       </div>
 
       {/* Attendance Table */}
-      <div className="bg-black overflow-hidden mt-0" style={{marginTop: '0'}}>
-        <div className="relative">
-          {/* Horizontal scroll buttons */}
-          {/* Left scroll button - temporarily always show for testing */}
+      <div style={{background:'#000',border:'1px solid #27272a',borderRadius:'4px',overflow:'hidden',marginTop:'0'}}>
+        {/* Scroll navigation — sits above the table, no overlap */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:'4px',padding:'4px 8px',borderBottom:'1px solid #1a1a1a',background:'#09090b'}}>
+          <span style={{fontSize:'10px',color:'#52525b',marginRight:'auto'}}>← scroll →</span>
           <button
             onClick={() => scrollTable('left')}
-            className="absolute left-2 top-1/2 transform -translate-y-1/2 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-80 hover:opacity-100"
-            style={{ 
-              backgroundColor: 'rgba(37, 99, 235, 1)',
-              zIndex: 9999
-            }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
+            disabled={!canScrollLeft}
             aria-label="Scroll left"
+            style={{background:canScrollLeft?'#1f1f22':'transparent',border:'1px solid #27272a',borderRadius:'4px',color:canScrollLeft?'#fff':'#3f3f3f',cursor:canScrollLeft?'pointer':'default',padding:'3px 8px',fontSize:'12px',display:'flex',alignItems:'center',gap:'2px',transition:'all 0.2s'}}
           >
-            <ChevronLeft className="w-9 h-9" />
+            <ChevronLeft style={{width:'12px',height:'12px'}} />
           </button>
-          
-          {/* Right scroll button - temporarily always show for testing */}
           <button
             onClick={() => scrollTable('right')}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-80 hover:opacity-100"
-            style={{ 
-              backgroundColor: 'rgba(37, 99, 235, 1)',
-              zIndex: 9999
-            }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
+            disabled={!canScrollRight}
             aria-label="Scroll right"
+            style={{background:canScrollRight?'#1f1f22':'transparent',border:'1px solid #27272a',borderRadius:'4px',color:canScrollRight?'#fff':'#3f3f3f',cursor:canScrollRight?'pointer':'default',padding:'3px 8px',fontSize:'12px',display:'flex',alignItems:'center',gap:'2px',transition:'all 0.2s'}}
           >
-            <ChevronRight className="w-9 h-9" />
+            <ChevronRight style={{width:'12px',height:'12px'}} />
           </button>
-          
-          <div 
+        </div>
+        <div style={{position:'relative'}}>
+          <div
             ref={tableScrollRef}
-            className="overflow-x-auto"
+            style={{overflowX:'auto',scrollbarWidth:'none',msOverflowStyle:'none'}}
             onScroll={updateScrollButtons}
           >
-            <table className="w-full bg-black border-collapse border border-gray-700" style={{ minWidth: '1200px' }}>
+            <table style={{minWidth:'1200px',width:'100%',backgroundColor:'#000',borderCollapse:'separate',borderSpacing:'0',fontSize:'11px',whiteSpace:'nowrap'}}>
             <thead>
               {/* Row 1: main headers */}
               <tr>
@@ -3347,8 +3350,7 @@ export default function MonthlyAttendanceTable() {
                       return (
                         <td
                           key={day}
-                          className="text-center cursor-pointer transition-colors"
-                          style={{border:'1px solid #1f1f22',padding:'4px 2px',backgroundColor:(isSundayDay||isHolidayDay)?'rgba(6,182,212,0.12)':'transparent'}}
+                          style={{textAlign:'center',cursor:'pointer',border:'1px solid #1f1f22',padding:'4px 2px',backgroundColor:(isSundayDay||isHolidayDay)?'rgba(6,182,212,0.12)':'#000000',verticalAlign:'middle',transition:'background 0.15s'}}
                           onClick={() => handleDayClick(record, day)}
                         >
                           {getStatusBadge(record[`day${day}`], leaveStatus)}
