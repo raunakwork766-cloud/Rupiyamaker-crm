@@ -2194,6 +2194,48 @@ const InterviewPanel = () => {
               </div>
             )}
           </div>
+          {/* SELECT / BULK DELETE controls */}
+          {activeTab !== 'dashboard' && (
+            <div className="flex items-center gap-2">
+              {(permissions.can_delete || isSuperAdmin()) && !checkboxVisible && (
+                <button
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-blue-500 transition text-sm"
+                  onClick={handleShowCheckboxes}
+                >
+                  {selectedInterviews.length > 0 ? `Select (${selectedInterviews.length})` : 'Select'}
+                </button>
+              )}
+              {(permissions.can_delete || isSuperAdmin()) && checkboxVisible && (
+                <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
+                  <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
+                    <input
+                      type="checkbox"
+                      className="accent-blue-500 mr-1.5 cursor-pointer"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                      style={{ width: 16, height: 16 }}
+                    />
+                    Select All
+                  </label>
+                  <span className="text-slate-700 font-semibold text-sm">{selectedInterviews.length} selected</span>
+                  <button
+                    className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm disabled:opacity-50"
+                    onClick={handleBulkDelete}
+                    disabled={selectedInterviews.length === 0}
+                  >
+                    Delete ({selectedInterviews.length})
+                  </button>
+                  <button
+                    className="px-3 py-1 bg-slate-500 text-white rounded font-bold hover:bg-slate-600 transition text-sm"
+                    onClick={handleCancelSelection}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">
             {canAccessSettings() && (
@@ -2365,6 +2407,17 @@ const InterviewPanel = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
+                      {checkboxVisible && (
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap w-10">
+                          <input
+                            type="checkbox"
+                            className="accent-blue-500 cursor-pointer"
+                            checked={selectAll}
+                            onChange={handleSelectAll}
+                            style={{ width: 16, height: 16 }}
+                          />
+                        </th>
+                      )}
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Created</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Owner</th>
@@ -2391,6 +2444,9 @@ const InterviewPanel = () => {
                           isNoShow={isNoShow}
                           activeTab={activeTab}
                           isGlobalSearch={isGlobalSearch}
+                          checkboxVisible={checkboxVisible}
+                          isSelected={selectedInterviews.includes(interview._id)}
+                          onSelect={() => handleSelectInterview(interview._id)}
                           onForward={(targetStage) => handleForwardAction(interview, targetStage)}
                           onDecline={() => { setSelectedCandidate(interview); setIsDeclineModalOpen(true); }}
                           onReschedule={() => { setSelectedCandidate(interview); setIsRescheduleOpen(true); }}
@@ -2898,7 +2954,7 @@ const Tag = ({ icon, text, color }) => {
 };
 
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
-const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
+const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
@@ -2932,7 +2988,12 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
   // Audit Log view
   if (activeTab === 'audit_logs') {
     return (
-      <tr className="hover:bg-slate-50/80 transition-colors group">
+      <tr className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+        {checkboxVisible && (
+          <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
+            <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+          </td>
+        )}
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
         <td className="px-4 py-3 border-r border-slate-100">
           <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
@@ -2976,7 +3037,12 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
   // Standard Pipeline Row
   return (
-    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''}`}>
+    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+      {checkboxVisible && (
+        <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
+          <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+        </td>
+      )}
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
