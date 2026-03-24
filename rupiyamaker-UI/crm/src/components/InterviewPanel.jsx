@@ -4,12 +4,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter } from 'lucide-react';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
-import { formatDate as formatDateUtil, formatDateTime, calculateAge } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
 import InterviewSettings from './InterviewSettings';
 
@@ -82,6 +82,8 @@ const parseFormattedDate = (str) => {
   if (parts) return new Date(+parts[3], months[parts[2]] || 0, +parts[1]);
   return null;
 };
+
+const getISTDateKey = (value) => toISTDateYMD(value);
 
 const InterviewPanel = () => {
   // CSS styles for sticky headers
@@ -190,7 +192,8 @@ const InterviewPanel = () => {
     dateTo: '',
     hrManagerAdmin: '',
     interviewType: [],
-    jobOpening: []
+    jobOpening: [],
+    sourcePortal: []
   });
 
   // Job Opening Options from backend settings
@@ -482,52 +485,11 @@ const InterviewPanel = () => {
           });
           setJobOpeningOptions(apiOptions);
         } else {
-          // Fallback to default options only if API returns no data
-          const defaultJobOpenings = [
-            'Software Engineer',
-            'Frontend Developer', 
-            'Backend Developer',
-            'Full Stack Developer',
-            'Data Analyst',
-            'Business Analyst',
-            'Project Manager',
-            'UI/UX Designer',
-            'DevOps Engineer',
-            'Quality Assurance',
-            'Sales Executive',
-            'Marketing Executive',
-            'Customer Support',
-            'Human Resources',
-            'Finance Executive',
-            'Operations Manager',
-            'Content Writer',
-            'Digital Marketing',
-            'Business Development',
-            'Other'
-          ];
-          setJobOpeningOptions(defaultJobOpenings);
+          setJobOpeningOptions([]);
         }
       } catch (error) {
         console.error('Error loading job openings from API:', error);
-        // Fallback to default options only if API call fails
-        const defaultJobOpenings = [
-          'Software Engineer',
-          'Frontend Developer', 
-          'Backend Developer',
-          'Full Stack Developer',
-          'Data Analyst',
-          'Business Analyst',
-          'Project Manager',
-          'UI/UX Designer',
-          'DevOps Engineer',
-          'Quality Assurance',
-          'Sales Executive',
-          'Marketing Executive',
-          'Customer Support',
-          'Human Resources',
-          'Other'
-        ];
-        setJobOpeningOptions(defaultJobOpenings);
+        setJobOpeningOptions([]);
       }
 
       // Load Interview Type Options
@@ -575,36 +537,10 @@ const InterviewPanel = () => {
           const apiOptions = sourcePortalsResponse.data.map(item => item.name || item.value || item);
           setSourcePortalOptions(apiOptions);
         } else {
-          // Fallback to default options
-          const defaultSourcePortals = [
-            'LinkedIn',
-            'Naukri.com',
-            'Indeed',
-            'Monster.com',
-            'Glassdoor',
-            'AngelList',
-            'Referral',
-            'Company Website',
-            'Job Fair',
-            'Campus Placement',
-            'Social Media',
-            'Walk-in',
-            'Consultant',
-            'Other'
-          ];
-          setSourcePortalOptions(defaultSourcePortals);
+          setSourcePortalOptions([]);
         }
       } catch (error) {
-        const defaultSourcePortals = [
-          'LinkedIn',
-          'Naukri.com',
-          'Indeed',
-          'Monster.com',
-          'Referral',
-          'Walk-in',
-          'Other'
-        ];
-        setSourcePortalOptions(defaultSourcePortals);
+        setSourcePortalOptions([]);
       }
 
       // Load Status Options with Sub-Statuses
@@ -777,6 +713,7 @@ const InterviewPanel = () => {
     if (filterOptions.hrManagerAdmin && filterOptions.hrManagerAdmin.trim() !== '') count++;
     if (filterOptions.interviewType && Array.isArray(filterOptions.interviewType) && filterOptions.interviewType.length > 0) count++;
     if (filterOptions.jobOpening && Array.isArray(filterOptions.jobOpening) && filterOptions.jobOpening.length > 0) count++;
+    if (filterOptions.sourcePortal && Array.isArray(filterOptions.sourcePortal) && filterOptions.sourcePortal.length > 0) count++;
     if (searchTerm && searchTerm.trim() !== '') count++;
     return count;
   };
@@ -899,17 +836,20 @@ const InterviewPanel = () => {
   }, [interviews]);
 
   // Add a refresh trigger for when the component becomes visible again
+  // Skip refresh if create modal is open to prevent form from resetting on tab switch
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !showCreateModal && !isSettingsOpen) {
         console.log('🔄 Page became visible, refreshing interviews...');
         loadInterviews();
       }
     };
 
     const handleFocus = () => {
-      console.log('🔄 Window focused, refreshing interviews...');
-      loadInterviews();
+      if (!showCreateModal && !isSettingsOpen) {
+        console.log('🔄 Window focused, refreshing interviews...');
+        loadInterviews();
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -919,7 +859,7 @@ const InterviewPanel = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [loadInterviews]);
+  }, [loadInterviews, showCreateModal, isSettingsOpen]);
 
   // Helper function to get status type from status name
   const getStatusType = useCallback((statusName) => {
@@ -1021,7 +961,7 @@ const InterviewPanel = () => {
       } else if (tab.id === 'rejected') {
         count = stageCounts['Rejected'] || 0;
       } else if (tab.id === 'audit_logs') {
-        count = interviewsToCount.length;
+        count = interviewsToCount.filter(i => (i.reassign_count || 0) > 0 || !!i.is_audited).length;
       }
       return { ...tab, count };
     });
@@ -1063,7 +1003,7 @@ const InterviewPanel = () => {
     // The getStatusType function has fallback logic to handle this
     
     let filtered = [...interviews];
-    const today = new Date().toDateString();
+    const todayIST = getISTDateYMD();
 
     console.log('🔍 Filter Debug: Starting filter with', {
       activeTab,
@@ -1094,14 +1034,18 @@ const InterviewPanel = () => {
       // Interview tab: filter by sub-tab (today / upcoming / no_show / round2)
       filtered = filtered.filter(interview => {
         const stage = getStageFromStatus(interview.status);
+        const interviewDateKey = getISTDateKey(interview.interview_date);
+        if (!interviewDateKey && activeSubTab !== 'round2') {
+          return false;
+        }
         if (activeSubTab === 'today') {
-          const interviewDate = new Date(interview.interview_date);
-          return interviewDate.toDateString() === today && stage === 'Interview';
+          // Only show interviews scheduled for exactly TODAY in IST
+          return interviewDateKey === todayIST && stage === 'Interview';
         } else if (activeSubTab === 'upcoming') {
-          const interviewDate = new Date(interview.interview_date);
-          return interviewDate > new Date() && stage === 'Interview';
+          return interviewDateKey > todayIST && stage === 'Interview';
         } else if (activeSubTab === 'no_show') {
-          return stage === 'No-Show';
+          // Past-dated interviews still in Interview stage (didn't show up) + explicitly marked No-Show, all by IST date
+          return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayIST);
         } else if (activeSubTab === 'round2') {
           return stage === 'Round 2';
         }
@@ -1120,7 +1064,8 @@ const InterviewPanel = () => {
         filtered = filtered.filter(i => i.decline_reason === reasonFilter || i.sub_status === reasonFilter);
       }
     } else if (activeTab === 'audit_logs') {
-      // Audit logs: filter by audit sub-tab
+      // Audit logs: only show interviews with actual reassignment/audit activity
+      filtered = filtered.filter(i => (i.reassign_count || 0) > 0 || !!i.is_audited);
       if (auditSubTab === 'Pending') {
         filtered = filtered.filter(i => !i.is_audited);
       } else if (auditSubTab === 'Audited') {
@@ -1155,9 +1100,10 @@ const InterviewPanel = () => {
     // Filter by date range
     if (filterOptions.dateFrom || filterOptions.dateTo) {
       filtered = filtered.filter(interview => {
-        const interviewDate = new Date(interview.interview_date);
-        const fromDate = filterOptions.dateFrom ? new Date(filterOptions.dateFrom) : null;
-        const toDate = filterOptions.dateTo ? new Date(filterOptions.dateTo) : null;
+        const interviewDate = getISTDateKey(interview.interview_date);
+        const fromDate = filterOptions.dateFrom || null;
+        const toDate = filterOptions.dateTo || null;
+        if (!interviewDate) return false;
         
         let withinRange = true;
         if (fromDate) withinRange = withinRange && interviewDate >= fromDate;
@@ -1189,6 +1135,15 @@ const InterviewPanel = () => {
       filtered = filtered.filter(interview =>
         filterOptions.jobOpening.some(job => 
           interview.job_opening?.toLowerCase().includes(job.toLowerCase())
+        )
+      );
+    }
+
+    // Filter by source portal
+    if (filterOptions.sourcePortal && Array.isArray(filterOptions.sourcePortal) && filterOptions.sourcePortal.length > 0) {
+      filtered = filtered.filter(interview =>
+        filterOptions.sourcePortal.some(portal =>
+          interview.source_portal?.toLowerCase() === portal.toLowerCase()
         )
       );
     }
@@ -1265,9 +1220,15 @@ const InterviewPanel = () => {
       console.log("Refreshing dropdown options after interview creation...");
       await loadDropdownOptions();
       
-      // Switch to 'interview' tab + reset to 'today' subtab so the new interview is always visible
+      // Switch to 'interview' tab and pick the correct sub-tab based on the new interview's date
       setActiveTab('interview');
-      setActiveSubTab('today');
+      if (newInterview?.interview_date) {
+        const interviewDateKey = getISTDateKey(newInterview.interview_date);
+        const todayKey = getISTDateYMD();
+        setActiveSubTab(interviewDateKey && interviewDateKey > todayKey ? 'upcoming' : 'today');
+      } else {
+        setActiveSubTab('today');
+      }
       
       // Clear any search filters that might hide the new interview
       setSearchTerm('');
@@ -1279,7 +1240,8 @@ const InterviewPanel = () => {
         dateTo: '',
         hrManagerAdmin: '',
         interviewType: [],
-        jobOpening: []
+        jobOpening: [],
+        sourcePortal: []
       });
       
       // Ensure the newly created interview is always visible even if API reload was slow
@@ -1304,7 +1266,13 @@ const InterviewPanel = () => {
         });
       }
       setActiveTab('interview');
-      setActiveSubTab('today');
+      if (newInterview?.interview_date) {
+        const interviewDateKey = getISTDateKey(newInterview.interview_date);
+        const todayKey = getISTDateYMD();
+        setActiveSubTab(interviewDateKey && interviewDateKey > todayKey ? 'upcoming' : 'today');
+      } else {
+        setActiveSubTab('today');
+      }
     }
   };
 
@@ -1978,6 +1946,7 @@ const InterviewPanel = () => {
       const newStatus = getStatusForStage(targetStage);
       await API.interviews.updateInterview(candidateId, { 
         status: newStatus,
+        status_remark: remark,
         forward_remark: remark,
         previous_stage: currentStage 
       });
@@ -1994,6 +1963,7 @@ const InterviewPanel = () => {
     try {
       await API.interviews.updateInterview(candidateId, { 
         status: 'job_offered',
+        status_remark: remark,
         forward_remark: remark,
         previous_stage: currentStage 
       });
@@ -2010,6 +1980,7 @@ const InterviewPanel = () => {
     try {
       await API.interviews.updateInterview(candidateId, { 
         status: 'rejected',
+        status_remark: remarks,
         decline_reason: reason,
         decline_remarks: remarks 
       });
@@ -2027,6 +1998,7 @@ const InterviewPanel = () => {
       await API.interviews.updateInterview(candidateId, { 
         interview_date: newDate,
         reschedule_reason: reason,
+        status_remark: reason,
         status: selectedCandidate?.status || 'rescheduled'
       });
       setIsRescheduleOpen(false);
@@ -2041,7 +2013,8 @@ const InterviewPanel = () => {
   const handleMarkNoShow = async (interview) => {
     if (!window.confirm(`Mark ${interview.candidate_name} as No-Show?`)) return;
     try {
-      await API.interviews.updateInterview(interview._id, { status: 'no_show' });
+      const noShowRemark = prompt('Add status remark for No-Show (optional):') || '';
+      await API.interviews.updateInterview(interview._id, { status: 'no_show', status_remark: noShowRemark.trim() });
       await loadInterviews();
     } catch (error) {
       alert('Failed to mark no-show: ' + (error.message || error));
@@ -2074,7 +2047,7 @@ const InterviewPanel = () => {
     }
   };
 
-  if (loading && !isDetailModalOpen && !isHistoryModalOpen) {
+  if (loading && !isDetailModalOpen && !isHistoryModalOpen && !isSettingsOpen) {
     return (
       <div className="flex items-center justify-center h-64 bg-slate-50 min-h-screen">
         <div className="text-lg text-slate-600">Loading interviews...</div>
@@ -2146,7 +2119,148 @@ const InterviewPanel = () => {
                 {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             )}
+
+            {/* Filter Button */}
+            {activeTab !== 'dashboard' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowFilterPopup(prev => !prev)}
+                  className={`px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                    (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0)
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Filter size={14} />
+                  Filter
+                  {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
+                    <span className="bg-white text-blue-600 text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                      {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
+                    </span>
+                  )}
+                </button>
+
+                {showFilterPopup && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[9999] overflow-hidden">
+                    {/* Header */}
+                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Filters</span>
+                      <button
+                        onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
+                        className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
+                      {/* Source Portal */}
+                      <div>
+                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Source Portal</div>
+                        {sourcePortalOptions.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">No sources configured in settings.</div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {sourcePortalOptions.map(portal => (
+                              <label key={portal} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={filterOptions.sourcePortal?.includes(portal) || false}
+                                  onChange={() => setFilterOptions(prev => {
+                                    const list = prev.sourcePortal || [];
+                                    return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
+                                  })}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                                />
+                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{portal}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Role / Job Opening */}
+                      <div>
+                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Role</div>
+                        {jobOpeningOptions.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">No roles configured in settings.</div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {jobOpeningOptions.map(role => (
+                              <label key={role} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={filterOptions.jobOpening?.includes(role) || false}
+                                  onChange={() => setFilterOptions(prev => {
+                                    const list = prev.jobOpening || [];
+                                    return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
+                                  })}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                                />
+                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{role}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                      <button
+                        onClick={() => setShowFilterPopup(false)}
+                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+          {/* SELECT / BULK DELETE controls */}
+          {activeTab !== 'dashboard' && (
+            <div className="flex items-center gap-2">
+              {(permissions.can_delete || isSuperAdmin()) && !checkboxVisible && (
+                <button
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-blue-500 transition text-sm"
+                  onClick={handleShowCheckboxes}
+                >
+                  {selectedInterviews.length > 0 ? `Select (${selectedInterviews.length})` : 'Select'}
+                </button>
+              )}
+              {(permissions.can_delete || isSuperAdmin()) && checkboxVisible && (
+                <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
+                  <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
+                    <input
+                      type="checkbox"
+                      className="accent-blue-500 mr-1.5 cursor-pointer"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                      style={{ width: 16, height: 16 }}
+                    />
+                    Select All
+                  </label>
+                  <span className="text-slate-700 font-semibold text-sm">{selectedInterviews.length} selected</span>
+                  <button
+                    className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm disabled:opacity-50"
+                    onClick={handleBulkDelete}
+                    disabled={selectedInterviews.length === 0}
+                  >
+                    Delete ({selectedInterviews.length})
+                  </button>
+                  <button
+                    className="px-3 py-1 bg-slate-500 text-white rounded font-bold hover:bg-slate-600 transition text-sm"
+                    onClick={handleCancelSelection}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">
             {canAccessSettings() && (
@@ -2215,17 +2329,17 @@ const InterviewPanel = () => {
           <div className="flex overflow-x-auto tabs-scroll space-x-2 py-2 pb-1">
             {INTERVIEW_SUB_TABS.map(sub => {
               // Calculate sub-tab counts
-              const today = new Date().toDateString();
+              const todayKey = getISTDateYMD();
               const subCount = (interviews || []).filter(interview => {
                 const stage = getStageFromStatus(interview.status);
+                const interviewDateKey = getISTDateKey(interview.interview_date);
+                if (!interviewDateKey) return false;
                 if (sub.id === 'today') {
-                  const interviewDate = new Date(interview.interview_date);
-                  return interviewDate.toDateString() === today && stage === 'Interview';
+                  return interviewDateKey === todayKey && stage === 'Interview';
                 } else if (sub.id === 'upcoming') {
-                  const interviewDate = new Date(interview.interview_date);
-                  return interviewDate > new Date() && stage === 'Interview';
+                  return interviewDateKey > todayKey && stage === 'Interview';
                 } else if (sub.id === 'no_show') {
-                  return stage === 'No-Show';
+                  return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayKey);
                 } else if (sub.id === 'round2') {
                   return stage === 'Round 2';
                 }
@@ -2318,6 +2432,17 @@ const InterviewPanel = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
+                      {checkboxVisible && (
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap w-10">
+                          <input
+                            type="checkbox"
+                            className="accent-blue-500 cursor-pointer"
+                            checked={selectAll}
+                            onChange={handleSelectAll}
+                            style={{ width: 16, height: 16 }}
+                          />
+                        </th>
+                      )}
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Created</th>
                       <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Owner</th>
@@ -2344,6 +2469,9 @@ const InterviewPanel = () => {
                           isNoShow={isNoShow}
                           activeTab={activeTab}
                           isGlobalSearch={isGlobalSearch}
+                          checkboxVisible={checkboxVisible}
+                          isSelected={selectedInterviews.includes(interview._id)}
+                          onSelect={() => handleSelectInterview(interview._id)}
                           onForward={(targetStage) => handleForwardAction(interview, targetStage)}
                           onDecline={() => { setSelectedCandidate(interview); setIsDeclineModalOpen(true); }}
                           onReschedule={() => { setSelectedCandidate(interview); setIsRescheduleOpen(true); }}
@@ -2437,6 +2565,7 @@ const InterviewPanel = () => {
           onSaved={() => loadInterviews()}
           jobOpeningOptions={jobOpeningOptions}
           sourcePortalOptions={sourcePortalOptions}
+          canEditContactNumbers={isSuperAdmin()}
         />
       )}
 
@@ -2851,7 +2980,7 @@ const Tag = ({ icon, text, color }) => {
 };
 
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
-const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
+const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
@@ -2885,14 +3014,16 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
   // Audit Log view
   if (activeTab === 'audit_logs') {
     return (
-      <tr className="hover:bg-slate-50/80 transition-colors group">
+      <tr className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+        {checkboxVisible && (
+          <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
+            <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+          </td>
+        )}
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
         <td className="px-4 py-3 border-r border-slate-100">
           <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-        </td>
-        <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
-          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : ''}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100" colSpan={3}>
           <div className="flex items-center gap-2">
@@ -2929,12 +3060,17 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
   // Standard Pipeline Row
   return (
-    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''}`}>
+    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+      {checkboxVisible && (
+        <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
+          <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+        </td>
+      )}
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
         <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-        <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
+        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : 'Added'}</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
@@ -3385,7 +3521,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
 };
 
 // --- CANDIDATE DETAIL / EDIT MODAL (Editable with auto-save + Attachments) ---
-const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions = [], sourcePortalOptions = [] }) => {
+const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions = [], sourcePortalOptions = [], canEditContactNumbers = false }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -3393,12 +3529,22 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const saveTimerRef = useRef(null);
   const originalRef = useRef(null);
   const [histTab, setHistTab] = useState('details');
+  const [rightTab, setRightTab] = useState('interview_remark');
+  const [quickRemark, setQuickRemark] = useState('');
+  const [remarkSaving, setRemarkSaving] = useState(false);
+  const [manualInterviewRemarks, setManualInterviewRemarks] = useState([]);
+  const [statusRemarks, setStatusRemarks] = useState([]);
 
   // Attachments
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState(null); // {type:'success'|'error', text}
   const fileInputRef = useRef(null);
+  // Viewer
+  const [viewerDoc, setViewerDoc] = useState(null); // {blobUrl, downloadUrl, name, isPdf, isImage, loading, error}
+  // Rename
+  const [editingAttId, setEditingAttId] = useState(null);
+  const [editingAttName, setEditingAttName] = useState('');
 
   // Qualification
   const qualCatalog = [
@@ -3441,6 +3587,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
             setAttachments([]);
           }
         }
+        await loadHistoryRemarks(id);
       } catch (e) {
         setData(candidate);
         originalRef.current = JSON.parse(JSON.stringify(candidate));
@@ -3451,6 +3598,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         } catch {
           setAttachments(candidate.attachments || []);
         }
+        await loadHistoryRemarks(id);
       } finally {
         setLoading(false);
       }
@@ -3461,6 +3609,63 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   if (!candidate) return null;
   const d = data || candidate;
   const interviewId = d._id || d.id;
+
+  const formatISTDateTime = (value) => {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return String(value);
+    return dt.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata'
+    });
+  };
+
+  const loadHistoryRemarks = async (targetInterviewId) => {
+    try {
+      const historyRes = await API.interviews.getHistory(targetInterviewId);
+      const rawHistory = Array.isArray(historyRes?.data)
+        ? historyRes.data
+        : (Array.isArray(historyRes) ? historyRes : []);
+
+      const parsedInterviewRemarks = rawHistory
+        .filter((entry) => entry?.action_type === 'remark_added')
+        .map((entry) => ({
+          id: entry.id || `${entry.created_at}-${entry.created_by}`,
+          type: 'interview_remark',
+          by: entry.created_by_name || 'User',
+          reason: entry?.details?.remark_text || entry?.details?.remark || entry.description || '',
+          dateRaw: entry.created_at,
+          dateLabel: formatISTDateTime(entry.created_at)
+        }))
+        .filter((entry) => !!entry.reason);
+
+      const parsedStatusRemarks = rawHistory
+        .filter((entry) => entry?.action_type === 'status_changed')
+        .map((entry) => ({
+          id: entry.id || `${entry.created_at}-${entry.created_by}`,
+          by: entry.created_by_name || 'User',
+          oldStatus: entry?.details?.old_status || '',
+          newStatus: entry?.details?.new_status || '',
+          remark: entry?.details?.remark || entry?.details?.status_remark || entry?.details?.remarks || '',
+          dateRaw: entry.created_at,
+          dateLabel: formatISTDateTime(entry.created_at)
+        }))
+        .filter((entry) => !!entry.remark)
+        .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+
+      setManualInterviewRemarks(parsedInterviewRemarks);
+      setStatusRemarks(parsedStatusRemarks);
+    } catch (historyError) {
+      console.warn('Failed to load interview history remarks:', historyError);
+      setManualInterviewRemarks([]);
+      setStatusRemarks([]);
+    }
+  };
 
   // Auto-save on field change (debounced 1.5s)
   const handleFieldChange = (field, value) => {
@@ -3544,6 +3749,78 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
     }
   };
 
+  const handleAddInterviewRemark = async () => {
+    const remarkText = quickRemark.trim();
+    if (!remarkText || !interviewId) return;
+
+    setRemarkSaving(true);
+    try {
+      await API.interviews.addHistoryEntry(interviewId, {
+        action_type: 'remark_added',
+        action: 'Interview Remark Added',
+        description: 'Interview remark added',
+        details: { remark_text: remarkText }
+      });
+
+      const currentUserName = localStorage.getItem('fullName') || localStorage.getItem('userName') || 'Current User';
+      const nowIso = new Date().toISOString();
+      setManualInterviewRemarks((prev) => [
+        {
+          id: `local-${Date.now()}`,
+          type: 'interview_remark',
+          by: currentUserName,
+          reason: remarkText,
+          dateRaw: nowIso,
+          dateLabel: formatISTDateTime(nowIso)
+        },
+        ...prev
+      ]);
+      setQuickRemark('');
+    } catch (error) {
+      alert('Failed to save remark: ' + (error.message || error));
+    } finally {
+      setRemarkSaving(false);
+    }
+  };
+
+  const handleViewAttachment = async (att) => {
+    const name = att.label || att.original_name || 'File';
+    const fname = (att.original_name || att.label || '').toLowerCase();
+    const ext = fname.split('.').pop();
+    const isPdf = ext === 'pdf';
+    const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext);
+    const downloadUrl = API.interviews.getAttachmentDownloadUrl(interviewId, att.id);
+    setViewerDoc({ blobUrl: null, downloadUrl, name, isPdf, isImage, loading: true, error: null });
+    try {
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+      const res = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arrayBuf = await res.arrayBuffer();
+      const mimeType = isPdf ? 'application/pdf'
+        : isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        : 'application/octet-stream';
+      const typedBlob = new Blob([arrayBuf], { type: mimeType });
+      const blobUrl = URL.createObjectURL(typedBlob);
+      setViewerDoc({ blobUrl, downloadUrl, name, isPdf, isImage, loading: false, error: null });
+    } catch (err) {
+      setViewerDoc(prev => prev ? { ...prev, loading: false, error: err.message } : null);
+    }
+  };
+
+  const handleRenameAttachment = async (attId, newLabel) => {
+    const trimmed = (newLabel || '').trim();
+    if (!trimmed) { setEditingAttId(null); setEditingAttName(''); return; }
+    try {
+      await API.interviews.renameAttachment(interviewId, attId, trimmed);
+      setAttachments(prev => prev.map(a => a.id === attId ? { ...a, label: trimmed } : a));
+    } catch (e) {
+      console.warn('Rename failed:', e);
+    } finally {
+      setEditingAttId(null);
+      setEditingAttName('');
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (!bytes) return '';
     if (bytes < 1024) return bytes + ' B';
@@ -3556,9 +3833,14 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const reschedules = (data || candidate)?.reschedule_history || (data || candidate)?.rescheduleHistory || [];
   // Combine all remarks from reassign + reschedule into single timeline for right panel
   const allRemarks = [
-    ...reassigns.map(r => ({ type: 'reassign', date: r.date, reason: r.reason, by: r.toHr || r.to_hr || r.fromHr || r.from_hr || 'HR', fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr })),
-    ...reschedules.map(r => ({ type: 'reschedule', date: r.date, reason: r.reason, by: r.rescheduled_by || r.hr_name || 'HR', from: r.from, to: r.to }))
-  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    ...reassigns.map(r => ({ type: 'reassign', date: formatISTDateTime(r.date), dateRaw: r.date, reason: r.reason, by: r.toHr || r.to_hr || r.fromHr || r.from_hr || 'HR', fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr })),
+    ...reschedules.map(r => ({ type: 'reschedule', date: formatISTDateTime(r.date), dateRaw: r.date, reason: r.reason, by: r.rescheduled_by || r.hr_name || 'HR', from: r.from, to: r.to }))
+  ].sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+
+  const interviewRemarksTimeline = [
+    ...manualInterviewRemarks,
+    ...allRemarks
+  ].sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col bg-black text-white">
@@ -3638,15 +3920,30 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Date</label>
-                    <input type="date" value={d.interview_date ? (d.interview_date.includes('T') ? d.interview_date.split('T')[0] : d.interview_date.substring(0,10)) : ''} onChange={e => handleFieldChange('interview_date', e.target.value)} className={inputCls} />
+                    <input type="date" value={d.interview_date ? toISTDateYMD(d.interview_date) : ''} onChange={e => handleFieldChange('interview_date', e.target.value)} className={inputCls} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
-                    <input value={d.mobile_number || ''} className={inputCls + ' !bg-slate-100 cursor-not-allowed'} readOnly />
+                    <input
+                      value={d.mobile_number || ''}
+                      onChange={e => canEditContactNumbers && handleFieldChange('mobile_number', e.target.value.replace(/\D/g, '').slice(0,10))}
+                      className={`${inputCls} ${canEditContactNumbers ? '' : '!bg-slate-100 cursor-not-allowed'}`}
+                      readOnly={!canEditContactNumbers}
+                      maxLength="10"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
-                    <input value={d.alternate_number || ''} onChange={e => handleFieldChange('alternate_number', e.target.value.replace(/\D/g, '').slice(0,10))} className={inputCls} maxLength="10" />
+                    <input
+                      value={d.alternate_number || ''}
+                      onChange={e => canEditContactNumbers && handleFieldChange('alternate_number', e.target.value.replace(/\D/g, '').slice(0,10))}
+                      className={`${inputCls} ${canEditContactNumbers ? '' : '!bg-slate-100 cursor-not-allowed'}`}
+                      readOnly={!canEditContactNumbers}
+                      maxLength="10"
+                    />
+                    {!canEditContactNumbers && (
+                      <p className="text-[10px] text-slate-500 mt-1">Only Super Admin can edit contact numbers</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source</label>
@@ -3654,7 +3951,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       name="source_portal"
                       value={d.source_portal || ''}
                       onChange={e => handleFieldChange('source_portal', e.target.value)}
-                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      options={sourcePortalOptions}
                       placeholder="Select source..."
                     />
                   </div>
@@ -3699,22 +3996,32 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       <option value="">Select...</option><option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
                     </select>
                   </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
-                    <div className="relative" ref={qualRef}>
-                      <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
-                      {qualOpen && filteredQualGroups.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
-                          {filteredQualGroups.map(g => (
-                            <div key={g.level}>
-                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
-                              {g.entries.map(entry => (
-                                <button type="button" key={entry} onClick={() => { handleFieldChange('qualification', entry); setQualSearch(''); setQualOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{entry}</button>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
+                      <div className="relative" ref={qualRef}>
+                        <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
+                        {qualOpen && filteredQualGroups.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                            {filteredQualGroups.map(g => (
+                              <div key={g.level}>
+                                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
+                                {g.entries.map(entry => (
+                                  <button type="button" key={entry} onClick={() => { handleFieldChange('qualification', entry); setQualSearch(''); setQualOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{entry}</button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-36">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                      <select value={d.qualification_status || ''} onChange={e => handleFieldChange('qualification_status', e.target.value)} className={inputCls}>
+                        <option value="">Select...</option>
+                        <option value="Pursuing">Pursuing</option>
+                        <option value="Completed">Completed</option>
+                      </select>
                     </div>
                   </div>
                   <div className="col-span-2">
@@ -3840,16 +4147,50 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                             <FileText size={14}/>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800 truncate">{att.label || att.original_name || 'File'}</div>
+                            {editingAttId === att.id ? (
+                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                  autoFocus
+                                  value={editingAttName}
+                                  onChange={e => setEditingAttName(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') { e.preventDefault(); handleRenameAttachment(att.id, editingAttName); }
+                                    else if (e.key === 'Escape') { setEditingAttId(null); setEditingAttName(''); }
+                                  }}
+                                  onBlur={() => handleRenameAttachment(att.id, editingAttName)}
+                                  className="text-xs font-bold text-slate-800 bg-blue-50 border border-blue-400 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-xs font-bold text-slate-800 truncate">{att.label || att.original_name || 'File'}</div>
+                            )}
                             <div className="text-[10px] text-slate-500 flex items-center gap-2">
                               <span>{formatFileSize(att.file_size)}</span>
                               {att.uploaded_by && <span>• {att.uploaded_by}</span>}
                               {att.uploaded_at && <span>• {new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</span>}
                             </div>
                           </div>
-                          <a href={API.interviews.getAttachmentDownloadUrl(interviewId, att.id)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Download">
+                          {/* Rename button */}
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditingAttId(att.id); setEditingAttName(att.label || att.original_name || ''); }}
+                            className="p-1.5 rounded-lg hover:bg-orange-50 text-slate-400 hover:text-orange-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Rename"
+                          >
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          {/* View button */}
+                          <button
+                            onClick={() => handleViewAttachment(att)}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
+                            title="View"
+                          >
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          </button>
+                          {/* Download button */}
+                          <a href={API.interviews.getAttachmentDownloadUrl(interviewId, att.id)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-green-50 text-slate-400 hover:text-green-600 transition-colors opacity-0 group-hover:opacity-100" title="Download">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                           </a>
+                          {/* Delete button */}
                           <button onClick={() => handleDeleteAttachment(att.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Delete">
                             <X size={14}/>
                           </button>
@@ -3960,32 +4301,62 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         </div>{/* end LEFT scrollable content */}
         </div>{/* end LEFT column */}
 
-        {/* RIGHT: Remarks only panel */}
+        {/* RIGHT: Remarks panel */}
         <div className="w-[360px] flex flex-col bg-white border-l border-slate-200 shrink-0">
-          {/* Single REMARK tab header */}
           <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 shrink-0">
-            <button className="flex items-center gap-1.5 px-5 py-2.5 rounded-3xl font-extrabold text-sm bg-[#03B0F5] text-white border border-cyan-400 shadow-lg scale-105 focus:outline-none" style={{ boxShadow: '0 4px 16px 0 #1cb5e080', letterSpacing: '0.01em' }}>
-              📝 REMARK
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-white/20 text-white">{allRemarks.length}</span>
+            <button
+              onClick={() => setRightTab('interview_remark')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-extrabold text-xs border transition-all ${rightTab === 'interview_remark' ? 'bg-[#03B0F5] text-white border-cyan-400 shadow' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Interview Remark
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${rightTab === 'interview_remark' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{interviewRemarksTimeline.length}</span>
+            </button>
+            <button
+              onClick={() => setRightTab('status_remark')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-extrabold text-xs border transition-all ${rightTab === 'status_remark' ? 'bg-[#03B0F5] text-white border-cyan-400 shadow' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Status Remark
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${rightTab === 'status_remark' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{statusRemarks.length}</span>
             </button>
           </div>
-          {/* All remarks timeline */}
+
           <div className="flex-1 overflow-y-auto p-4 bg-white">
-            {allRemarks.length > 0 ? (
+            {rightTab === 'interview_remark' && (
+              <div className="mb-4 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wide mb-2">Add Interview Remark</label>
+                <textarea
+                  value={quickRemark}
+                  onChange={(e) => setQuickRemark(e.target.value)}
+                  placeholder="Type interview remark here..."
+                  className="w-full h-24 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 resize-none outline-none focus:border-[#03B0F5]"
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={handleAddInterviewRemark}
+                    disabled={remarkSaving || !quickRemark.trim()}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${remarkSaving || !quickRemark.trim() ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-[#03B0F5] text-white hover:bg-sky-600'}`}
+                  >
+                    {remarkSaving ? 'Saving...' : 'Save Remark'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {rightTab === 'interview_remark' && interviewRemarksTimeline.length > 0 ? (
               <div className="relative">
                 <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-blue-200 rounded-full" />
                 <div className="space-y-4">
-                  {allRemarks.map((r, i) => (
-                    <div key={i} className="relative pl-7">
-                      <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${r.type === 'reassign' ? 'bg-orange-500' : 'bg-sky-500'}`} />
+                  {interviewRemarksTimeline.map((r, i) => (
+                    <div key={r.id || i} className="relative pl-7">
+                      <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${r.type === 'reassign' ? 'bg-orange-500' : r.type === 'reschedule' ? 'bg-sky-500' : 'bg-blue-600'}`} />
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-slate-800 text-sm">{r.by}</span>
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${r.type === 'reassign' ? 'bg-orange-100 text-orange-600' : 'bg-sky-100 text-sky-600'}`}>
-                            {r.type === 'reassign' ? '🔄 Reassign' : '📅 Reschedule'}
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${r.type === 'reassign' ? 'bg-orange-100 text-orange-600' : r.type === 'reschedule' ? 'bg-sky-100 text-sky-600' : 'bg-blue-100 text-blue-700'}`}>
+                            {r.type === 'reassign' ? '🔄 Reassign' : r.type === 'reschedule' ? '📅 Reschedule' : '📝 Interview'}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mb-1">{r.date || ''}</div>
+                        <div className="text-[11px] text-slate-500 mb-1">{r.dateLabel || r.date || ''}</div>
                         {r.reason && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
                         {r.type === 'reassign' && (r.fromHr || r.toHr) && (
                           <div className="text-[10px] text-slate-500 mt-1">
@@ -4006,16 +4377,107 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   ))}
                 </div>
               </div>
+            ) : rightTab === 'status_remark' && statusRemarks.length > 0 ? (
+              <div className="relative">
+                <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-indigo-200 rounded-full" />
+                <div className="space-y-4">
+                  {statusRemarks.map((item, idx) => (
+                    <div key={item.id || idx} className="relative pl-7">
+                      <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-indigo-600 shadow-sm" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-800 text-sm">{item.by}</span>
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Status Change</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mb-1">{item.dateLabel}</div>
+                        <p className="text-xs text-slate-700 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 leading-relaxed">{item.remark}</p>
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          <span>{item.oldStatus || 'Unknown'}</span>
+                          <span className="mx-1 text-slate-400">→</span>
+                          <span className="font-semibold text-slate-700">{item.newStatus || 'Unknown'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
                 <div className="text-4xl mb-3 opacity-40">📝</div>
                 <p className="text-xs font-medium text-slate-400">No remarks yet</p>
-                <p className="text-[10px] mt-1 text-slate-500">Remarks from reassignments & reschedules will appear here</p>
+                <p className="text-[10px] mt-1 text-slate-500">
+                  {rightTab === 'status_remark'
+                    ? 'Status-change remarks will appear here'
+                    : 'Add an interview remark or view reassign/reschedule remarks'}
+                </p>
               </div>
             )}
           </div>
         </div>{/* end RIGHT remarks panel */}
       </div>{/* end two-column body */}
+
+      {/* ── Inline File Viewer Modal ── */}
+      {viewerDoc && (
+        <div
+          className="fixed inset-0 z-[99999] flex flex-col bg-black/85"
+          onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+        >
+          <div
+            className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 shrink-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="text-white text-sm font-bold truncate max-w-[55vw]">
+              <i className="fa-solid fa-file mr-2 text-blue-400"></i>{viewerDoc.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <a
+                href={viewerDoc.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
+              <button
+                onClick={() => { if (viewerDoc.blobUrl) URL.revokeObjectURL(viewerDoc.blobUrl); setViewerDoc(null); }}
+                className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5"
+              >
+                <X size={12}/> Close
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            {viewerDoc.loading ? (
+              <div className="flex flex-col items-center gap-3 text-white">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
+                <span className="text-sm text-gray-300">Loading file...</span>
+              </div>
+            ) : viewerDoc.error ? (
+              <div className="flex flex-col items-center gap-4 text-white">
+                <div className="text-5xl text-yellow-400">⚠</div>
+                <p className="text-sm text-gray-300">Failed to load: {viewerDoc.error}</p>
+                <a href={viewerDoc.downloadUrl} target="_blank" rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2">
+                  Download Instead
+                </a>
+              </div>
+            ) : (viewerDoc.isPdf || viewerDoc.isImage) ? (
+              <iframe src={viewerDoc.blobUrl} title={viewerDoc.name} className="w-full h-full border-0 bg-white" style={{ display: 'block' }}/>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-white gap-5">
+                <FileText size={56} className="text-gray-400"/>
+                <p className="text-base font-medium text-gray-300">Preview not available for this file type.</p>
+                <a href={viewerDoc.downloadUrl} target="_blank" rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded transition flex items-center gap-2">
+                  Download to View
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -4389,15 +4851,25 @@ const SearchableSelect = ({
 
 // Create Interview Modal Component
 const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, interviewTypeOptions, statusOptions, statusOptionsWithSubs = [], sourcePortalOptions = [], existingInterviews = [], cooldownDays = 7 }) => {
-  // Get current date and time in the required format for datetime-local input
+  // Get current date and time in IST — uses toLocaleDateString('en-CA') which reliably
+  // produces YYYY-MM-DD in the given timezone, avoiding the toLocaleString→new Date()
+  // round-trip bug that shifts the date during IST midnight transition (00:00–05:30 IST).
   const getCurrentDateTime = () => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+    const timeStr = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5); // HH:MM
+    return `${dateStr}T${timeStr}`;
+  };
+
+  // Build an explicit IST datetime string so backend parsing keeps the same calendar date.
+  // CRITICAL: We always use noon IST (12:00) so UTC equivalent is 06:30 of the SAME day.
+  // This avoids the midnight-window bug where early IST times (00:00–05:30) convert to
+  // the PREVIOUS day in UTC, which breaks display when the Z suffix is missing from response.
+  // The actual interview time is stored separately in the `interview_time` field.
+  const buildISTDateTimeOffset = (dateYmd) => {
+    if (!dateYmd) return '';
+    // Noon IST = 06:30 UTC — always on the same calendar day in both IST and UTC
+    return `${dateYmd}T12:00:00+05:30`;
   };
 
   // Grouped qualification catalog (matching HTML design)
@@ -4420,6 +4892,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     gender: 'Male',
     qualification: '',
     qualificationLevel: '',
+    qualification_status: '',
     job_opening: '',
     marital_status: 'Single',
     age: '',
@@ -4453,6 +4926,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   // Two-step form state
   const [formStep, setFormStep] = useState(1);
   const [createdInterviewId, setCreatedInterviewId] = useState(null);
+  const [createdInterviewData, setCreatedInterviewData] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -4636,7 +5110,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     const excludeFromUppercase = [
       'mobile_number', 'alternate_number', 'total_experience', 
       'old_salary', 'monthly_salary_offered', 'experience_type', 'gender',
-      'interview_type', 'status', 'qualification', 'marital_status',
+      'interview_type', 'status', 'qualification', 'qualification_status', 'marital_status',
       'living_arrangement', 'primary_earning_member', 'type_of_business',
       'banking_experience', 'source_portal', 'age', 'interview_date', 
       'interview_time', 'date_time', 'job_opening'
@@ -4730,6 +5204,10 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         return;
       }
 
+      const selectedInterviewDate = formData.interview_date;
+      const selectedInterviewTime = formData.interview_time || '10:00';
+      const interviewDateTimeIST = buildISTDateTimeOffset(selectedInterviewDate);
+
       // Create complete interview data matching backend expectations
       const interviewData = {
         // Required fields
@@ -4748,6 +5226,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         
         // Professional fields
         qualification: formData.qualification || '',
+        qualification_status: formData.qualification_status || '',
         experience_type: formData.experience_type || 'fresher',
         total_experience: formData.total_experience || '',
         
@@ -4764,20 +5243,20 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         type_of_business: formData.type_of_business || '',
         banking_experience: formData.banking_experience || '',
         
-        // Interview scheduling — use local date directly to avoid UTC timezone shift
-        interview_date: formData.date_time.split('T')[0],
-        interview_time: formData.date_time.split('T')[1] || '10:00',
-        date_time: formData.date_time,
+        // Interview scheduling — send explicit IST offset to preserve exact selected date
+        interview_date: interviewDateTimeIST,
+        interview_time: selectedInterviewTime,
+        date_time: `${selectedInterviewDate}T${selectedInterviewTime}`,
         
         // Source and status
         source_portal: formData.source_portal || '',
         status: 'new_interview',
         
-        // System fields
+        // System fields — use explicit IST timestamp (+05:30) for consistent local state
         created_by: userName,
         user_id: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: (() => { const n = new Date(); return n.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T' + n.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + '+05:30'; })(),
+        updated_at: (() => { const n = new Date(); return n.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T' + n.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + '+05:30'; })()
       };
 
       // Remove null values for optional numeric fields to avoid backend issues
@@ -4799,6 +5278,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       const newInterview = await API.interviews.createInterview(interviewData);
       const iid = newInterview._id || newInterview.id || (newInterview.data && (newInterview.data._id || newInterview.data.id));
       setCreatedInterviewId(iid);
+      setCreatedInterviewData(newInterview);
       setFormStep(2);
       // Load any existing attachments (shouldn't be any, but just in case)
       if (iid) {
@@ -4845,7 +5325,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   };
 
   const handleFinish = async () => {
-    await onInterviewCreated();
+    await onInterviewCreated(createdInterviewData);
     onClose();
   };
 
@@ -5049,7 +5529,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       name="source_portal"
                       value={formData.source_portal}
                       onChange={handleInputChange}
-                      options={sourcePortalOptions.length > 0 ? sourcePortalOptions : ['Naukri.com', 'LinkedIn', 'Walk-In', 'Indeed', 'Referral', 'IVR']}
+                      options={sourcePortalOptions}
                       placeholder="Select source..."
                     />
                   </div>
@@ -5103,36 +5583,46 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                     </select>
                   </div>
                   {/* Qualification — searchable grouped */}
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
-                    <div className="relative" ref={qualRef}>
-                      <input
-                        value={qualSearch !== '' ? qualSearch : formData.qualification}
-                        onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
-                        onFocus={() => { setQualSearch(''); setQualOpen(true); }}
-                        placeholder="Type to search e.g. MBA, BA, ITI..."
-                        className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
-                      />
-                      {formData.qualificationLevel && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
-                      )}
-                      {qualOpen && filteredQualGroups.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
-                          {filteredQualGroups.map(group => (
-                            <div key={group.level}>
-                              <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
-                              {group.entries.map(entry => (
-                                <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
-                                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
-                                  {entry}
-                                </button>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
+                      <div className="relative" ref={qualRef}>
+                        <input
+                          value={qualSearch !== '' ? qualSearch : formData.qualification}
+                          onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
+                          onFocus={() => { setQualSearch(''); setQualOpen(true); }}
+                          placeholder="Type to search e.g. MBA, BA, ITI..."
+                          className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                        />
+                        {formData.qualificationLevel && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
+                        )}
+                        {qualOpen && filteredQualGroups.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                            {filteredQualGroups.map(group => (
+                              <div key={group.level}>
+                                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
+                                {group.entries.map(entry => (
+                                  <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                                    {entry}
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
                     </div>
-                    {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
+                    <div className="w-36">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                      <select name="qualification_status" value={formData.qualification_status || ''} onChange={handleInputChange} className={drawerInputCls}>
+                        <option value="">Select...</option>
+                        <option value="Pursuing">Pursuing</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </div>
                   </div>
                   {/* Banking experience toggle */}
                   <div className="col-span-2">
@@ -5150,7 +5640,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               </div>
 
               {/* ── Professional Details ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
                   <span className="text-base">💼</span>
                   <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
@@ -5163,7 +5653,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       name="job_opening"
                       value={formData.job_opening}
                       onChange={handleInputChange}
-                      options={jobOpeningOptions.length > 0 ? jobOpeningOptions : ['Sales Executive', 'Back Office Exec', 'Telecaller', 'Floor Manager']}
+                      options={jobOpeningOptions}
                       placeholder="Select role..."
                     />
                   </div>
