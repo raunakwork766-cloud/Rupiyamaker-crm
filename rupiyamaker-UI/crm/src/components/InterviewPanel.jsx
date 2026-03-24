@@ -9,7 +9,7 @@ import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
-import { formatDate as formatDateUtil, formatDateTime, calculateAge } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
 import InterviewSettings from './InterviewSettings';
 
@@ -82,6 +82,8 @@ const parseFormattedDate = (str) => {
   if (parts) return new Date(+parts[3], months[parts[2]] || 0, +parts[1]);
   return null;
 };
+
+const getISTDateKey = (value) => toISTDateYMD(value);
 
 const InterviewPanel = () => {
   // CSS styles for sticky headers
@@ -959,7 +961,7 @@ const InterviewPanel = () => {
       } else if (tab.id === 'rejected') {
         count = stageCounts['Rejected'] || 0;
       } else if (tab.id === 'audit_logs') {
-        count = interviewsToCount.length;
+        count = interviewsToCount.filter(i => (i.reassign_count || 0) > 0 || !!i.is_audited).length;
       }
       return { ...tab, count };
     });
@@ -1001,7 +1003,7 @@ const InterviewPanel = () => {
     // The getStatusType function has fallback logic to handle this
     
     let filtered = [...interviews];
-    const today = new Date().toDateString();
+    const todayIST = getISTDateYMD();
 
     console.log('🔍 Filter Debug: Starting filter with', {
       activeTab,
@@ -1032,14 +1034,18 @@ const InterviewPanel = () => {
       // Interview tab: filter by sub-tab (today / upcoming / no_show / round2)
       filtered = filtered.filter(interview => {
         const stage = getStageFromStatus(interview.status);
+        const interviewDateKey = getISTDateKey(interview.interview_date);
+        if (!interviewDateKey && activeSubTab !== 'round2') {
+          return false;
+        }
         if (activeSubTab === 'today') {
-          const interviewDate = new Date(interview.interview_date);
-          return interviewDate.toDateString() === today && stage === 'Interview';
+          // Only show interviews scheduled for exactly TODAY in IST
+          return interviewDateKey === todayIST && stage === 'Interview';
         } else if (activeSubTab === 'upcoming') {
-          const interviewDate = new Date(interview.interview_date);
-          return interviewDate > new Date() && stage === 'Interview';
+          return interviewDateKey > todayIST && stage === 'Interview';
         } else if (activeSubTab === 'no_show') {
-          return stage === 'No-Show';
+          // Past-dated interviews still in Interview stage (didn't show up) + explicitly marked No-Show, all by IST date
+          return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayIST);
         } else if (activeSubTab === 'round2') {
           return stage === 'Round 2';
         }
@@ -1058,7 +1064,8 @@ const InterviewPanel = () => {
         filtered = filtered.filter(i => i.decline_reason === reasonFilter || i.sub_status === reasonFilter);
       }
     } else if (activeTab === 'audit_logs') {
-      // Audit logs: filter by audit sub-tab
+      // Audit logs: only show interviews with actual reassignment/audit activity
+      filtered = filtered.filter(i => (i.reassign_count || 0) > 0 || !!i.is_audited);
       if (auditSubTab === 'Pending') {
         filtered = filtered.filter(i => !i.is_audited);
       } else if (auditSubTab === 'Audited') {
@@ -1093,9 +1100,10 @@ const InterviewPanel = () => {
     // Filter by date range
     if (filterOptions.dateFrom || filterOptions.dateTo) {
       filtered = filtered.filter(interview => {
-        const interviewDate = new Date(interview.interview_date);
-        const fromDate = filterOptions.dateFrom ? new Date(filterOptions.dateFrom) : null;
-        const toDate = filterOptions.dateTo ? new Date(filterOptions.dateTo) : null;
+        const interviewDate = getISTDateKey(interview.interview_date);
+        const fromDate = filterOptions.dateFrom || null;
+        const toDate = filterOptions.dateTo || null;
+        if (!interviewDate) return false;
         
         let withinRange = true;
         if (fromDate) withinRange = withinRange && interviewDate >= fromDate;
@@ -1212,9 +1220,15 @@ const InterviewPanel = () => {
       console.log("Refreshing dropdown options after interview creation...");
       await loadDropdownOptions();
       
-      // Switch to 'interview' tab + reset to 'today' subtab so the new interview is always visible
+      // Switch to 'interview' tab and pick the correct sub-tab based on the new interview's date
       setActiveTab('interview');
-      setActiveSubTab('today');
+      if (newInterview?.interview_date) {
+        const interviewDateKey = getISTDateKey(newInterview.interview_date);
+        const todayKey = getISTDateYMD();
+        setActiveSubTab(interviewDateKey && interviewDateKey > todayKey ? 'upcoming' : 'today');
+      } else {
+        setActiveSubTab('today');
+      }
       
       // Clear any search filters that might hide the new interview
       setSearchTerm('');
@@ -1252,7 +1266,13 @@ const InterviewPanel = () => {
         });
       }
       setActiveTab('interview');
-      setActiveSubTab('today');
+      if (newInterview?.interview_date) {
+        const interviewDateKey = getISTDateKey(newInterview.interview_date);
+        const todayKey = getISTDateYMD();
+        setActiveSubTab(interviewDateKey && interviewDateKey > todayKey ? 'upcoming' : 'today');
+      } else {
+        setActiveSubTab('today');
+      }
     }
   };
 
@@ -1926,6 +1946,7 @@ const InterviewPanel = () => {
       const newStatus = getStatusForStage(targetStage);
       await API.interviews.updateInterview(candidateId, { 
         status: newStatus,
+        status_remark: remark,
         forward_remark: remark,
         previous_stage: currentStage 
       });
@@ -1942,6 +1963,7 @@ const InterviewPanel = () => {
     try {
       await API.interviews.updateInterview(candidateId, { 
         status: 'job_offered',
+        status_remark: remark,
         forward_remark: remark,
         previous_stage: currentStage 
       });
@@ -1958,6 +1980,7 @@ const InterviewPanel = () => {
     try {
       await API.interviews.updateInterview(candidateId, { 
         status: 'rejected',
+        status_remark: remarks,
         decline_reason: reason,
         decline_remarks: remarks 
       });
@@ -1975,6 +1998,7 @@ const InterviewPanel = () => {
       await API.interviews.updateInterview(candidateId, { 
         interview_date: newDate,
         reschedule_reason: reason,
+        status_remark: reason,
         status: selectedCandidate?.status || 'rescheduled'
       });
       setIsRescheduleOpen(false);
@@ -1989,7 +2013,8 @@ const InterviewPanel = () => {
   const handleMarkNoShow = async (interview) => {
     if (!window.confirm(`Mark ${interview.candidate_name} as No-Show?`)) return;
     try {
-      await API.interviews.updateInterview(interview._id, { status: 'no_show' });
+      const noShowRemark = prompt('Add status remark for No-Show (optional):') || '';
+      await API.interviews.updateInterview(interview._id, { status: 'no_show', status_remark: noShowRemark.trim() });
       await loadInterviews();
     } catch (error) {
       alert('Failed to mark no-show: ' + (error.message || error));
@@ -2304,17 +2329,17 @@ const InterviewPanel = () => {
           <div className="flex overflow-x-auto tabs-scroll space-x-2 py-2 pb-1">
             {INTERVIEW_SUB_TABS.map(sub => {
               // Calculate sub-tab counts
-              const today = new Date().toDateString();
+              const todayKey = getISTDateYMD();
               const subCount = (interviews || []).filter(interview => {
                 const stage = getStageFromStatus(interview.status);
+                const interviewDateKey = getISTDateKey(interview.interview_date);
+                if (!interviewDateKey) return false;
                 if (sub.id === 'today') {
-                  const interviewDate = new Date(interview.interview_date);
-                  return interviewDate.toDateString() === today && stage === 'Interview';
+                  return interviewDateKey === todayKey && stage === 'Interview';
                 } else if (sub.id === 'upcoming') {
-                  const interviewDate = new Date(interview.interview_date);
-                  return interviewDate > new Date() && stage === 'Interview';
+                  return interviewDateKey > todayKey && stage === 'Interview';
                 } else if (sub.id === 'no_show') {
-                  return stage === 'No-Show';
+                  return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayKey);
                 } else if (sub.id === 'round2') {
                   return stage === 'Round 2';
                 }
@@ -2540,6 +2565,7 @@ const InterviewPanel = () => {
           onSaved={() => loadInterviews()}
           jobOpeningOptions={jobOpeningOptions}
           sourcePortalOptions={sourcePortalOptions}
+          canEditContactNumbers={isSuperAdmin()}
         />
       )}
 
@@ -2997,10 +3023,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
         <td className="px-4 py-3 border-r border-slate-100">
           <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-        </td>
-        <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
-          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : ''}</div>
         </td>
         <td className="px-4 py-3 border-r border-slate-100" colSpan={3}>
           <div className="flex items-center gap-2">
@@ -3047,7 +3070,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
         <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-        <div className="text-[10px] text-slate-400 mt-0.5">Added</div>
+        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : 'Added'}</div>
       </td>
 
       <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
@@ -3498,7 +3521,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
 };
 
 // --- CANDIDATE DETAIL / EDIT MODAL (Editable with auto-save + Attachments) ---
-const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions = [], sourcePortalOptions = [] }) => {
+const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions = [], sourcePortalOptions = [], canEditContactNumbers = false }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -3506,6 +3529,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const saveTimerRef = useRef(null);
   const originalRef = useRef(null);
   const [histTab, setHistTab] = useState('details');
+  const [rightTab, setRightTab] = useState('interview_remark');
+  const [quickRemark, setQuickRemark] = useState('');
+  const [remarkSaving, setRemarkSaving] = useState(false);
+  const [manualInterviewRemarks, setManualInterviewRemarks] = useState([]);
+  const [statusRemarks, setStatusRemarks] = useState([]);
 
   // Attachments
   const [attachments, setAttachments] = useState([]);
@@ -3559,6 +3587,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
             setAttachments([]);
           }
         }
+        await loadHistoryRemarks(id);
       } catch (e) {
         setData(candidate);
         originalRef.current = JSON.parse(JSON.stringify(candidate));
@@ -3569,6 +3598,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         } catch {
           setAttachments(candidate.attachments || []);
         }
+        await loadHistoryRemarks(id);
       } finally {
         setLoading(false);
       }
@@ -3579,6 +3609,63 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   if (!candidate) return null;
   const d = data || candidate;
   const interviewId = d._id || d.id;
+
+  const formatISTDateTime = (value) => {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return String(value);
+    return dt.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata'
+    });
+  };
+
+  const loadHistoryRemarks = async (targetInterviewId) => {
+    try {
+      const historyRes = await API.interviews.getHistory(targetInterviewId);
+      const rawHistory = Array.isArray(historyRes?.data)
+        ? historyRes.data
+        : (Array.isArray(historyRes) ? historyRes : []);
+
+      const parsedInterviewRemarks = rawHistory
+        .filter((entry) => entry?.action_type === 'remark_added')
+        .map((entry) => ({
+          id: entry.id || `${entry.created_at}-${entry.created_by}`,
+          type: 'interview_remark',
+          by: entry.created_by_name || 'User',
+          reason: entry?.details?.remark_text || entry?.details?.remark || entry.description || '',
+          dateRaw: entry.created_at,
+          dateLabel: formatISTDateTime(entry.created_at)
+        }))
+        .filter((entry) => !!entry.reason);
+
+      const parsedStatusRemarks = rawHistory
+        .filter((entry) => entry?.action_type === 'status_changed')
+        .map((entry) => ({
+          id: entry.id || `${entry.created_at}-${entry.created_by}`,
+          by: entry.created_by_name || 'User',
+          oldStatus: entry?.details?.old_status || '',
+          newStatus: entry?.details?.new_status || '',
+          remark: entry?.details?.remark || entry?.details?.status_remark || entry?.details?.remarks || '',
+          dateRaw: entry.created_at,
+          dateLabel: formatISTDateTime(entry.created_at)
+        }))
+        .filter((entry) => !!entry.remark)
+        .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+
+      setManualInterviewRemarks(parsedInterviewRemarks);
+      setStatusRemarks(parsedStatusRemarks);
+    } catch (historyError) {
+      console.warn('Failed to load interview history remarks:', historyError);
+      setManualInterviewRemarks([]);
+      setStatusRemarks([]);
+    }
+  };
 
   // Auto-save on field change (debounced 1.5s)
   const handleFieldChange = (field, value) => {
@@ -3662,6 +3749,40 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
     }
   };
 
+  const handleAddInterviewRemark = async () => {
+    const remarkText = quickRemark.trim();
+    if (!remarkText || !interviewId) return;
+
+    setRemarkSaving(true);
+    try {
+      await API.interviews.addHistoryEntry(interviewId, {
+        action_type: 'remark_added',
+        action: 'Interview Remark Added',
+        description: 'Interview remark added',
+        details: { remark_text: remarkText }
+      });
+
+      const currentUserName = localStorage.getItem('fullName') || localStorage.getItem('userName') || 'Current User';
+      const nowIso = new Date().toISOString();
+      setManualInterviewRemarks((prev) => [
+        {
+          id: `local-${Date.now()}`,
+          type: 'interview_remark',
+          by: currentUserName,
+          reason: remarkText,
+          dateRaw: nowIso,
+          dateLabel: formatISTDateTime(nowIso)
+        },
+        ...prev
+      ]);
+      setQuickRemark('');
+    } catch (error) {
+      alert('Failed to save remark: ' + (error.message || error));
+    } finally {
+      setRemarkSaving(false);
+    }
+  };
+
   const handleViewAttachment = async (att) => {
     const name = att.label || att.original_name || 'File';
     const fname = (att.original_name || att.label || '').toLowerCase();
@@ -3712,9 +3833,14 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const reschedules = (data || candidate)?.reschedule_history || (data || candidate)?.rescheduleHistory || [];
   // Combine all remarks from reassign + reschedule into single timeline for right panel
   const allRemarks = [
-    ...reassigns.map(r => ({ type: 'reassign', date: r.date, reason: r.reason, by: r.toHr || r.to_hr || r.fromHr || r.from_hr || 'HR', fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr })),
-    ...reschedules.map(r => ({ type: 'reschedule', date: r.date, reason: r.reason, by: r.rescheduled_by || r.hr_name || 'HR', from: r.from, to: r.to }))
-  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    ...reassigns.map(r => ({ type: 'reassign', date: formatISTDateTime(r.date), dateRaw: r.date, reason: r.reason, by: r.toHr || r.to_hr || r.fromHr || r.from_hr || 'HR', fromHr: r.fromHr || r.from_hr, toHr: r.toHr || r.to_hr })),
+    ...reschedules.map(r => ({ type: 'reschedule', date: formatISTDateTime(r.date), dateRaw: r.date, reason: r.reason, by: r.rescheduled_by || r.hr_name || 'HR', from: r.from, to: r.to }))
+  ].sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+
+  const interviewRemarksTimeline = [
+    ...manualInterviewRemarks,
+    ...allRemarks
+  ].sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col bg-black text-white">
@@ -3794,15 +3920,30 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Date</label>
-                    <input type="date" value={d.interview_date ? (d.interview_date.includes('T') ? d.interview_date.split('T')[0] : d.interview_date.substring(0,10)) : ''} onChange={e => handleFieldChange('interview_date', e.target.value)} className={inputCls} />
+                    <input type="date" value={d.interview_date ? toISTDateYMD(d.interview_date) : ''} onChange={e => handleFieldChange('interview_date', e.target.value)} className={inputCls} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
-                    <input value={d.mobile_number || ''} className={inputCls + ' !bg-slate-100 cursor-not-allowed'} readOnly />
+                    <input
+                      value={d.mobile_number || ''}
+                      onChange={e => canEditContactNumbers && handleFieldChange('mobile_number', e.target.value.replace(/\D/g, '').slice(0,10))}
+                      className={`${inputCls} ${canEditContactNumbers ? '' : '!bg-slate-100 cursor-not-allowed'}`}
+                      readOnly={!canEditContactNumbers}
+                      maxLength="10"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
-                    <input value={d.alternate_number || ''} onChange={e => handleFieldChange('alternate_number', e.target.value.replace(/\D/g, '').slice(0,10))} className={inputCls} maxLength="10" />
+                    <input
+                      value={d.alternate_number || ''}
+                      onChange={e => canEditContactNumbers && handleFieldChange('alternate_number', e.target.value.replace(/\D/g, '').slice(0,10))}
+                      className={`${inputCls} ${canEditContactNumbers ? '' : '!bg-slate-100 cursor-not-allowed'}`}
+                      readOnly={!canEditContactNumbers}
+                      maxLength="10"
+                    />
+                    {!canEditContactNumbers && (
+                      <p className="text-[10px] text-slate-500 mt-1">Only Super Admin can edit contact numbers</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source</label>
@@ -4160,32 +4301,62 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         </div>{/* end LEFT scrollable content */}
         </div>{/* end LEFT column */}
 
-        {/* RIGHT: Remarks only panel */}
+        {/* RIGHT: Remarks panel */}
         <div className="w-[360px] flex flex-col bg-white border-l border-slate-200 shrink-0">
-          {/* Single REMARK tab header */}
           <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 shrink-0">
-            <button className="flex items-center gap-1.5 px-5 py-2.5 rounded-3xl font-extrabold text-sm bg-[#03B0F5] text-white border border-cyan-400 shadow-lg scale-105 focus:outline-none" style={{ boxShadow: '0 4px 16px 0 #1cb5e080', letterSpacing: '0.01em' }}>
-              📝 REMARK
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-white/20 text-white">{allRemarks.length}</span>
+            <button
+              onClick={() => setRightTab('interview_remark')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-extrabold text-xs border transition-all ${rightTab === 'interview_remark' ? 'bg-[#03B0F5] text-white border-cyan-400 shadow' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Interview Remark
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${rightTab === 'interview_remark' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{interviewRemarksTimeline.length}</span>
+            </button>
+            <button
+              onClick={() => setRightTab('status_remark')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-extrabold text-xs border transition-all ${rightTab === 'status_remark' ? 'bg-[#03B0F5] text-white border-cyan-400 shadow' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Status Remark
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${rightTab === 'status_remark' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{statusRemarks.length}</span>
             </button>
           </div>
-          {/* All remarks timeline */}
+
           <div className="flex-1 overflow-y-auto p-4 bg-white">
-            {allRemarks.length > 0 ? (
+            {rightTab === 'interview_remark' && (
+              <div className="mb-4 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wide mb-2">Add Interview Remark</label>
+                <textarea
+                  value={quickRemark}
+                  onChange={(e) => setQuickRemark(e.target.value)}
+                  placeholder="Type interview remark here..."
+                  className="w-full h-24 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 resize-none outline-none focus:border-[#03B0F5]"
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={handleAddInterviewRemark}
+                    disabled={remarkSaving || !quickRemark.trim()}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${remarkSaving || !quickRemark.trim() ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-[#03B0F5] text-white hover:bg-sky-600'}`}
+                  >
+                    {remarkSaving ? 'Saving...' : 'Save Remark'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {rightTab === 'interview_remark' && interviewRemarksTimeline.length > 0 ? (
               <div className="relative">
                 <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-blue-200 rounded-full" />
                 <div className="space-y-4">
-                  {allRemarks.map((r, i) => (
-                    <div key={i} className="relative pl-7">
-                      <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${r.type === 'reassign' ? 'bg-orange-500' : 'bg-sky-500'}`} />
+                  {interviewRemarksTimeline.map((r, i) => (
+                    <div key={r.id || i} className="relative pl-7">
+                      <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${r.type === 'reassign' ? 'bg-orange-500' : r.type === 'reschedule' ? 'bg-sky-500' : 'bg-blue-600'}`} />
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-slate-800 text-sm">{r.by}</span>
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${r.type === 'reassign' ? 'bg-orange-100 text-orange-600' : 'bg-sky-100 text-sky-600'}`}>
-                            {r.type === 'reassign' ? '🔄 Reassign' : '📅 Reschedule'}
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${r.type === 'reassign' ? 'bg-orange-100 text-orange-600' : r.type === 'reschedule' ? 'bg-sky-100 text-sky-600' : 'bg-blue-100 text-blue-700'}`}>
+                            {r.type === 'reassign' ? '🔄 Reassign' : r.type === 'reschedule' ? '📅 Reschedule' : '📝 Interview'}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mb-1">{r.date || ''}</div>
+                        <div className="text-[11px] text-slate-500 mb-1">{r.dateLabel || r.date || ''}</div>
                         {r.reason && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
                         {r.type === 'reassign' && (r.fromHr || r.toHr) && (
                           <div className="text-[10px] text-slate-500 mt-1">
@@ -4206,11 +4377,39 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   ))}
                 </div>
               </div>
+            ) : rightTab === 'status_remark' && statusRemarks.length > 0 ? (
+              <div className="relative">
+                <div className="absolute left-[7px] top-3 bottom-3 w-[2px] bg-indigo-200 rounded-full" />
+                <div className="space-y-4">
+                  {statusRemarks.map((item, idx) => (
+                    <div key={item.id || idx} className="relative pl-7">
+                      <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-indigo-600 shadow-sm" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-800 text-sm">{item.by}</span>
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Status Change</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mb-1">{item.dateLabel}</div>
+                        <p className="text-xs text-slate-700 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 leading-relaxed">{item.remark}</p>
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          <span>{item.oldStatus || 'Unknown'}</span>
+                          <span className="mx-1 text-slate-400">→</span>
+                          <span className="font-semibold text-slate-700">{item.newStatus || 'Unknown'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
                 <div className="text-4xl mb-3 opacity-40">📝</div>
                 <p className="text-xs font-medium text-slate-400">No remarks yet</p>
-                <p className="text-[10px] mt-1 text-slate-500">Remarks from reassignments & reschedules will appear here</p>
+                <p className="text-[10px] mt-1 text-slate-500">
+                  {rightTab === 'status_remark'
+                    ? 'Status-change remarks will appear here'
+                    : 'Add an interview remark or view reassign/reschedule remarks'}
+                </p>
               </div>
             )}
           </div>
@@ -4652,15 +4851,25 @@ const SearchableSelect = ({
 
 // Create Interview Modal Component
 const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, interviewTypeOptions, statusOptions, statusOptionsWithSubs = [], sourcePortalOptions = [], existingInterviews = [], cooldownDays = 7 }) => {
-  // Get current date and time in the required format for datetime-local input
+  // Get current date and time in IST — uses toLocaleDateString('en-CA') which reliably
+  // produces YYYY-MM-DD in the given timezone, avoiding the toLocaleString→new Date()
+  // round-trip bug that shifts the date during IST midnight transition (00:00–05:30 IST).
   const getCurrentDateTime = () => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+    const timeStr = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5); // HH:MM
+    return `${dateStr}T${timeStr}`;
+  };
+
+  // Build an explicit IST datetime string so backend parsing keeps the same calendar date.
+  // CRITICAL: We always use noon IST (12:00) so UTC equivalent is 06:30 of the SAME day.
+  // This avoids the midnight-window bug where early IST times (00:00–05:30) convert to
+  // the PREVIOUS day in UTC, which breaks display when the Z suffix is missing from response.
+  // The actual interview time is stored separately in the `interview_time` field.
+  const buildISTDateTimeOffset = (dateYmd) => {
+    if (!dateYmd) return '';
+    // Noon IST = 06:30 UTC — always on the same calendar day in both IST and UTC
+    return `${dateYmd}T12:00:00+05:30`;
   };
 
   // Grouped qualification catalog (matching HTML design)
@@ -4717,6 +4926,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   // Two-step form state
   const [formStep, setFormStep] = useState(1);
   const [createdInterviewId, setCreatedInterviewId] = useState(null);
+  const [createdInterviewData, setCreatedInterviewData] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -4994,6 +5204,10 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         return;
       }
 
+      const selectedInterviewDate = formData.interview_date;
+      const selectedInterviewTime = formData.interview_time || '10:00';
+      const interviewDateTimeIST = buildISTDateTimeOffset(selectedInterviewDate);
+
       // Create complete interview data matching backend expectations
       const interviewData = {
         // Required fields
@@ -5029,20 +5243,20 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
         type_of_business: formData.type_of_business || '',
         banking_experience: formData.banking_experience || '',
         
-        // Interview scheduling — use local date directly to avoid UTC timezone shift
-        interview_date: formData.date_time.split('T')[0],
-        interview_time: formData.date_time.split('T')[1] || '10:00',
-        date_time: formData.date_time,
+        // Interview scheduling — send explicit IST offset to preserve exact selected date
+        interview_date: interviewDateTimeIST,
+        interview_time: selectedInterviewTime,
+        date_time: `${selectedInterviewDate}T${selectedInterviewTime}`,
         
         // Source and status
         source_portal: formData.source_portal || '',
         status: 'new_interview',
         
-        // System fields
+        // System fields — use explicit IST timestamp (+05:30) for consistent local state
         created_by: userName,
         user_id: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: (() => { const n = new Date(); return n.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T' + n.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + '+05:30'; })(),
+        updated_at: (() => { const n = new Date(); return n.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T' + n.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + '+05:30'; })()
       };
 
       // Remove null values for optional numeric fields to avoid backend issues
@@ -5064,6 +5278,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       const newInterview = await API.interviews.createInterview(interviewData);
       const iid = newInterview._id || newInterview.id || (newInterview.data && (newInterview.data._id || newInterview.data.id));
       setCreatedInterviewId(iid);
+      setCreatedInterviewData(newInterview);
       setFormStep(2);
       // Load any existing attachments (shouldn't be any, but just in case)
       if (iid) {
@@ -5110,7 +5325,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   };
 
   const handleFinish = async () => {
-    await onInterviewCreated();
+    await onInterviewCreated(createdInterviewData);
     onClose();
   };
 
