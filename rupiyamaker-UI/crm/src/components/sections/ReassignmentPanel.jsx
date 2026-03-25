@@ -495,7 +495,7 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
         </>
       )}
 
-      {/* ===== REVIEW MODAL — Premium Light Theme with Timeline ===== */}
+      {/* ===== REVIEW MODAL — Dark Theme (matches attendance_ui.html) ===== */}
       {actionModal.open && (() => {
         const ml = actionModal.lead || {};
         const mlName = [ml.first_name, ml.last_name].filter(Boolean).join(' ') || ml.name || ml.customer_name || 'Unknown Lead';
@@ -519,87 +519,107 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
         };
 
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 sm:p-6"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
           onClick={() => !actionLoading && setActionModal({ open: false, type: null, lead: null })}>
           <div
-            className="bg-white border border-gray-200 rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col font-sans"
-            style={{ width: '1100px', maxWidth: '100%', maxHeight: 'calc(100vh - 3rem)' }}
+            className="rounded-2xl overflow-hidden flex flex-col"
+            style={{ width: '1100px', maxWidth: '100%', maxHeight: 'calc(100vh - 3rem)', background: '#09090b', border: '1px solid #27272a', boxShadow: '0 25px 60px rgba(0,0,0,0.9)' }}
             onClick={e => e.stopPropagation()}>
 
             {/* ── HEADER ── */}
-            <div className="px-6 py-3.5 border-b border-gray-200 shrink-0 flex items-center justify-between bg-white">
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-base font-black text-slate-700 shrink-0">
+            <div className="px-6 py-4 shrink-0 flex items-center justify-between" style={{ background: '#000000', borderBottom: '1px solid #27272a' }}>
+              <div className="flex items-center gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-base font-black text-black shrink-0"
+                  style={{ background: '#0ea5e9', boxShadow: '0 0 16px rgba(14,165,233,0.45)' }}>
                   {mlName.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                    <h2 className="text-base font-black text-gray-900 tracking-tight leading-tight">{mlName}</h2>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border text-amber-700 bg-amber-50 border-amber-200">
-                      Pending
+                  <div className="flex items-center gap-2.5 mb-1 flex-wrap">
+                    <h2 className="text-base font-black text-white tracking-tight leading-tight">{mlName}</h2>
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                      style={{ background: 'rgba(255,221,0,0.12)', color: '#ffdd00', border: '1px solid rgba(255,221,0,0.3)' }}>
+                      PENDING
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
-                    <span className="flex items-center gap-1"><Phone size={12} />{mlPhone}</span>
-                    <span className="text-gray-200">|</span>
-                    <span>Assigned: <span className="text-gray-700 font-semibold">{mlOwner}</span></span>
-                    <span className="text-gray-200">|</span>
-                    <span className="text-gray-500">{mlAgeDays === 0 ? 'Created Today' : `${mlAgeDays}d ago`}</span>
+                  <div className="flex items-center gap-2.5 text-xs flex-wrap" style={{ color: '#a1a1aa' }}>
+                    <span className="flex items-center gap-1"><Phone size={11} />{mlPhone}</span>
+                    <span style={{ color: '#3f3f46' }}>|</span>
+                    <span>Assigned: <span className="font-semibold text-white">{mlOwner}</span></span>
+                    <span style={{ color: '#3f3f46' }}>|</span>
+                    <span style={{ color: '#0ea5e9' }}>{mlAgeDays === 0 ? 'Today' : `${mlAgeDays}d ago`}</span>
                   </div>
                 </div>
               </div>
-              <button onClick={() => !actionLoading && setActionModal({ open: false, type: null, lead: null })}
-                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                <XCircle size={20} />
+              <button
+                onClick={() => !actionLoading && setActionModal({ open: false, type: null, lead: null })}
+                className="p-2 rounded-lg transition-colors"
+                style={{ color: '#a1a1aa', background: 'transparent' }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.background = '#1f1f22'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.background = 'transparent'; }}>
+                <X size={20} />
               </button>
             </div>
 
             {/* ── BODY ── */}
-            <div className="flex flex-1 overflow-hidden bg-white" style={{ minHeight: 0 }}>
+            <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
 
               {/* ── LEFT: Duplicate Leads Sidebar ── */}
-              <div className="w-[240px] border-r border-gray-100 shrink-0 overflow-y-auto bg-gray-50">
+              <div className="w-[240px] shrink-0 overflow-y-auto" style={{ background: '#0a0a0d', borderRight: '1px solid #27272a' }}>
                 <div className="px-3 pt-3 pb-2">
                   <div className="flex items-center justify-between mb-2.5">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                      <Users size={12} /> Leads
+                    <span className="text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5" style={{ color: '#a1a1aa' }}>
+                      <Users size={12} style={{ color: '#0ea5e9' }} /> Same Number
                     </span>
                     {mlDups.length > 0 && (
-                      <span className="text-[10px] font-bold text-gray-500 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">{mlDups.length}</span>
+                      <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ color: '#a1a1aa', background: '#1f1f22', border: '1px solid #27272a' }}>
+                        {mlDups.length}
+                      </span>
                     )}
                   </div>
 
                   {mlDups.length === 0 ? (
-                    <div className="text-center py-8 border border-dashed border-gray-200 bg-white rounded-lg">
-                      <Users size={20} className="text-gray-300 mx-auto mb-1.5" />
-                      <p className="text-xs font-semibold text-gray-400">No duplicates</p>
+                    <div className="text-center py-8 rounded-lg" style={{ border: '1px dashed #27272a', background: '#09090b' }}>
+                      <Users size={20} className="mx-auto mb-1.5" style={{ color: '#3f3f46' }} />
+                      <p className="text-xs font-semibold" style={{ color: '#52525b' }}>No duplicates</p>
                     </div>
                   ) : (
                     <div className="space-y-1.5">
                       {mlDups.map((dl, i) => {
                         const isCurrent = dl.is_current;
-                        const accentBorder = isCurrent ? 'border-l-cyan-500' : 'border-l-gray-300';
-                        const cardBg = isCurrent ? 'bg-cyan-50/60' : 'bg-white';
                         return (
-                          <div key={dl.id || i}
-                            className={`rounded-lg border border-gray-200 border-l-[3px] ${accentBorder} ${cardBg} px-2.5 py-2 ${dl.id ? 'cursor-pointer hover:shadow-sm' : ''}`}
+                          <div
+                            key={dl.id || i}
+                            className="rounded-lg px-2.5 py-2 transition-all"
+                            style={{
+                              background: isCurrent ? 'rgba(14,165,233,0.08)' : '#09090b',
+                              border: `1px solid ${isCurrent ? 'rgba(14,165,233,0.35)' : '#27272a'}`,
+                              borderLeft: `3px solid ${isCurrent ? '#0ea5e9' : '#3f3f46'}`,
+                              cursor: dl.id ? 'pointer' : 'default',
+                            }}
                             onClick={(e) => { e.stopPropagation(); if (onViewLead && dl.id) onViewLead(dl.id); }}>
                             <div className="flex items-start justify-between gap-1.5 mb-0.5">
-                              <span className="text-xs font-bold text-gray-900 leading-tight">{dl.name || '—'}</span>
+                              <span className="text-xs font-bold leading-tight text-white">{dl.name || '—'}</span>
                               {isCurrent && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 leading-tight uppercase tracking-wide text-cyan-700 bg-cyan-100 border-cyan-200">
-                                  Current
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wide"
+                                  style={{ color: '#0ea5e9', background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)' }}>
+                                  THIS
                                 </span>
                               )}
                             </div>
                             {dl.status && (
-                              <p className="text-[10px] text-gray-500 font-medium leading-tight">{dl.status}{dl.sub_status ? ` — ${dl.sub_status}` : ''}</p>
+                              <p className="text-[10px] font-medium leading-tight" style={{ color: '#a1a1aa' }}>
+                                {dl.status}{dl.sub_status ? ` — ${dl.sub_status}` : ''}
+                              </p>
                             )}
                             {dl.assigned_to_name && (
-                              <p className="text-[9px] text-gray-400 mt-1">Assigned: {dl.assigned_to_name}</p>
+                              <p className="text-[9px] mt-1" style={{ color: '#71717a' }}>Owner: {dl.assigned_to_name}</p>
                             )}
                             {dl.loan_type && (
-                              <p className="text-[9px] text-gray-400 mt-0.5">Type: {dl.loan_type}</p>
+                              <p className="text-[9px] mt-0.5" style={{ color: '#71717a' }}>Type: {dl.loan_type}</p>
                             )}
                           </div>
                         );
@@ -610,32 +630,25 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
               </div>
 
               {/* ── RIGHT: Timeline ── */}
-              <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#000000' }}>
 
-                {/* ── STICKY STATS HEADER ── */}
-                <div className="shrink-0 px-5 py-2.5 border-b border-gray-200 bg-white z-10 flex items-center justify-between gap-3 flex-wrap">
-                  <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest shrink-0">
-                    Transfer History
-                  </h3>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className="px-2.5 py-0.5 rounded-md border border-gray-200 bg-gray-50 text-[11px] font-bold text-gray-600 flex items-center gap-1">
-                      <span className="text-gray-900 text-xs font-black">{histStats.total}</span> Total
-                    </div>
-                    {histStats.approved > 0 && (
-                      <div className="px-2.5 py-0.5 rounded-md border border-emerald-200 bg-emerald-50 text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-                        <span className="text-emerald-900 text-xs font-black">{histStats.approved}</span> Approved
+                {/* ── STATS STRIP — same pattern as stat-strip in attendance_ui.html ── */}
+                <div className="shrink-0 flex items-stretch z-10" style={{ background: '#09090b', borderBottom: '1px solid #27272a' }}>
+                  <div className="px-5 py-2.5 flex items-center shrink-0" style={{ borderRight: '1px solid #27272a' }}>
+                    <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: '#a1a1aa' }}>Transfer History</span>
+                  </div>
+                  <div className="flex flex-1 items-stretch">
+                    {[
+                      { label: 'TOTAL',    val: histStats.total,    color: '#ffffff',  show: true },
+                      { label: 'APPROVED', val: histStats.approved, color: '#10b981',  show: histStats.approved > 0 },
+                      { label: 'REJECTED', val: histStats.rejected, color: '#ff2a2a',  show: histStats.rejected > 0 },
+                      { label: 'PENDING',  val: histStats.pending,  color: '#ffdd00',  show: true },
+                    ].map((s, i) => s.show ? (
+                      <div key={i} className="px-4 py-2 flex items-center gap-2" style={{ borderRight: '1px solid #27272a' }}>
+                        <span className="text-lg font-black" style={{ color: s.color, lineHeight: 1 }}>{s.val}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#a1a1aa' }}>{s.label}</span>
                       </div>
-                    )}
-                    {histStats.rejected > 0 && (
-                      <div className="px-2.5 py-0.5 rounded-md border border-rose-200 bg-rose-50 text-[11px] font-bold text-rose-700 flex items-center gap-1">
-                        <span className="text-rose-900 text-xs font-black">{histStats.rejected}</span> Rejected
-                      </div>
-                    )}
-                    {histStats.pending > 0 && (
-                      <div className="px-2.5 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-[11px] font-bold text-amber-700 flex items-center gap-1">
-                        <span className="text-amber-900 text-xs font-black">{histStats.pending}</span> Pending
-                      </div>
-                    )}
+                    ) : null)}
                   </div>
                 </div>
 
@@ -647,118 +660,111 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                       const isApproved = h.status === 'approved';
                       const isRejected = h.status === 'rejected';
                       const isAutoRej = (h.description || '').toLowerCase().includes('auto') || (h.reason || '').toLowerCase().includes('auto');
-
-                      const stepCls = isApproved
-                        ? 'bg-emerald-500 text-white ring-4 ring-emerald-100'
-                        : isRejected
-                        ? 'bg-rose-500 text-white ring-4 ring-rose-100'
-                        : 'bg-gray-400 text-white ring-4 ring-gray-100';
-
-                      const cardBorder = isApproved ? 'border-emerald-200' : isRejected ? 'border-rose-200' : 'border-gray-200';
-
-                      const decisionBg = isApproved
-                        ? 'bg-emerald-50 border-emerald-100'
-                        : isAutoRej
-                        ? 'bg-red-50 border-red-100'
-                        : 'bg-rose-50 border-rose-100';
-
-                      const statusPill = isApproved
-                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                        : isRejected
-                        ? 'bg-rose-100 text-rose-700 border-rose-200'
-                        : 'bg-gray-100 text-gray-600 border-gray-200';
+                      const stepColor = isApproved ? '#10b981' : isRejected ? '#ff2a2a' : '#a1a1aa';
+                      const cardBorderColor = isApproved ? 'rgba(16,185,129,0.3)' : isRejected ? 'rgba(255,42,42,0.3)' : '#27272a';
+                      const decisionBg = isApproved ? 'rgba(16,185,129,0.07)' : 'rgba(255,42,42,0.07)';
+                      const decisionBorderColor = isApproved ? 'rgba(16,185,129,0.2)' : 'rgba(255,42,42,0.2)';
 
                       return (
                         <div key={index} className="flex gap-3 pb-3">
                           {/* Step indicator */}
-                          <div className="flex flex-col items-center shrink-0 pt-2.5">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${stepCls}`}>
+                          <div className="flex flex-col items-center shrink-0 pt-2">
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 text-black"
+                              style={{ background: stepColor, boxShadow: `0 0 0 3px rgba(${isApproved ? '16,185,129' : isRejected ? '255,42,42' : '161,161,170'},0.18)` }}>
                               {index + 1}
                             </div>
-                            <div className="w-px bg-gray-200 flex-1 mt-2" />
+                            <div className="w-px flex-1 mt-2" style={{ background: '#27272a' }} />
                           </div>
 
                           {/* Content card */}
-                          <div className={`flex-1 rounded-xl border bg-white overflow-hidden shadow-sm transition-shadow hover:shadow-md ${cardBorder}`}>
-                            {/* Agent section */}
+                          <div className="flex-1 rounded-xl overflow-hidden" style={{ border: `1px solid ${cardBorderColor}`, background: '#09090b' }}>
                             <div className="px-4 pt-3 pb-3">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex items-start gap-2.5 min-w-0">
-                                  <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200 shrink-0 mt-0.5">
+                                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                                    style={{ background: '#1f1f22', color: '#a1a1aa', border: '1px solid #27272a' }}>
                                     {(h.by_user || '?').charAt(0).toUpperCase()}
                                   </div>
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="text-sm font-bold text-gray-900 leading-tight">{h.by_user || 'Unknown'}</span>
-                                      <span className="text-[11px] text-gray-400 font-medium">requested transfer</span>
+                                      <span className="text-sm font-bold text-white leading-tight">{h.by_user || 'Unknown'}</span>
+                                      <span className="text-[11px] font-medium" style={{ color: '#71717a' }}>requested transfer</span>
                                       {h.to_user && (
                                         <>
-                                          <span className="text-[11px] text-gray-400">→</span>
-                                          <span className="text-sm font-bold text-cyan-600 leading-tight">{h.to_user}</span>
+                                          <span className="text-[11px]" style={{ color: '#71717a' }}>→</span>
+                                          <span className="text-sm font-bold leading-tight" style={{ color: '#0ea5e9' }}>{h.to_user}</span>
                                         </>
                                       )}
                                     </div>
-                                    <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+                                    <div className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: '#71717a' }}>
                                       <Calendar size={10} />
                                       {fmtDate(h.date)}
                                     </div>
                                   </div>
                                 </div>
-                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 mt-0.5 capitalize ${statusPill}`}>
+                                <span
+                                  className="text-[10px] font-bold px-2.5 py-0.5 rounded shrink-0 mt-0.5 capitalize"
+                                  style={{
+                                    background: isApproved ? 'rgba(16,185,129,0.15)' : isRejected ? 'rgba(255,42,42,0.15)' : 'rgba(161,161,170,0.15)',
+                                    color: isApproved ? '#10b981' : isRejected ? '#ff2a2a' : '#a1a1aa',
+                                    border: `1px solid ${isApproved ? 'rgba(16,185,129,0.3)' : isRejected ? 'rgba(255,42,42,0.3)' : 'rgba(161,161,170,0.3)'}`,
+                                  }}>
                                   {h.status || 'unknown'}
                                 </span>
                               </div>
-
-                              {/* Reason blockquote */}
                               {h.reason && (
-                                <div className="mt-2.5 pl-3 border-l-2 border-gray-200 ml-1">
-                                  <p className="text-xs text-gray-600 leading-relaxed italic">"{h.reason}"</p>
+                                <div className="mt-2.5 pl-3 ml-1" style={{ borderLeft: '2px solid #27272a' }}>
+                                  <p className="text-xs italic leading-relaxed" style={{ color: '#a1a1aa' }}>"{h.reason}"</p>
                                 </div>
                               )}
                             </div>
 
                             {/* Decision section */}
                             {h.description && (
-                              <div className={`border-t px-4 py-3 ${decisionBg}`}>
+                              <div className="border-t px-4 py-3" style={{ borderColor: decisionBorderColor, background: decisionBg }}>
                                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 bg-white shrink-0 ${isAutoRej ? 'text-rose-500 border-rose-300' : isApproved ? 'text-emerald-600 border-emerald-300' : 'text-rose-600 border-rose-300'}`}>
+                                  <div
+                                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                                    style={{ background: '#1f1f22', color: isAutoRej ? '#ff2a2a' : isApproved ? '#10b981' : '#ff2a2a', border: `2px solid ${isApproved ? 'rgba(16,185,129,0.4)' : 'rgba(255,42,42,0.4)'}` }}>
                                     {isAutoRej ? <Clock size={10} /> : (h.by_user || 'M').charAt(0).toUpperCase()}
                                   </div>
-                                  <span className={`text-xs font-bold ${isAutoRej ? 'text-rose-700' : 'text-gray-800'}`}>
-                                    {isAutoRej ? 'System' : 'Manager'}
-                                  </span>
+                                  <span className="text-xs font-bold text-white">{isAutoRej ? 'System' : 'Manager'}</span>
                                   {!isAutoRej && (
-                                    <span className="text-[9px] font-bold text-indigo-600 bg-white border border-indigo-200 px-1.5 py-0.5 rounded uppercase tracking-wider">Approver</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                                      style={{ color: '#0ea5e9', background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}>
+                                      APPROVER
+                                    </span>
                                   )}
-                                  <span className={`text-[10px] font-semibold ${isApproved ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  <span className="text-[10px] font-semibold" style={{ color: isApproved ? '#10b981' : '#ff2a2a' }}>
                                     {isApproved ? '✓ approved' : '✕ rejected'}
                                   </span>
                                 </div>
-                                <p className={`text-xs leading-relaxed font-medium ${isAutoRej ? 'text-rose-700' : isApproved ? 'text-emerald-800' : 'text-gray-700'}`}>
+                                <p className="text-xs leading-relaxed font-medium" style={{ color: isAutoRej ? '#ff2a2a' : isApproved ? '#10b981' : '#a1a1aa' }}>
                                   {h.description}
                                 </p>
-                                {/* From → To transfer indicator for approved */}
+                                {/* From → To indicator for approved */}
                                 {isApproved && h.by_user && h.to_user && (
-                                  <div className="mt-2.5 flex items-center gap-0 rounded-lg overflow-hidden border border-emerald-200 text-xs font-bold">
-                                    <div className="flex items-center gap-1.5 bg-rose-50 px-3 py-1.5 flex-1 min-w-0">
-                                      <div className="w-5 h-5 rounded-full bg-rose-200 text-rose-700 flex items-center justify-center text-[10px] font-black shrink-0">
+                                  <div className="mt-2.5 flex items-center gap-0 rounded overflow-hidden text-xs font-bold" style={{ border: '1px solid rgba(16,185,129,0.3)' }}>
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 flex-1 min-w-0" style={{ background: 'rgba(255,42,42,0.08)' }}>
+                                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: 'rgba(255,42,42,0.2)', color: '#ff6b6b' }}>
                                         {h.by_user.charAt(0).toUpperCase()}
                                       </div>
                                       <div className="min-w-0">
-                                        <div className="text-[9px] font-bold text-rose-400 uppercase tracking-wider leading-none mb-0.5">From</div>
-                                        <div className="text-rose-800 font-black truncate leading-tight text-xs">{h.by_user}</div>
+                                        <div className="text-[9px] font-bold uppercase tracking-wider leading-none mb-0.5" style={{ color: '#ff6b6b' }}>From</div>
+                                        <div className="font-black truncate text-white text-xs">{h.by_user}</div>
                                       </div>
                                     </div>
-                                    <div className="bg-emerald-500 px-2 py-1.5 flex items-center shrink-0 self-stretch">
-                                      <span className="text-white text-sm font-black">→</span>
+                                    <div className="px-2 py-1.5 flex items-center shrink-0 self-stretch" style={{ background: '#10b981' }}>
+                                      <span className="text-black text-sm font-black">→</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 flex-1 min-w-0">
-                                      <div className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center text-[10px] font-black shrink-0">
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 flex-1 min-w-0" style={{ background: 'rgba(16,185,129,0.08)' }}>
+                                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981' }}>
                                         {h.to_user.charAt(0).toUpperCase()}
                                       </div>
                                       <div className="min-w-0">
-                                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider leading-none mb-0.5">To</div>
-                                        <div className="text-emerald-800 font-black truncate leading-tight text-xs">{h.to_user}</div>
+                                        <div className="text-[9px] font-bold uppercase tracking-wider leading-none mb-0.5" style={{ color: '#10b981' }}>To</div>
+                                        <div className="font-black truncate text-white text-xs">{h.to_user}</div>
                                       </div>
                                     </div>
                                   </div>
@@ -770,63 +776,67 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                       );
                     })}
 
-                    {/* ── Current pending request (the one being reviewed) ── */}
+                    {/* ── Current pending request (being reviewed) ── */}
                     <div className="flex gap-3 pb-3">
-                      <div className="flex flex-col items-center shrink-0 pt-2.5">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 bg-amber-400 text-white ring-4 ring-amber-100">
+                      <div className="flex flex-col items-center shrink-0 pt-2">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 text-black"
+                          style={{ background: '#ffdd00', boxShadow: '0 0 0 3px rgba(255,221,0,0.2)' }}>
                           {mlHist.length + 1}
                         </div>
                       </div>
 
-                      <div className="flex-1 rounded-xl border bg-white overflow-hidden shadow-sm border-blue-300 ring-2 ring-blue-100">
-                        {/* Agent section */}
+                      <div className="flex-1 rounded-xl overflow-hidden"
+                        style={{ border: '1px solid rgba(14,165,233,0.4)', background: '#09090b', boxShadow: '0 0 0 2px rgba(14,165,233,0.08)' }}>
                         <div className="px-4 pt-3 pb-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-start gap-2.5 min-w-0">
-                              <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200 shrink-0 mt-0.5">
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                                style={{ background: '#1f1f22', color: '#a1a1aa', border: '1px solid #27272a' }}>
                                 {mlRequestor.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-sm font-bold text-gray-900 leading-tight">{mlRequestor}</span>
-                                  <span className="text-[11px] text-gray-400 font-medium">requested transfer</span>
+                                  <span className="text-sm font-bold text-white leading-tight">{mlRequestor}</span>
+                                  <span className="text-[11px] font-medium" style={{ color: '#71717a' }}>requested transfer</span>
                                   {mlTarget && (
                                     <>
-                                      <span className="text-[11px] text-gray-400">→</span>
-                                      <span className="text-sm font-bold text-cyan-600 leading-tight">{mlTarget}</span>
+                                      <span className="text-[11px]" style={{ color: '#71717a' }}>→</span>
+                                      <span className="text-sm font-bold leading-tight" style={{ color: '#0ea5e9' }}>{mlTarget}</span>
                                     </>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+                                <div className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: '#71717a' }}>
                                   <Calendar size={10} />
                                   {fmtDate(ml.reassignment_requested_at || ml.updated_at)}
                                 </div>
                               </div>
                             </div>
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 mt-0.5 bg-amber-100 text-amber-700 border-amber-200">
-                              Pending
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded shrink-0 mt-0.5"
+                              style={{ background: 'rgba(255,221,0,0.12)', color: '#ffdd00', border: '1px solid rgba(255,221,0,0.3)' }}>
+                              PENDING
                             </span>
                           </div>
 
-                          {/* Reason blockquote */}
                           {mlReason && (
-                            <div className="mt-2.5 pl-3 border-l-2 border-gray-200 ml-1">
-                              <p className="text-xs text-gray-600 leading-relaxed italic">"{mlReason}"</p>
+                            <div className="mt-2.5 pl-3 ml-1" style={{ borderLeft: '2px solid #27272a' }}>
+                              <p className="text-xs italic leading-relaxed" style={{ color: '#a1a1aa' }}>"{mlReason}"</p>
                             </div>
                           )}
 
-                          {/* Status context pills */}
                           {(mlLeadStatus || mlSubStatus) && (
                             <div className="flex gap-1.5 mt-2.5 flex-wrap">
                               {mlLeadStatus && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 inline-block" />
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded"
+                                  style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)', color: '#0ea5e9' }}>
+                                  <span className="w-1.5 h-1.5 rounded-full inline-block shrink-0" style={{ background: '#0ea5e9' }} />
                                   Lead: {mlLeadStatus}
                                 </span>
                               )}
                               {mlSubStatus && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0 inline-block" />
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded"
+                                  style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', color: '#8b5cf6' }}>
+                                  <span className="w-1.5 h-1.5 rounded-full inline-block shrink-0" style={{ background: '#8b5cf6' }} />
                                   Sub: {mlSubStatus}
                                 </span>
                               )}
@@ -834,20 +844,23 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                           )}
                         </div>
 
-                        {/* Manager decision input area */}
-                        <div className="border-t px-4 py-3 bg-amber-50 border-amber-100">
-                          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                        {/* Your Decision textarea */}
+                        <div className="border-t px-4 py-3" style={{ borderColor: 'rgba(255,221,0,0.2)', background: 'rgba(255,221,0,0.04)' }}>
+                          <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1" style={{ color: '#ffdd00' }}>
                             <Clock size={12} /> Your Decision
                           </p>
                           <textarea
                             value={actionRemark}
                             onChange={e => setActionRemark(e.target.value)}
                             placeholder="Write your decision remark here (Required)…"
-                            className="w-full bg-white border border-amber-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 text-gray-900 rounded-lg p-2.5 resize-none outline-none transition-all min-h-[56px] text-xs placeholder:text-gray-400"
+                            className="w-full resize-none outline-none text-white text-xs p-2.5 rounded-lg min-h-[56px] transition-all placeholder-[#52525b]"
+                            style={{ background: '#000000', border: '1px solid #27272a' }}
+                            onFocus={e => { e.currentTarget.style.borderColor = '#ffdd00'; }}
+                            onBlur={e => { e.currentTarget.style.borderColor = '#27272a'; }}
                             autoFocus
                           />
                           {!actionRemark.trim() && (
-                            <p className="text-amber-600 text-[10px] mt-1 flex items-center gap-1">
+                            <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#ffdd00' }}>
                               <AlertTriangle size={10} /> Remark is required to proceed
                             </p>
                           )}
@@ -858,15 +871,25 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                 </div>
 
                 {/* ── FOOTER ACTIONS ── */}
-                <div className="p-5 bg-gray-50 shrink-0 border-t border-gray-200">
+                <div className="p-5 shrink-0" style={{ background: '#09090b', borderTop: '1px solid #27272a' }}>
                   <div className="flex items-center justify-end gap-3">
-                    <button onClick={handleReject} disabled={!actionRemark.trim() || actionLoading}
-                      className="px-6 py-2.5 rounded-xl text-sm font-bold border-2 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 bg-white">
+                    <button
+                      onClick={handleReject}
+                      disabled={!actionRemark.trim() || actionLoading}
+                      className="px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: 'rgba(255,42,42,0.08)', color: '#ff2a2a', border: '2px solid rgba(255,42,42,0.3)' }}
+                      onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'rgba(255,42,42,0.16)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,42,42,0.08)'; }}>
                       {actionLoading && <RefreshCw size={13} className="animate-spin" />}
                       <XCircle size={16} /> Reject Transfer
                     </button>
-                    <button onClick={handleApprove} disabled={!actionRemark.trim() || actionLoading}
-                      className="px-6 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 text-white hover:bg-emerald-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-sm disabled:shadow-none">
+                    <button
+                      onClick={handleApprove}
+                      disabled={!actionRemark.trim() || actionLoading}
+                      className="px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-black"
+                      style={{ background: '#10b981', boxShadow: '0 0 16px rgba(16,185,129,0.3)' }}
+                      onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = '#059669'; }}
+                      onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = '#10b981'; }}>
                       {actionLoading && <RefreshCw size={13} className="animate-spin" />}
                       <CheckCircle size={16} /> Approve Transfer
                     </button>
