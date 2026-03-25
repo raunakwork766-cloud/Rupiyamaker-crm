@@ -539,22 +539,22 @@ const TransferRequestsPage = ({ user }) => {
             {/* ── Modal Header ── */}
             <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between gap-4 shrink-0">
               <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-black text-base shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-black text-sm shrink-0">
                   {customerName.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h2 className="text-base font-black text-gray-900 tracking-tight">{customerName.toUpperCase()}</h2>
-                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase border ${
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <h2 className="text-sm font-black text-gray-900 tracking-tight">{customerName.toUpperCase()}</h2>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
                       activeTab === 'pending'  ? 'bg-yellow-50 text-yellow-600 border-yellow-200' :
                       activeTab === 'approved' ? 'bg-green-50 text-green-600 border-green-200' :
                       activeTab === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
                                                  'bg-blue-50 text-blue-600 border-blue-200'
                     }`}>{activeTab.toUpperCase()}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
                     {(currentLead.phone || currentLead.mobile_number) && (
-                      <span className="flex items-center gap-1"><Phone size={11} />{currentLead.phone || currentLead.mobile_number}</span>
+                      <span className="flex items-center gap-1"><Phone size={10} />{currentLead.phone || currentLead.mobile_number}</span>
                     )}
                     <span className="text-gray-200">|</span>
                     <span>Assigned: <strong className="text-gray-700">{currentLead.assigned_user_name || currentLead.created_by_name || '—'}</strong></span>
@@ -576,7 +576,7 @@ const TransferRequestsPage = ({ user }) => {
             </div>
 
             {/* ── Modal Body ── */}
-            <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+            <div className="flex flex-1 overflow-hidden text-[13px]" style={{ minHeight: 0 }}>
 
               {/* ── LEFT: Bank Logins Sidebar ── */}
               <div className="w-64 shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
@@ -676,7 +676,7 @@ const TransferRequestsPage = ({ user }) => {
 
                 {/* ── STICKY STATS HEADER ── */}
                 <div className="shrink-0 px-5 py-2.5 border-b border-gray-200 bg-white z-10 flex items-center justify-between gap-3 flex-wrap">
-                  <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-widest shrink-0">
+                  <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest shrink-0">
                     TRANSFER HISTORY
                   </h3>
                   {!historyLoading && (
@@ -692,21 +692,21 @@ const TransferRequestsPage = ({ user }) => {
                         const totalCount = reqEntries.length + pendingCount;
                         return (
                           <>
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-gray-300 bg-white text-gray-600">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 bg-white text-gray-600">
                               <span className="font-black text-gray-900">{totalCount || history.length}</span> Total
                             </span>
                             {approvedCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700">
                                 <span className="font-black">{approvedCount}</span> Approved
                               </span>
                             )}
                             {rejectedCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-red-200 bg-red-50 text-red-700">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-red-200 bg-red-50 text-red-700">
                                 <span className="font-black">{rejectedCount}</span> Rejected
                               </span>
                             )}
                             {pendingCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-yellow-200 bg-yellow-50 text-yellow-700">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-yellow-200 bg-yellow-50 text-yellow-700">
                                 <span className="font-black">{pendingCount}</span> Pending
                               </span>
                             )}
@@ -818,13 +818,13 @@ const TransferRequestsPage = ({ user }) => {
                                 <div className="px-4 pt-3 pb-3">
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex items-start gap-2.5 min-w-0">
-                                      <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center justify-center text-sm font-black shrink-0 mt-0.5">
+                                      <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center justify-center text-xs font-black shrink-0 mt-0.5">
                                         {reqName.charAt(0).toUpperCase()}
                                       </div>
                                       <div className="min-w-0">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="text-sm font-black text-gray-900">{reqName}</span>
-                                          <span className="text-xs text-gray-400">requested transfer</span>
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          <span className="text-xs font-black text-gray-900">{reqName}</span>
+                                          <span className="text-[11px] text-gray-400">requested transfer</span>
                                           {toUser && (
                                             <>
                                               <span className="text-xs text-gray-400">→</span>
@@ -832,8 +832,8 @@ const TransferRequestsPage = ({ user }) => {
                                             </>
                                           )}
                                         </div>
-                                        <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
-                                          <Calendar size={10} /> {reqDate}
+                                        <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
+                                          <Calendar size={9} /> {reqDate}
                                         </div>
                                       </div>
                                     </div>
@@ -856,8 +856,8 @@ const TransferRequestsPage = ({ user }) => {
 
                                   {/* Reason blockquote */}
                                   {reason && (
-                                    <div className="mt-2.5 pl-3 border-l-2 border-gray-200 ml-1">
-                                      <p className="text-xs text-gray-600 italic leading-relaxed">"{reason}"</p>
+                                    <div className="mt-2 pl-3 border-l-2 border-gray-200 ml-1">
+                                      <p className="text-[11px] text-gray-600 italic leading-relaxed">"{reason}"</p>
                                     </div>
                                   )}
 
@@ -865,14 +865,14 @@ const TransferRequestsPage = ({ user }) => {
                                   {(leadSt || hasLogin) && (
                                     <div className="flex gap-1.5 mt-2.5 flex-wrap">
                                       {leadSt && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" />
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700">
+                                          <span className="w-1 h-1 rounded-full bg-teal-500 inline-block" />
                                           Lead: {leadSt}{subSt ? ` / ${subSt}` : ''}
                                         </span>
                                       )}
                                       {hasLogin && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block" />
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700">
+                                          <span className="w-1 h-1 rounded-full bg-violet-500 inline-block" />
                                           Login: ACTIVE LOGIN
                                         </span>
                                       )}
@@ -889,25 +889,25 @@ const TransferRequestsPage = ({ user }) => {
                                       : { background: '#fff5f5', borderColor: '#fecaca' }}
                                   >
                                     <div className="flex items-start justify-between gap-2 flex-wrap">
-                                      <div className="flex items-center gap-2 flex-wrap">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
                                         <div
-                                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border-2 bg-white shrink-0"
+                                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border-2 bg-white shrink-0"
                                           style={isApproved
                                             ? { color: '#15803d', borderColor: '#86efac' }
                                             : { color: '#b91c1c', borderColor: '#fca5a5' }}
                                         >
-                                          {isAutoRej ? <Clock size={12} /> : (decisionBy || 'M').charAt(0).toUpperCase()}
+                                          {isAutoRej ? <Clock size={10} /> : (decisionBy || 'M').charAt(0).toUpperCase()}
                                         </div>
-                                        <span className="text-sm font-black" style={{ color: isAutoRej ? '#b91c1c' : '#111827' }}>{isAutoRej ? 'System' : (decisionBy || 'Manager')}</span>
+                                        <span className="text-xs font-black" style={{ color: isAutoRej ? '#b91c1c' : '#111827' }}>{isAutoRej ? 'System' : (decisionBy || 'Manager')}</span>
                                         {!isAutoRej && (
-                                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
+                                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
                                         )}
-                                        <span className="text-[11px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
+                                        <span className="text-[10px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
                                           {isApproved ? '✓ approved' : '✕ rejected'}
                                         </span>
                                       </div>
-                                      <span className="text-[11px] text-gray-400 flex items-center gap-1">
-                                        <Calendar size={10} />
+                                      <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                        <Calendar size={9} />
                                         {decisionDate ? new Date(decisionDate).toLocaleString('en-GB', {
                                           day: '2-digit', month: 'short', year: 'numeric',
                                           hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
@@ -916,7 +916,7 @@ const TransferRequestsPage = ({ user }) => {
                                     </div>
                                     {/* Decision remark */}
                                     {decisionNote && (
-                                      <p className="text-xs leading-relaxed font-medium mt-2" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
+                                      <p className="text-[11px] leading-relaxed font-medium mt-1.5" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
                                         {decisionNote}
                                       </p>
                                     )}
@@ -1054,17 +1054,17 @@ const TransferRequestsPage = ({ user }) => {
                     <button
                       onClick={handleReject}
                       disabled={!decisionRemark.trim() || !!actionLoading}
-                      className="flex items-center gap-2 px-5 py-2.5 border-2 border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-50 hover:border-red-300 transition disabled:opacity-40 disabled:cursor-not-allowed text-sm bg-white"
+                      className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-50 hover:border-red-300 transition disabled:opacity-40 disabled:cursor-not-allowed text-xs bg-white"
                     >
-                      {actionLoading === 'reject' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                      {actionLoading === 'reject' ? <RefreshCw size={12} className="animate-spin" /> : <XCircle size={12} />}
                       Reject Transfer
                     </button>
                     <button
                       onClick={handleApprove}
                       disabled={!decisionRemark.trim() || !!actionLoading}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed text-sm shadow-sm"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed text-xs shadow-sm"
                     >
-                      {actionLoading === 'approve' ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                      {actionLoading === 'approve' ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
                       Approve Transfer
                     </button>
                   </div>
