@@ -581,7 +581,7 @@ const TransferRequestsPage = ({ user }) => {
                   ) : bankLogins.length === 0 && crmDupLeads.length === 0 ? (
                     <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl bg-white">
                       <Building2 size={20} className="mx-auto mb-1.5 text-gray-300" />
-                      <p className="text-xs font-semibold text-gray-400">No logins found</p>
+                      <p className="text-xs font-semibold text-gray-400">No logins yet</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -664,27 +664,31 @@ const TransferRequestsPage = ({ user }) => {
                   {!historyLoading && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {(() => {
-                        const totalHist = history.filter(h => (h.assignment_type || '').toLowerCase().includes('request')).length;
-                        const approvedCount = history.filter(h => (h.assignment_type || '').toLowerCase().includes('approv')).length;
-                        const rejectedCount = history.filter(h => (h.assignment_type || '').toLowerCase().includes('reject')).length;
+                        // Count only request entries as total
+                        const reqEntries = history.filter(h => (h.assignment_type || '').toLowerCase().includes('request'));
+                        // Count decisions paired to requests
+                        const approvedCount = history.filter(h => { const t = (h.assignment_type || '').toLowerCase(); return t.includes('approv') && !t.includes('request'); }).length;
+                        const rejectedCount = history.filter(h => { const t = (h.assignment_type || '').toLowerCase(); return t.includes('reject'); }).length;
+                        // Total = request entries + any pending from current tab
                         const pendingCount = activeTab === 'pending' ? 1 : 0;
+                        const totalCount = reqEntries.length + pendingCount;
                         return (
                           <>
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-600">
-                              <span className="font-black text-gray-900">{totalHist || history.length}</span> Total
+                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-gray-300 bg-white text-gray-600">
+                              <span className="font-black text-gray-900">{totalCount || history.length}</span> Total
                             </span>
                             {approvedCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-green-200 bg-green-50 text-green-700">
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700">
                                 <span className="font-black">{approvedCount}</span> Approved
                               </span>
                             )}
                             {rejectedCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-700">
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-red-200 bg-red-50 text-red-700">
                                 <span className="font-black">{rejectedCount}</span> Rejected
                               </span>
                             )}
                             {pendingCount > 0 && (
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-yellow-200 bg-yellow-50 text-yellow-700">
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-yellow-200 bg-yellow-50 text-yellow-700">
                                 <span className="font-black">{pendingCount}</span> Pending
                               </span>
                             )}
@@ -740,7 +744,11 @@ const TransferRequestsPage = ({ user }) => {
                         // Render
                         const renderCard = (req, decision, stepNum, isPendingDecision = false) => {
                           // Support both combined-array field names AND synthetic req field names
-                          const reqName = req.assigned_by_name || req.by_user || currentLead.requestor_name || '—';
+                          const reqNameRaw = req.assigned_by_name || req.by_user || currentLead.requestor_name || '—';
+                          // Show "(You)" suffix if this is the current user's own request
+                          const currentUserName = localStorage.getItem('userName') || localStorage.getItem('user_name') || '';
+                          const isOwnReq = isPendingDecision && (currentLead?.is_own_request || (currentUserName && reqNameRaw.toLowerCase() === currentUserName.toLowerCase()));
+                          const reqName = isOwnReq ? `${reqNameRaw} (You)` : reqNameRaw;
                           const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user || '';
                           const reason = req.remark || req.reason || req.description || '';
                           const reqDate = (req.assigned_date || req.date) ? new Date(req.assigned_date || req.date).toLocaleString('en-GB', {
@@ -754,7 +762,8 @@ const TransferRequestsPage = ({ user }) => {
                           const decisionBy = decision?.assigned_by_name || decision?.by_user || '';
                           const decisionNote = decision?.remark || decision?.reason || decision?.description || '';
                           const decisionDate = decision?.assigned_date || decision?.date || '';
-                          const isAutoRej = isRejected && (!decisionBy || (decisionNote || '').toLowerCase().includes('auto'));
+                          // Auto-rejection: system rejected it (no approver name, or note contains "auto" / "24 hours")
+                          const isAutoRej = isRejected && (!decisionBy.trim() || (decisionNote || '').toLowerCase().includes('auto') || (decisionNote || '').toLowerCase().includes('24 hour') || (decisionBy || '').toLowerCase() === 'system');
 
                           // Lead/login status pills from current lead
                           const leadSt = currentLead.lead_status || currentLead.status || '';
