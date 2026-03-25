@@ -389,8 +389,10 @@ async def list_reassignment_requests(
                 {"lead_id": {"$in": lead_ids_obj}, "type": "reassignment"},
                 {"_id": 0, "lead_id": 1, "created_at": 1, "created_by": 1,
                  "action": 1, "activity_description": 1, "details": 1}
-            ).sort("created_at", -1)
+            ).sort("created_at", 1)  # ascending so field_history order matches
             history_records = await history_cursor.to_list(length=200)
+
+            import re as _re
 
             def _plain_uid(val) -> str:
                 """Normalize a user ID to a plain string (handles list, old '['id']' format)."""
@@ -398,7 +400,6 @@ async def list_reassignment_requests(
                     return ""
                 if isinstance(val, list):
                     val = val[0] if val else ""
-                import re as _re
                 s = str(val).strip()
                 if s.startswith("[") and s.endswith("]"):
                     m = _re.search(r"'([^']+)'", s)
@@ -406,28 +407,104 @@ async def list_reassignment_requests(
                         s = m.group(1)
                 return s
 
-            for rec in history_records:
-                if rec.get("created_by"):
-                    await _resolve_name(str(rec["created_by"]))
-                details = rec.get("details") or {}
-                # Resolve to_user: target_user (requests) or assigned_to (approved)
-                if details.get("target_user"):
-                    await _resolve_name(_plain_uid(details["target_user"]))
-                if details.get("assigned_to"):
-                    await _resolve_name(_plain_uid(details["assigned_to"]))
-                # Resolve from_user (previous owner)
-                if details.get("from_user"):
-                    await _resolve_name(_plain_uid(details["from_user"]))
-                # Resolve from assigned_to field_changes (fallback for old records)
-                for fc in (details.get("field_changes") or []):
-                    if fc.get("field_name") == "assigned_to":
-                        if fc.get("old_value"):
-                            await _resolve_name(_plain_uid(fc["old_value"]))
-                        if fc.get("new_value"):
-                            await _resolve_name(_plain_uid(fc["new_value"]))
+            # ── Pass 1: compute to_user_id and from_user_id for each record ──
+            # Also collect lead IDs that still need field_history for from_user fallback
+            needs_fh_leads: set = set()
+            per_rec: list = []  # (rec, to_user_id, from_user_id)
 
-            history_by_lead: Dict[str, list] = {}
             for rec in history_records:
+                details = rec.get("details") or {}
+                action = rec.get("action", "")
+
+                # to_user: target_user (requests/old direct) OR assigned_to (new records)
+                to_user_id = _plain_uid(details.get("target_user") or "")
+                if not to_user_id:
+                    to_user_id = _plain_uid(details.get("assigned_to") or "")
+
+                # from_user: explicitly stored (new records after fix)
+                from_user_id = _plain_uid(details.get("from_user") or "")
+
+                # Fallback 1: field_changes embedded in the activity (approved activities)
+                if not from_user_id:
+                    for fc in (details.get("field_changes") or []):
+                        if fc.get("field_name") == "assigned_to" and fc.get("old_value"):
+                            from_user_id = _plain_uid(fc["old_value"])
+                            break
+
+                # Fallback 2: for approved_direct/requested old records, need lead field_history
+                if not from_user_id and action in ("approved_direct", "requested", "approved"):
+                    lid = str(rec.get("lead_id", ""))
+                    if lid:
+                        needs_fh_leads.add(lid)
+
+                per_rec.append((rec, to_user_id, from_user_id))
+
+            # ── Batch-fetch field_history from lead documents for fallback ──
+            lead_fh_map: Dict[str, list] = {}   # lead_id -> [{field_name, old_value, new_value, changed_at}]
+            lead_current_owner: Dict[str, str] = {}  # lead_id -> current assigned_to plain id
+
+            if needs_fh_leads:
+                fh_cursor = leads_db.collection.find(
+                    {"_id": {"$in": [ObjectId(lid) for lid in needs_fh_leads if ObjectId.is_valid(lid)]}},
+                    {"_id": 1, "field_history": 1, "assigned_to": 1}
+                )
+                async for doc in fh_cursor:
+                    lid_str = str(doc["_id"])
+                    fh = [fc for fc in (doc.get("field_history") or [])
+                          if fc.get("field_name") == "assigned_to"]
+                    lead_fh_map[lid_str] = fh
+                    lead_current_owner[lid_str] = _plain_uid(doc.get("assigned_to"))
+
+            # ── Pass 2: resolve from_user via field_history where still empty ──
+            resolved_per_rec: list = []
+            for (rec, to_user_id, from_user_id) in per_rec:
+                action = rec.get("action", "")
+                lid = str(rec.get("lead_id", ""))
+
+                if not from_user_id and lid in lead_fh_map:
+                    fh = lead_fh_map[lid]
+                    if action in ("approved_direct", "approved") and to_user_id:
+                        # Find the field_history entry where new_value matches to_user_id
+                        match = next(
+                            (fc for fc in fh if _plain_uid(fc.get("new_value", "")) == to_user_id),
+                            None
+                        )
+                        if match:
+                            from_user_id = _plain_uid(match.get("old_value", ""))
+                    elif action == "requested":
+                        # For pending requests: previous owner = current assigned_to
+                        # For old processed requests: find field_history entry whose new_value
+                        # matches to_user_id (the requestor's target); old_value = who had it before
+                        if to_user_id:
+                            match = next(
+                                (fc for fc in fh if _plain_uid(fc.get("new_value", "")) == to_user_id),
+                                None
+                            )
+                            if match:
+                                from_user_id = _plain_uid(match.get("old_value", ""))
+                        # If still empty, use lead's current owner (works for still-pending requests)
+                        if not from_user_id:
+                            from_user_id = lead_current_owner.get(lid, "")
+
+                resolved_per_rec.append((rec, to_user_id, from_user_id))
+
+            # ── Pre-resolve all user IDs into names ──
+            all_uids: set = set()
+            for (rec, to_uid, from_uid) in resolved_per_rec:
+                if rec.get("created_by"):
+                    all_uids.add(str(rec["created_by"]))
+                if to_uid:
+                    all_uids.add(to_uid)
+                if from_uid:
+                    all_uids.add(from_uid)
+
+            for uid in all_uids:
+                if uid:
+                    await _resolve_name(uid)
+
+            # ── Build final history_by_lead ──
+            history_by_lead: Dict[str, list] = {}
+            for (rec, to_user_id, from_user_id) in resolved_per_rec:
                 lid = str(rec.get("lead_id", ""))
                 if lid not in history_by_lead:
                     history_by_lead[lid] = []
@@ -436,19 +513,6 @@ async def list_reassignment_requests(
                     created_at_val = created_at_val.isoformat()
                 details = rec.get("details") or {}
                 action = rec.get("action", "")
-
-                # Resolve to_user: target_user for requests, assigned_to for approved
-                to_user_id = _plain_uid(details.get("target_user") or "")
-                if not to_user_id and action in ("approved", "approved_direct"):
-                    to_user_id = _plain_uid(details.get("assigned_to") or "")
-
-                # Resolve from_user: stored plain ID, or fall back to field_changes old value
-                from_user_id = _plain_uid(details.get("from_user") or "")
-                if not from_user_id and action in ("approved", "approved_direct"):
-                    for fc in (details.get("field_changes") or []):
-                        if fc.get("field_name") == "assigned_to" and fc.get("old_value"):
-                            from_user_id = _plain_uid(fc["old_value"])
-                            break
 
                 history_by_lead[lid].append({
                     "date": created_at_val or "",
