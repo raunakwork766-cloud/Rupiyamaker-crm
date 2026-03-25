@@ -177,6 +177,7 @@ const TransferRequestsPage = ({ user }) => {
           remark: entry.reason || entry.description || '',
           assigned_to_names: entry.to_user ? [entry.to_user] : [],
           from_user: entry.from_user || '',  // previous owner before this request
+          field_changes: entry.field_changes || [],  // data_code, campaign_name changes
           _source: 'reassignment',
         });
       });
@@ -935,34 +936,87 @@ const TransferRequestsPage = ({ user }) => {
                                   </div>
                                 )}
 
-                                {/* FROM → TO bar — shown for approved AND pending — FROM=previous owner, TO=new owner */}
-                                {(isApproved || isPendingDecision) && (fromUser || toUser) && (
-                                  <div className="px-4 pb-3" style={{ marginTop: decision ? 0 : 8 }}>
-                                    <div className="flex items-center rounded overflow-hidden border text-xs font-black" style={{ borderColor: isApproved ? '#bbf7d0' : '#93c5fd' }}>
-                                      <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#fff1f2' }}>
-                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#fecdd3', color: '#be123c' }}>
-                                          {(fromUser || '?').charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="min-w-0">
-                                          <div className="text-[9px] font-black text-red-400 uppercase tracking-wider">FROM</div>
-                                          <div className="text-red-800 font-black truncate text-xs">{fromUser || '—'}</div>
-                                        </div>
+                                {/* ── FIELD CHANGES DIFF CARD — shown for approved AND pending ── */}
+                                {(isApproved || isPendingDecision) && (() => {
+                                  // Build rows: owner row always, plus field-level changes from decision
+                                  const fieldChanges = (decision?.field_changes) || [];
+                                  const labelMap = { data_code: '🏷️ Data Code', campaign_name: '📢 Campaign', data_code_change: '🏷️ Data Code', campaign_name_change: '📢 Campaign' };
+                                  const changeRows = fieldChanges
+                                    .filter(fc => fc.old_value && fc.new_value && fc.old_value !== fc.new_value)
+                                    .map(fc => ({ label: labelMap[fc.field_name] || fc.field_name, from: fc.old_value, to: fc.new_value }));
+
+                                  // For pending card: also check lead-level proposed changes
+                                  if (isPendingDecision && !changeRows.length) {
+                                    if (currentLead.reassignment_new_data_code && currentLead.reassignment_new_data_code !== currentLead.data_code) {
+                                      changeRows.push({ label: '🏷️ Data Code', from: currentLead.data_code || '—', to: currentLead.reassignment_new_data_code });
+                                    }
+                                    if (currentLead.reassignment_new_campaign_name && currentLead.reassignment_new_campaign_name !== currentLead.campaign_name) {
+                                      changeRows.push({ label: '📢 Campaign', from: currentLead.campaign_name || '—', to: currentLead.reassignment_new_campaign_name });
+                                    }
+                                  }
+
+                                  const accentColor = isApproved ? '#10b981' : '#3b82f6';
+                                  const accentBg   = isApproved ? '#f0fdf4' : '#eff6ff';
+                                  const accentBorder = isApproved ? '#bbf7d0' : '#93c5fd';
+
+                                  return (
+                                    <div className="mx-3 mb-3 rounded-xl overflow-hidden border text-xs" style={{ borderColor: accentBorder }}>
+                                      {/* Header strip */}
+                                      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b" style={{ background: accentBg, borderColor: accentBorder }}>
+                                        <ArrowRight size={10} style={{ color: accentColor }} />
+                                        <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: accentColor }}>
+                                          {isApproved ? 'Changes Applied' : 'Pending Changes'}
+                                        </span>
                                       </div>
-                                      <div className="flex items-center px-2 py-1.5 shrink-0 self-stretch" style={{ background: isApproved ? '#10b981' : '#3b82f6' }}>
-                                        <span className="text-white font-black text-sm">→</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#f0fdf4' }}>
-                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#bbf7d0', color: '#15803d' }}>
-                                          {(toUser || reqName || '?').charAt(0).toUpperCase()}
+
+                                      {/* Owner row — always shown */}
+                                      {(fromUser || toUser) && (
+                                        <div className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f3f4f6' }}>
+                                          {/* Label */}
+                                          <div className="w-24 shrink-0 px-3 py-2 flex items-center" style={{ background: '#f9fafb' }}>
+                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">👤 Owner</span>
+                                          </div>
+                                          {/* Old value */}
+                                          <div className="flex-1 px-3 py-2 flex items-center min-w-0 border-l" style={{ background: '#fff1f2', borderColor: '#fecdd3' }}>
+                                            <div className="w-4 h-4 rounded-full bg-red-100 border border-red-200 text-[8px] font-black text-red-700 flex items-center justify-center shrink-0 mr-1.5">
+                                              {(fromUser || '?').charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-red-700 font-bold truncate text-[10px]">{fromUser || '—'}</span>
+                                          </div>
+                                          {/* Arrow */}
+                                          <div className="w-7 shrink-0 flex items-center justify-center border-l border-r" style={{ background: accentColor, borderColor: accentColor }}>
+                                            <span className="text-white font-black text-sm">→</span>
+                                          </div>
+                                          {/* New value */}
+                                          <div className="flex-1 px-3 py-2 flex items-center min-w-0" style={{ background: '#f0fdf4' }}>
+                                            <div className="w-4 h-4 rounded-full bg-green-100 border border-green-200 text-[8px] font-black text-green-700 flex items-center justify-center shrink-0 mr-1.5">
+                                              {(toUser || reqName || '?').charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-green-700 font-bold truncate text-[10px]">{toUser || reqName || '—'}</span>
+                                          </div>
                                         </div>
-                                        <div className="min-w-0">
-                                          <div className="text-[9px] font-black text-green-500 uppercase tracking-wider">TO</div>
-                                          <div className="text-green-800 font-black truncate text-xs">{toUser || reqName || '—'}</div>
+                                      )}
+
+                                      {/* Additional field change rows (data_code, campaign, etc.) */}
+                                      {changeRows.map((row, ri) => (
+                                        <div key={ri} className="flex items-stretch border-t" style={{ borderColor: '#f3f4f6' }}>
+                                          <div className="w-24 shrink-0 px-3 py-2 flex items-center" style={{ background: '#f9fafb' }}>
+                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">{row.label}</span>
+                                          </div>
+                                          <div className="flex-1 px-3 py-2 flex items-center min-w-0 border-l" style={{ background: '#fff1f2', borderColor: '#fecdd3' }}>
+                                            <span className="text-red-700 font-bold truncate text-[10px]">{row.from}</span>
+                                          </div>
+                                          <div className="w-7 shrink-0 flex items-center justify-center border-l border-r" style={{ background: accentColor, borderColor: accentColor }}>
+                                            <span className="text-white font-black text-sm">→</span>
+                                          </div>
+                                          <div className="flex-1 px-3 py-2 flex items-center min-w-0" style={{ background: '#f0fdf4' }}>
+                                            <span className="text-green-700 font-bold truncate text-[10px]">{row.to}</span>
+                                          </div>
                                         </div>
-                                      </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
                                 {/* ── Your Decision (manager, pending tab, last card) ── */}
                                 {isPendingDecision && currentLead?.can_approve_request && (

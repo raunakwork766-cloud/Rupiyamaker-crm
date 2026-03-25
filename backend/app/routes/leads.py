@@ -613,6 +613,11 @@ async def check_phone_number(
                     "reason": details.get("reason", ""),
                     "status": details.get("reassignment_status", ""),
                     "description": rec.get("activity_description", ""),
+                    # Field-level before/after changes (for approved activities)
+                    "field_changes": [
+                        fc for fc in (details.get("field_changes") or [])
+                        if fc.get("field_name") not in ("assigned_to", "reassignment_status")
+                    ],
                 })
 
             for lr in lead_results:
