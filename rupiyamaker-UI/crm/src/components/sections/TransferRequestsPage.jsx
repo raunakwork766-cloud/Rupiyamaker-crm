@@ -769,17 +769,19 @@ const TransferRequestsPage = ({ user }) => {
                           const currentUserName = localStorage.getItem('userName') || localStorage.getItem('user_name') || '';
                           const isOwnReq = isPendingDecision && (currentLead?.is_own_request || (currentUserName && reqNameRaw.toLowerCase() === currentUserName.toLowerCase()));
                           const reqName = isOwnReq ? `${reqNameRaw} (You)` : reqNameRaw;
-                          // toUser = who GETS the lead (target/requester)
-                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user || reqNameRaw || '';
                           // fromUser = who HAD the lead before the transfer (previous owner)
-                          // For new requests: from_user is stored in activity details
-                          // For pending card: currentLead.assigned_user_name is the current owner (not yet transferred)
                           const fromUser = req.from_user
-                            // For pending card: current owner (hasn't changed yet)
+                            // For approved/direct: the decision entry itself carries from_user resolved from assigned_to field_change
+                            || decision?.from_user
+                            // For pending card: current owner hasn't changed yet
                             || (isPendingDecision ? (currentLead.assigned_user_name || currentLead.assigned_to_name || '') : '')
-                            // For historical approved records without stored from_user:
-                            // If requester != target user, requester was the old owner
-                            || (!req.from_user && reqNameRaw && toUser && reqNameRaw !== toUser ? reqNameRaw : '')
+                            || '';
+
+                          // toUser = who GETS the lead after transfer
+                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user
+                            // For approved/direct: decision entry carries to_user resolved from assigned_to field_change
+                            || decision?.to_user
+                            || reqNameRaw
                             || '';
                           const reason = req.remark || req.reason || req.description || '';
                           const reqDate = (req.assigned_date || req.date) ? new Date(req.assigned_date || req.date).toLocaleString('en-GB', {

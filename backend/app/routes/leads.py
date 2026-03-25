@@ -581,6 +581,13 @@ async def check_phone_number(
                     history_user_ids.add(str(details["target_user"]))
                 if details.get("from_user"):
                     history_user_ids.add(str(details["from_user"]))
+                # For approved activities: field_changes for assigned_to hold old/new owner IDs
+                for fc in (details.get("field_changes") or []):
+                    if fc.get("field_name") == "assigned_to":
+                        if fc.get("old_value"):
+                            history_user_ids.add(str(fc["old_value"]))
+                        if fc.get("new_value"):
+                            history_user_ids.add(str(fc["new_value"]))
 
             user_name_cache = {}
             for uid in history_user_ids:
@@ -604,16 +611,39 @@ async def check_phone_number(
                 if isinstance(created_at_val, datetime):
                     created_at_val = created_at_val.isoformat()
                 details = rec.get("details") or {}
+
+                # For approved/direct activities: extract old/new owner from assigned_to field_change
+                assigned_to_old_id = ""
+                assigned_to_new_id = ""
+                for fc in (details.get("field_changes") or []):
+                    if fc.get("field_name") == "assigned_to":
+                        assigned_to_old_id = str(fc.get("old_value") or "")
+                        assigned_to_new_id = str(fc.get("new_value") or "")
+                        break
+
+                action = rec.get("action", "")
+                # from_user: for request activities use stored from_user;
+                # for approved activities fall back to old assigned_to from field_changes
+                from_user_id = str(details.get("from_user") or "")
+                if not from_user_id and action in ("approved", "approved_direct"):
+                    from_user_id = assigned_to_old_id
+
+                # to_user: for request activities use target_user;
+                # for approved activities fall back to new assigned_to from field_changes
+                to_user_id = str(details.get("target_user") or "")
+                if not to_user_id and action in ("approved", "approved_direct"):
+                    to_user_id = assigned_to_new_id
+
                 history_by_lead[lid].append({
                     "date": created_at_val or "",
-                    "action": rec.get("action", ""),
+                    "action": action,
                     "by_user": user_name_cache.get(str(rec.get("created_by", "")), ""),
-                    "to_user": user_name_cache.get(str(details.get("target_user", "")), ""),
-                    "from_user": user_name_cache.get(str(details.get("from_user", "")), ""),
+                    "to_user": user_name_cache.get(to_user_id, ""),
+                    "from_user": user_name_cache.get(from_user_id, ""),
                     "reason": details.get("reason", ""),
                     "status": details.get("reassignment_status", ""),
                     "description": rec.get("activity_description", ""),
-                    # Field-level before/after changes (for approved activities)
+                    # Field-level before/after changes (data_code, campaign — exclude assigned_to/status)
                     "field_changes": [
                         fc for fc in (details.get("field_changes") or [])
                         if fc.get("field_name") not in ("assigned_to", "reassignment_status")
