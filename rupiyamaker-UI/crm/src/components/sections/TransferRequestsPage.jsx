@@ -512,433 +512,547 @@ const TransferRequestsPage = ({ user }) => {
         )}
       </div>
 
-      {/* Detail Modal — white themed, 2-col for managers */}
+      {/* Detail Modal */}
       {currentLead && (
         <div
-          className="fixed inset-0 z-[900] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[900] flex items-center justify-center p-4 sm:p-6"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
           onClick={() => setSelectedLead(null)}
         >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div
-            className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-200"
+            className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200"
+            style={{ width: '1100px', maxWidth: '100%', maxHeight: 'calc(100vh - 3rem)' }}
             onClick={e => e.stopPropagation()}
           >
             {/* ── Modal Header ── */}
-            <div className="px-6 py-4 bg-white border-b border-gray-100 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 font-bold text-lg shrink-0">
+            <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-black text-base shrink-0">
                   {customerName.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-lg font-black text-gray-900 uppercase tracking-wide">{customerName}</h2>
-                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase border ${
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h2 className="text-base font-black text-gray-900 tracking-tight">{customerName.toUpperCase()}</h2>
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase border ${
                       activeTab === 'pending'  ? 'bg-yellow-50 text-yellow-600 border-yellow-200' :
                       activeTab === 'approved' ? 'bg-green-50 text-green-600 border-green-200' :
                       activeTab === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
                                                  'bg-blue-50 text-blue-600 border-blue-200'
-                    }`}>{activeTab}</span>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500 border border-gray-200">
-                      REQUEST
-                    </span>
+                    }`}>{activeTab.toUpperCase()}</span>
                   </div>
-                  <div className="flex items-center gap-4 mt-1.5 flex-wrap text-sm text-gray-500">
+                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
                     {(currentLead.phone || currentLead.mobile_number) && (
-                      <span className="flex items-center gap-1"><Phone size={12} />{currentLead.phone || currentLead.mobile_number}</span>
+                      <span className="flex items-center gap-1"><Phone size={11} />{currentLead.phone || currentLead.mobile_number}</span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <User size={12} />
-                      Assigned to <strong className="text-gray-700 ml-1">{currentLead.assigned_user_name || currentLead.created_by_name || '—'}</strong>
-                    </span>
+                    <span className="text-gray-200">|</span>
+                    <span>Assigned: <strong className="text-gray-700">{currentLead.assigned_user_name || currentLead.created_by_name || '—'}</strong></span>
                     {currentLead.reassignment_requested_at && (
-                      <span className="text-gray-400">{daysAgo(currentLead.reassignment_requested_at)}</span>
+                      <>
+                        <span className="text-gray-200">|</span>
+                        <span>{daysAgo(currentLead.reassignment_requested_at)}</span>
+                      </>
                     )}
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition shrink-0"
+                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition shrink-0"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
             {/* ── Modal Body ── */}
-            <div className="flex-1 overflow-y-auto flex flex-col md:flex-row min-h-0">
+            <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
 
-              {/* Left: Related Leads (duplicate CRM leads + bank logins) — visible to all */}
-              {(() => {
-                const dupLeads = crmDupLeads;
-                return (
-                  <div className="md:w-64 shrink-0 border-b md:border-b-0 md:border-r border-gray-100 p-4 bg-gray-50/50 overflow-y-auto">
-                    <h3 className="flex items-center gap-1.5 text-xs font-black text-gray-500 uppercase tracking-wider mb-3">
-                      <User size={13} /> RELATED LEADS
-                    </h3>
-
-                    {/* Duplicate CRM leads */}
-                    {dupLeads.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">CRM Leads</p>
-                        <div className="space-y-2">
-                          {dupLeads.map((dl, i) => {
-                            const dlId = dl._id || dl.id;
-                            const dlDate = dl.created_at || dl.created_date || dl.login_department_sent_date || '';
-                            const dlDateStr = dlDate ? (() => { try { return new Date(dlDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }); } catch { return ''; } })() : '';
-                            const st = (dl.status || '').toLowerCase();
-                            const dotColor = st.includes('approv') || st.includes('active') || st.includes('disburse') || st.includes('complet')
-                              ? 'bg-green-500'
-                              : st.includes('lost') || st.includes('reject') || st.includes('cancel')
-                              ? 'bg-red-500'
-                              : 'bg-blue-500';
-                            return (
-                              <div
-                                key={i}
-                                onClick={() => dlId && handleRowViewLead({ ...dl, _id: dlId })}
-                                className={`bg-white border border-gray-200 rounded-lg p-3 shadow-sm transition ${dlId ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/30' : ''}`}
-                              >
-                                <div className="flex items-center justify-between gap-2 mb-1.5">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}`} />
-                                    <p className="text-sm font-bold text-gray-900 truncate">{dl.status || '—'}</p>
-                                  </div>
-                                  {dlDateStr && <span className="text-[11px] text-gray-400 shrink-0">{dlDateStr}</span>}
-                                </div>
-                                <p className="text-xs font-black text-gray-800 uppercase tracking-wide ml-4">{dl.sub_status || ''}</p>
-                                {dl.department_name && <p className="text-[11px] text-gray-500 ml-4 mt-0.5">{dl.department_name}</p>}
-                                {(dl.loan_type_name || dl.loan_type) && <p className="text-[10px] text-gray-400 ml-4 mt-0.5">{dl.loan_type_name || dl.loan_type}</p>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Bank login leads */}
-                    {bankLoading ? (
-                      <div className="flex items-center gap-2 text-gray-400 text-xs py-4">
-                        <RefreshCw size={13} className="animate-spin" /> Loading...
-                      </div>
-                    ) : bankLogins.length === 0 && dupLeads.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl py-8 px-4 text-center">
-                        <p className="text-sm font-semibold text-gray-500">No Related Leads</p>
-                        <p className="text-xs text-gray-400 mt-0.5">No duplicates or logins found.</p>
-                      </div>
-                    ) : bankLogins.length > 0 ? (
-                      <div>
-                        {dupLeads.length > 0 && <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">Bank Logins</p>}
-                        <div className="space-y-2">
-                          {bankLogins.map((bl, i) => {
-                            const st = (bl.status || '').toLowerCase();
-                            const dotColor = st.includes('approv') || st.includes('active') || st.includes('final')
-                              ? 'bg-green-500'
-                              : st.includes('lost') || st.includes('reject') || st.includes('cancel')
-                              ? 'bg-red-500'
-                              : 'bg-blue-500';
-                            const dateStr = bl.login_date || bl.login_created_at
-                              ? (() => { try { return new Date(bl.login_date || bl.login_created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }); } catch { return ''; } })()
-                              : '';
-                            const blId = bl.original_lead_id || bl.id || bl._id || bl.lead_id || bl.login_lead_id;
-                            return (
-                              <div
-                                key={i}
-                                onClick={() => blId && handleRowViewLead({ _id: blId })}
-                                className={`bg-white border border-gray-200 rounded-lg p-3 shadow-sm transition ${blId ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/30' : ''}`}
-                              >
-                                <div className="flex items-center justify-between gap-2 mb-1.5">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}`} />
-                                    <p className="text-sm font-bold text-gray-900 truncate">{bl.bank_name || bl.processing_bank || 'Unknown Bank'}</p>
-                                  </div>
-                                  {dateStr && <span className="text-[11px] text-gray-400 shrink-0">{dateStr}</span>}
-                                </div>
-                                <p className="text-xs font-black text-gray-800 uppercase tracking-wide ml-4">{bl.status || '—'}</p>
-                                {bl.sub_status && <p className="text-[11px] text-gray-500 ml-4 mt-0.5">{bl.sub_status}</p>}
-                                {bl.loan_type && <p className="text-[10px] text-gray-400 ml-4 mt-0.5">{bl.loan_type}</p>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })()}
-
-              {/* Right: Reassignment + History */}
-              <div className="flex-1 p-5 min-w-0 space-y-5">
-
-                {/* Section 4: Reassignment Info */}
-                {(currentLead?.reassignment_reason || currentLead?.reassignment_rejection_reason) && (
-                  <div>
-                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 pb-1 border-b border-gray-100">Reassignment</h3>
-                    {currentLead.reassignment_reason && (
-                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-2">
-                        <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-1 font-black">Agent Reason</p>
-                        <p className="text-xs text-gray-700 leading-relaxed">"{currentLead.reassignment_reason}"</p>
-                        {currentLead.requestor_name && <p className="text-[11px] text-gray-400 mt-1.5">By: <strong className="text-gray-600">{currentLead.requestor_name}</strong></p>}
-                      </div>
-                    )}
-                    {currentLead.reassignment_rejection_reason && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-[11px] text-red-400 uppercase tracking-wider mb-1 font-black flex items-center gap-1"><XCircle size={10} /> Rejection Reason</p>
-                        <p className="text-xs text-red-700 leading-relaxed">"{currentLead.reassignment_rejection_reason}"</p>
-                        {currentLead.rejected_by_name && <p className="text-[11px] text-red-400 mt-1.5">By: <strong className="text-red-600">{currentLead.rejected_by_name}</strong></p>}
-                      </div>
+              {/* ── LEFT: Bank Logins Sidebar ── */}
+              <div className="w-64 shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
+                <div className="px-3 pt-3 pb-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
+                      <Building2 size={12} className="text-gray-400" /> BANK LOGINS
+                    </span>
+                    {bankLogins.length > 0 && (
+                      <span className="text-[10px] font-bold bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-gray-500">
+                        {bankLogins.length}
+                      </span>
                     )}
                   </div>
-                )}
 
-                {/* Section 5: Transfer History */}
-                <div>
-                  <div className="flex items-center justify-between mb-3 pb-1 border-b border-gray-100 gap-2 flex-wrap">
-                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider">Transfer History</h3>
-                    {!historyLoading && history.length > 0 && (() => {
-                      const approvedCount = history.filter(h => { const t = (h.assignment_type || '').toLowerCase(); return t === 'approved' || t === 'direct_transfer' || (t.includes('approv') && !t.includes('request')); }).length;
-                      const rejectedCount = history.filter(h => (h.assignment_type || '').toLowerCase().includes('reject')).length;
-                      return (
-                        <div className="flex gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">{history.length} Total</span>
-                          {approvedCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200">{approvedCount} Approved</span>}
-                          {rejectedCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">{rejectedCount} Rejected</span>}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {historyLoading ? (
-                    <div className="flex items-center justify-center py-8 text-gray-400">
-                      <RefreshCw size={16} className="animate-spin mr-2" />
-                      Loading history...
+                  {bankLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-xs py-4">
+                      <RefreshCw size={12} className="animate-spin" /> Loading…
                     </div>
-                  ) : history.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic py-2">No transfer history available.</p>
+                  ) : bankLogins.length === 0 && crmDupLeads.length === 0 ? (
+                    <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl bg-white">
+                      <Building2 size={20} className="mx-auto mb-1.5 text-gray-300" />
+                      <p className="text-xs font-semibold text-gray-400">No logins found</p>
+                    </div>
                   ) : (
-                    <div className="space-y-4">
-                      {(() => {
-                        // Group history: pair each request with its approval/rejection
-                        const requestEntries = history.filter(e => (e.assignment_type || '').toLowerCase().includes('request'));
-                        const responseEntries = history.filter(e => {
-                          const t = (e.assignment_type || '').toLowerCase();
-                          return t.includes('reject') || t === 'approved' || (t.includes('approv') && !t.includes('request'));
-                        });
-                        const otherEntries = history.filter(e => {
-                          const t = (e.assignment_type || '').toLowerCase();
-                          return !t.includes('request') && !t.includes('reject') && t !== 'approved' && !(t.includes('approv') && !t.includes('request'));
-                        });
-
-                        // Match responses to requests by closest date
-                        const usedResponses = new Set();
-                        const groups = requestEntries.map(req => {
-                          const reqDate = new Date(req.assigned_date || 0).getTime();
-                          let bestMatch = null;
-                          let bestDiff = Infinity;
-                          responseEntries.forEach((resp, ri) => {
-                            if (usedResponses.has(ri)) return;
-                            const respDate = new Date(resp.assigned_date || 0).getTime();
-                            const diff = respDate - reqDate;
-                            if (diff >= 0 && diff < bestDiff) { bestDiff = diff; bestMatch = ri; }
-                          });
-                          if (bestMatch !== null) {
-                            usedResponses.add(bestMatch);
-                            return { request: req, response: responseEntries[bestMatch] };
-                          }
-                          return { request: req, response: null };
-                        });
-
-                        // Unmatched responses + other entries as standalone
-                        const unmatchedResponses = responseEntries.filter((_, i) => !usedResponses.has(i));
-                        const standalone = [...unmatchedResponses, ...otherEntries].sort((a, b) =>
-                          new Date(b.assigned_date || 0) - new Date(a.assigned_date || 0)
-                        );
-
-                        const allGroups = [
-                          ...groups.sort((a, b) => new Date(b.request.assigned_date || 0) - new Date(a.request.assigned_date || 0)),
-                          ...standalone.map(e => ({ request: null, response: null, standalone: e })),
-                        ];
-
-                        const renderEntry = (entry, forceType) => {
-                          const dateStr = entry.assigned_date
-                            ? new Date(entry.assigned_date).toLocaleString('en-IN', {
-                                day: '2-digit', month: '2-digit', year: 'numeric',
-                                hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
-                              })
-                            : '—';
-                          const typeLC = (entry.assignment_type || '').toLowerCase();
-                          const isRejected = typeLC.includes('reject');
-                          const isRequested = typeLC.includes('request');
-                          const isApproved = typeLC === 'approved' || typeLC === 'direct_transfer' || (typeLC.includes('approv') && !isRequested);
-                          const isDirectTransfer = typeLC === 'direct_transfer';
-
-                          const personName = entry.assigned_by_name || (isRejected ? (currentLead.rejected_by_name || 'Manager') : isApproved ? (currentLead.approved_by_name || 'Manager') : '—');
-                          const actionText = isRequested ? 'requested a transfer'
-                            : isRejected ? 'rejected the transfer request'
-                            : isApproved && isDirectTransfer ? 'directly transferred lead'
-                            : isApproved ? 'approved the transfer request'
-                            : entry.assignment_type?.replace(/_/g, ' ') || 'transferred';
-
-                          const badgeClass = isRejected ? 'bg-red-50 text-red-500 border-red-200' : isApproved ? 'bg-green-50 text-green-600 border-green-200' : isRequested ? 'bg-blue-50 text-blue-500 border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200';
-                          const badgeText = isRejected ? 'REJECTED' : isApproved ? (isDirectTransfer ? 'DIRECT' : 'APPROVED') : isRequested ? 'REQUEST' : (entry.assignment_type || '').toUpperCase().replace(/_/g, ' ');
-
-                          return (
-                            <div className={`p-3 ${forceType === 'response' ? 'bg-gray-50/80 border-t border-gray-100' : ''}`}>
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isRejected ? 'bg-red-100 text-red-600' : isApproved ? 'bg-green-100 text-green-600' : isRequested ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'}`}>
-                                    {personName.charAt(0).toUpperCase()}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="text-sm font-bold text-gray-800">{personName}</span>
-                                    <span className="text-sm text-gray-400 ml-1.5">{actionText}</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="flex items-center gap-1 text-[11px] text-gray-400 whitespace-nowrap"><Calendar size={10} />{dateStr}</span>
-                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded border uppercase ${badgeClass}`}>{badgeText}</span>
-                                </div>
-                              </div>
-                              {isRequested && entry.remark && (
-                                <div className="mt-3 border-t border-gray-100 pt-3">
-                                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1"><User size={9} /> AGENT REASON</p>
-                                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">"{entry.remark}"</p>
-                                </div>
-                              )}
-                              {isRequested && (currentLead.lead_status || currentLead.sub_status) && (
-                                <div className="mt-2.5">
-                                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full">
-                                    <span className="w-2 h-2 rounded-full bg-green-500" />
-                                    Lead: {currentLead.lead_status}{currentLead.sub_status ? ` / ${currentLead.sub_status}` : ''}
-                                  </span>
-                                </div>
-                              )}
-                              {isRejected && entry.remark && (
-                                <div className="mt-3 border-t border-red-100 pt-3">
-                                  <p className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-1.5 flex items-center gap-1"><XCircle size={9} /> MANAGER REJECTION REASON</p>
-                                  <p className="text-sm text-red-700 leading-relaxed bg-red-50 border border-red-100 rounded-lg px-3 py-2">"{entry.remark}"</p>
-                                </div>
-                              )}
-                              {isApproved && !isRequested && entry.remark && (
-                                <div className="mt-3 border-t border-green-100 pt-3">
-                                  <p className="text-[10px] font-black text-green-500 uppercase tracking-wider mb-1.5 flex items-center gap-1"><CheckCircle size={9} /> MANAGER REMARK</p>
-                                  <p className="text-sm text-green-700 leading-relaxed bg-green-50 border border-green-100 rounded-lg px-3 py-2">"{entry.remark}"</p>
-                                </div>
-                              )}
-                              {(entry.assigned_to_names || []).length > 0 && (
-                                <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-                                  <ArrowRight size={11} className="text-gray-400" />
-                                  <span className="text-[10px] text-gray-400 font-semibold uppercase">Transferred to:</span>
-                                  {entry.assigned_to_names.map((n, ni) => (
-                                    <span key={ni} className="text-xs bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-semibold">{n}</span>
-                                  ))}
-                                </div>
-                              )}
+                    <div className="space-y-2">
+                      {/* Bank login leads */}
+                      {bankLogins.map((bl, i) => {
+                        const st = (bl.status || '').toUpperCase();
+                        const isActive = st.includes('ACTIVE') || st.includes('APPROV') || st.includes('FINAL');
+                        const isLost = st.includes('LOST') || st.includes('REJECT') || st.includes('CANCEL') || st.includes('BANK REJECTED');
+                        const dotColor = isActive ? '#10b981' : isLost ? '#ef4444' : '#3b82f6';
+                        const dateStr = (() => {
+                          const d = bl.login_date || bl.login_created_at || bl.created_at;
+                          if (!d) return '';
+                          try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }); }
+                          catch { return ''; }
+                        })();
+                        const blId = bl.original_lead_id || bl.id || bl._id || bl.lead_id;
+                        return (
+                          <div
+                            key={i}
+                            className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 shadow-sm"
+                            style={{ borderLeft: `3px solid ${dotColor}`, cursor: blId ? 'pointer' : 'default' }}
+                            onClick={() => blId && handleRowViewLead({ _id: blId })}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="text-xs font-black text-gray-900 truncate">{bl.bank_name || bl.processing_bank || 'Bank'}</span>
+                              {dateStr && <span className="text-[10px] text-gray-400 shrink-0">{dateStr}</span>}
                             </div>
-                          );
-                        };
+                            <span
+                              className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded"
+                              style={{
+                                background: isActive ? '#d1fae5' : isLost ? '#fee2e2' : '#dbeafe',
+                                color: isActive ? '#065f46' : isLost ? '#991b1b' : '#1e40af',
+                              }}
+                            >{bl.status || '—'}</span>
+                            {bl.sub_status && <p className="text-[10px] text-gray-500 mt-0.5">{bl.sub_status}</p>}
+                          </div>
+                        );
+                      })}
 
-                        return allGroups.map((group, gi) => {
-                          if (group.standalone) {
-                            const entry = group.standalone;
-                            const typeLC = (entry.assignment_type || '').toLowerCase();
-                            const isRejected = typeLC.includes('reject');
-                            const isApproved = typeLC === 'approved' || typeLC === 'direct_transfer' || (typeLC.includes('approv'));
+                      {/* CRM dup leads below bank logins */}
+                      {crmDupLeads.length > 0 && (
+                        <>
+                          {bankLogins.length > 0 && (
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest pt-1">CRM Leads</p>
+                          )}
+                          {crmDupLeads.map((dl, i) => {
+                            const st = (dl.status || '').toUpperCase();
+                            const isActive = st.includes('ACTIVE') || st.includes('APPROV') || st.includes('COMPLET');
+                            const isLost = st.includes('LOST') || st.includes('REJECT') || st.includes('CANCEL');
+                            const dotColor = isActive ? '#10b981' : isLost ? '#ef4444' : '#3b82f6';
+                            const dlId = dl._id || dl.id;
                             return (
-                              <div key={`s-${gi}`} className={`bg-white border rounded-lg shadow-sm overflow-hidden ${isRejected ? 'border-red-200' : isApproved ? 'border-green-200' : 'border-gray-200'}`}>
-                                {renderEntry(entry)}
+                              <div
+                                key={i}
+                                className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 shadow-sm"
+                                style={{ borderLeft: `3px solid ${dotColor}`, cursor: dlId ? 'pointer' : 'default' }}
+                                onClick={() => dlId && handleRowViewLead({ ...dl, _id: dlId })}
+                              >
+                                <span className="text-xs font-black text-gray-800 uppercase">{dl.status || '—'}</span>
+                                {dl.sub_status && <p className="text-[10px] text-gray-500 mt-0.5">{dl.sub_status}</p>}
+                                {dl.department_name && <p className="text-[10px] text-gray-400 mt-0.5">{dl.department_name}</p>}
                               </div>
                             );
-                          }
+                          })}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                          const hasResponse = !!group.response;
-                          const respType = hasResponse ? (group.response.assignment_type || '').toLowerCase() : '';
-                          const isRejResp = respType.includes('reject');
-                          const borderClass = isRejResp ? 'border-red-200' : hasResponse ? 'border-green-200' : 'border-orange-200';
+              {/* ── RIGHT: Timeline ── */}
+              <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
-                          return (
-                            <div key={`g-${gi}`} className={`bg-white border rounded-lg shadow-sm overflow-hidden ${borderClass}`}>
-                              {renderEntry(group.request)}
-                              {hasResponse && renderEntry(group.response, 'response')}
-                            </div>
-                          );
-                        });
+                {/* ── STICKY STATS HEADER ── */}
+                <div className="shrink-0 px-5 py-2.5 border-b border-gray-200 bg-white z-10 flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-widest shrink-0">
+                    TRANSFER HISTORY
+                  </h3>
+                  {!historyLoading && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(() => {
+                        const totalHist = history.filter(h => (h.action || '').toLowerCase() === 'requested').length;
+                        const approvedCount = history.filter(h => (h.status || '').toLowerCase() === 'approved' || (h.action || '').toLowerCase() === 'approved').length;
+                        const rejectedCount = history.filter(h => (h.status || '').toLowerCase() === 'rejected' || (h.action || '').toLowerCase() === 'rejected').length;
+                        const pendingCount = activeTab === 'pending' ? 1 : 0;
+                        return (
+                          <>
+                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-600">
+                              <span className="font-black text-gray-900">{totalHist || history.length}</span> Total
+                            </span>
+                            {approvedCount > 0 && (
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-green-200 bg-green-50 text-green-700">
+                                <span className="font-black">{approvedCount}</span> Approved
+                              </span>
+                            )}
+                            {rejectedCount > 0 && (
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-700">
+                                <span className="font-black">{rejectedCount}</span> Rejected
+                              </span>
+                            )}
+                            {pendingCount > 0 && (
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded border border-yellow-200 bg-yellow-50 text-yellow-700">
+                                <span className="font-black">{pendingCount}</span> Pending
+                              </span>
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                   )}
                 </div>
 
-                {/* AWAITING YOUR DECISION — only for pending + approver (not own request) */}
-                {currentLead?.can_approve_request && activeTab === 'pending' && (
-                  <div className="border-2 border-yellow-300 bg-yellow-50/60 rounded-xl p-4">
-                    <p className="text-sm font-bold text-yellow-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                      <Clock size={14} className="text-yellow-500" />
-                      AWAITING YOUR DECISION
-                    </p>
-                    <textarea
-                      value={decisionRemark}
-                      onChange={e => setDecisionRemark(e.target.value)}
-                      placeholder="Write your decision remark here (Required)..."
-                      className="w-full px-4 py-3 border-2 border-yellow-300 bg-yellow-50 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-yellow-400 resize-none transition-colors"
-                      rows={3}
-                    />
-                  </div>
-                )}
+                {/* ── SCROLLABLE TIMELINE ── */}
+                <div className="flex-1 overflow-y-auto px-4 py-4">
+                  {historyLoading ? (
+                    <div className="flex items-center justify-center py-12 text-gray-400">
+                      <RefreshCw size={16} className="animate-spin mr-2" /> Loading history…
+                    </div>
+                  ) : (
+                    <div className="space-y-0">
+                      {(() => {
+                        // Build grouped items: each "requested" entry + its paired decision
+                        // Sort: oldest first (ascending by date)
+                        const requested = history
+                          .filter(h => (h.action || '').toLowerCase() === 'requested')
+                          .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
-                {/* Read-only status banner for own requests */}
-                {currentLead?.is_own_request && !currentLead?.can_approve_request && (
-                  <div className={`rounded-xl p-4 border-2 ${
-                    activeTab === 'pending' ? 'border-yellow-300 bg-yellow-50/60' :
-                    activeTab === 'approved' ? 'border-green-300 bg-green-50/60' :
-                    activeTab === 'rejected' ? 'border-red-300 bg-red-50/60' :
-                    'border-blue-300 bg-blue-50/60'
-                  }`}>
-                    <p className={`text-sm font-bold uppercase tracking-wide flex items-center gap-2 ${
-                      activeTab === 'pending' ? 'text-yellow-700' :
-                      activeTab === 'approved' ? 'text-green-700' :
-                      activeTab === 'rejected' ? 'text-red-700' :
-                      'text-blue-700'
-                    }`}>
-                      {activeTab === 'pending' && <><Clock size={14} className="text-yellow-500" /> Your request is pending approval</>}
-                      {activeTab === 'approved' && <><CheckCircle size={14} className="text-green-500" /> Your request has been approved</>}
-                      {activeTab === 'rejected' && <><XCircle size={14} className="text-red-500" /> Your request has been rejected</>}
-                      {activeTab === 'direct' && <><ArrowRight size={14} className="text-blue-500" /> Direct transfer completed</>}
-                    </p>
+                        const decisions = history.filter(h => {
+                          const a = (h.action || '').toLowerCase();
+                          return a === 'approved' || a === 'rejected' || a === 'approved_direct';
+                        });
+
+                        // Match each request to its closest subsequent decision
+                        const usedDecisions = new Set();
+                        const groups = requested.map(req => {
+                          const reqTime = new Date(req.date || 0).getTime();
+                          let best = null, bestDiff = Infinity;
+                          decisions.forEach((d, i) => {
+                            if (usedDecisions.has(i)) return;
+                            const dTime = new Date(d.date || 0).getTime();
+                            const diff = dTime - reqTime;
+                            if (diff >= -60000 && diff < bestDiff) { bestDiff = diff; best = i; }
+                          });
+                          if (best !== null) usedDecisions.add(best);
+                          return { req, decision: best !== null ? decisions[best] : null };
+                        });
+
+                        // Include any unmatched decisions as standalone
+                        const unmatchedDecisions = decisions.filter((_, i) => !usedDecisions.has(i));
+
+                        // Add current pending request at the END if pending tab
+                        const items = [...groups];
+                        const hasPendingCard = activeTab === 'pending' && currentLead?.can_approve_request;
+                        const showOwnPendingCard = activeTab === 'pending' && currentLead?.is_own_request && !currentLead?.can_approve_request;
+
+                        // Render
+                        const renderCard = (req, decision, stepNum, isPendingDecision = false) => {
+                          const reqName = req.by_user || currentLead.requestor_name || '—';
+                          const toUser = req.to_user || '';
+                          const reason = req.reason || req.description || '';
+                          const reqDate = req.date ? new Date(req.date).toLocaleString('en-GB', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
+                          }) : fmtDateTime(currentLead.reassignment_requested_at);
+
+                          const isApproved = decision && ((decision.action || '').toLowerCase().includes('approv') || (decision.status || '').toLowerCase() === 'approved');
+                          const isRejected = decision && ((decision.action || '').toLowerCase() === 'rejected' || (decision.status || '').toLowerCase() === 'rejected');
+                          const isAutoRej = decision && ((decision.description || '').toLowerCase().includes('auto') || (decision.reason || '').toLowerCase().includes('auto') || (decision.by_user || '') === '');
+
+                          // Lead/login status pills from current lead
+                          const leadSt = currentLead.lead_status || currentLead.status || '';
+                          const subSt = currentLead.sub_status || '';
+                          const hasLogin = currentLead.file_sent_to_login;
+
+                          // Card border color
+                          const cardBorderColor = isApproved ? '#bbf7d0' : isRejected ? '#fecaca' : isPendingDecision ? '#93c5fd' : '#e5e7eb';
+
+                          return (
+                            <div className="flex gap-3 pb-3" key={`card-${stepNum}`}>
+                              {/* Step circle + vertical line */}
+                              <div className="flex flex-col items-center shrink-0 pt-2">
+                                <div
+                                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
+                                  style={{
+                                    background: isApproved ? '#10b981' : isRejected ? '#ef4444' : isPendingDecision ? '#f59e0b' : '#3b82f6',
+                                    boxShadow: isApproved ? '0 0 0 3px #d1fae5' : isRejected ? '0 0 0 3px #fee2e2' : isPendingDecision ? '0 0 0 3px #fef3c7' : '0 0 0 3px #dbeafe',
+                                  }}
+                                >
+                                  {stepNum}
+                                </div>
+                                {!isPendingDecision && (
+                                  <div className="w-px bg-gray-200 flex-1 mt-1.5" />
+                                )}
+                              </div>
+
+                              {/* Card */}
+                              <div
+                                className="flex-1 rounded-xl border bg-white overflow-hidden shadow-sm mb-1"
+                                style={{ borderColor: cardBorderColor, borderWidth: isPendingDecision ? '2px' : '1px' }}
+                              >
+                                {/* Agent row */}
+                                <div className="px-4 pt-3 pb-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2.5 min-w-0">
+                                      <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center justify-center text-sm font-black shrink-0 mt-0.5">
+                                        {reqName.charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="text-sm font-black text-gray-900">{reqName}</span>
+                                          <span className="text-xs text-gray-400">requested transfer</span>
+                                          {toUser && (
+                                            <>
+                                              <span className="text-xs text-gray-400">→</span>
+                                              <span className="text-sm font-bold text-blue-600">{toUser}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+                                          <Calendar size={10} /> {reqDate}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {/* Status badge — show only if decision exists or pending */}
+                                    {(isApproved || isRejected) ? (
+                                      <span
+                                        className="text-[10px] font-black px-2.5 py-0.5 rounded border shrink-0 capitalize"
+                                        style={isApproved
+                                          ? { background: '#d1fae5', color: '#065f46', borderColor: '#a7f3d0' }
+                                          : { background: '#fee2e2', color: '#991b1b', borderColor: '#fecaca' }}
+                                      >
+                                        {isApproved ? 'Approved' : 'Rejected'}
+                                      </span>
+                                    ) : isPendingDecision ? (
+                                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded border shrink-0 bg-yellow-50 text-yellow-700 border-yellow-200">
+                                        Pending
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  {/* Reason blockquote */}
+                                  {reason && (
+                                    <div className="mt-2.5 pl-3 border-l-2 border-gray-200 ml-1">
+                                      <p className="text-xs text-gray-600 italic leading-relaxed">"{reason}"</p>
+                                    </div>
+                                  )}
+
+                                  {/* Lead / Login status pills */}
+                                  {(leadSt || hasLogin) && (
+                                    <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                                      {leadSt && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" />
+                                          Lead: {leadSt}{subSt ? ` / ${subSt}` : ''}
+                                        </span>
+                                      )}
+                                      {hasLogin && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block" />
+                                          Login: ACTIVE LOGIN
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* ── Approver/Rejecter decision section ── */}
+                                {decision && (
+                                  <div
+                                    className="border-t px-4 py-3"
+                                    style={isApproved
+                                      ? { background: '#f0fdf4', borderColor: '#bbf7d0' }
+                                      : { background: '#fff5f5', borderColor: '#fecaca' }}
+                                  >
+                                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <div
+                                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border-2 bg-white shrink-0"
+                                          style={isApproved
+                                            ? { color: '#15803d', borderColor: '#86efac' }
+                                            : { color: '#b91c1c', borderColor: '#fca5a5' }}
+                                        >
+                                          {isAutoRej ? <Clock size={12} /> : (decision.by_user || 'M').charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm font-black text-gray-900">{isAutoRej ? 'System' : (decision.by_user || 'Manager')}</span>
+                                        {!isAutoRej && (
+                                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
+                                        )}
+                                        <span className="text-[11px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
+                                          {isApproved ? '✓ approved' : '✕ rejected'}
+                                        </span>
+                                      </div>
+                                      <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                                        <Calendar size={10} />
+                                        {decision.date ? new Date(decision.date).toLocaleString('en-GB', {
+                                          day: '2-digit', month: 'short', year: 'numeric',
+                                          hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
+                                        }) : '—'}
+                                      </span>
+                                    </div>
+                                    {/* Decision remark */}
+                                    {(decision.reason || decision.description) && (
+                                      <p className="text-xs leading-relaxed font-medium mt-2" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
+                                        {decision.reason || decision.description}
+                                      </p>
+                                    )}
+                                    {/* FROM → TO bar for approved */}
+                                    {isApproved && req.by_user && req.to_user && (
+                                      <div className="mt-2.5 flex items-center rounded overflow-hidden border border-green-200 text-xs font-black">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#fff1f2' }}>
+                                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#fecdd3', color: '#be123c' }}>
+                                            {req.by_user.charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="text-[9px] font-black text-red-400 uppercase tracking-wider">FROM</div>
+                                            <div className="text-red-800 font-black truncate text-xs">{req.by_user}</div>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center px-2 py-1.5 shrink-0 self-stretch" style={{ background: '#10b981' }}>
+                                          <span className="text-white font-black text-sm">→</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#f0fdf4' }}>
+                                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#bbf7d0', color: '#15803d' }}>
+                                            {req.to_user.charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="text-[9px] font-black text-green-500 uppercase tracking-wider">TO</div>
+                                            <div className="text-green-800 font-black truncate text-xs">{req.to_user}</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* ── Your Decision (manager, pending tab, last card) ── */}
+                                {isPendingDecision && currentLead?.can_approve_request && (
+                                  <div className="border-t border-yellow-200 px-4 py-3 bg-yellow-50">
+                                    <p className="text-[10px] font-black text-yellow-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                      <Clock size={11} /> Your Decision
+                                    </p>
+                                    <textarea
+                                      value={decisionRemark}
+                                      onChange={e => setDecisionRemark(e.target.value)}
+                                      placeholder="Write your decision remark here (Required)…"
+                                      className="w-full bg-white border border-yellow-200 focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 text-gray-900 rounded-lg p-2.5 resize-none outline-none text-xs placeholder-gray-400 transition min-h-[56px]"
+                                      autoFocus
+                                    />
+                                    {!decisionRemark.trim() && (
+                                      <p className="text-yellow-600 text-[10px] mt-1 flex items-center gap-1">
+                                        <AlertCircle size={10} /> Remark is required to proceed
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* ── Read-only status for non-approver pending ── */}
+                                {isPendingDecision && showOwnPendingCard && (
+                                  <div className="border-t border-yellow-200 px-4 py-3 bg-yellow-50">
+                                    <p className="text-xs font-bold text-yellow-700 flex items-center gap-1.5">
+                                      <Clock size={12} className="text-yellow-500" /> Your request is awaiting approval
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        };
+
+                        const allRendered = [];
+
+                        // Past groups (oldest first = index 0 = oldest)
+                        items.forEach((group, i) => {
+                          allRendered.push(renderCard(group.req, group.decision, i + 1, false));
+                        });
+
+                        // Unmatched standalone decisions
+                        unmatchedDecisions.forEach((d, i) => {
+                          const name = d.by_user || 'Manager';
+                          const isApproved = (d.action || '').includes('approv') || (d.status || '') === 'approved';
+                          const isRejected = (d.action || '').includes('reject') || (d.status || '') === 'rejected';
+                          allRendered.push(
+                            <div className="flex gap-3 pb-3" key={`d-${i}`}>
+                              <div className="flex flex-col items-center shrink-0 pt-2">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
+                                  style={{ background: isApproved ? '#10b981' : isRejected ? '#ef4444' : '#6b7280', boxShadow: isApproved ? '0 0 0 3px #d1fae5' : isRejected ? '0 0 0 3px #fee2e2' : '0 0 0 3px #f3f4f6' }}>
+                                  {items.length + i + 1}
+                                </div>
+                              </div>
+                              <div className="flex-1 rounded-xl border bg-white overflow-hidden shadow-sm mb-1"
+                                style={{ borderColor: isApproved ? '#bbf7d0' : isRejected ? '#fecaca' : '#e5e7eb' }}>
+                                <div className="px-4 py-3 flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center justify-center text-sm font-black shrink-0">
+                                      {name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-sm font-black text-gray-900">{name}</span>
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
+                                        <span className="text-[11px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{isApproved ? '✓ approved' : '✕ rejected'}</span>
+                                      </div>
+                                      {d.date && <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><Calendar size={10} />{fmtDateTime(d.date)}</div>}
+                                    </div>
+                                  </div>
+                                </div>
+                                {(d.reason || d.description) && (
+                                  <div className="px-4 pb-3 border-t pt-2" style={{ borderColor: isApproved ? '#bbf7d0' : '#fecaca', background: isApproved ? '#f0fdf4' : '#fff5f5' }}>
+                                    <p className="text-xs font-medium leading-relaxed" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{d.reason || d.description}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        });
+
+                        // Add current pending/own request card at the BOTTOM
+                        if (hasPendingCard || showOwnPendingCard) {
+                          // Build a synthetic req entry for it
+                          const syntheticReq = {
+                            by_user: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
+                            to_user: currentLead.target_user_name || '',
+                            reason: currentLead.reassignment_reason || '',
+                            date: currentLead.reassignment_requested_at || '',
+                          };
+                          allRendered.push(renderCard(syntheticReq, null, items.length + unmatchedDecisions.length + 1, true));
+                        }
+
+                        if (allRendered.length === 0) {
+                          return <p className="text-sm text-gray-400 italic py-4">No transfer history available.</p>;
+                        }
+
+                        return allRendered;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── FOOTER ACTIONS ── */}
+                {currentLead?.can_approve_request && activeTab === 'pending' && (
+                  <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 shrink-0 flex items-center justify-end gap-3">
+                    <button
+                      onClick={handleReject}
+                      disabled={!decisionRemark.trim() || !!actionLoading}
+                      className="flex items-center gap-2 px-5 py-2.5 border-2 border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-50 hover:border-red-300 transition disabled:opacity-40 disabled:cursor-not-allowed text-sm bg-white"
+                    >
+                      {actionLoading === 'reject' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                      Reject Transfer
+                    </button>
+                    <button
+                      onClick={handleApprove}
+                      disabled={!decisionRemark.trim() || !!actionLoading}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed text-sm shadow-sm"
+                    >
+                      {actionLoading === 'approve' ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                      Approve Transfer
+                    </button>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* ── Modal Footer — Approve / Reject (approvers + pending only, not own request) ── */}
-            {currentLead?.can_approve_request && activeTab === 'pending' && (
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
-                <button
-                  onClick={handleReject}
-                  disabled={actionLoading || !decisionRemark.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 border-2 border-red-300 text-red-500 font-bold rounded-xl hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed text-sm"
-                >
-                  {actionLoading === 'reject' ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <XCircle size={14} />
-                  )}
-                  Reject Transfer
-                </button>
-                <button
-                  onClick={handleApprove}
-                  disabled={actionLoading || !decisionRemark.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 border-2 border-green-300 text-green-600 font-bold rounded-xl hover:bg-green-50 transition disabled:opacity-40 disabled:cursor-not-allowed text-sm"
-                >
-                  {actionLoading === 'approve' ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <CheckCircle size={14} />
-                  )}
-                  Approve Transfer
-                </button>
-              </div>
-            )}
           </div>
         </div>
-)}
+      )}
 
       {/* Full-screen LeadDetails view when a row is clicked */}
       {viewFullLead && (
