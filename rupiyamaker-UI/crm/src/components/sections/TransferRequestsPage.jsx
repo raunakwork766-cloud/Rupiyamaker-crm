@@ -235,14 +235,8 @@ const TransferRequestsPage = ({ user }) => {
       }
     } catch {}
 
-    // Sort: non-request entries by date desc first, then request entries by date desc at the bottom
-    combined.sort((a, b) => {
-      const aIsRequest = (a.assignment_type || '').toLowerCase().includes('request');
-      const bIsRequest = (b.assignment_type || '').toLowerCase().includes('request');
-      if (aIsRequest && !bIsRequest) return 1;  // requests go to bottom
-      if (!aIsRequest && bIsRequest) return -1;
-      return new Date(b.assigned_date || 0) - new Date(a.assigned_date || 0);
-    });
+    // Sort: oldest first (ascending) so timeline renders chronologically
+    combined.sort((a, b) => new Date(a.assigned_date || 0) - new Date(b.assigned_date || 0));
     setHistory(combined);
     setHistoryLoading(false);
 
@@ -670,9 +664,9 @@ const TransferRequestsPage = ({ user }) => {
                   {!historyLoading && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {(() => {
-                        const totalHist = history.filter(h => (h.action || '').toLowerCase() === 'requested').length;
-                        const approvedCount = history.filter(h => (h.status || '').toLowerCase() === 'approved' || (h.action || '').toLowerCase() === 'approved').length;
-                        const rejectedCount = history.filter(h => (h.status || '').toLowerCase() === 'rejected' || (h.action || '').toLowerCase() === 'rejected').length;
+                        const totalHist = history.filter(h => (h.assignment_type || '').toLowerCase().includes('request')).length;
+                        const approvedCount = history.filter(h => (h.assignment_type || '').toLowerCase().includes('approv')).length;
+                        const rejectedCount = history.filter(h => (h.assignment_type || '').toLowerCase().includes('reject')).length;
                         const pendingCount = activeTab === 'pending' ? 1 : 0;
                         return (
                           <>
@@ -711,24 +705,23 @@ const TransferRequestsPage = ({ user }) => {
                     <div className="space-y-0">
                       {(() => {
                         // Build grouped items: each "requested" entry + its paired decision
-                        // Sort: oldest first (ascending by date)
+                        // history is already sorted ascending (oldest first) from openModal
                         const requested = history
-                          .filter(h => (h.action || '').toLowerCase() === 'requested')
-                          .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+                          .filter(h => (h.assignment_type || '').toLowerCase().includes('request'));
 
                         const decisions = history.filter(h => {
-                          const a = (h.action || '').toLowerCase();
-                          return a === 'approved' || a === 'rejected' || a === 'approved_direct';
+                          const t = (h.assignment_type || '').toLowerCase();
+                          return t === 'approved' || t === 'rejected' || t === 'direct_transfer' || t.includes('approv') || t.includes('reject');
                         });
 
                         // Match each request to its closest subsequent decision
                         const usedDecisions = new Set();
                         const groups = requested.map(req => {
-                          const reqTime = new Date(req.date || 0).getTime();
+                          const reqTime = new Date(req.assigned_date || 0).getTime();
                           let best = null, bestDiff = Infinity;
                           decisions.forEach((d, i) => {
                             if (usedDecisions.has(i)) return;
-                            const dTime = new Date(d.date || 0).getTime();
+                            const dTime = new Date(d.assigned_date || 0).getTime();
                             const diff = dTime - reqTime;
                             if (diff >= -60000 && diff < bestDiff) { bestDiff = diff; best = i; }
                           });
@@ -746,17 +739,22 @@ const TransferRequestsPage = ({ user }) => {
 
                         // Render
                         const renderCard = (req, decision, stepNum, isPendingDecision = false) => {
-                          const reqName = req.by_user || currentLead.requestor_name || '—';
-                          const toUser = req.to_user || '';
-                          const reason = req.reason || req.description || '';
-                          const reqDate = req.date ? new Date(req.date).toLocaleString('en-GB', {
+                          // Support both combined-array field names AND synthetic req field names
+                          const reqName = req.assigned_by_name || req.by_user || currentLead.requestor_name || '—';
+                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user || '';
+                          const reason = req.remark || req.reason || req.description || '';
+                          const reqDate = (req.assigned_date || req.date) ? new Date(req.assigned_date || req.date).toLocaleString('en-GB', {
                             day: '2-digit', month: 'short', year: 'numeric',
                             hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
                           }) : fmtDateTime(currentLead.reassignment_requested_at);
 
-                          const isApproved = decision && ((decision.action || '').toLowerCase().includes('approv') || (decision.status || '').toLowerCase() === 'approved');
-                          const isRejected = decision && ((decision.action || '').toLowerCase() === 'rejected' || (decision.status || '').toLowerCase() === 'rejected');
-                          const isAutoRej = decision && ((decision.description || '').toLowerCase().includes('auto') || (decision.reason || '').toLowerCase().includes('auto') || (decision.by_user || '') === '');
+                          const decisionType = (decision?.assignment_type || decision?.action || '').toLowerCase();
+                          const isApproved = decision && (decisionType.includes('approv'));
+                          const isRejected = decision && (decisionType.includes('reject'));
+                          const decisionBy = decision?.assigned_by_name || decision?.by_user || '';
+                          const decisionNote = decision?.remark || decision?.reason || decision?.description || '';
+                          const decisionDate = decision?.assigned_date || decision?.date || '';
+                          const isAutoRej = isRejected && (!decisionBy || (decisionNote || '').toLowerCase().includes('auto'));
 
                           // Lead/login status pills from current lead
                           const leadSt = currentLead.lead_status || currentLead.status || '';
@@ -871,9 +869,9 @@ const TransferRequestsPage = ({ user }) => {
                                             ? { color: '#15803d', borderColor: '#86efac' }
                                             : { color: '#b91c1c', borderColor: '#fca5a5' }}
                                         >
-                                          {isAutoRej ? <Clock size={12} /> : (decision.by_user || 'M').charAt(0).toUpperCase()}
+                                          {isAutoRej ? <Clock size={12} /> : (decisionBy || 'M').charAt(0).toUpperCase()}
                                         </div>
-                                        <span className="text-sm font-black text-gray-900">{isAutoRej ? 'System' : (decision.by_user || 'Manager')}</span>
+                                        <span className="text-sm font-black text-gray-900">{isAutoRej ? 'System' : (decisionBy || 'Manager')}</span>
                                         {!isAutoRej && (
                                           <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
                                         )}
@@ -883,28 +881,28 @@ const TransferRequestsPage = ({ user }) => {
                                       </div>
                                       <span className="text-[11px] text-gray-400 flex items-center gap-1">
                                         <Calendar size={10} />
-                                        {decision.date ? new Date(decision.date).toLocaleString('en-GB', {
+                                        {decisionDate ? new Date(decisionDate).toLocaleString('en-GB', {
                                           day: '2-digit', month: 'short', year: 'numeric',
                                           hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
                                         }) : '—'}
                                       </span>
                                     </div>
                                     {/* Decision remark */}
-                                    {(decision.reason || decision.description) && (
+                                    {decisionNote && (
                                       <p className="text-xs leading-relaxed font-medium mt-2" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>
-                                        {decision.reason || decision.description}
+                                        {decisionNote}
                                       </p>
                                     )}
                                     {/* FROM → TO bar for approved */}
-                                    {isApproved && req.by_user && req.to_user && (
+                                    {isApproved && reqName && toUser && (
                                       <div className="mt-2.5 flex items-center rounded overflow-hidden border border-green-200 text-xs font-black">
                                         <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#fff1f2' }}>
                                           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#fecdd3', color: '#be123c' }}>
-                                            {req.by_user.charAt(0).toUpperCase()}
+                                            {reqName.charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
                                             <div className="text-[9px] font-black text-red-400 uppercase tracking-wider">FROM</div>
-                                            <div className="text-red-800 font-black truncate text-xs">{req.by_user}</div>
+                                            <div className="text-red-800 font-black truncate text-xs">{reqName}</div>
                                           </div>
                                         </div>
                                         <div className="flex items-center px-2 py-1.5 shrink-0 self-stretch" style={{ background: '#10b981' }}>
@@ -912,11 +910,11 @@ const TransferRequestsPage = ({ user }) => {
                                         </div>
                                         <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#f0fdf4' }}>
                                           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#bbf7d0', color: '#15803d' }}>
-                                            {req.to_user.charAt(0).toUpperCase()}
+                                            {toUser.charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
                                             <div className="text-[9px] font-black text-green-500 uppercase tracking-wider">TO</div>
-                                            <div className="text-green-800 font-black truncate text-xs">{req.to_user}</div>
+                                            <div className="text-green-800 font-black truncate text-xs">{toUser}</div>
                                           </div>
                                         </div>
                                       </div>
@@ -967,9 +965,12 @@ const TransferRequestsPage = ({ user }) => {
 
                         // Unmatched standalone decisions
                         unmatchedDecisions.forEach((d, i) => {
-                          const name = d.by_user || 'Manager';
-                          const isApproved = (d.action || '').includes('approv') || (d.status || '') === 'approved';
-                          const isRejected = (d.action || '').includes('reject') || (d.status || '') === 'rejected';
+                          const name = d.assigned_by_name || d.by_user || 'Manager';
+                          const dType = (d.assignment_type || d.action || '').toLowerCase();
+                          const isApproved = dType.includes('approv');
+                          const isRejected = dType.includes('reject');
+                          const dRemark = d.remark || d.reason || d.description || '';
+                          const dDate = d.assigned_date || d.date || '';
                           allRendered.push(
                             <div className="flex gap-3 pb-3" key={`d-${i}`}>
                               <div className="flex flex-col items-center shrink-0 pt-2">
@@ -991,13 +992,13 @@ const TransferRequestsPage = ({ user }) => {
                                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
                                         <span className="text-[11px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{isApproved ? '✓ approved' : '✕ rejected'}</span>
                                       </div>
-                                      {d.date && <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><Calendar size={10} />{fmtDateTime(d.date)}</div>}
+                                      {dDate && <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><Calendar size={10} />{fmtDateTime(dDate)}</div>}
                                     </div>
                                   </div>
                                 </div>
-                                {(d.reason || d.description) && (
+                                {dRemark && (
                                   <div className="px-4 pb-3 border-t pt-2" style={{ borderColor: isApproved ? '#bbf7d0' : '#fecaca', background: isApproved ? '#f0fdf4' : '#fff5f5' }}>
-                                    <p className="text-xs font-medium leading-relaxed" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{d.reason || d.description}</p>
+                                    <p className="text-xs font-medium leading-relaxed" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{dRemark}</p>
                                   </div>
                                 )}
                               </div>
@@ -1007,12 +1008,13 @@ const TransferRequestsPage = ({ user }) => {
 
                         // Add current pending/own request card at the BOTTOM
                         if (hasPendingCard || showOwnPendingCard) {
-                          // Build a synthetic req entry for it
+                          // Build a synthetic req entry using combined-array field names
                           const syntheticReq = {
-                            by_user: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
-                            to_user: currentLead.target_user_name || '',
-                            reason: currentLead.reassignment_reason || '',
-                            date: currentLead.reassignment_requested_at || '',
+                            assigned_by_name: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
+                            assigned_to_names: currentLead.target_user_name ? [currentLead.target_user_name] : [],
+                            remark: currentLead.reassignment_reason || '',
+                            assigned_date: currentLead.reassignment_requested_at || '',
+                            assignment_type: 'reassignment_request',
                           };
                           allRendered.push(renderCard(syntheticReq, null, items.length + unmatchedDecisions.length + 1, true));
                         }
