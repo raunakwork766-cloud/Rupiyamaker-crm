@@ -3187,6 +3187,7 @@ class LeadsDB:
                     activity_data["created_by"] = update_data.get("reassignment_requested_by")
                     activity_data["details"] = {
                         "target_user": update_data.get("reassignment_target_user"),
+                        "from_user": current_lead.get("assigned_to"),  # previous owner before transfer
                         "reason": update_data.get("reassignment_reason"),
                         "data_code_change": update_data.get("reassignment_new_data_code"),
                         "campaign_name_change": update_data.get("reassignment_new_campaign_name")

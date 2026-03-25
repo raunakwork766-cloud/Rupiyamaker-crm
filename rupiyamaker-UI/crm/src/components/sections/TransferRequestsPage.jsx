@@ -176,6 +176,7 @@ const TransferRequestsPage = ({ user }) => {
             : action,
           remark: entry.reason || entry.description || '',
           assigned_to_names: entry.to_user ? [entry.to_user] : [],
+          from_user: entry.from_user || '',  // previous owner before this request
           _source: 'reassignment',
         });
       });
@@ -767,7 +768,12 @@ const TransferRequestsPage = ({ user }) => {
                           const currentUserName = localStorage.getItem('userName') || localStorage.getItem('user_name') || '';
                           const isOwnReq = isPendingDecision && (currentLead?.is_own_request || (currentUserName && reqNameRaw.toLowerCase() === currentUserName.toLowerCase()));
                           const reqName = isOwnReq ? `${reqNameRaw} (You)` : reqNameRaw;
-                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user || '';
+                          // toUser = who GETS the lead (target/requester)
+                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user || reqNameRaw || '';
+                          // fromUser = who HAD the lead before the transfer (previous owner)
+                          // For new requests: from_user is stored in activity details
+                          // For pending card: currentLead.assigned_user_name is the current owner (not yet transferred)
+                          const fromUser = req.from_user || (isPendingDecision ? (currentLead.assigned_user_name || currentLead.created_by_name || '') : '') || '';
                           const reason = req.remark || req.reason || req.description || '';
                           const reqDate = (req.assigned_date || req.date) ? new Date(req.assigned_date || req.date).toLocaleString('en-GB', {
                             day: '2-digit', month: 'short', year: 'numeric',
@@ -920,16 +926,16 @@ const TransferRequestsPage = ({ user }) => {
                                         {decisionNote}
                                       </p>
                                     )}
-                                    {/* FROM → TO bar for approved */}
-                                    {isApproved && reqName && toUser && (
+                                    {/* FROM → TO bar for approved — FROM=previous owner, TO=requester/new owner */}
+                                    {isApproved && (fromUser || toUser) && (
                                       <div className="mt-2.5 flex items-center rounded overflow-hidden border border-green-200 text-xs font-black">
                                         <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#fff1f2' }}>
                                           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#fecdd3', color: '#be123c' }}>
-                                            {reqName.charAt(0).toUpperCase()}
+                                            {(fromUser || '?').charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
                                             <div className="text-[9px] font-black text-red-400 uppercase tracking-wider">FROM</div>
-                                            <div className="text-red-800 font-black truncate text-xs">{reqName}</div>
+                                            <div className="text-red-800 font-black truncate text-xs">{fromUser || '—'}</div>
                                           </div>
                                         </div>
                                         <div className="flex items-center px-2 py-1.5 shrink-0 self-stretch" style={{ background: '#10b981' }}>
@@ -937,11 +943,11 @@ const TransferRequestsPage = ({ user }) => {
                                         </div>
                                         <div className="flex items-center gap-2 px-3 py-1.5 flex-1 min-w-0" style={{ background: '#f0fdf4' }}>
                                           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: '#bbf7d0', color: '#15803d' }}>
-                                            {toUser.charAt(0).toUpperCase()}
+                                            {(toUser || reqName || '?').charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
                                             <div className="text-[9px] font-black text-green-500 uppercase tracking-wider">TO</div>
-                                            <div className="text-green-800 font-black truncate text-xs">{toUser}</div>
+                                            <div className="text-green-800 font-black truncate text-xs">{toUser || reqName || '—'}</div>
                                           </div>
                                         </div>
                                       </div>
