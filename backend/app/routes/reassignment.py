@@ -815,6 +815,7 @@ async def create_reassignment_request(
                     "activity_description": activity_description or f"Lead directly reassigned to {target_user_id}",
                     "details": {
                         "target_user": target_user_id,
+                        "from_user": str(lead.get("assigned_to") or "") if lead else "",
                         "reason": reason,
                         "data_code_changed": data_code if data_code else None,
                         "campaign_name_changed": campaign_name if campaign_name else None,
