@@ -3142,22 +3142,32 @@ class LeadsDB:
             current_lead = await self.get_lead(str(lead_id))
             if not current_lead:
                 return False
-            
+
+            # Helper: normalize assigned_to to a plain string user ID
+            # assigned_to can be stored as a list ["user_id"] or plain string "user_id"
+            def _normalize_user_id(val):
+                if isinstance(val, list):
+                    return str(val[0]) if val else ""
+                return str(val) if val is not None else ""
+
             # Track field changes for audit trail
             field_changes = []
             user_id = update_data.get("reassignment_approved_by") or update_data.get("reassignment_requested_by")
-            
+
             # Track significant field changes
             tracked_fields = ["assigned_to", "data_code", "campaign_name", "reassignment_status"]
             for field in tracked_fields:
                 if field in update_data:
                     old_value = current_lead.get(field)
                     new_value = update_data[field]
-                    if old_value != new_value:
+                    # Normalize user IDs to plain strings for comparison
+                    old_norm = _normalize_user_id(old_value) if field == "assigned_to" else (str(old_value) if old_value is not None else "")
+                    new_norm = _normalize_user_id(new_value) if field == "assigned_to" else (str(new_value) if new_value is not None else "")
+                    if old_norm != new_norm:
                         field_changes.append({
                             "field_name": field,
-                            "old_value": str(old_value) if old_value is not None else "",
-                            "new_value": str(new_value) if new_value is not None else "",
+                            "old_value": old_norm,
+                            "new_value": new_norm,
                             "changed_by": user_id,
                             "changed_at": get_ist_now(),
                             "reason": "Reassignment process"
@@ -3187,7 +3197,7 @@ class LeadsDB:
                     activity_data["created_by"] = update_data.get("reassignment_requested_by")
                     activity_data["details"] = {
                         "target_user": update_data.get("reassignment_target_user"),
-                        "from_user": current_lead.get("assigned_to"),  # previous owner before transfer
+                        "from_user": _normalize_user_id(current_lead.get("assigned_to")),  # previous owner (plain string ID)
                         "reason": update_data.get("reassignment_reason"),
                         "data_code_change": update_data.get("reassignment_new_data_code"),
                         "campaign_name_change": update_data.get("reassignment_new_campaign_name")
@@ -3196,7 +3206,8 @@ class LeadsDB:
                     activity_data["action"] = "approved"
                     activity_data["created_by"] = update_data.get("reassignment_approved_by")
                     activity_data["details"] = {
-                        "assigned_to": update_data.get("assigned_to"),
+                        "assigned_to": _normalize_user_id(update_data.get("assigned_to")),
+                        "from_user": _normalize_user_id(current_lead.get("assigned_to")),  # previous owner (plain string ID)
                         "field_changes": field_changes
                     }
             elif update_data.get("reassignment_status") == "approved":
@@ -3204,7 +3215,8 @@ class LeadsDB:
                 activity_data["action"] = "approved_direct"
                 activity_data["created_by"] = update_data.get("reassignment_approved_by")
                 activity_data["details"] = {
-                    "assigned_to": update_data.get("assigned_to"),
+                    "assigned_to": _normalize_user_id(update_data.get("assigned_to")),
+                    "from_user": _normalize_user_id(current_lead.get("assigned_to")),  # previous owner (plain string ID)
                     "reason": update_data.get("reassignment_reason"),
                     "field_changes": field_changes
                 }

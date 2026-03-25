@@ -571,6 +571,21 @@ async def check_phone_number(
             ).sort("created_at", -1)
             history_records = await history_cursor.to_list(length=100)
 
+            # Helper: extract a plain user ID string from possibly list/string/ObjectId
+            def _plain_uid(val) -> str:
+                if not val:
+                    return ""
+                if isinstance(val, list):
+                    val = val[0] if val else ""
+                s = str(val).strip()
+                # Handle old list-string storage e.g. "['abc123']"
+                if s.startswith("[") and s.endswith("]"):
+                    import re
+                    m = re.search(r"'([^']+)'", s)
+                    if m:
+                        s = m.group(1)
+                return s
+
             # Resolve user names for history records
             history_user_ids = set()
             for rec in history_records:
@@ -578,19 +593,21 @@ async def check_phone_number(
                     history_user_ids.add(str(rec["created_by"]))
                 details = rec.get("details") or {}
                 if details.get("target_user"):
-                    history_user_ids.add(str(details["target_user"]))
+                    history_user_ids.add(_plain_uid(details["target_user"]))
                 if details.get("from_user"):
-                    history_user_ids.add(str(details["from_user"]))
+                    history_user_ids.add(_plain_uid(details["from_user"]))
                 # For approved activities: field_changes for assigned_to hold old/new owner IDs
                 for fc in (details.get("field_changes") or []):
                     if fc.get("field_name") == "assigned_to":
                         if fc.get("old_value"):
-                            history_user_ids.add(str(fc["old_value"]))
+                            history_user_ids.add(_plain_uid(fc["old_value"]))
                         if fc.get("new_value"):
-                            history_user_ids.add(str(fc["new_value"]))
+                            history_user_ids.add(_plain_uid(fc["new_value"]))
 
             user_name_cache = {}
             for uid in history_user_ids:
+                if not uid:
+                    continue
                 try:
                     u = await users_db.get_user(uid)
                     if u:
@@ -612,27 +629,25 @@ async def check_phone_number(
                     created_at_val = created_at_val.isoformat()
                 details = rec.get("details") or {}
 
-                # For approved/direct activities: extract old/new owner from assigned_to field_change
+                # Extract old/new owner from assigned_to field_change (for approved activities)
                 assigned_to_old_id = ""
                 assigned_to_new_id = ""
                 for fc in (details.get("field_changes") or []):
                     if fc.get("field_name") == "assigned_to":
-                        assigned_to_old_id = str(fc.get("old_value") or "")
-                        assigned_to_new_id = str(fc.get("new_value") or "")
+                        assigned_to_old_id = _plain_uid(fc.get("old_value") or "")
+                        assigned_to_new_id = _plain_uid(fc.get("new_value") or "")
                         break
 
                 action = rec.get("action", "")
-                # from_user: for request activities use stored from_user;
-                # for approved activities fall back to old assigned_to from field_changes
-                from_user_id = str(details.get("from_user") or "")
+                # from_user: stored in activity (now always plain string); fallback to field_changes
+                from_user_id = _plain_uid(details.get("from_user") or "")
                 if not from_user_id and action in ("approved", "approved_direct"):
                     from_user_id = assigned_to_old_id
 
-                # to_user: for request activities use target_user;
-                # for approved activities fall back to new assigned_to from field_changes
-                to_user_id = str(details.get("target_user") or "")
+                # to_user: stored as target_user (requests) or new assigned_to (approved)
+                to_user_id = _plain_uid(details.get("target_user") or "")
                 if not to_user_id and action in ("approved", "approved_direct"):
-                    to_user_id = assigned_to_new_id
+                    to_user_id = _plain_uid(details.get("assigned_to") or "") or assigned_to_new_id
 
                 history_by_lead[lid].append({
                     "date": created_at_val or "",
