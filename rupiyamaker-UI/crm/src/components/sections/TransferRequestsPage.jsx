@@ -235,6 +235,24 @@ const TransferRequestsPage = ({ user }) => {
       }
     } catch {}
 
+    // If there are NO request entries but there ARE decision entries,
+    // synthesize a request entry from lead-level fields so we always show a paired card
+    const hasRequestEntry = combined.some(e => (e.assignment_type || '').toLowerCase().includes('request'));
+    const hasDecisionEntry = combined.some(e => {
+      const t = (e.assignment_type || '').toLowerCase();
+      return t === 'approved' || t === 'rejected' || t === 'direct_transfer' || t.includes('approv') || t.includes('reject');
+    });
+    if (!hasRequestEntry && hasDecisionEntry && (lead.requestor_name || lead.reassignment_reason || lead.reassignment_requested_at)) {
+      combined.unshift({
+        assigned_by_name: lead.requestor_name || lead.reassignment_requested_by_name || '',
+        assigned_date: lead.reassignment_requested_at || '',
+        assignment_type: 'reassignment_request',
+        remark: lead.reassignment_reason || '',
+        assigned_to_names: lead.target_user_name ? [lead.target_user_name] : [],
+        _source: 'synthetic_request',
+      });
+    }
+
     // Sort: oldest first (ascending) so timeline renders chronologically
     combined.sort((a, b) => new Date(a.assigned_date || 0) - new Date(b.assigned_date || 0));
     setHistory(combined);
@@ -880,7 +898,7 @@ const TransferRequestsPage = ({ user }) => {
                                         >
                                           {isAutoRej ? <Clock size={12} /> : (decisionBy || 'M').charAt(0).toUpperCase()}
                                         </div>
-                                        <span className="text-sm font-black text-gray-900">{isAutoRej ? 'System' : (decisionBy || 'Manager')}</span>
+                                        <span className="text-sm font-black" style={{ color: isAutoRej ? '#b91c1c' : '#111827' }}>{isAutoRej ? 'System' : (decisionBy || 'Manager')}</span>
                                         {!isAutoRej && (
                                           <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
                                         )}
@@ -972,47 +990,17 @@ const TransferRequestsPage = ({ user }) => {
                           allRendered.push(renderCard(group.req, group.decision, i + 1, false));
                         });
 
-                        // Unmatched standalone decisions
+                        // Unmatched decisions — pair with synthetic request from lead fields
                         unmatchedDecisions.forEach((d, i) => {
-                          const name = d.assigned_by_name || d.by_user || 'Manager';
-                          const dType = (d.assignment_type || d.action || '').toLowerCase();
-                          const isApproved = dType.includes('approv');
-                          const isRejected = dType.includes('reject');
-                          const dRemark = d.remark || d.reason || d.description || '';
-                          const dDate = d.assigned_date || d.date || '';
-                          allRendered.push(
-                            <div className="flex gap-3 pb-3" key={`d-${i}`}>
-                              <div className="flex flex-col items-center shrink-0 pt-2">
-                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
-                                  style={{ background: isApproved ? '#10b981' : isRejected ? '#ef4444' : '#6b7280', boxShadow: isApproved ? '0 0 0 3px #d1fae5' : isRejected ? '0 0 0 3px #fee2e2' : '0 0 0 3px #f3f4f6' }}>
-                                  {items.length + i + 1}
-                                </div>
-                              </div>
-                              <div className="flex-1 rounded-xl border bg-white overflow-hidden shadow-sm mb-1"
-                                style={{ borderColor: isApproved ? '#bbf7d0' : isRejected ? '#fecaca' : '#e5e7eb' }}>
-                                <div className="px-4 py-3 flex items-start justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center justify-center text-sm font-black shrink-0">
-                                      {name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-sm font-black text-gray-900">{name}</span>
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: '#e0e7ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>APPROVER</span>
-                                        <span className="text-[11px] font-bold" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{isApproved ? '✓ approved' : '✕ rejected'}</span>
-                                      </div>
-                                      {dDate && <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><Calendar size={10} />{fmtDateTime(dDate)}</div>}
-                                    </div>
-                                  </div>
-                                </div>
-                                {dRemark && (
-                                  <div className="px-4 pb-3 border-t pt-2" style={{ borderColor: isApproved ? '#bbf7d0' : '#fecaca', background: isApproved ? '#f0fdf4' : '#fff5f5' }}>
-                                    <p className="text-xs font-medium leading-relaxed" style={{ color: isApproved ? '#15803d' : '#b91c1c' }}>{dRemark}</p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
+                          const synthReq = {
+                            assigned_by_name: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
+                            assigned_to_names: currentLead.target_user_name ? [currentLead.target_user_name] : [],
+                            remark: currentLead.reassignment_reason || '',
+                            assigned_date: currentLead.reassignment_requested_at || d.assigned_date || '',
+                            assignment_type: 'reassignment_request',
+                            _source: 'synthetic',
+                          };
+                          allRendered.push(renderCard(synthReq, d, items.length + i + 1, false));
                         });
 
                         // Add current pending/own request card at the BOTTOM
@@ -1028,8 +1016,30 @@ const TransferRequestsPage = ({ user }) => {
                           allRendered.push(renderCard(syntheticReq, null, items.length + unmatchedDecisions.length + 1, true));
                         }
 
-                        if (allRendered.length === 0) {
-                          return <p className="text-sm text-gray-400 italic py-4">No transfer history available.</p>;
+                        // Final fallback: if still empty, build one card from lead fields
+                        if (allRendered.length === 0 && !hasPendingCard && !showOwnPendingCard) {
+                          const hasFallbackData = currentLead.requestor_name || currentLead.reassignment_reason || currentLead.reassignment_requested_at;
+                          if (hasFallbackData) {
+                            const fallbackReq = {
+                              assigned_by_name: currentLead.requestor_name || '—',
+                              assigned_to_names: currentLead.target_user_name ? [currentLead.target_user_name] : [],
+                              remark: currentLead.reassignment_reason || '',
+                              assigned_date: currentLead.reassignment_requested_at || '',
+                              assignment_type: 'reassignment_request',
+                            };
+                            let fallbackDecision = null;
+                            if (activeTab === 'approved' || activeTab === 'rejected') {
+                              fallbackDecision = {
+                                assignment_type: activeTab,
+                                assigned_by_name: activeTab === 'approved' ? (currentLead.approved_by_name || '') : (currentLead.rejected_by_name || ''),
+                                assigned_date: activeTab === 'approved' ? (currentLead.reassignment_approved_at || '') : (currentLead.reassignment_rejected_at || ''),
+                                remark: activeTab === 'approved' ? '' : (currentLead.reassignment_rejection_reason || ''),
+                              };
+                            }
+                            allRendered.push(renderCard(fallbackReq, fallbackDecision, 1, false));
+                          } else {
+                            return <p className="text-sm text-gray-400 italic py-4">No transfer history available.</p>;
+                          }
                         }
 
                         return allRendered;
