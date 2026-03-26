@@ -62,6 +62,19 @@ export default defineConfig({
             if (proxyRes.statusCode >= 400) {
               console.error('❌ Backend Error Response:', proxyRes.statusCode, proxyRes.statusMessage);
             }
+            // Rewrite redirect Location headers so the browser follows them
+            // through the proxy (avoids CORS errors on trailing-slash redirects)
+            if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+              try {
+                const location = proxyRes.headers.location;
+                const targetUrl = new URL(backendTarget);
+                const redirectUrl = new URL(location, backendTarget);
+                // Only rewrite if backend is redirecting to itself
+                if (redirectUrl.host === targetUrl.host) {
+                  proxyRes.headers.location = '/api' + redirectUrl.pathname + redirectUrl.search;
+                }
+              } catch (_e) { /* ignore malformed location headers */ }
+            }
           });
         },
       }

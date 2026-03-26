@@ -21,7 +21,8 @@ from pathlib import Path
 # Create API router for feeds endpoints
 router = APIRouter(
     prefix="/feeds",
-    tags=["feeds"]
+    tags=["feeds"],
+    redirect_slashes=False
 )
 
 # Dependency to get DB instances

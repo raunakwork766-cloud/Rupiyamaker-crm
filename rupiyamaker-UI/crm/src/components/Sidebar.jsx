@@ -64,10 +64,13 @@ const icons = {
       <path d="M8 2v4M16 2v4" />
     </svg>
   ),
-  "Dialer Report": (
+  "Offer Letter": (
     <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.11-.22 11.36 11.36 0 003.55.7A1 1 0 0121 17.5v3.5a1 1 0 01-1 1A17 17 0 013 5a1 1 0 011-1h3.5a1 1 0 011 .88 11.36 11.36 0 00.7 3.55 1 1 0 01-.24 1.01z" />
-      <path d="M16 2v6M13 5h6" />
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
   "Daily Performance": (
@@ -126,7 +129,8 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
       (label === 'Settings' && currentPath.includes('/setting')) ||
       (label === 'Feed' && (currentPath === '/feed' || currentPath === '/')) ||
       (label === 'Interview Panel' && currentPath.includes('/interview-panel')) ||
-      (label === 'Knowledge Base' && currentPath.includes('/knowledge-base'))
+      (label === 'Knowledge Base' && currentPath.includes('/knowledge-base')) ||
+      (label === 'Offer Letter' && currentPath.includes('/offer-letter'))
     );
   }, [selectedLabel, label, internalUpdate]);
   
@@ -501,6 +505,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       "Attendance": "HRMS",
       "Daily Performance": "HRMS",
       "Dialer Report": "HRMS",
+      "Offer Letter": "HRMS",
       "Warning Dashboard": "Warning",
       "All Warnings": "Warning",
       "My Warnings": "Warning",
@@ -1075,6 +1080,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     }
     else if (currentPath.includes('/knowledge-base')) {
       targetLabel = 'Knowledge Base';
+    }
+    else if (currentPath.includes('/offer-letter')) {
+      targetLabel = 'Offer Letter';
     }
     
     // Apply the selection if found
@@ -1796,6 +1804,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                   { label: "Leave", icon: icons["Leave"] },
                   { label: "Attendance", icon: icons["Attendance"] },
                   ...(permissions.canShowDialerReport ? [{ label: "Dialer Report", icon: icons["Dialer Report"] }] : []),
+                  ...(isSuperAdmin(userPermissions) ? [{ label: "Offer Letter", icon: icons["Offer Letter"] }] : []),
                 ]}
                 onItemSelect={handleSelection}
               />

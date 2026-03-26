@@ -2429,7 +2429,7 @@ export default function MonthlyAttendanceTable() {
               // Sunday Absent → S0, leave → LV
               employeeRecord[dayKey] = day.is_weekend ? 'S0' : 'LV';
             } else if (status === -1 || status === -1.0) {
-              employeeRecord[dayKey] = ''; // Formerly Absent - now empty
+              employeeRecord[dayKey] = 'A'; // Absent (white bg, black "0")
             } else if (status === -2 || status === -2.0) {
               employeeRecord[dayKey] = 'AB'; // Absconding
             } else if (day.status === "L") {
@@ -2442,7 +2442,7 @@ export default function MonthlyAttendanceTable() {
           } else if (day.is_holiday) {
             employeeRecord[dayKey] = 'H'; // Holiday (fallback check)
           } else {
-            employeeRecord[dayKey] = ''; // Default empty for no status
+            employeeRecord[dayKey] = ''; // null status = today/future (not yet marked)
           }
         });      return employeeRecord;
     });

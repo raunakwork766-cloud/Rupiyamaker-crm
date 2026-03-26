@@ -13,8 +13,14 @@ Flow:
   MongoDB (UTC) → pymongo (naive UTC) → FastAPI ("2026-02-27T15:30:00")
   → This middleware ("2026-02-27T15:30:00Z")
   → Browser (knows it's UTC) → displays as IST via timeZone option
+
+NOTE: This middleware MUST be added to the app BEFORE GZipMiddleware.
+In Starlette, first-added middleware runs first on the response.
+If GZip runs before this middleware, the response body will be compressed
+and this middleware cannot patch it.
 """
 
+import gzip
 import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -53,7 +59,11 @@ class DatetimeUTCMiddleware(BaseHTTPMiddleware):
         body = b''.join(body_chunks)
 
         try:
-            body_str = body.decode('utf-8')
+            # Handle gzip-encoded responses (safety net if GZip middleware ran first)
+            is_gzipped = response.headers.get('content-encoding', '') == 'gzip'
+            raw_body = gzip.decompress(body) if is_gzipped else body
+
+            body_str = raw_body.decode('utf-8')
 
             # Append Z to all naive datetime ISO strings
             body_str = ISO_NAIVE_DT_PATTERN.sub(
@@ -61,9 +71,12 @@ class DatetimeUTCMiddleware(BaseHTTPMiddleware):
                 body_str
             )
 
-            body = body_str.encode('utf-8')
+            patched = body_str.encode('utf-8')
+
+            # Re-compress if original was gzipped
+            body = gzip.compress(patched, compresslevel=5) if is_gzipped else patched
         except (UnicodeDecodeError, Exception):
-            # If anything goes wrong, return original response
+            # If anything goes wrong, return original response unchanged
             pass
 
         # Build new response with modified body
@@ -77,3 +90,4 @@ class DatetimeUTCMiddleware(BaseHTTPMiddleware):
             headers=headers,
             media_type=response.media_type,
         )
+

@@ -3,10 +3,20 @@ import API from '../services/api';
 import { toast } from 'react-toastify';
 import InterviewComments from './InterviewComments';
 import InterviewHistory from './InterviewHistory';
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, toISTDateYMD, getISTDateYMD } from '../utils/dateUtils';
+import { isSuperAdmin } from '../utils/permissions';
 
 function getCurrentDateTimeString() {
   return formatDateTime(new Date());
+}
+
+function buildISTDateTimeOffset(date) {
+  if (!date) return null;
+  // Always use noon IST (12:00) → UTC = 06:30 of the SAME day.
+  // This prevents the midnight-window bug where early IST times (00:00-05:30)
+  // would convert to the previous day in UTC.
+  const cleanDate = date.includes('T') ? date.split('T')[0] : date;
+  return `${cleanDate}T12:00:00+05:30`;
 }
 
 // Currency formatting functions
@@ -437,17 +447,18 @@ export default function EditInterview({
       total_experience: backendInterview.total_experience || "",
       old_salary: backendInterview.old_salary || "",
       offer_salary: backendInterview.offer_salary || "",
-      interview_date: backendInterview.interview_date ? 
-        new Date(backendInterview.interview_date).toISOString().split('T')[0] : "",
+      interview_date: backendInterview.interview_date ? toISTDateYMD(backendInterview.interview_date) : "",
       interview_time: backendInterview.interview_time || "",
       status: backendInterview.status || "new_interview",
       created_by: backendInterview.created_by || "",
-      user_id: backendInterview.user_id || ""
+      user_id: backendInterview.user_id || "",
+      remark: backendInterview.remark || ""
     };
   };
 
   const [interview, setInterview] = useState(formatInterviewForUI(initialInterview));
   const [isOpen, setIsOpen] = useState(true);
+  const canEditContact = isSuperAdmin(JSON.parse(localStorage.getItem('userPermissions') || '[]'));
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -569,7 +580,7 @@ export default function EditInterview({
 
     try {
       const rescheduleData = {
-        interview_date: new Date(rescheduleDate + 'T' + rescheduleTime).toISOString(),
+        interview_date: buildISTDateTimeOffset(rescheduleDate),
         interview_time: rescheduleTime,
         status: 'rescheduled' // Set to rescheduled status when rescheduling
       };
@@ -633,7 +644,7 @@ export default function EditInterview({
 
       // Detect if interview date has changed
       let newStatus = interview.status;
-      const originalDate = initialInterview.interview_date ? new Date(initialInterview.interview_date).toISOString().split('T')[0] : "";
+      const originalDate = initialInterview.interview_date ? toISTDateYMD(initialInterview.interview_date) : "";
       const newDate = interview.interview_date;
       if (originalDate !== newDate) {
         newStatus = "rescheduled";
@@ -654,9 +665,10 @@ export default function EditInterview({
         total_experience: interview.total_experience,
         old_salary: interview.old_salary ? parseFloat(interview.old_salary) : null,
         offer_salary: interview.offer_salary ? parseFloat(interview.offer_salary) : null,
-        interview_date: new Date(interview.interview_date + 'T' + (interview.interview_time || '00:00')).toISOString(),
+        interview_date: buildISTDateTimeOffset(interview.interview_date),
         interview_time: interview.interview_time,
-        status: newStatus
+        status: newStatus,
+        remark: interview.remark || null
       };
 
       console.log("Updating interview with data:", interviewData);
@@ -793,10 +805,11 @@ export default function EditInterview({
               <input
                 id="mobile_number"
                 type="tel"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
+                className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!canEditContact ? 'bg-gray-100 cursor-not-allowed opacity-70' : ''}`}
                 value={interview.mobile_number}
                 onChange={(e) => handleInputChange("mobile_number", e.target.value)}
                 placeholder="Enter mobile number"
+                disabled={!canEditContact}
                 required
               />
             </div>
@@ -807,12 +820,27 @@ export default function EditInterview({
               <input
                 id="alternate_number"
                 type="tel"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
+                className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!canEditContact ? 'bg-gray-100 cursor-not-allowed opacity-70' : ''}`}
                 value={interview.alternate_number}
                 onChange={(e) => handleInputChange("alternate_number", e.target.value)}
                 placeholder="Enter alternate number"
+                disabled={!canEditContact}
               />
             </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="block font-bold text-gray-700 mb-1" htmlFor="remark">
+              Remark
+            </label>
+            <textarea
+              id="remark"
+              className="w-full px-3 py-2 border border-cyan-400 rounded text-black"
+              rows={3}
+              value={interview.remark}
+              onChange={(e) => handleInputChange("remark", e.target.value)}
+              placeholder="Add a remark or note..."
+            />
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 mt-4">
@@ -1070,7 +1098,7 @@ export default function EditInterview({
                       className="w-full px-3 py-2 border border-orange-400 rounded text-black font-bold"
                       value={rescheduleDate}
                       onChange={(e) => setRescheduleDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={getISTDateYMD()}
                       required
                     />
                   </div>

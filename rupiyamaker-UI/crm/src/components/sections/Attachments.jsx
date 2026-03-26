@@ -85,6 +85,9 @@ export default function Attachments({ leadId, userId }) {
   const [dynamicRefs, setDynamicRefs] = useState({});
   const [dynamicPasswords, setDynamicPasswords] = useState({});
   const [documentPasswords, setDocumentPasswords] = useState({}); // State to store document passwords (indexed by document ID)
+  const [pendingUpload, setPendingUpload] = useState(null); // { attachmentType, files, inputRef } — awaiting password entry
+  const [pdfPasswordInput, setPdfPasswordInput] = useState(''); // password typed in the PDF password modal
+  const [showPdfPwdVisible, setShowPdfPwdVisible] = useState(false); // toggle show/hide password text
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false); // State for download all operation
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
@@ -962,6 +965,15 @@ export default function Attachments({ leadId, userId }) {
         return;
       }
 
+      // If any selected file is a PDF, pause and show password prompt modal
+      const hasPdf = files.some(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (hasPdf) {
+        setPendingUpload({ attachmentType, files, inputEl: e.target });
+        setPdfPasswordInput('');
+        setShowPdfPwdVisible(false);
+        return;
+      }
+
       // Store files temporarily for upload
       setDynamicFiles(prev => ({
         ...prev,
@@ -1040,7 +1052,7 @@ export default function Attachments({ leadId, userId }) {
   };
 
   // Handler for uploading files
-  const handleUpload = async (attachmentType, files) => {
+  const handleUpload = async (attachmentType, files, explicitPassword = null) => {
     if (!leadId || !files.length || !currentUserId) {
       alert('Missing required information: leadId, files, or userId');
       return;
@@ -1064,8 +1076,8 @@ export default function Attachments({ leadId, userId }) {
       formData.append('category', 'general');  // Required by backend API
       formData.append('owner_type', currentProfile); // applicant or coapplicant
       
-      // Add password if provided for this specific attachment type
-      const password = dynamicPasswords[key];
+      // Add password if provided (explicit arg takes priority over stored state)
+      const password = explicitPassword !== null ? explicitPassword : dynamicPasswords[key];
       if (password) {
         formData.append('password', password);
       }
@@ -1150,36 +1162,8 @@ export default function Attachments({ leadId, userId }) {
   // Handle downloading a document
   const handleDownload = (docId) => {
     window.open(`${BASE_URL}/leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`, '_blank');
-    
-    // Show a notification that the file might need a password
     const doc = uploadedDocuments.find(d => d._id === docId);
-    if (doc && doc.has_password) {
-      // Show password indicator
-      setShowPasswordFor(prev => ({
-        ...prev,
-        [docId]: true
-      }));
-      
-      // Show notification
-      const docType = doc.document_type;
-      const password = getDocumentPassword(doc);
-      
-      if (password && !password.includes("not available")) {
-        showNotification(`The document "${doc.filename}" is password protected. Click the lock icon to view the password.`, 'warning');
-      } else {
-        showNotification(`The document "${doc.filename}" is password protected. Please enter a password in the "${docType}" field above.`, 'warning');
-      }
-      
-      // Hide password indicator after 10 seconds
-      setTimeout(() => {
-        setShowPasswordFor(prev => ({
-          ...prev,
-          [docId]: false
-        }));
-      }, 10000);
-    } else {
-      showNotification(`Downloading "${doc?.filename || 'document'}"...`, 'success');
-    }
+    showNotification(`Downloading "${doc?.filename || 'document'}"...`, 'success');
   };
 
   // Handler for deleting a document
@@ -2196,6 +2180,107 @@ export default function Attachments({ leadId, userId }) {
       </div>
 
       <textarea id="copy-helper" style={{ position: 'absolute', left: '-9999px' }} readOnly></textarea>
+
+      {/* ── PDF Password Prompt Modal ── */}
+      {pendingUpload && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/60" onClick={() => { if (pendingUpload.inputEl) pendingUpload.inputEl.value = ''; setPendingUpload(null); }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#1e40af] px-5 py-4 flex items-center gap-3">
+              <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-file-shield text-white text-base"></i>
+              </div>
+              <div>
+                <h3 className="text-white font-black text-sm tracking-tight">PDF Password (Optional)</h3>
+                <p className="text-blue-200 text-[11px] mt-0.5">
+                  {pendingUpload.attachmentType.name.toUpperCase()}
+                </p>
+              </div>
+            </div>
+
+            {/* File list */}
+            <div className="px-5 pt-4 pb-2">
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Files to upload</p>
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {pendingUpload.files.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded px-2.5 py-1.5">
+                    <i className={`fa-solid ${f.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf text-red-500' : 'fa-file text-gray-400'} text-sm shrink-0`}></i>
+                    <span className="text-[11px] font-bold text-gray-700 truncate flex-1">{f.name}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Password field */}
+            <div className="px-5 pb-4 pt-2">
+              <label className="block text-[11px] font-bold text-gray-700 mb-1.5">
+                <i className="fa-solid fa-lock mr-1.5 text-[#1e40af]"></i>
+                PDF Password
+                <span className="ml-1.5 text-[10px] font-normal text-gray-400">(leave blank if not password-protected)</span>
+              </label>
+              <div className="relative">
+                <input
+                  autoFocus
+                  type={showPdfPwdVisible ? 'text' : 'password'}
+                  value={pdfPasswordInput}
+                  onChange={e => setPdfPasswordInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const { attachmentType, files, inputEl } = pendingUpload;
+                      setPendingUpload(null);
+                      showNotification(`Uploading ${files.length} file(s) for ${attachmentType.name}...`, 'info');
+                      handleUpload(attachmentType, files, pdfPasswordInput || null);
+                      if (inputEl) inputEl.value = '';
+                    } else if (e.key === 'Escape') {
+                      if (pendingUpload.inputEl) pendingUpload.inputEl.value = '';
+                      setPendingUpload(null);
+                    }
+                  }}
+                  placeholder="Enter PDF password..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-9 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPdfPwdVisible(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  <i className={`fa-solid ${showPdfPwdVisible ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5">
+                <i className="fa-solid fa-circle-info mr-1"></i>
+                Password will be saved — you won't need to enter it again when opening this file.
+              </p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="px-5 pb-5 flex gap-2.5">
+              <button
+                onClick={() => { if (pendingUpload.inputEl) pendingUpload.inputEl.value = ''; setPendingUpload(null); }}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const { attachmentType, files, inputEl } = pendingUpload;
+                  setPendingUpload(null);
+                  showNotification(`Uploading ${files.length} file(s) for ${attachmentType.name}...`, 'info');
+                  handleUpload(attachmentType, files, pdfPasswordInput || null);
+                  if (inputEl) inputEl.value = '';
+                }}
+                className="flex-2 bg-[#1e40af] hover:bg-blue-800 text-white font-bold text-sm py-2 px-5 rounded-lg transition flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-cloud-arrow-up"></i>
+                Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Inline File Viewer Modal ── */}
       {viewerDoc && (
