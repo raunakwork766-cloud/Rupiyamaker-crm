@@ -4175,3 +4175,35 @@ async def list_all_registered_faces(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list faces: {str(e)}"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin manual-trigger for auto-absent jobs
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/auto-absent/run-missing-checkout")
+async def trigger_missing_checkout_job(
+    user_id: str = Query(..., description="Admin user ID"),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Manually trigger the end-of-day missing-checkout absent job (admin only)."""
+    from app.utils.permissions import check_permission
+    await check_permission(user_id, "attendance", "all", users_db, roles_db)
+    from app.utils.attendance_auto_absent import run_missing_checkout_job
+    await run_missing_checkout_job()
+    return {"success": True, "message": "Missing-checkout absent job triggered successfully."}
+
+
+@router.post("/auto-absent/run-daily-absent")
+async def trigger_daily_absent_job(
+    user_id: str = Query(..., description="Admin user ID"),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Manually trigger the midnight no-checkin absent job (admin only)."""
+    from app.utils.permissions import check_permission
+    await check_permission(user_id, "attendance", "all", users_db, roles_db)
+    from app.utils.attendance_auto_absent import run_daily_absent_job
+    await run_daily_absent_job()
+    return {"success": True, "message": "Daily absent job triggered successfully."}

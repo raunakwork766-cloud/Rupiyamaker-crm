@@ -64,6 +64,8 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(start_scheduler())
         from app.utils.task_notifications_scheduler import start_task_notifications_scheduler
         asyncio.create_task(start_task_notifications_scheduler())
+        from app.utils.attendance_auto_absent import start_attendance_scheduler
+        start_attendance_scheduler()
         logging.info("✓ Background schedulers started")
         
         # Pre-warm settings cache for ultra-fast API responses
@@ -95,8 +97,10 @@ async def lifespan(app: FastAPI):
     try:
         from app.utils.recurring_task_scheduler import stop_scheduler
         from app.utils.task_notifications_scheduler import stop_task_notifications_scheduler
+        from app.utils.attendance_auto_absent import stop_attendance_scheduler
         stop_scheduler()
         stop_task_notifications_scheduler()
+        stop_attendance_scheduler()
         logging.info("✓ Schedulers stopped")
     except Exception as e:
         logging.error(f"✗ Shutdown error: {str(e)}")
