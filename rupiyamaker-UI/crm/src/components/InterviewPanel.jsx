@@ -1460,6 +1460,9 @@ const InterviewPanel = () => {
     } catch (error) {
       toast.error('Failed to delete interviews');
       console.error('Bulk delete error:', error);
+      setSelectedInterviews([]);
+      setSelectAll(false);
+      setCheckboxVisible(false);
     } finally {
       setLoading(false);
     }
@@ -2223,7 +2226,7 @@ const InterviewPanel = () => {
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-blue-500 transition text-sm"
                   onClick={handleShowCheckboxes}
                 >
-                  {selectedInterviews.length > 0 ? `Select (${selectedInterviews.length})` : 'Select'}
+                  Select
                 </button>
               )}
               {(permissions.can_delete || isSuperAdmin()) && checkboxVisible && (
@@ -2303,6 +2306,9 @@ const InterviewPanel = () => {
                   setReasonFilter('All');
                   setIsGlobalSearch(false);
                   setSearchTerm('');
+                  setCheckboxVisible(false);
+                  setSelectedInterviews([]);
+                  setSelectAll(false);
                 }}
                 className={`pb-3 px-3 text-sm font-bold transition-all relative whitespace-nowrap shrink-0 flex items-center gap-1 ${
                   isActive ? activeColor : 'border-transparent text-slate-500 hover:text-slate-800'
