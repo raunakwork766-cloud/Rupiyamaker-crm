@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance UI</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    :root {
+        --bg-color: #000000;
+        --card-bg: #09090b;
+        --border-color: #27272a;
+        --header-blue: #0ea5e9;
+        --sunday-purple: #8b5cf6;
+        --text-main: #ffffff;
+        --text-muted: #a1a1aa;
+        --cell-empty: #18181b;
+        
+        /* Status Colors */
+        --color-full: #10b981;
+        --color-half: #ffdd00;
+        --color-absent: #ea580c;
+        --color-leave: #ff7b00;
+        --color-absconding: #ff2a2a;
+        --color-holiday: #06b6d4;
+    }
+    
+    body {
+        background-color: var(--bg-color);
+        color: var(--text-main);
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    /* Hide scrollbar */
+    .table-container::-webkit-scrollbar {
+        display: none;
+    }
+    .table-container {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    /* Sticky Columns — solid background + right shadow to clearly separate from scrolling content */
+    .sticky-1 { 
+        position: sticky; left: 0; z-index: 2; 
+        background-color: #0a0a0d; 
+        width: 90px; min-width: 90px; 
+        box-sizing: border-box; 
+        border-right: 1px solid #2a2a30;
+        box-shadow: 2px 0 0 0 #2a2a30;
+    }
+    .sticky-2 { 
+        position: sticky; left: 90px; z-index: 2; 
+        background-color: #0a0a0d; 
+        width: 150px; min-width: 150px; 
+        box-sizing: border-box; 
+        border-right: 1px solid #2a2a30;
+    }
+    .sticky-3 { 
+        position: sticky; left: 240px; z-index: 2; 
+        background-color: #0a0a0d; 
+        width: 130px; min-width: 130px; 
+        box-sizing: border-box; 
+        border-right: 2px solid #3a3a42; 
+        box-shadow: 3px 0 8px rgba(0,0,0,0.8);
+    }
+    th.sticky-1, th.sticky-2, th.sticky-3 { background-color: #0d0d11; z-index: 3; }
+    .th-emp-details { position: sticky; left: 0; z-index: 4; background-color: #ffffff !important; color: var(--header-blue) !important; border-right: 2px solid #27272a !important; text-align: center; font-weight: 800; font-size: 13px !important; }
+
+    /* Top Action Bar */
+    .top-bar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+        font-size: 13px;
+    }
+    .top-bar button {
+        background: transparent;
+        color: white;
+        border: 1px solid var(--border-color);
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'Inter', sans-serif;
+    }
+    .top-bar button:hover {
+        background: #1f1f22;
+    }
+    .month-selector {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* Legend Bar */
+    .legend-bar {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-bottom: 25px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .badge {
+        width: 32px;
+        height: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border-radius: 12px;
+        color: black;
+        font-weight: 700;
+        font-size: 11px;
+    }
+    .badge.full { background-color: var(--color-full); }
+    .badge.half { background-color: var(--color-half); }
+    .badge.absent { background-color: #ffffff; }
+    .badge.leave { background-color: var(--color-leave); }
+    .badge.absconding { background-color: var(--color-absconding); color: white; }
+    .badge.holiday { background-color: var(--color-holiday); }
+    
+    @keyframes pulse-blue {
+        0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+        70% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+    .badge.working { 
+        background-color: #3b82f6; 
+        color: white; 
+        animation: pulse-blue 2s infinite;
+    }
+
+    /* Summary Cards */
+    .cards-container {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    .card {
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+        border-radius: 4px;
+        padding: 16px;
+        text-align: center;
+    }
+    .card .value {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .card .label {
+        color: var(--text-muted);
+        font-size: 11px;
+    }
+    .c-present { color: var(--color-full); }
+    .c-absconding { color: var(--color-absconding); }
+    .c-grace { color: var(--color-holiday); }
+    .c-pl { color: #d946ef; }
+    .c-final { color: var(--color-half); }
+
+    /* ---- NEW DASHBOARD AREA ---- */
+    .dashboard {
+        margin-bottom: 16px;
+    }
+    .stat-strip {
+        display: flex;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .stat-item {
+        flex: 1;
+        padding: 10px 14px;
+        border-right: 1px solid var(--border-color);
+        position: relative;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-label {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ffffff;
+        margin-bottom: 4px;
+        white-space: nowrap;
+    }
+    .stat-val {
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 3px;
+    }
+    .stat-note {
+        font-size: 9px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.65);
+        white-space: nowrap;
+    }
+    .stat-bar { height: 2px; background: #1f1f22; border-radius: 2px; margin-top: 5px; overflow: hidden; }
+    .stat-bar-fill { height: 100%; border-radius: 2px; }
+    /* stat colors */
+    .sv-emp    { color: var(--header-blue); }
+    .sv-att    { color: var(--color-full); }
+    .sv-present{ color: var(--color-full); }
+    .sv-absent { color: #e4e4e7; }
+    .sv-leave  { color: var(--color-leave); }
+    .sv-absc   { color: var(--color-absconding); }
+    .sv-grace  { color: var(--color-holiday); }
+    /* bar fill colors */
+    .sb-att    { background: var(--color-full); }
+    .sb-present{ background: var(--color-full); }
+    .sb-absent { background: #e4e4e7; }
+    .sb-leave  { background: var(--color-leave); }
+    .sb-absc   { background: var(--color-absconding); }
+    .sb-grace  { background: var(--color-holiday); }
+    /* live dot */
+    .live-dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #3b82f6;
+        display: inline-block;
+        margin-right: 4px;
+        animation: pulse-blue 2s infinite;
+        vertical-align: middle;
+    }
+
+    /* Table styling */
+    .table-container {
+        overflow-x: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    th, td {
+        border: 1px solid #1f1f22;
+        padding: 6px;
+        text-align: center;
+        vertical-align: middle;
+        box-sizing: border-box;
+    }
+    th {
+        background-color: #0c0c0e;
+        font-weight: 600;
+    }
+    
+    td {
+        background-color: #000000;
+    }
+    /* Hover effect for rows */
+    tbody tr:hover td {
+        background-color: #0a0a0c;
+    }
+
+    /* Fixed columns for Employee Details */
+    .emp-col {
+        text-align: left;
+        padding-left: 12px;
+    }
+    .emp-id { color: var(--header-blue); font-weight: 600; }
+    .emp-name { font-weight: 700; letter-spacing: 0.3px; color: #ffffff; }
+    .emp-team { color: rgba(255,255,255,0.75); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Day Cell */
+    .day-cell {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background-color: var(--cell-empty);
+        margin: 0 auto;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        line-height: 1;
+    }
+    
+    .edit-cell {
+        background-color: var(--color-half);
+        color: black;
+        font-weight: 700;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin: 0 auto;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 10px;
+    }
+
+    /* Column headers for summary */
+    .summary-th {
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+    }
+
+    /* ===================== CONTROL CENTER CSS ===================== */
+
+    /* Today's Snapshot */
+    .snapshot-section {
+        margin-bottom: 18px;
+    }
+    .snapshot-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+    }
+    .snapshot-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+    }
+    .snap-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        position: relative;
+        overflow: hidden;
+    }
+    .snap-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0;
+        width: 3px;
+        height: 100%;
+        border-radius: 8px 0 0 8px;
+    }
+    .snap-card.sc-present::before { background: var(--color-full); }
+    .snap-card.sc-leave::before   { background: var(--color-leave); }
+    .snap-card.sc-absent::before  { background: #ffffff; }
+    .snap-card.sc-live::before    { background: #3b82f6; }
+    .snap-ring {
+        width: 38px;
+        height: 38px;
+        flex-shrink: 0;
+    }
+    .snap-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .snap-ring circle { fill: none; stroke-width: 3; stroke-linecap: round; }
+    .snap-ring .ring-bg { stroke: #1f1f22; }
+    .snap-ring .ring-fill { transition: stroke-dashoffset 0.6s ease; }
+    .snap-info { flex: 1; }
+    .snap-num {
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 3px;
+    }
+    .snap-title { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .sc-present .snap-num { color: var(--color-full); }
+    .sc-leave   .snap-num { color: var(--color-leave); }
+    .sc-absent  .snap-num { color: #e4e4e7; }
+    .sc-live    .snap-num { color: #3b82f6; }
+    .sc-live .snap-ring .ring-fill { stroke: #3b82f6; animation: pulse-ring 2s infinite; }
+    @keyframes pulse-ring {
+        0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    .sc-present .snap-ring .ring-fill { stroke: var(--color-full); }
+    .sc-leave   .snap-ring .ring-fill { stroke: var(--color-leave); }
+    .sc-absent  .snap-ring .ring-fill { stroke: #e4e4e7; }
+
+    /* Filter & Search Bar */
+    .control-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .ctrl-search {
+        flex: 1;
+        min-width: 180px;
+        position: relative;
+    }
+    .ctrl-search input {
+        width: 100%;
+        background: #0d0d10;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 7px 12px 7px 34px;
+        color: white;
+        font-family: 'Inter', sans-serif;
+        font-size: 12px;
+        outline: none;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+    }
+    .ctrl-search input:focus { border-color: var(--header-blue); }
+    .ctrl-search .search-icon {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+        font-size: 13px;
+        pointer-events: none;
+    }
+    .ctrl-select {
+        background: #0d0d10;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 7px 28px 7px 10px;
+        color: white;
+        font-family: 'Inter', sans-serif;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 9px center;
+        transition: border-color 0.2s;
+    }
+    .ctrl-select:focus { border-color: var(--header-blue); }
+    .status-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+    .sf-btn {
+        background: #0d0d10;
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 5px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        color: var(--text-muted);
+        transition: all 0.2s;
+        font-family: 'Inter', sans-serif;
+    }
+    .sf-btn:hover { border-color: var(--header-blue); color: white; }
+    .sf-btn.active { color: black; border-color: transparent; }
+    .sf-btn.active.sf-all    { background: var(--header-blue); color: white; }
+    .sf-btn.active.sf-present { background: var(--color-full); }
+    .sf-btn.active.sf-leave  { background: var(--color-leave); }
+    .sf-btn.active.sf-absent { background: #e4e4e7; }
+    .sf-btn.active.sf-live   { background: #3b82f6; color: white; }
+    .sf-btn.active.sf-absconding { background: var(--color-absconding); color: white; }
+
+    /* Sortable header tweaks */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background-color: #111116; }
+    .sort-chevron { display: inline-block; margin-left: 3px; opacity: 0.4; font-size: 9px; }
+    th.sort-asc  .sort-chevron, th.sort-desc .sort-chevron { opacity: 1; color: var(--header-blue); }
+
+    /* Hidden row */
+    tbody tr.row-hidden { display: none; }
+
+</style>
+</head>
+<body>
+
+    <!-- Top Action Bar -->
+    <div class="top-bar">
+        <div class="month-selector">
+            <button>&lt;</button>
+            <span style="font-size: 13px; margin: 0 5px;">📅 March 2026</span>
+            <button>&gt;</button>
+        </div>
+        <button>🏖️ Holidays</button>
+        <button>📥 Export</button>
+    </div>
+
+    <!-- Legend Bar -->
+    <div class="legend-bar">
+        <div class="legend-item"><span class="badge full">1</span> FULL DAY</div>
+        <div class="legend-item"><span class="badge half">0.5</span> HALF DAY</div>
+        <div class="legend-item"><span class="badge absent" style="color: black;">0</span> ABSENT</div>
+        <div class="legend-item"><span class="badge leave" style="color: black;">0</span> LEAVE</div>
+        <div class="legend-item"><span class="badge absconding">-1</span> ABSCONDING</div>
+        <div class="legend-item"><span class="badge holiday">1</span> HOLIDAY</div>
+        <div class="legend-item"><span class="badge working">IN</span> PUNCHED IN</div>
+    </div>
+
+    <!-- DASHBOARD: Compact Stat Strip -->
+    <div class="dashboard">
+        <div class="stat-strip">
+
+            <!-- Employees -->
+            <div class="stat-item">
+                <div class="stat-label">Employees</div>
+                <div class="stat-val sv-emp">5</div>
+                <div class="stat-note">March 2026</div>
+            </div>
+
+            <!-- Attendance Rate -->
+            <div class="stat-item">
+                <div class="stat-label">Attendance</div>
+                <div class="stat-val sv-att">72%</div>
+                <div class="stat-note">monthly average</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-att" style="width:72%"></div></div>
+            </div>
+
+            <!-- Present Today (with live dot) -->
+            <div class="stat-item">
+                <div class="stat-label">Present Today</div>
+                <div class="stat-val sv-present">3 <span style="font-size:11px;color:#3b82f6;"><span class="live-dot"></span>IN</span></div>
+                <div class="stat-note">out of 5 employees</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-present" style="width:60%"></div></div>
+            </div>
+
+            <!-- Absent Today -->
+            <div class="stat-item">
+                <div class="stat-label">Absent Today</div>
+                <div class="stat-val sv-absent">2</div>
+                <div class="stat-note">no check-in recorded</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-absent" style="width:40%"></div></div>
+            </div>
+
+            <!-- Leave Used -->
+            <div class="stat-item">
+                <div class="stat-label">Leave Taken</div>
+                <div class="stat-val sv-leave">3</div>
+                <div class="stat-note">days this month</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-leave" style="width:12%"></div></div>
+            </div>
+
+            <!-- Absconding -->
+            <div class="stat-item">
+                <div class="stat-label">Absconding</div>
+                <div class="stat-val sv-absc">2</div>
+                <div class="stat-note">instances this month</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-absc" style="width:40%"></div></div>
+            </div>
+
+            <!-- Grace Used -->
+            <div class="stat-item">
+                <div class="stat-label">Grace Used</div>
+                <div class="stat-val sv-grace">19</div>
+                <div class="stat-note">mins consumed</div>
+                <div class="stat-bar"><div class="stat-bar-fill sb-grace" style="width:19%"></div></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Control Bar: Search + Employee + Team Filter -->
+    <div class="control-bar">
+        <div class="ctrl-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="Search by Name or Emp ID..." oninput="applyFilters()">
+        </div>
+        <select class="ctrl-select" id="emp-filter" onchange="applyFilters()">
+            <option value="">All Employees</option>
+            <option value="EMP-004">EMP-004 &mdash; Shubham Mallick</option>
+            <option value="EMP-022">EMP-022 &mdash; Purnima Gautam</option>
+            <option value="EMP-006">EMP-006 &mdash; Aakashi Tyagi</option>
+            <option value="EMP-012">EMP-012 &mdash; Tejesvi Chadha</option>
+            <option value="EMP-027">EMP-027 &mdash; Gunjan Saini</option>
+        </select>
+        <select class="ctrl-select" id="team-filter" onchange="applyFilters()">
+            <option value="">All Teams</option>
+            <option value="TEAM WINNERS">Team Winners</option>
+            <option value="TEAM ACHIEVERS">Team Achievers</option>
+        </select>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container">
+        <table>
+            <thead id="table-head">
+                <!-- Generated by JS -->
+            </thead>
+            <tbody id="table-body">
+                <!-- Generated by JS -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Setup Headers (March 2026)
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        let daysHtml = '';
+        for(let i=1; i<=31; i++) {
+            let date = new Date(2026, 2, i); 
+            let dayName = daysOfWeek[date.getDay()];
+            let isSunday = dayName === 'Sun';
+            let isDeclaredHoliday = i >= 1 && i <= 4;
+            let isHolidayCol = isSunday || isDeclaredHoliday;
+            
+            let bgStyle = isHolidayCol ? 'background-color: var(--color-holiday);' : 'background-color: #ffffff;';
+            let colorStyle = isHolidayCol ? 'color: #000000;' : 'color: var(--header-blue);';
+            daysHtml += `<th rowspan="2" style="${bgStyle} ${colorStyle} padding: 6px 4px; min-width: 30px;">
+                            <div style="font-size: 13px; font-weight: 800; margin-bottom: 2px;">${i}</div>
+                            <div style="font-size: 10px; font-weight: 800; text-transform: uppercase;">${dayName}</div>
+                         </th>`;
+        }
+
+        const theadHtml = `
+            <tr>
+                <th colspan="3" class="th-emp-details" style="padding: 10px;">Employee Details</th>
+                ${daysHtml}
+                <th colspan="8" style="background-color: #ffffff; color: var(--header-blue); font-weight: 800; padding: 10px; font-size: 13px;">Summary</th>
+            </tr>
+            <tr style="background-color: #0c0c0e;">
+                <th class="sticky-1 sortable" id="sort-id" onclick="sortTable('id')" style="color: var(--header-blue); padding: 8px 10px; text-align: left;">Emp ID <span class="sort-chevron">⇅</span></th>
+                <th class="sticky-2 sortable" id="sort-name" onclick="sortTable('name')" style="color: white; padding: 8px 10px; text-align: left;">Name <span class="sort-chevron">⇅</span></th>
+                <th class="sticky-3 sortable" id="sort-team" onclick="sortTable('team')" style="color: var(--header-blue); padding: 8px 10px; text-align: left;">Team <span class="sort-chevron">⇅</span></th>
+                <th class="summary-th" style="color: var(--color-half);">EDIT</th>
+                <th class="summary-th" style="color: var(--color-holiday);">present</th>
+                <th class="summary-th" style="color: white);">Grace</th>
+                <th class="summary-th" style="color: #d946ef;">PL</th>
+                <th class="summary-th" style="color: var(--color-half);">EL</th>
+                <th class="summary-th" style="color: var(--color-half);">FINAL</th>
+                <th class="summary-th" style="color: #ff2a2a;">DEDUCTION</th>
+                <th class="summary-th" style="color: var(--color-full);">SALARY</th>
+            </tr>
+        `;
+        document.getElementById('table-head').innerHTML = theadHtml;
+
+        // Setup Body
+        const employees = [
+            { id: "EMP-004", name: "SHUBHAM MALLICK", team: "TEAM WINNERS" },
+            { id: "EMP-022", name: "PURNIMA GAUTAM", team: "TEAM ACHIEVERS" },
+            { id: "EMP-006", name: "AAKASHI TYAGI", team: "TEAM ACHIEVERS" },
+            { id: "EMP-012", name: "TEJESVI CHADHA", team: "TEAM ACHIEVERS" },
+            { id: "EMP-027", name: "GUNJAN SAINI", team: "TEAM ACHIEVERS" }
+        ];
+
+        let tbodyHtml = '';
+        
+        // Fixed attendance data to prevent refresh changes
+        const fixedData = {
+            "EMP-004": { 
+                5: "full", 6: "half", 7: "full", 9: "absent",
+                // Scenario 1: < 5 days present -> Sunday Leave
+                16: "absent", 17: "full", 18: "full", 19: "leave", 20: "full", 21: "absent", 22: "leave", 23: "full"
+            },
+            "EMP-022": { 
+                5: "absent", 6: "full", 7: "leave", 8: "leave", 9: "absent",
+                // Scenario 2 (Updated): Sat Absconding (-1) -> Sunday Leave (0), Mon Present (1)
+                16: "full", 17: "full", 18: "full", 19: "full", 20: "full", 21: "absconding", 22: "leave", 23: "full"
+            },
+            "EMP-006": { 
+                5: "full", 6: "full", 7: "absconding", 9: "working",
+                // Scenario 3 (Updated): Mon Absconding (-1) -> Sunday Leave (0)
+                16: "full", 17: "full", 18: "full", 19: "full", 20: "full", 21: "full", 22: "leave", 23: "absconding"
+            },
+            "EMP-012": { 
+                5: "leave", 6: "half", 7: "full", 9: "working",
+                // Scenario 4: Sat & Mon Leave -> Sunday Holiday (default)
+                16: "full", 17: "full", 18: "full", 19: "full", 20: "full", 21: "leave", 23: "leave"
+            },
+            "EMP-027": { 
+                5: "absent", 6: "absconding", 7: "half", 9: "working",
+                16: "full", 17: "full", 18: "full", 19: "full", 20: "full", 21: "full", 23: "full"
+            }
+        };
+
+        employees.forEach(emp => {
+            const todayStatus = (fixedData[emp.id] && fixedData[emp.id][9]) ? fixedData[emp.id][9] : 'absent';
+            let rowHtml = `<tr data-id="${emp.id}" data-name="${emp.name}" data-team="${emp.team}" data-today="${todayStatus}">
+                <td class="emp-col emp-id sticky-1">${emp.id}</td>
+                <td class="emp-col emp-name sticky-2">${emp.name}</td>
+                <td class="emp-col emp-team sticky-3">${emp.team}</td>`;
+            
+            // Populate attendance cells
+            for(let i=1; i<=31; i++) {
+                let isSunday = new Date(2026, 2, i).getDay() === 0;
+                let isDeclaredHoliday = i >= 1 && i <= 4;
+                let isHolidayCol = isSunday || isDeclaredHoliday;
+                let cellBg = isHolidayCol ? 'background-color: rgba(6, 182, 212, 0.15);' : '';
+                
+                let cellContent = '';
+                if (i <= 9 || (i >= 16 && i <= 23)) {
+                    let status = fixedData[emp.id] && fixedData[emp.id][i] ? fixedData[emp.id][i] : null;
+
+                    if (status) {
+                        if (status === "full") cellContent = `<span class="badge full" style="margin:0;">1</span>`;
+                        else if (status === "half") cellContent = `<span class="badge half" style="margin:0;">0.5</span>`;
+                        else if (status === "absent") cellContent = `<span class="badge absent" style="margin:0; color:black;">0</span>`;
+                        else if (status === "leave") cellContent = `<span class="badge leave" style="margin:0; color:black;">0</span>`;
+                        else if (status === "absconding") cellContent = `<span class="badge absconding" style="margin:0; color:white;">-1</span>`;
+                        else if (status === "working") cellContent = `<span class="badge working" style="margin:0; font-size:10px;">IN</span>`;
+                    } else if (isHolidayCol) {
+                        cellContent = `<span class="badge holiday" style="margin:0;">1</span>`;
+                    }
+                }
+
+                rowHtml += `<td style="${cellBg} text-align: center;"><div class="day-cell" style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">${cellContent}</div></td>`;
+            }
+
+            // Summary cells
+            rowHtml += `
+                <td><div class="edit-cell">0</div></td>
+                <td style="color:var(--color-full); font-weight:600;">0</td>
+                <td style="font-weight:600; color: #e5e5e5;">3/3</td>
+                <td style="color:var(--text-muted);">1</td>
+                <td style="color:var(--text-muted);">0</td>
+                <td style="color:var(--color-half); font-weight:600;">0</td>
+                <td style="color:#ff2a2a; font-weight:600;">₹0</td>
+                <td style="color:var(--color-full); font-weight:600;">₹0</td>
+            </tr>`;
+            tbodyHtml += rowHtml;
+        });
+        document.getElementById('table-body').innerHTML = tbodyHtml;
+
+        // ===================== FILTER & SORT LOGIC =====================
+        let activeStatusFilter = 'all';
+        let sortState = { key: null, asc: true };
+
+        function applyFilters() {
+            const search  = document.getElementById('search-input').value.toLowerCase();
+            const team    = document.getElementById('team-filter').value;
+            const empSel  = document.getElementById('emp-filter').value.toLowerCase();
+            const rows    = document.querySelectorAll('#table-body tr');
+            rows.forEach(row => {
+                const id      = row.dataset.id.toLowerCase();
+                const name    = row.dataset.name.toLowerCase();
+                const rowTeam = row.dataset.team;
+                const today   = row.dataset.today;
+
+                const matchSearch = !search || id.includes(search) || name.includes(search);
+                const matchTeam   = !team   || rowTeam === team;
+                const matchEmp    = !empSel || id === empSel;
+                const matchStatus = activeStatusFilter === 'all' || today === activeStatusFilter;
+
+                row.classList.toggle('row-hidden', !(matchSearch && matchTeam && matchEmp && matchStatus));
+            });
+        }
+
+        function setStatusFilter(status, btn) {
+            activeStatusFilter = status;
+            document.querySelectorAll('.sf-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            applyFilters();
+        }
+
+        function sortTable(key) {
+            const thMap = { id: 'sort-id', name: 'sort-name', team: 'sort-team' };
+            if (sortState.key === key) {
+                sortState.asc = !sortState.asc;
+            } else {
+                sortState.key = key;
+                sortState.asc = true;
+            }
+            // Update chevron classes
+            Object.values(thMap).forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove('sort-asc', 'sort-desc');
+                el.querySelector('.sort-chevron').textContent = '⇅';
+            });
+            const activeTh = document.getElementById(thMap[key]);
+            activeTh.classList.add(sortState.asc ? 'sort-asc' : 'sort-desc');
+            activeTh.querySelector('.sort-chevron').textContent = sortState.asc ? '↑' : '↓';
+
+            // Sort DOM rows
+            const tbody = document.getElementById('table-body');
+            const rows  = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const va = a.dataset[key] || '';
+                const vb = b.dataset[key] || '';
+                return sortState.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        }
+    </script>
+</body>
+</html>

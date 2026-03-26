@@ -175,7 +175,18 @@ app.add_middleware(
 
 # app.add_middleware(RequestLoggingMiddleware)
 
-# 3. GZip compression (ultra-optimized for large JSON responses)
+# 🕐 Datetime UTC middleware - appends Z to naive datetime strings in JSON responses
+# MUST be added BEFORE GZipMiddleware so it runs on uncompressed response body first.
+# Starlette middleware order: first-added runs first on response.
+# Response path: route → DatetimeUTC (adds Z) → GZip (compresses) → browser
+try:
+    from app.middleware.datetime_utc import DatetimeUTCMiddleware
+    app.add_middleware(DatetimeUTCMiddleware)
+    logging.info("✓ Datetime UTC middleware activated - all timestamps marked as UTC")
+except ImportError as e:
+    logging.warning(f"⚠ Datetime UTC middleware not available: {e}")
+
+# 3. GZip compression — added AFTER DatetimeUTC so GZip compresses the already-patched response
 app.add_middleware(
     GZipMiddleware, 
     minimum_size=1000,  # Only compress responses > 1KB for better performance
@@ -189,15 +200,6 @@ try:
     logging.info("✓ Session validation middleware activated - immediate logout on any request")
 except ImportError as e:
     logging.warning(f"⚠ Session validation middleware not available: {e}")
-
-# 🕐 Datetime UTC middleware - appends Z to naive datetime strings in JSON responses
-# Ensures browser correctly interprets timestamps as UTC and converts to IST
-try:
-    from app.middleware.datetime_utc import DatetimeUTCMiddleware
-    app.add_middleware(DatetimeUTCMiddleware)
-    logging.info("✓ Datetime UTC middleware activated - all timestamps marked as UTC")
-except ImportError as e:
-    logging.warning(f"⚠ Datetime UTC middleware not available: {e}")
 
 # 4. Performance monitoring middleware for async Motor
 try:

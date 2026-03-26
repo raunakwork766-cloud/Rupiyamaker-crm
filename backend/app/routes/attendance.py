@@ -654,6 +654,14 @@ async def get_attendance_calendar(
                     else:
                         status = 1.0  # Default to full day if status is None or unknown type
                     
+                    # ── Rule: Check-in without check-out on a past date = Absent ──
+                    chk_in = attendance_record.get("check_in_time")
+                    chk_out = attendance_record.get("check_out_time")
+                    if chk_in and not chk_out and status not in [-2.0, -2]:
+                        _day_date_obj = date.fromisoformat(date_str)
+                        if _day_date_obj < get_ist_now().date():
+                            status = -1.0
+                    
                     status_text = get_status_text(status) if status is not None else None
                     comments = attendance_record.get("comments", "")
                     photo_path = attendance_record.get("photo_path")
@@ -674,10 +682,18 @@ async def get_attendance_calendar(
                         absconding_days += 1
                         
                 elif not is_weekend and not is_holiday:
-                    # No attendance record for working day
-                    status = None
-                    status_text = "Not Marked"
-                    total_days += 1
+                    # ── Rule: No attendance record on a past working day = Absent ──
+                    _day_date_obj = date.fromisoformat(date_str)
+                    _today_ist = get_ist_now().date()
+                    if _day_date_obj < _today_ist:
+                        status = -1.0
+                        status_text = "Absent"
+                        total_days += 1
+                        absent_days += 1
+                    else:
+                        status = None
+                        status_text = "Not Marked"
+                        total_days += 1
                 
                 # Calculate attendance percentage
                 attendance_percentage = 0.0
@@ -702,37 +718,53 @@ async def get_attendance_calendar(
                 }
                 days.append(day_data)
 
-            # ── Sunday Rule: post-process each Sunday based on its week's full days ──
+            # ── Sunday Rule: Sunday is absent if adjacent Saturday or Monday is absent ──
             if enable_sunday_rule:
+                _days_by_date = {d["date"]: d for d in days}
+                _today_ist = get_ist_now().date()
+
                 for day_data in days:
                     d_sun = date.fromisoformat(day_data["date"])
                     if d_sun.weekday() != 6:  # Only Sundays
                         continue
-                    week_monday = d_sun - timedelta(days=6)  # Monday of this week
-                    full_count = 0
-                    for i in range(6):  # Mon(0) … Sat(5) — all 6 days count
-                        wd = week_monday + timedelta(days=i)
-                        # Count all Mon–Sat days (including Saturday)
-                        wd_rec = all_emp_attendance.get(wd.isoformat())
-                        if wd_rec:
-                            wd_status = wd_rec.get("status")
-                            try:
-                                if float(wd_status) == 1.0:
-                                    full_count += 1
-                            except (TypeError, ValueError):
-                                if isinstance(wd_status, str) and wd_status.lower() in ("present", "full day", "full"):
-                                    full_count += 1
-                    if full_count >= min_days_for_sunday:
+
+                    saturday = d_sun - timedelta(days=1)  # Saturday before this Sunday
+                    monday   = d_sun + timedelta(days=1)  # Monday after this Sunday
+
+                    def _day_absent(check_date):
+                        """True if check_date is a working day that is absent/not-present."""
+                        if check_date.weekday() in weekend_days:
+                            return False  # Weekend itself — not a working absence
+                        d_s = check_date.isoformat()
+                        # In-month days: use updated status from days list
+                        if d_s in _days_by_date:
+                            s = _days_by_date[d_s].get("status")
+                            # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0)
+                            return s not in [1, 1.0, 1.5, 0, 0.0]
+                        # Out-of-month days: use raw attendance lookup
+                        rec = all_emp_attendance.get(d_s)
+                        if rec is None:
+                            return check_date < _today_ist  # No record in past → absent
+                        try:
+                            return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0]
+                        except (TypeError, ValueError):
+                            return True
+
+                    sat_absent = _day_absent(saturday)
+                    # Don't penalise for a future Monday (they might still come in)
+                    mon_absent = (monday <= _today_ist) and _day_absent(monday)
+
+                    if sat_absent or mon_absent:
+                        day_data["status"] = 0
+                        day_data["status_text"] = "Sunday (Absent — Sat/Mon absent)"
+                        day_data["is_sunday_present"] = False
+                        absent_days += 1
+                        total_days += 1
+                    else:
                         day_data["status"] = 1
                         day_data["status_text"] = "Sunday (Present)"
                         day_data["is_sunday_present"] = True
                         full_days += 1
-                        total_days += 1
-                    else:
-                        day_data["status"] = 0
-                        day_data["status_text"] = f"Sunday (Absent — {full_count}/{min_days_for_sunday} days)"
-                        day_data["is_sunday_present"] = False
-                        absent_days += 1
                         total_days += 1
 
             # Calculate final attendance percentage (after Sunday rule updates counts)

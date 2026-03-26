@@ -268,7 +268,17 @@ export const toISTTimeString = (date, options = {}) => {
  * @returns {Date} Current date in IST
  */
 export const getCurrentISTDate = () => {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
+    // Use Intl.DateTimeFormat.formatToParts for reliable IST extraction.
+    // The toLocaleString→new Date() round-trip is unreliable across browser timezones.
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: IST_TIMEZONE,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(now);
+    const get = (type) => parseInt(parts.find(p => p.type === type)?.value || '0', 10);
+    // hour12:false can give 24 for midnight; normalise with % 24
+    return new Date(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
 };
 
 /**
@@ -278,7 +288,15 @@ export const getCurrentISTDate = () => {
  */
 export const toISTDate = (date) => {
     if (!date) return null;
-    return new Date(new Date(date).toLocaleString('en-US', { timeZone: IST_TIMEZONE }));
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: IST_TIMEZONE,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(d);
+    const get = (type) => parseInt(parts.find(p => p.type === type)?.value || '0', 10);
+    return new Date(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
 };
 
 // Export timezone constants
@@ -291,11 +309,8 @@ export const LOCALE_IST = IST_LOCALE;
  * @returns {string} e.g. "2026-02-27"
  */
 export const getISTDateYMD = () => {
-    const d = getCurrentISTDate();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    // en-CA locale outputs YYYY-MM-DD directly; timeZone ensures IST calendar date
+    return new Date().toLocaleDateString('en-CA', { timeZone: IST_TIMEZONE });
 };
 
 /**
@@ -306,12 +321,14 @@ export const getISTDateYMD = () => {
  */
 export const toISTDateYMD = (date) => {
     if (!date) return '';
-    const d = toISTDate(date);
-    if (!d || isNaN(d.getTime())) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    try {
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return '';
+        // en-CA locale outputs YYYY-MM-DD; timeZone converts to IST calendar date
+        return d.toLocaleDateString('en-CA', { timeZone: IST_TIMEZONE });
+    } catch {
+        return '';
+    }
 };
 
 /**

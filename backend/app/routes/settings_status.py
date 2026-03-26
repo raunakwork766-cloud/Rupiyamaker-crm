@@ -156,43 +156,6 @@ async def update_sub_status_reassignment(
     return {"message": "Sub-status reassignment period updated successfully"}
 
 
-# ============= Cooldown Period Routes =============
-
-@router.get("/cooldown-period")
-async def get_cooldown_period(
-    user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
-):
-    """Get the global reassignment cooldown period (in hours)"""
-    doc = await leads_db.db["reassignment_settings"].find_one({"type": "cooldown_period"})
-    hours = doc.get("hours", 24) if doc else 24
-    return {"hours": hours}
-
-
-@router.put("/cooldown-period")
-async def update_cooldown_period(
-    data: Dict[str, Any],
-    user_id: str = Query(..., description="ID of the user making the request"),
-    leads_db: LeadsDB = Depends(get_leads_db),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db),
-):
-    """Update the global reassignment cooldown period (in hours)"""
-    await check_permission(user_id, "settings", "edit", users_db, roles_db)
-    try:
-        hours = int(data.get("hours", 24))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="hours must be a number")
-    if hours < 1 or hours > 168:
-        raise HTTPException(status_code=400, detail="Cooldown period must be between 1 and 168 hours")
-    await leads_db.db["reassignment_settings"].update_one(
-        {"type": "cooldown_period"},
-        {"$set": {"type": "cooldown_period", "hours": hours, "updated_at": get_ist_now()}},
-        upsert=True
-    )
-    return {"message": "Cooldown period updated", "hours": hours}
-
-
 # ============= Offer Letter Template Routes =============
 
 _OL_DEFAULT = {
@@ -259,4 +222,3 @@ async def update_offer_letter_template(
         upsert=True
     )
     return {"message": "Offer letter template updated"}
-

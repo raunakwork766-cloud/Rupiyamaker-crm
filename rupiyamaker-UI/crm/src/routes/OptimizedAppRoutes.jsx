@@ -59,7 +59,6 @@ const LazyNotificationsPage = createLazyComponent(() => import('../components/No
 const LazyNotificationManagementPage = createLazyComponent(() => import('../pages/NotificationManagementPage.jsx'), 'NotificationManagementPage');
 const LazyRoleCompare = createLazyComponent(() => import('../components/settings/RoleCompare.jsx'), 'RoleCompare');
 const LazyKnowledgeBase = createLazyComponent(() => import('../components/KnowledgeBase.jsx'), 'KnowledgeBase');
-const LazyFAQPage = createLazyComponent(() => import('../components/FAQPage.jsx'), 'FAQPage');
 const LazyOfferLetterGenerator = createLazyComponent(() => import('../components/OfferLetterGenerator.jsx'), 'OfferLetterGenerator');
 
 // Optimized loading component with better UX
@@ -665,6 +664,27 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             routeName="All Notifications"
             user={user}
           />
+        } 
+      />
+
+      {/* Offer Letter Generator Route */}
+      <Route 
+        path="/offer-letter" 
+        element={
+          <ProtectedRoute 
+            requiredPage="offer-letter" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'hrms', action: 'show' },
+              { page: 'HRMS', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyOfferLetterGenerator} 
+              routeName="Offer Letter"
+              user={user}
+            />
+          </ProtectedRoute>
         } 
       />
 

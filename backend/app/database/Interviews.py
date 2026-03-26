@@ -41,13 +41,13 @@ class InterviewsDB:
                 "updated_at": current_time
             })
 
-            # Normalize interview_date to IST-aware datetime to avoid timezone drift
+            # Normalize interview_date as IST wall-clock time and store in UTC.
+            # This keeps calendar date consistent for IST users across create/update flows.
             if "interview_date" in interview_data and isinstance(interview_data["interview_date"], datetime):
                 dt = interview_data["interview_date"]
                 if dt.tzinfo is None:
-                    # Naive datetime (e.g. from date-only string "2026-03-14" parsed as midnight UTC)
-                    # Treat the date as IST local date at midnight IST
-                    interview_data["interview_date"] = dt.replace(tzinfo=IST)
+                    dt = dt.replace(tzinfo=IST)
+                interview_data["interview_date"] = dt.astimezone(timezone.utc)
             
             result = await self.collection.insert_one(interview_data)
             
@@ -126,11 +126,12 @@ class InterviewsDB:
             
             update_data["updated_at"] = get_ist_now()
 
-            # Normalize interview_date to IST-aware datetime
+            # Normalize interview_date as IST wall-clock time and store in UTC.
             if "interview_date" in update_data and isinstance(update_data["interview_date"], datetime):
                 dt = update_data["interview_date"]
                 if dt.tzinfo is None:
-                    update_data["interview_date"] = dt.replace(tzinfo=IST)
+                    dt = dt.replace(tzinfo=IST)
+                update_data["interview_date"] = dt.astimezone(timezone.utc)
             
             result = await self.collection.update_one(
                 {"_id": ObjectId(interview_id)},

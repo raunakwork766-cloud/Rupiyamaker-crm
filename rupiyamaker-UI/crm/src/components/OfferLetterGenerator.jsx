@@ -259,6 +259,10 @@ const OfferLetterGenerator = ({ user }) => {
   const [resizeState, setResizeState] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(85);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [empSearch, setEmpSearch] = useState('');
+  const [empDropOpen, setEmpDropOpen] = useState(false);
+  const [empLoading, setEmpLoading] = useState(false);
   const importTplRef = useRef(null);
 
   const page1Ref = useRef(null);
@@ -272,6 +276,20 @@ const OfferLetterGenerator = ({ user }) => {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setTpl(p => ({ ...DEFAULT_TPL, ...d })); })
       .catch(() => {});
+  }, [userId]);
+
+  // Fetch employees for autofill
+  useEffect(() => {
+    if (!userId) return;
+    setEmpLoading(true);
+    fetch(API_BASE_URL + '/users?user_id=' + userId)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data?.users || data?.data || []);
+        setEmployees(list);
+      })
+      .catch(() => {})
+      .finally(() => setEmpLoading(false));
   }, [userId]);
 
   const handleSaveTemplate = useCallback(async () => {
@@ -354,6 +372,42 @@ const OfferLetterGenerator = ({ user }) => {
   const salaryWords = salaryRaw > 0 ? numberToWords(salaryRaw) : '\u2014';
   const targetRaw = parseIndian(monthlyTarget);
   const formattedTarget = targetRaw > 0 ? formatIndian(targetRaw) : '\u2014';
+
+  // Autofill all fields from a selected employee record
+  const autofillFromEmployee = useCallback((emp) => {
+    const fn = (emp.first_name || '').trim();
+    const ln = (emp.last_name || '').trim();
+    const fullName = titleCase([fn, ln].filter(Boolean).join(' '));
+    if (fullName) setCandidateName(fullName);
+    if (emp.salary) setMonthlySalary(formatIndian(Math.round(emp.salary)));
+    if (emp.monthly_target) setMonthlyTarget(formatIndian(Math.round(emp.monthly_target)));
+    if (emp.joining_date) {
+      const d = emp.joining_date;
+      const dateStr = typeof d === 'string' ? d.slice(0, 10) : '';
+      if (dateStr) setJoiningDate(dateStr);
+    }
+    if (emp.designation) {
+      const des = emp.designation.trim();
+      setDesignation(des);
+      if (des.toLowerCase().includes('hr') || des.toLowerCase().includes('human')) {
+        setLetterType('hr');
+      } else {
+        setLetterType('consultant');
+      }
+    }
+    setEmpSearch('');
+    setEmpDropOpen(false);
+  }, []);
+
+  // Filtered employee list for dropdown
+  const filteredEmps = empSearch.trim().length > 0
+    ? employees.filter(e => {
+        const name = ((e.first_name || '') + ' ' + (e.last_name || '')).toLowerCase();
+        const eid = String(e.employee_id || '').toLowerCase();
+        const q = empSearch.toLowerCase();
+        return name.includes(q) || eid.includes(q);
+      }).slice(0, 10)
+    : [];
   const formattedDate = formatDate(joiningDate);
   const displayName = candidateName.trim() || 'Candidate Name';
   const currentDesignation = letterType === 'hr' ? 'Human Resources' : designation;
@@ -947,6 +1001,60 @@ const OfferLetterGenerator = ({ user }) => {
                 <span style={{ width:3, height:16, background:'#cc1818', borderRadius:2 }} /> Candidate Details
               </div>
               <p style={{ fontSize:'.73rem', color:'#64748b', marginBottom:14 }}>Fill fields \u2014 preview updates live.</p>
+
+              {/* Employee Search — autofill from backend */}
+              <Field label="Search Employee (autofill)">
+                <div style={{ position:'relative' }}>
+                  <input
+                    type="text"
+                    placeholder={empLoading ? 'Loading employees…' : 'Type name or ID…'}
+                    value={empSearch}
+                    onChange={e => { setEmpSearch(e.target.value); setEmpDropOpen(true); }}
+                    onFocus={() => setEmpDropOpen(true)}
+                    onBlur={() => setTimeout(() => setEmpDropOpen(false), 200)}
+                    style={{ ...iStyle, paddingRight: 28 }}
+                  />
+                  <span style={{ position:'absolute', right:9, top:'50%', transform:'translateY(-50%)', fontSize:'.8rem', pointerEvents:'none' }}>🔍</span>
+                  {empDropOpen && filteredEmps.length > 0 && (
+                    <div style={{
+                      position:'absolute', top:'100%', left:0, right:0, zIndex:9999,
+                      background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:7,
+                      boxShadow:'0 8px 24px rgba(0,0,0,.14)', maxHeight:220, overflowY:'auto', marginTop:2,
+                    }}>
+                      {filteredEmps.map(emp => {
+                        const name = [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+                        const eid = emp.employee_id || '';
+                        const des = emp.designation || '';
+                        return (
+                          <div
+                            key={emp._id || emp.id}
+                            onMouseDown={() => autofillFromEmployee(emp)}
+                            style={{
+                              padding:'8px 12px', cursor:'pointer', borderBottom:'1px solid #f1f5f9',
+                              display:'flex', flexDirection:'column', gap:2,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background='#f0f9ff'}
+                            onMouseLeave={e => e.currentTarget.style.background='#fff'}
+                          >
+                            <div style={{ fontWeight:700, color:'#0a1c3e', fontSize:'.82rem', fontFamily:'Inter,sans-serif' }}>{titleCase(name)}</div>
+                            <div style={{ fontSize:'.68rem', color:'#64748b', display:'flex', gap:8 }}>
+                              {eid && <span>ID: {eid}</span>}
+                              {des && <span>· {des}</span>}
+                              {emp.salary ? <span>· ₹{formatIndian(Math.round(emp.salary))}</span> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {empDropOpen && empSearch.trim().length > 0 && filteredEmps.length === 0 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:9999, background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:7, padding:'10px 12px', fontSize:'.75rem', color:'#94a3b8', marginTop:2, boxShadow:'0 4px 12px rgba(0,0,0,.1)' }}>
+                      No employees found
+                    </div>
+                  )}
+                </div>
+                <p style={{ fontSize:'.63rem', color:'#94a3b8', marginTop:3, marginBottom:0, lineHeight:1.5 }}>Select an employee to auto-fill all fields below</p>
+              </Field>
 
               <Field label="Letter Type">
                 <select value={letterType} onChange={e => { setLetterType(e.target.value); setDesignation(e.target.value==='hr' ? 'Human Resources' : 'Financial Consultant'); }} style={iStyle}>

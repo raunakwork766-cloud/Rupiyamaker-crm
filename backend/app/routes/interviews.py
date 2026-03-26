@@ -205,6 +205,7 @@ class InterviewUpdate(BaseModel):
     interview_date: Optional[datetime] = None
     interview_time: Optional[str] = Field(None, max_length=10)
     status: Optional[str] = Field(None, min_length=1, max_length=50)  # Allow any status value from settings
+    status_remark: Optional[str] = Field(None, max_length=1000)
 
 class InterviewResponse(BaseModel):
     id: str = Field(alias="_id", description="Interview MongoDB ID")
@@ -237,6 +238,7 @@ class InterviewResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    qualification_status: Optional[str] = None
     attachments: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     reassign_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     reschedule_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
@@ -680,7 +682,8 @@ async def update_existing_interview(
                         updated_by=user_id,
                         updated_by_name=user_name,
                         old_status=str(old_value) if old_value else "None",
-                        new_status=str(new_value)
+                        new_status=str(new_value),
+                        remark=update_data.get("status_remark")
                     )
         
         updated_interview = await interviews_db.update_interview(interview_id, update_data)

@@ -610,6 +610,21 @@ async def check_phone_number(
             ).sort("created_at", -1)
             history_records = await history_cursor.to_list(length=100)
 
+            # Helper: extract a plain user ID string from possibly list/string/ObjectId
+            def _plain_uid(val) -> str:
+                if not val:
+                    return ""
+                if isinstance(val, list):
+                    val = val[0] if val else ""
+                s = str(val).strip()
+                # Handle old list-string storage e.g. "['abc123']"
+                if s.startswith("[") and s.endswith("]"):
+                    import re
+                    m = re.search(r"'([^']+)'", s)
+                    if m:
+                        s = m.group(1)
+                return s
+
             # Resolve user names for history records
             history_user_ids = set()
             for rec in history_records:
@@ -617,10 +632,21 @@ async def check_phone_number(
                     history_user_ids.add(str(rec["created_by"]))
                 details = rec.get("details") or {}
                 if details.get("target_user"):
-                    history_user_ids.add(str(details["target_user"]))
+                    history_user_ids.add(_plain_uid(details["target_user"]))
+                if details.get("from_user"):
+                    history_user_ids.add(_plain_uid(details["from_user"]))
+                # For approved activities: field_changes for assigned_to hold old/new owner IDs
+                for fc in (details.get("field_changes") or []):
+                    if fc.get("field_name") == "assigned_to":
+                        if fc.get("old_value"):
+                            history_user_ids.add(_plain_uid(fc["old_value"]))
+                        if fc.get("new_value"):
+                            history_user_ids.add(_plain_uid(fc["new_value"]))
 
             user_name_cache = {}
             for uid in history_user_ids:
+                if not uid:
+                    continue
                 try:
                     u = await users_db.get_user(uid)
                     if u:
@@ -641,14 +667,41 @@ async def check_phone_number(
                 if isinstance(created_at_val, datetime):
                     created_at_val = created_at_val.isoformat()
                 details = rec.get("details") or {}
+
+                # Extract old/new owner from assigned_to field_change (for approved activities)
+                assigned_to_old_id = ""
+                assigned_to_new_id = ""
+                for fc in (details.get("field_changes") or []):
+                    if fc.get("field_name") == "assigned_to":
+                        assigned_to_old_id = _plain_uid(fc.get("old_value") or "")
+                        assigned_to_new_id = _plain_uid(fc.get("new_value") or "")
+                        break
+
+                action = rec.get("action", "")
+                # from_user: stored in activity (now always plain string); fallback to field_changes
+                from_user_id = _plain_uid(details.get("from_user") or "")
+                if not from_user_id and action in ("approved", "approved_direct"):
+                    from_user_id = assigned_to_old_id
+
+                # to_user: stored as target_user (requests) or new assigned_to (approved)
+                to_user_id = _plain_uid(details.get("target_user") or "")
+                if not to_user_id and action in ("approved", "approved_direct"):
+                    to_user_id = _plain_uid(details.get("assigned_to") or "") or assigned_to_new_id
+
                 history_by_lead[lid].append({
                     "date": created_at_val or "",
-                    "action": rec.get("action", ""),
+                    "action": action,
                     "by_user": user_name_cache.get(str(rec.get("created_by", "")), ""),
-                    "to_user": user_name_cache.get(str(details.get("target_user", "")), ""),
+                    "to_user": user_name_cache.get(to_user_id, ""),
+                    "from_user": user_name_cache.get(from_user_id, ""),
                     "reason": details.get("reason", ""),
                     "status": details.get("reassignment_status", ""),
                     "description": rec.get("activity_description", ""),
+                    # Field-level before/after changes (data_code, campaign — exclude assigned_to/status)
+                    "field_changes": [
+                        fc for fc in (details.get("field_changes") or [])
+                        if fc.get("field_name") not in ("assigned_to", "reassignment_status")
+                    ],
                 })
 
             for lr in lead_results:
@@ -788,21 +841,45 @@ async def upload_documents(
             
         # Save file
         file_data = await save_upload_file(file, lead_media_dir)
+        abs_path = file_data["file_path"]
+        
+        # Permanently decrypt password-protected PDF on disk so it's always unlocked
+        stored_password = password.strip() if password and password.strip() else None
+        if stored_password and file.filename.lower().endswith(".pdf"):
+            try:
+                import io as _io
+                from pypdf import PdfReader, PdfWriter
+                with open(abs_path, "rb") as _f:
+                    _pdf_bytes = _f.read()
+                _reader = PdfReader(_io.BytesIO(_pdf_bytes))
+                if _reader.is_encrypted:
+                    _result = _reader.decrypt(stored_password)
+                    if _result.value > 0:
+                        _writer = PdfWriter()
+                        for _page in _reader.pages:
+                            _writer.add_page(_page)
+                        _out = _io.BytesIO()
+                        _writer.write(_out)
+                        with open(abs_path, "wb") as _wf:
+                            _wf.write(_out.getvalue())
+                        stored_password = None  # File is now permanently unlocked
+            except Exception as _e:
+                import logging as _lg; _lg.warning(f"PDF permanent decrypt failed for {file.filename}: {_e}")
         
         # Convert path to URL for API usage
-        relative_path = get_relative_media_url(file_data["file_path"])
+        relative_path = get_relative_media_url(abs_path)
         
         # Create document record
         document_data = {
             "lead_id": lead_id,
             "filename": file.filename,
             "file_path": relative_path,  # URL format for API
-            "absolute_file_path": file_data["file_path"],  # Keep the actual file path as well
+            "absolute_file_path": abs_path,  # Keep the actual file path as well
             "file_type": file_data["file_type"],
             "document_type": document_type,
             "category": category,
             "description": description,
-            "password": password if password and password.strip() else None,  # Store password if provided
+            "password": stored_password,  # None if permanently decrypted, else original
             "status": "received",
             "uploaded_by": user_id,
             "size": file_data["size"]
@@ -1037,6 +1114,37 @@ async def view_attachment(
     import mimetypes
     _fname = document.get("filename", "attachment")
     _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
+
+    # Auto-decrypt password-protected PDFs before serving
+    import io
+    import logging as _logging
+    stored_password = document.get("password")
+    _is_pdf = _fname.lower().endswith(".pdf") or abs_file_path.lower().endswith(".pdf")
+    if stored_password and _is_pdf:
+        try:
+            from pypdf import PdfReader, PdfWriter
+            with open(abs_file_path, "rb") as f:
+                pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                decrypt_result = reader.decrypt(stored_password)
+                if decrypt_result.value > 0:  # 1=user password, 2=owner password
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    output = io.BytesIO()
+                    writer.write(output)
+                    output.seek(0)
+                    return StreamingResponse(
+                        output,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f"inline; filename=\"{_fname}\""}
+                    )
+                else:
+                    _logging.warning(f"PDF decrypt failed for attachment {attachment_id}: wrong password")
+        except Exception as _e:
+            _logging.error(f"PDF decrypt error for attachment {attachment_id}: {_e}")
+
     return FileResponse(
         path=abs_file_path,
         filename=_fname,
@@ -1136,10 +1244,40 @@ async def download_attachment(
                 detail=f"File not found on disk. Tried paths: {abs_file_path}, {fallback_path}"
             )
     
-    # Return file for download
+    # Return file for download — auto-decrypt password-protected PDFs
+    import io
+    import logging as _logging
+    _dl_fname = document.get("filename", "attachment")
+    stored_password = document.get("password")
+    _dl_is_pdf = _dl_fname.lower().endswith(".pdf") or abs_file_path.lower().endswith(".pdf")
+    if stored_password and _dl_is_pdf:
+        try:
+            from pypdf import PdfReader, PdfWriter
+            with open(abs_file_path, "rb") as f:
+                pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                decrypt_result = reader.decrypt(stored_password)
+                if decrypt_result.value > 0:  # 1=user password, 2=owner password
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    output = io.BytesIO()
+                    writer.write(output)
+                    output.seek(0)
+                    return StreamingResponse(
+                        output,
+                        media_type="application/octet-stream",
+                        headers={"Content-Disposition": f"attachment; filename=\"{_dl_fname}\""}
+                    )
+                else:
+                    _logging.warning(f"PDF decrypt failed for attachment {attachment_id}: wrong password")
+        except Exception as _e:
+            _logging.error(f"PDF decrypt error for attachment {attachment_id}: {_e}")
+
     return FileResponse(
         path=abs_file_path,
-        filename=document.get("filename", "attachment"),
+        filename=_dl_fname,
         media_type="application/octet-stream"
     )
 
@@ -3156,9 +3294,33 @@ async def upload_lead_attachment(
             
         # Save file
         file_data = await save_upload_file(file, lead_media_dir)
+        abs_path = file_data["file_path"]
+        
+        # Permanently decrypt password-protected PDF on disk so it's always unlocked
+        stored_password = password.strip() if password and password.strip() else None
+        if stored_password and file.filename.lower().endswith(".pdf"):
+            try:
+                import io as _io
+                from pypdf import PdfReader, PdfWriter
+                with open(abs_path, "rb") as _f:
+                    _pdf_bytes = _f.read()
+                _reader = PdfReader(_io.BytesIO(_pdf_bytes))
+                if _reader.is_encrypted:
+                    _result = _reader.decrypt(stored_password)
+                    if _result.value > 0:
+                        _writer = PdfWriter()
+                        for _page in _reader.pages:
+                            _writer.add_page(_page)
+                        _out = _io.BytesIO()
+                        _writer.write(_out)
+                        with open(abs_path, "wb") as _wf:
+                            _wf.write(_out.getvalue())
+                        stored_password = None  # File is now permanently unlocked
+            except Exception as _e:
+                import logging as _lg; _lg.warning(f"PDF permanent decrypt failed for {file.filename}: {_e}")
         
         # Convert path to URL
-        relative_path = get_relative_media_url(file_data["file_path"])
+        relative_path = get_relative_media_url(abs_path)
         
         # Create document record with original filename
         document_data = {
@@ -3170,7 +3332,7 @@ async def upload_lead_attachment(
             "document_type": document_type,
             "category": category,
             "description": description,
-            "password": password if password and password.strip() else None,  # Store password if provided
+            "password": stored_password,  # None if permanently decrypted, else original
             "status": "received",
             "uploaded_by": user_id,
             "size": file_data["size"],
