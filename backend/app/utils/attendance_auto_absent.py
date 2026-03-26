@@ -134,9 +134,9 @@ async def run_missing_checkout_job():
 # Job 2 – Midnight: mark absent users who never checked in (previous day)
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def run_daily_absent_job():
+async def run_daily_absent_job(target_date: date = None):
     """
-    For the previous calendar day: find all active users with NO attendance record,
+    For the given date (default: previous calendar day): find all active users with NO attendance record,
     skip weekends & holidays, then insert absent records.
     """
     try:
@@ -144,7 +144,7 @@ async def run_daily_absent_job():
         from app.database import get_database_instances
         from bson import ObjectId
 
-        yesterday = (datetime.now(IST).date() - timedelta(days=1))
+        yesterday = target_date or (datetime.now(IST).date() - timedelta(days=1))
         yesterday_str = yesterday.isoformat()
 
         settings = await _get_settings()

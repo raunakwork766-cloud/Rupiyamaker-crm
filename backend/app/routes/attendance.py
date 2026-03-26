@@ -4205,6 +4205,7 @@ async def trigger_missing_checkout_job(
 @router.post("/auto-absent/run-daily-absent")
 async def trigger_daily_absent_job(
     user_id: str = Query(..., description="Admin user ID"),
+    for_date: str = Query(None, description="Date to run for (YYYY-MM-DD, default: yesterday)"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
@@ -4212,5 +4213,12 @@ async def trigger_daily_absent_job(
     from app.utils.permissions import check_permission
     await check_permission(user_id, "attendance", "all", users_db, roles_db)
     from app.utils.attendance_auto_absent import run_daily_absent_job
-    await run_daily_absent_job()
-    return {"success": True, "message": "Daily absent job triggered successfully."}
+    from datetime import date as date_type
+    target = None
+    if for_date:
+        try:
+            target = date_type.fromisoformat(for_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+    await run_daily_absent_job(target_date=target)
+    return {"success": True, "message": f"Daily absent job triggered for {for_date or 'yesterday'}."}
