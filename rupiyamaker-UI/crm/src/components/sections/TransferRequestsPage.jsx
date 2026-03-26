@@ -1061,8 +1061,10 @@ const TransferRequestsPage = ({ user }) => {
                           allRendered.push(renderCard(group.req, group.decision, i + 1, false));
                         });
 
-                        // Unmatched decisions — pair with synthetic request from lead fields
-                        unmatchedDecisions.forEach((d, i) => {
+                        // Unmatched decisions — only render if no matched groups exist (fallback only)
+                        // When groups exist, unmatched decisions are orphaned artifacts (e.g. a prior rejection
+                        // before a later approval) and should not appear as fake duplicate cards.
+                        if (groups.length === 0) unmatchedDecisions.forEach((d, i) => {
                           const synthReq = {
                             assigned_by_name: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
                             assigned_to_names: currentLead.target_user_name ? [currentLead.target_user_name] : [],
