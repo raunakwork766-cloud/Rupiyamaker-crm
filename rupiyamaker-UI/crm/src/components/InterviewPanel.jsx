@@ -1420,28 +1420,24 @@ const InterviewPanel = () => {
       setLoading(true);
       const token = localStorage.getItem('token');
       
-      // Delete interviews one by one with error tracking
-      for (const interviewId of selectedInterviews) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/interviews/${interviewId}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          if (response.ok) {
-            successCount++;
-          } else {
-            errorCount++;
-            errors.push(`Interview ${interviewId}: ${response.statusText}`);
+      // Delete all interviews in parallel
+      const results = await Promise.all(
+        selectedInterviews.map(async (interviewId) => {
+          try {
+            const response = await fetch(`${API_BASE_URL}/interviews/${interviewId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+            return { ok: response.ok, id: interviewId, status: response.statusText };
+          } catch (error) {
+            return { ok: false, id: interviewId, status: error.message };
           }
-        } catch (error) {
-          errorCount++;
-          errors.push(`Interview ${interviewId}: ${error.message}`);
-          console.error('Error deleting interview:', interviewId, error);
-        }
-      }
+        })
+      );
+      results.forEach(r => {
+        if (r.ok) successCount++;
+        else { errorCount++; errors.push(`Interview ${r.id}: ${r.status}`); }
+      });
 
       // Show result message
       if (successCount > 0 && errorCount === 0) {
@@ -3016,8 +3012,8 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
     return (
       <tr className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
         {checkboxVisible && (
-          <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
-            <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+          <td className="px-3 py-3 border-r border-slate-100">
+            <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} onClick={(e) => e.stopPropagation()} style={{ width: 16, height: 16 }} />
           </td>
         )}
         <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
@@ -3062,8 +3058,8 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
   return (
     <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
       {checkboxVisible && (
-        <td className="px-3 py-3 border-r border-slate-100" onClick={(e) => { e.stopPropagation(); onSelect && onSelect(); }}>
-          <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} style={{ width: 16, height: 16 }} />
+        <td className="px-3 py-3 border-r border-slate-100">
+          <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} onClick={(e) => e.stopPropagation()} style={{ width: 16, height: 16 }} />
         </td>
       )}
       <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
