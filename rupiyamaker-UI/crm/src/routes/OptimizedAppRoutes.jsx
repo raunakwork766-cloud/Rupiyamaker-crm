@@ -60,6 +60,7 @@ const LazyNotificationManagementPage = createLazyComponent(() => import('../page
 const LazyRoleCompare = createLazyComponent(() => import('../components/settings/RoleCompare.jsx'), 'RoleCompare');
 const LazyKnowledgeBase = createLazyComponent(() => import('../components/KnowledgeBase.jsx'), 'KnowledgeBase');
 const LazyOfferLetterGenerator = createLazyComponent(() => import('../components/OfferLetterGenerator.jsx'), 'OfferLetterGenerator');
+const LazyFAQPage = createLazyComponent(() => import('../components/FAQPage.jsx'), 'FAQPage');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
