@@ -689,8 +689,9 @@ const TransferRequestsPage = ({ user }) => {
                         // Count decisions paired to requests
                         const approvedCount = history.filter(h => { const t = (h.assignment_type || '').toLowerCase(); return t.includes('approv') && !t.includes('request'); }).length;
                         const rejectedCount = history.filter(h => { const t = (h.assignment_type || '').toLowerCase(); return t.includes('reject'); }).length;
-                        // Total = request entries + any pending from current tab
-                        const pendingCount = activeTab === 'pending' ? 1 : 0;
+                        // Total = request entries. Add +1 for pending only if the pending request is NOT already in history
+                        const pendingInHistory = reqEntries.length > 0 && activeTab === 'pending';
+                        const pendingCount = activeTab === 'pending' && !pendingInHistory ? 1 : 0;
                         const totalCount = reqEntries.length + pendingCount;
                         return (
                           <>
@@ -1056,9 +1057,15 @@ const TransferRequestsPage = ({ user }) => {
 
                         const allRendered = [];
 
+                        // If an unresolved group (decision=null) already exists in history, that IS the
+                        // current pending request — render it with isPendingDecision=true so the decision
+                        // textarea appears, and skip adding a duplicate synthetic pending card.
+                        const alreadyHasPendingInHistory = items.some(g => g.decision === null);
+
                         // Past groups (oldest first = index 0 = oldest)
                         items.forEach((group, i) => {
-                          allRendered.push(renderCard(group.req, group.decision, i + 1, false));
+                          const isPendingGroup = alreadyHasPendingInHistory && group.decision === null && (hasPendingCard || showOwnPendingCard);
+                          allRendered.push(renderCard(group.req, group.decision, i + 1, isPendingGroup));
                         });
 
                         // Unmatched decisions — only render if no matched groups exist (fallback only)
@@ -1076,8 +1083,8 @@ const TransferRequestsPage = ({ user }) => {
                           allRendered.push(renderCard(synthReq, d, items.length + i + 1, false));
                         });
 
-                        // Add current pending/own request card at the BOTTOM
-                        if (hasPendingCard || showOwnPendingCard) {
+                        // Add synthetic pending card ONLY if the pending request is NOT already in history
+                        if (!alreadyHasPendingInHistory && (hasPendingCard || showOwnPendingCard)) {
                           // Build a synthetic req entry using combined-array field names
                           const syntheticReq = {
                             assigned_by_name: currentLead.requestor_name || currentLead.reassignment_requested_by_name || '—',
