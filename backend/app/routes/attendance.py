@@ -2117,7 +2117,11 @@ async def check_in_attendance(
         checkout_end = datetime.strptime(check_out_end_time, "%H:%M").time()
         
         # Determine status based on check-in time
-        if check_in_time_obj < start_threshold:
+        if check_in_time_obj > checkout_end:
+            # After 20:00 — mark ABSENT (working hours window closed)
+            attendance_status = -1
+            status_reason = f"Absent: check-in attempted after working hours (after {check_out_end_time})"
+        elif check_in_time_obj < start_threshold:
             # Too early - mark as half day
             attendance_status = 0.5
             status_reason = "Early check-in before allowed time"
@@ -2130,9 +2134,9 @@ async def check_in_attendance(
             attendance_status = 0.5
             status_reason = "Late check-in - Half day"
         else:
-            # Too late (after shift end) - mark as leave for today
-            attendance_status = 0
-            status_reason = "Check-in after shift ended - Marked as leave"
+            # After check-in window but before 20:00 — half day
+            attendance_status = 0.5
+            status_reason = "Check-in after allowed window - Half day"
         
         check_in_record = {
             "check_in_time": check_in_time,
@@ -2162,8 +2166,8 @@ async def check_in_attendance(
             message = "Checked in successfully - Full day potential"
         elif attendance_status == 0.5:
             message = "Checked in - Half day marked (Late arrival or early check-in)"
-        elif attendance_status == 0:
-            message = "Checked in - Marked as leave (Check-in after shift ended)"
+        elif attendance_status == -1:
+            message = "Checked in - Marked ABSENT (check-in after working hours ended)"
         else:
             message = "Checked in successfully"
         
@@ -2287,7 +2291,15 @@ async def check_out_attendance(
             working_hours = (check_out_dt - check_in_dt).total_seconds() / 3600
             
             # Determine final status based on check-in status, working hours, and check-out time
-            if current_status == -2:
+            if check_out_time_obj > checkout_end:
+                # After 20:00 — mark ABSENT regardless of hours worked
+                final_status = -1
+                status_reason = f"Absent: check-out after working hours (after {check_out_end_time})"
+            elif current_status == -1:
+                # Already auto-absent (e.g. checked in after 20:00)
+                final_status = -1
+                status_reason = "Absent: check-in was after working hours"
+            elif current_status == -2:
                 # Already marked absent due to very late check-in
                 final_status = -2
                 status_reason = "Marked absent due to very late check-in"
@@ -2295,13 +2307,6 @@ async def check_out_attendance(
                 # Early check-out - half day regardless of hours worked
                 final_status = 0.5
                 status_reason = "Early check-out - Half day"
-            elif check_out_time_obj > checkout_end:
-                # Late check-out but within working day
-                if working_hours >= minimum_hours:
-                    final_status = max(current_status, 1) if current_status != -2 else -2
-                else:
-                    final_status = 0.5
-                status_reason = "Late check-out"
             else:
                 # Normal check-out time window
                 if working_hours >= minimum_hours:
@@ -2355,6 +2360,8 @@ async def check_out_attendance(
             message = "Checked out successfully - Full day completed"
         elif final_status == 0.5:
             message = "Checked out - Half day marked"
+        elif final_status == -1:
+            message = "Checked out - Marked ABSENT (outside working hours)"
         elif final_status == -2:
             message = "Checked out - Marked absent (due to very late check-in)"
         else:

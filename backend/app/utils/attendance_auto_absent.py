@@ -86,6 +86,7 @@ async def run_missing_checkout_job():
     """
     For every user who has a check_in_time but no check_out_time today,
     set status = -1 (absent) and mark auto_absent_no_checkout = True.
+    Only processes records not already marked absent (-1).
     """
     try:
         from app.database.Attendance import AttendanceDB
@@ -98,7 +99,7 @@ async def run_missing_checkout_job():
         db = get_database_instances()
         attendance_db: AttendanceDB = db["attendance"]
 
-        # Find all records for today with check_in but no check_out
+        # Find all records for today with check_in but no check_out and not already absent
         cursor = attendance_db.collection.find({
             "date": today,
             "check_in_time": {"$exists": True, "$ne": None, "$ne": ""},
@@ -106,20 +107,19 @@ async def run_missing_checkout_job():
                 {"check_out_time": {"$exists": False}},
                 {"check_out_time": None},
                 {"check_out_time": ""},
-            ]
+            ],
+            "status": {"$ne": -1},   # skip already-absent records
+            "auto_absent_no_checkout": {"$ne": True},  # skip already processed
         })
 
         updated = 0
         async for record in cursor:
-            # Only update if not already marked absent/override
-            if record.get("auto_absent_no_checkout"):
-                continue  # already processed
             await attendance_db.collection.update_one(
                 {"_id": record["_id"]},
                 {"$set": {
                     "status": -1,
                     "auto_absent_no_checkout": True,
-                    "comments": "Auto-absent: checked in but did not check out",
+                    "comments": "Auto-absent: checked in but did not check out before working hours ended",
                     "updated_at": datetime.now(IST),
                 }}
             )
