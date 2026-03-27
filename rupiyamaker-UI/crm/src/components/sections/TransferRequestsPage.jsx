@@ -1063,10 +1063,26 @@ const TransferRequestsPage = ({ user }) => {
                         // textarea appears, and skip adding a duplicate synthetic pending card.
                         const alreadyHasPendingInHistory = items.some(g => g.decision === null);
 
+                        // Find the LAST (most recent) unresolved group index — only THAT one is the
+                        // truly "pending" request. Older unresolved groups are expired / auto-rejected.
+                        let lastUnresolvedIdx = -1;
+                        items.forEach((g, idx) => { if (g.decision === null) lastUnresolvedIdx = idx; });
+
                         // Past groups (oldest first = index 0 = oldest)
                         items.forEach((group, i) => {
-                          const isPendingGroup = alreadyHasPendingInHistory && group.decision === null && (hasPendingCard || showOwnPendingCard);
-                          allRendered.push(renderCard(group.req, group.decision, i + 1, isPendingGroup));
+                          if (group.decision === null && i !== lastUnresolvedIdx) {
+                            // Old unresolved request — synthesize an auto-reject decision
+                            const synthAutoReject = {
+                              assignment_type: 'rejected',
+                              assigned_by_name: 'System',
+                              assigned_date: group.req.assigned_date || '',
+                              remark: `System Auto-Rejected: No action taken within ${cooldownHours}h cooldown period`,
+                            };
+                            allRendered.push(renderCard(group.req, synthAutoReject, i + 1, false));
+                          } else {
+                            const isPendingGroup = alreadyHasPendingInHistory && group.decision === null && i === lastUnresolvedIdx && (hasPendingCard || showOwnPendingCard);
+                            allRendered.push(renderCard(group.req, group.decision, i + 1, isPendingGroup));
+                          }
                         });
 
                         // Unmatched decisions — only render if no matched groups exist (fallback only)
