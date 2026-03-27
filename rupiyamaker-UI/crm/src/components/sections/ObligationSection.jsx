@@ -1872,7 +1872,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
       
       // Set CIBIL score - always update for login leads or new leads
-      const cibilScoreValue = extractedCibilScore ? String(extractedCibilScore) : (shouldAlwaysUpdate ? '' : cibilScore);
+      // Handle case where cibil_score might be an object (e.g., {score: 750}) instead of a plain value
+      let cibilScoreRaw = extractedCibilScore;
+      if (cibilScoreRaw && typeof cibilScoreRaw === 'object') {
+        cibilScoreRaw = cibilScoreRaw.score || cibilScoreRaw.value || cibilScoreRaw.cibil_score || Object.values(cibilScoreRaw).find(v => typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v))) || '';
+      }
+      const cibilScoreValue = cibilScoreRaw ? String(cibilScoreRaw) : (shouldAlwaysUpdate ? '' : cibilScore);
       if (shouldAlwaysUpdate || cibilScoreValue !== cibilScore) setCibilScore(cibilScoreValue);
       
       // Set company type (Processing Bank) - always update for login leads or new leads
@@ -2262,7 +2267,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           salary: salaryValue || '',
           partnerSalary: partnerSalaryValue || '',
           yearlyBonus: yearlyBonusValue || '',
-          bonusDivision: bonusDivisionValue || null,
+          bonusDivision: bonusDivision || null,
           loanRequired: loanRequiredValue || '',
           companyName: companyNameValue || '',
           cibilScore: cibilScoreValue || '',

@@ -5123,8 +5123,7 @@ function CreateLead() {
                                 <td className="px-4 py-3 text-center align-middle">
                                   {lead.file_sent_to_login ? (
                                     <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-green-700/50 bg-[#0B0E14] min-w-[130px]">
-                                      <span className="inline-block px-2 py-0.5 bg-green-600 text-white rounded text-xs font-bold mb-1">LOGIN</span>
-                                      {lead.sub_status && <span className="text-[10px] text-neutral-500">{lead.sub_status}</span>}
+                                      <span className="inline-block px-2 py-0.5 bg-green-600 text-white rounded text-xs font-bold">LOGIN</span>
                                     </div>
                                   ) : (
                                     <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-neutral-700/50 bg-[#0B0E14] min-w-[130px]">
