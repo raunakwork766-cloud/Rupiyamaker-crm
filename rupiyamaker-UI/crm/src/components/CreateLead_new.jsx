@@ -5086,10 +5086,14 @@ function CreateLead() {
                               return hrs > 0 && hrs < 24;
                             })();
                             const currentUserId = getUserId();
-                            const isOwnLead = currentUserId && (
-                              String(lead.created_by) === String(currentUserId) ||
-                              String(lead.assigned_to) === String(currentUserId)
-                            );
+                            const isOwnLead = (() => {
+                              if (!currentUserId) return false;
+                              const uid = String(currentUserId).trim();
+                              if (String(lead.created_by || '').trim() === uid) return true;
+                              const at = lead.assigned_to;
+                              if (Array.isArray(at)) return at.some(id => String(id).trim() === uid);
+                              return !!at && String(at).trim() === uid;
+                            })();
                             const rowBlocked = isLocked || rowLead24hLocked || isOwnLead;
                             return (
                               <tr
