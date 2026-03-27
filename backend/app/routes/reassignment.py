@@ -331,29 +331,20 @@ async def list_reassignment_requests(
         lead_dict["is_own_lead"] = (assigned_to_id == user_id)
         # Self-transfer: lead target == current assignee (transfer to yourself is meaningless)
         lead_dict["is_self_transfer"] = (target_user_id_val == assigned_to_id) if (target_user_id_val and assigned_to_id) else False
-        # can_approve_request: only super_admin or configured approver for requester's role
-        if requester_id == user_id:
-            # Cannot approve your own request — no exceptions
-            lead_dict["can_approve_request"] = False
-        elif is_super_admin:
+        # can_approve_request: super_admin or configured approver for requester's role
+        # First check if current user is a configured approver (takes priority)
+        is_role_approver = False
+        if requester_id:
+            requester_user = await users_db.get_user(requester_id)
+            requester_role_id = str(requester_user.get("role_id") or "") if requester_user else ""
+            approvers_for_role = role_approver_map.get(requester_role_id, set())
+            is_role_approver = (user_id in approvers_for_role)
+        
+        if is_super_admin or is_role_approver:
+            # Super admin and configured approvers can always review/approve
             lead_dict["can_approve_request"] = True
         else:
-            # Check if current user is a configured approver for the requester's role
-            if requester_id:
-                requester_user = await users_db.get_user(requester_id)
-                requester_role_id = str(requester_user.get("role_id") or "") if requester_user else ""
-                approvers_for_role = role_approver_map.get(requester_role_id, set())
-                is_role_approver = (user_id in approvers_for_role)
-                if is_role_approver:
-                    # Configured approver can approve even if lead is assigned to them
-                    lead_dict["can_approve_request"] = True
-                elif assigned_to_id == user_id:
-                    # Non-approver cannot approve transfer of their own lead
-                    lead_dict["can_approve_request"] = False
-                else:
-                    lead_dict["can_approve_request"] = False
-            else:
-                lead_dict["can_approve_request"] = False
+            lead_dict["can_approve_request"] = False
 
         enhanced_leads.append(lead_dict)
 
@@ -1033,9 +1024,9 @@ async def approve_reassignment(
             detail="Lead not found"
         )
 
-    # Prevent self-approval (requester cannot approve their own request)
-    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
-    if str(lead.get("reassignment_requested_by") or "") == user_id:
+    # Prevent self-approval only if NOT a configured approver
+    requester_id_check = str(lead.get("reassignment_requested_by") or "")
+    if requester_id_check == user_id and not can_approve:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You cannot approve your own reassignment request"
@@ -1241,9 +1232,9 @@ async def reject_reassignment(
             detail="Lead not found"
         )
 
-    # Prevent self-rejection (requester cannot reject their own request)
-    is_admin = await permission_manager.is_admin(user_id, users_db, roles_db)
-    if str(lead.get("reassignment_requested_by") or "") == user_id:
+    # Prevent self-rejection only if NOT a configured approver
+    requester_id_check = str(lead.get("reassignment_requested_by") or "")
+    if requester_id_check == user_id and not can_approve:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You cannot reject your own reassignment request"
