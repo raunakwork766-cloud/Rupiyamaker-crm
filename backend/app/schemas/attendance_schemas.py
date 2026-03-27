@@ -454,12 +454,13 @@ def format_time_ist(time_str: str, date_str: str = None) -> str:
 def get_status_text(status: float) -> str:
     """Get status description from numeric status"""
     status_map = {
+        2.0: "Checked In",
+        1.5: "Holiday",
         1.0: "Full Day",
         0.5: "Half Day", 
         0.0: "Leave",
         -1.0: "Absent",
         -2.0: "Absconding",
-        1.5: "Holiday"
     }
     return status_map.get(status, "Unknown")
 

@@ -104,7 +104,7 @@ function App() {
     doc.text('LOAN ELIGIBILITY REPORT', margin, 12);
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), pageW - margin, 12, { align: 'right' });
+    doc.text(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), pageW - margin, 12, { align: 'right' });
     y = 26;
 
     // Client Info
@@ -239,7 +239,7 @@ function App() {
     doc.setFontSize(7); doc.setTextColor(148, 163, 184);
     doc.text('This is a computer-generated document. All calculations are indicative and subject to bank approval.', pageW / 2, pgH - 4, { align: 'center' });
 
-    doc.save(`Eligibility_${companyName.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`Eligibility_${companyName.replace(/\s+/g,'_')}_${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.pdf`);
   };
 
   // --- REUSABLE UI ---

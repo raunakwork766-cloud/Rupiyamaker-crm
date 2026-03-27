@@ -348,6 +348,24 @@ export const getISTTimestamp = () => {
     return `${y}-${mo}-${day}T${h}:${mi}:${s}`;
 };
 
+/**
+ * Get current IST date components (year, month, day)
+ * Drop-in replacement for new Date().getFullYear() / getMonth()+1 / getDate()
+ * @returns {{ year: number, month: number, day: number }}
+ */
+export const getISTToday = () => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: IST_TIMEZONE,
+        year: 'numeric', month: 'numeric', day: 'numeric'
+    }).formatToParts(now);
+    return {
+        year: parseInt(parts.find(p => p.type === 'year').value, 10),
+        month: parseInt(parts.find(p => p.type === 'month').value, 10),
+        day: parseInt(parts.find(p => p.type === 'day').value, 10),
+    };
+};
+
 export default {
     formatDate,
     getRelativeTime,

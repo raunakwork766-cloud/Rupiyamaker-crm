@@ -1387,8 +1387,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 loan_type_id: newLead.loan_type_id || newLead.loan_type,
                 
                 // Date fields
-                created_at: newLead.created_at || new Date().toISOString(),
-                updated_at: newLead.updated_at || new Date().toISOString(),
+                created_at: newLead.created_at || getISTTimestamp(),
+                updated_at: newLead.updated_at || getISTTimestamp(),
                 
                 // Other common fields
                 email: newLead.email || '',
@@ -3424,7 +3424,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 }
                 
                 // Calculate age in days
-                const currentDate = new Date();
+                const currentDate = getCurrentIST();
                 const ageInDays = Math.floor((currentDate - leadDate) / (1000 * 60 * 60 * 24));
                 
                 let passesFilter = true;

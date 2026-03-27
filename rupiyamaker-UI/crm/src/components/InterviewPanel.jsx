@@ -9,7 +9,7 @@ import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
-import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate, getISTToday } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions } from '../utils/permissions';
 import InterviewSettings from './InterviewSettings';
 
@@ -3221,7 +3221,8 @@ const DashboardView = ({ interviews }) => {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
-  const today = new Date();
+  const _ist = getISTToday();
+  const today = new Date(_ist.year, _ist.month - 1, _ist.day);
 
   const getRange = () => {
     const now = new Date(today); now.setHours(0,0,0,0);

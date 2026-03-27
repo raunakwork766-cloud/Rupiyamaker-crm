@@ -20,6 +20,8 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 
+import { getISTDateYMD } from '../utils/dateUtils';
+
 // Import simplified permission system
 import { 
   getPermissionLevel, 
@@ -882,7 +884,7 @@ const LeavesPage = () => {
 
     // Build chips data
     const chips = bizDays.map((d, i) => {
-      const label = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+      const label = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
       let type;
       if (i < plUsed) type = 'pl';
       else if (i < plUsed + elUsed) type = 'el';
@@ -890,7 +892,7 @@ const LeavesPage = () => {
       return { label, type, date: d };
     });
     const sundayChips = sundays.map(d => ({
-      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
+      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }),
       type: 'sunday', date: d
     }));
 
@@ -1691,7 +1693,7 @@ const LeavesPage = () => {
                         From Date <span style={{ color: '#DC2626' }}>*</span>
                       </label>
                       <input type="date" value={newLeave.from_date}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={getISTDateYMD()}
                         onChange={(e) => {
                           const val = e.target.value;
                           const updated = { ...newLeave, from_date: val };
@@ -1710,7 +1712,7 @@ const LeavesPage = () => {
                         To Date <span style={{ color: '#DC2626' }}>*</span>
                       </label>
                       <input type="date" value={newLeave.to_date}
-                        min={newLeave.from_date || new Date().toISOString().split('T')[0]}
+                        min={newLeave.from_date || getISTDateYMD()}
                         onChange={(e) => {
                           const val = e.target.value;
                           setNewLeave({ ...newLeave, to_date: val });

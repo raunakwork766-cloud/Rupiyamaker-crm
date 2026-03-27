@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, History } from "lucide-react"
 import axios from "axios"
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, getISTToday } from '../utils/dateUtils';
 import hrmsService from '../services/hrmsService';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
@@ -374,6 +374,8 @@ const getStatusText = (status) => {
       return "ABSCONDING"
     case "A":
       return "ABSENT"
+    case "WK":
+      return "CHECKED IN"
     default:
       return "NOT MARKED"
   }
@@ -1879,8 +1881,9 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       switch (selectedAttendance) {
         case "P": statusValue = 1; break
         case "HD": statusValue = 0.5; break
-        case "A": statusValue = 0; break
-        case "AB": statusValue = -1; break
+        case "A": statusValue = -1; break     // Absent = -1 in backend
+        case "AB": statusValue = -2; break    // Absconding = -2 in backend
+        case "LV": statusValue = 0; break     // Leave = 0 in backend
         default: statusValue = -1
       }
 
@@ -1985,7 +1988,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                 <span>{employee.designation || employee.department || 'Employee'}</span>
                 <span className="w-1 h-1 rounded-full bg-zinc-700" />
                 <span className="text-indigo-400">
-                  {selectedDate && new Date(selectedYear, selectedMonth - 1, selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {selectedDate && new Date(selectedYear, selectedMonth - 1, selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                 </span>
               </div>
             </div>
@@ -2282,6 +2285,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
   let actualPresent = 0  // Only positive-value days (P, L, SP, HD) — for display
   let lvDaysTaken = 0  // Leave days taken (LV status) — counted for reference only
   let absconding = 0
+  let absentDays = 0   // Pure absent days (A status)
   let holidaysCount = 0
 
   for (let day = 1; day <= daysInMonth; day++) {
@@ -2298,6 +2302,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     } else if (val !== null) {
       presentScore += val
       if (val > 0) actualPresent += val  // count only actual present days
+      if (val === -1) absentDays++       // 'A' status = absent day
     }
   }
 
@@ -2324,6 +2329,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     graceTotal: graceMonthly, // Monthly grace total (from settings)
     finalScore,
     absconding,
+    absentDays,      // Count of 'A' absent days
     holidays: holidaysCount,
     workingDays,
     attendancePercentage,
@@ -2336,9 +2342,9 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
 }
 
 export default function MonthlyAttendanceTable() {
-  const currentDate = new Date()
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
+  const _ist = getISTToday()
+  const [selectedYear, setSelectedYear] = useState(_ist.year)
+  const [selectedMonth, setSelectedMonth] = useState(_ist.month)
   const [attendanceData, setAttendanceData] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -2378,6 +2384,9 @@ export default function MonthlyAttendanceTable() {
   const [selectedDeductionData, setSelectedDeductionData] = useState(null)
 
   // Apply attendance rules to formatted records
+  // NOTE: The backend already applies Sunday sandwich & absconding rules.
+  // This frontend rule only handles remaining Sundays that came as 'W' (weekend dash)
+  // and decides if they should be SP (Sunday Paid) when enough present days exist.
   const applyAttendanceRules = (records, settings, year, month) => {
     if (!settings) return records
     const MIN_DAYS_FOR_SUNDAY = 4 // Minimum present days (including holidays) for Sunday to be paid
@@ -2385,54 +2394,36 @@ export default function MonthlyAttendanceTable() {
       const updated = { ...record }
       const daysInM = new Date(year, month, 0).getDate()
 
-      // ── SUNDAY RULES ──
-      // Sunday is paid (+1, SP) only if employee has minimum 4 days present in Mon-Sat.
-      // P, L, HD, H all count towards the 4-day minimum (including holidays).
-      // Exceptions:
-      //   1. Saturday AB → Sunday = AB (-1, red)
-      //   2. Monday AB  → BOTH Saturday AND Sunday = S0 (0, white/black)
-
       for (let d = 1; d <= daysInM; d++) {
         const dateObj = new Date(year, month - 1, d)
         if (dateObj.getDay() !== 0) continue // Only process Sundays
 
-        const satDay = d - 1  // Saturday before this Sunday
-        const monDay = d + 1  // Monday after this Sunday
+        const currentSunValue = updated[`day${d}`]
+        // Backend already decided this Sunday (A, AB, SP, S0, LV, H) — don't override
+        if (currentSunValue && currentSunValue !== 'W') continue
 
-        const satStatus = satDay >= 1 ? updated[`day${satDay}`] : null
-        const monStatus = monDay <= daysInM ? updated[`day${monDay}`] : null
+        // Only process Sundays still marked as 'W' (weekend dash / not yet decided)
+        const satDay = d - 1
+        const monDay = d + 1
 
-        // Count present days Mon-Sat (P, L, HD count as attendance; H counts too)
+        // Count present days Mon-Sat (P, L, HD, WK count as attendance; H counts too)
         let presentDays = 0
         let hasAnyData = false
         for (let w = Math.max(1, d - 6); w <= Math.min(daysInM, d - 1); w++) {
           const wDow = new Date(year, month - 1, w).getDay()
-          if (wDow === 0) continue // skip any Sunday
+          if (wDow === 0) continue
           const s = updated[`day${w}`]
-          if (s === 'P' || s === 'L' || s === 'HD' || s === 'AB' || s === 'LV') hasAnyData = true
-          // P, L = full day; HD = half day (still counts as 1 day present); H = holiday (counts)
-          if (s === 'P' || s === 'L' || s === 'HD' || s === 'H') presentDays++
+          if (s === 'P' || s === 'L' || s === 'HD' || s === 'AB' || s === 'LV' || s === 'WK' || s === 'A') hasAnyData = true
+          if (s === 'P' || s === 'L' || s === 'HD' || s === 'H' || s === 'WK') presentDays++
         }
-        // Also check Monday after Sunday for hasAnyData (to detect future absconding)
         if (monDay <= daysInM) {
           const ms = updated[`day${monDay}`]
-          if (ms === 'P' || ms === 'L' || ms === 'HD' || ms === 'AB' || ms === 'LV') hasAnyData = true
+          if (ms === 'P' || ms === 'L' || ms === 'HD' || ms === 'AB' || ms === 'LV' || ms === 'WK' || ms === 'A') hasAnyData = true
         }
-        if (!hasAnyData) continue // No data yet — keep as W (weekend dash)
+        if (!hasAnyData) continue // No data yet — keep as W
 
-        // Priority 1: Saturday AB → Sunday = AB (-1)
-        if (satStatus === 'AB') {
-          updated[`day${d}`] = 'AB'
-        }
-        // Priority 2: Monday AB → Saturday = S0 (0) AND Sunday = S0 (0)
-        else if (monStatus === 'AB') {
-          updated[`day${d}`] = 'S0'
-          if (satDay >= 1 && satStatus !== 'AB') {
-            updated[`day${satDay}`] = 'S0'
-          }
-        }
-        // Default: Sunday paid only if minimum 4 present days (including holidays) in Mon-Sat
-        else if (presentDays >= MIN_DAYS_FOR_SUNDAY) {
+        // Sunday paid only if minimum 4 present days
+        if (presentDays >= MIN_DAYS_FOR_SUNDAY) {
           updated[`day${d}`] = 'SP'
         }
       }
@@ -2588,8 +2579,9 @@ export default function MonthlyAttendanceTable() {
         // Check if employee has any actual attendance records for this month
         const hasAttendance = employee.days && employee.days.some(day => {
           const status = parseFloat(day.status);
-          // Check for any actual attendance status (P, HD, LV, AB, L)
+          // Check for any actual attendance status (P, HD, LV, AB, L, WK)
           return status === 1.0 || status === 1 || // Present
+                 status === 2.0 || status === 2 || // Working/IN (checked in today)
                  status === 0.5 || // Half Day
                  status === 0 || status === 0.0 || // Leave
                  status === -2 || status === -2.0 || // Absconding
@@ -2624,7 +2616,6 @@ export default function MonthlyAttendanceTable() {
         // STRICT: If no active employee list, show ONLY those with attendance
         console.log(`⚠️ No active employee list, filtering by attendance only. ${employee.employee_name} - hasAttendance:`, hasAttendance);
         return hasAttendance;
-        return hasAttendance;
       })
       .map(employee => {
       // Create a record for each employee with day status mapping
@@ -2654,6 +2645,8 @@ export default function MonthlyAttendanceTable() {
             
             if (status === 1.5) {
               employeeRecord[dayKey] = 'H'; // Holiday (new status format from backend)
+            } else if (status === 2.0 || status === 2) {
+              employeeRecord[dayKey] = 'WK'; // Working / Checked-in today, no checkout yet
             } else if (status === 1.0 || status === 1) {
               // Sunday Present → blue (SP), regular present → green (P)
               employeeRecord[dayKey] = day.is_weekend ? 'SP' : 'P';
@@ -2909,10 +2902,10 @@ export default function MonthlyAttendanceTable() {
   
   // Calculate visible days (hide future dates in current month)
   const getVisibleDays = () => {
-    const today = new Date()
-    const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth() + 1
-    const currentDay = today.getDate()
+    const ist = getISTToday()
+    const currentYear = ist.year
+    const currentMonth = ist.month
+    const currentDay = ist.day
     
     // If viewing current month, only show up to current day
     if (selectedYear === currentYear && selectedMonth === currentMonth) {
@@ -2953,9 +2946,10 @@ export default function MonthlyAttendanceTable() {
     
     // Block editing for future dates
     const clickedDate = new Date(selectedYear, selectedMonth - 1, day)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (clickedDate > today) {
+    const ist = getISTToday()
+    const todayIST = new Date(ist.year, ist.month - 1, ist.day)
+    todayIST.setHours(0, 0, 0, 0)
+    if (clickedDate > todayIST) {
       return
     }
     
@@ -3241,9 +3235,9 @@ export default function MonthlyAttendanceTable() {
   }, [])
 
   // Compute today's attendance counts for stat strip
-  const today = new Date()
-  const isCurrentMonth = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
-  const todayDay = today.getDate()
+  const _istToday = getISTToday()
+  const isCurrentMonth = _istToday.year === selectedYear && _istToday.month === selectedMonth
+  const todayDay = _istToday.day
 
   // All aggregate stats — memoized so they don't recompute on every render
   const stripStats = useMemo(() => {
@@ -3252,7 +3246,7 @@ export default function MonthlyAttendanceTable() {
     attendanceData.forEach(r => {
       if (isCurrentMonth) {
         const s = r[`day${todayDay}`]
-        if (['P', 'L', 'SP', 'HD'].includes(s)) presentToday++
+        if (['P', 'L', 'SP', 'HD', 'WK'].includes(s)) presentToday++
         else if (['A', 'AB'].includes(s)) absentToday++
       }
       const st = calculateMonthlyStats(r, selectedYear, selectedMonth, daysInMonth, holidays)
@@ -3635,11 +3629,11 @@ export default function MonthlyAttendanceTable() {
                 const monthlySalary = record.salary || 0
                 const perDaySalary = monthlySalary / daysInMonth
                 const calculatedSalary = Math.round(perDaySalary * stats.finalScore)
-                const attendanceDeduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
                 // Warning penalty from batch-fetched map
                 const empPenalties = warningPenaltiesMap[record.mongoId] || {}
                 const warningFine = empPenalties.total_penalty || 0
-                const totalDeduction = attendanceDeduction + Math.round(warningFine)
+                // Deduction column = warning fines only (attendance-based salary loss is in Net Salary)
+                const totalDeduction = Math.round(warningFine)
                 const netSalary = Math.max(0, calculatedSalary - Math.round(warningFine))
                 
                 return (
@@ -3691,7 +3685,7 @@ export default function MonthlyAttendanceTable() {
                     <td
                       className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
                       style={{border:'1px solid #1f1f22',color: totalDeduction > 0 ? '#ff2a2a' : '#4b5563'}}
-                      title={totalDeduction > 0 ? (warningFine > 0 ? `Attendance: ₹${attendanceDeduction.toLocaleString('en-IN')} | Warning fine: ₹${Math.round(warningFine).toLocaleString('en-IN')} — click for details` : 'Click for deduction details') : 'No deductions'}
+                      title={totalDeduction > 0 ? `Warning fine: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No warning fines'}
                       onClick={() => handleDeductionClick(record, stats, calculatedSalary)}
                     >
                       ₹{totalDeduction.toLocaleString('en-IN')}

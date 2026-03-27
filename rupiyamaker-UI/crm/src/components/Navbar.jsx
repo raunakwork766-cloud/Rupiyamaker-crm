@@ -155,7 +155,7 @@ const SuccessModal = ({ successInfo, onClose }) => {
   const isCheckOut = successInfo.type === 'checked_out';
   const displayTime = successInfo.checkInTime || successInfo.checkOutTime || null;
   const displayDate = successInfo.date || new Date().toLocaleDateString('en-IN', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata',
   });
 
   return createPortal(
@@ -1298,7 +1298,7 @@ export default function TopNavbar({
         const checkOutTime = formatTime12h(data.check_out_time || data.checkOutTime || data.check_out || null);
         const workHours = data.work_hours || data.workHours || data.total_hours || null;
         const photoForModal = capturedPhoto; // save before closeCameraModal clears it
-        const dateForModal = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+        const dateForModal = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
         // Show success modal based on response
         if (pendingAction === 'checkout') {

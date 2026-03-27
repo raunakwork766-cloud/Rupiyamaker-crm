@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Calendar, User, Filter, Search } from 'lucide-react';
+import { getISTTimestamp } from '../utils/dateUtils';
 
 // Helper function to group activities by date and time
 const groupActivitiesByDateAndTime = (activities) => {
@@ -186,7 +187,7 @@ export default function Activities({ leadId, userId, leadData, formatDate }) {
               _id: `synthetic_${currentLeadId}_created`,
               activity_type: 'create',
               user_name: leadData.created_by_name || leadData.createdByName || 'System',
-              created_at: leadData.created_at || leadData.createdAt || leadData.lead_date || new Date().toISOString(),
+              created_at: leadData.created_at || leadData.createdAt || leadData.lead_date || getISTTimestamp(),
               description: `Lead created by ${leadData.created_by_name || leadData.createdByName || 'System'}`,
               details: {
                 customer_name: leadData.customer_name || leadData.customerName,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, memo, useRef } from 'react';
-import { format } from 'date-fns';
+import { toISTDateYMD } from '../utils/dateUtils';
 import { 
   Plus, 
   Edit, 
@@ -730,7 +730,7 @@ const WarningPage = memo(() => {
             return true;
           }).map(([key, value]) => {
             if (value instanceof Date) {
-              return [key, format(value, 'yyyy-MM-dd')];
+              return [key, toISTDateYMD(value)];
             }
             return [key, value];
           })

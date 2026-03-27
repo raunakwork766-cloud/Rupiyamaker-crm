@@ -372,6 +372,9 @@ async def get_attendance_calendar(
         # Sunday rule settings
         enable_sunday_rule = attendance_settings.get("enable_sunday_sandwich_rule", True)
         min_days_for_sunday = attendance_settings.get("minimum_working_days_for_sunday", 4)
+        # Adjacent absconding rule: absent working-day adjacent to Sunday-off → Absconding
+        _raw_abscond_rule = attendance_settings.get("enable_adjacent_absconding_rule")
+        enable_adjacent_absconding_rule = _raw_abscond_rule if _raw_abscond_rule is not None else True
         can_view_all = permissions.get("can_view_all", False)
         can_view_junior = permissions.get("can_view_junior", False)
         
@@ -654,13 +657,17 @@ async def get_attendance_calendar(
                     else:
                         status = 1.0  # Default to full day if status is None or unknown type
                     
-                    # ── Rule: Check-in without check-out on a past date = Absent ──
+                    # ── Rule: Check-in without check-out ──
                     chk_in = attendance_record.get("check_in_time")
                     chk_out = attendance_record.get("check_out_time")
                     if chk_in and not chk_out and status not in [-2.0, -2]:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
+                            # Past date: no checkout = Absent
                             status = -1.0
+                        elif _day_date_obj == get_ist_now().date():
+                            # Today: checked in, not yet checked out = Working/IN
+                            status = 2.0
                     
                     status_text = get_status_text(status) if status is not None else None
                     comments = attendance_record.get("comments", "")
@@ -670,7 +677,9 @@ async def get_attendance_calendar(
                         leave_id = attendance_record.get("leave_id")
                     
                     total_days += 1
-                    if status == 1 or status == 1.0:
+                    if status == 2 or status == 2.0:
+                        pass  # Working/IN — don't count yet, still in progress
+                    elif status == 1 or status == 1.0:
                         full_days += 1
                     elif status == 0.5:
                         half_days += 1
@@ -708,6 +717,8 @@ async def get_attendance_calendar(
                     "is_holiday": is_holiday,
                     "status": status,
                     "status_text": status_text,
+                    "check_in_time": attendance_record.get("check_in_time") if attendance_record else None,
+                    "check_out_time": attendance_record.get("check_out_time") if attendance_record else None,
                     "comments": comments,
                     "photo_path": photo_path,
                     "leave_id": leave_id,
@@ -739,14 +750,14 @@ async def get_attendance_calendar(
                         # In-month days: use updated status from days list
                         if d_s in _days_by_date:
                             s = _days_by_date[d_s].get("status")
-                            # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0)
-                            return s not in [1, 1.0, 1.5, 0, 0.0]
+                            # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0), working/IN (2/2.0)
+                            return s not in [1, 1.0, 1.5, 0, 0.0, 2, 2.0, 0.5]
                         # Out-of-month days: use raw attendance lookup
                         rec = all_emp_attendance.get(d_s)
                         if rec is None:
                             return check_date < _today_ist  # No record in past → absent
                         try:
-                            return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0]
+                            return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0, 2.0, 0.5]
                         except (TypeError, ValueError):
                             return True
 
@@ -755,7 +766,7 @@ async def get_attendance_calendar(
                     mon_absent = (monday <= _today_ist) and _day_absent(monday)
 
                     if sat_absent or mon_absent:
-                        day_data["status"] = 0
+                        day_data["status"] = -1.0
                         day_data["status_text"] = "Sunday (Absent — Sat/Mon absent)"
                         day_data["is_sunday_present"] = False
                         absent_days += 1
@@ -766,6 +777,37 @@ async def get_attendance_calendar(
                         day_data["is_sunday_present"] = True
                         full_days += 1
                         total_days += 1
+
+            # ── Adjacent Absconding Rule: Saturday/Monday absent that caused Sunday absence → Absconding ──
+            # If a working day (Saturday or Monday) was absent and that triggered the Sunday sandwich rule,
+            # that working-day absence is upgraded to Absconding status.
+            if enable_adjacent_absconding_rule:
+                _days_by_date_abs = {d["date"]: d for d in days}
+                for day_data in days:
+                    d_sun = date.fromisoformat(day_data["date"])
+                    if d_sun.weekday() != 6:  # Only Sundays
+                        continue
+                    # Only when Sunday was made absent by the sandwich rule
+                    if day_data.get("is_sunday_present") is not False:
+                        continue
+                    saturday = d_sun - timedelta(days=1)
+                    monday   = d_sun + timedelta(days=1)
+                    sat_data = _days_by_date_abs.get(saturday.isoformat())
+                    mon_data = _days_by_date_abs.get(monday.isoformat())
+                    # Saturday absent (working day) → Absconding
+                    if (sat_data and sat_data.get("status") in [-1, -1.0]
+                            and saturday.weekday() not in weekend_days):
+                        sat_data["status"] = -2.0
+                        sat_data["status_text"] = "Absconding"
+                        absent_days -= 1
+                        absconding_days += 1
+                    # Monday absent (working day) → Absconding
+                    if (mon_data and mon_data.get("status") in [-1, -1.0]
+                            and monday.weekday() not in weekend_days):
+                        mon_data["status"] = -2.0
+                        mon_data["status_text"] = "Absconding"
+                        absent_days -= 1
+                        absconding_days += 1
 
             # Calculate final attendance percentage (after Sunday rule updates counts)
             attendance_percentage = 0.0

@@ -2719,7 +2719,7 @@ const handleMobileNumberChange = (e) => {
         leadData.dynamic_fields.process = {
           how_to_process: "None",
           case_type: "Normal",
-          year: new Date().getFullYear().toString()
+          year: getISTDateYMD().split('-')[0]
         };
       }
 

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
-import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
+import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp, getISTToday } from '../utils/dateUtils';
 
 // Lazy load heavy components for faster initial loading
 const CreateTask = lazy(() => import("./CreateTask"));
@@ -679,7 +679,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const calculateFallbackStats = () => {
     if (tasks.length === 0) return;
 
-    const today = new Date();
+    const _ist = getISTToday();
+    const today = new Date(_ist.year, _ist.month - 1, _ist.day);
     today.setHours(0, 0, 0, 0);
 
 
@@ -811,7 +812,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
       };
     }
 
-    const today = new Date();
+    const _ist = getISTToday();
+    const today = new Date(_ist.year, _ist.month - 1, _ist.day);
     today.setHours(0, 0, 0, 0);
     const todayTime = today.getTime();
 
