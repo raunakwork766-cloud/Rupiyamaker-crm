@@ -3240,6 +3240,7 @@ class LeadsDB:
                         "assigned_to": _normalize_user_id(update_data.get("assigned_to")),
                         "from_user": _normalize_user_id(current_lead.get("assigned_to")),  # previous owner (plain string ID)
                         "reason": update_data.get("reassignment_approval_remark", ""),
+                        "reassignment_status": "approved",
                         "field_changes": field_changes
                     }
             elif update_data.get("reassignment_status") == "approved":

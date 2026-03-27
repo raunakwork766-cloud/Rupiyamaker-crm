@@ -797,7 +797,8 @@ const TransferRequestsPage = ({ user }) => {
                           }) : fmtDateTime(currentLead.reassignment_requested_at);
 
                           const decisionType = (decision?.assignment_type || decision?.action || '').toLowerCase();
-                          const isApproved = decision && (decisionType.includes('approv'));
+                          // direct_transfer is also an approval (self-approved direct reassignment)
+                          const isApproved = decision && (decisionType.includes('approv') || decisionType === 'direct_transfer');
                           const isRejected = decision && (decisionType.includes('reject'));
                           const decisionBy = decision?.assigned_by_name || decision?.by_user || '';
                           // Fallback to lead-level remark fields for old data where activity had no reason stored

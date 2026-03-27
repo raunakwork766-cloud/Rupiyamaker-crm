@@ -580,8 +580,8 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
 
         const histStats = {
           total: mlHist.length + 1,
-          approved: mlHist.filter(h => h.status === 'approved').length,
-          rejected: mlHist.filter(h => h.status === 'rejected').length,
+          approved: mlHist.filter(h => h.status === 'approved' || h.action === 'approved' || h.action === 'approved_direct').length,
+          rejected: mlHist.filter(h => h.status === 'rejected' || h.action === 'rejected').length,
           pending: 1,
         };
 
@@ -726,8 +726,8 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                   <div className="space-y-0">
                     {/* Past history entries */}
                     {mlHist.map((h, index) => {
-                      const isApproved = h.status === 'approved';
-                      const isRejected = h.status === 'rejected';
+                      const isApproved = h.status === 'approved' || h.action === 'approved' || h.action === 'approved_direct';
+                      const isRejected = h.status === 'rejected' || h.action === 'rejected';
                       const isAutoRej = (h.description || '').toLowerCase().includes('auto') || (h.reason || '').toLowerCase().includes('auto');
                       const stepColor = isApproved ? '#10b981' : isRejected ? '#ff2a2a' : '#a1a1aa';
                       const cardBorderColor = isApproved ? 'rgba(16,185,129,0.3)' : isRejected ? 'rgba(255,42,42,0.3)' : '#27272a';
