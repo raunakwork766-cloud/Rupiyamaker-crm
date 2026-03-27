@@ -729,45 +729,79 @@ async def get_attendance_calendar(
                 }
                 days.append(day_data)
 
-            # ── Sunday Rule: Sunday is absent if adjacent Saturday or Monday is absent ──
+            # ── Sunday Rule: Sunday is absent if adjacent Sat/Mon absent OR < min working days in week ──
             if enable_sunday_rule:
                 _days_by_date = {d["date"]: d for d in days}
                 _today_ist = get_ist_now().date()
+
+                def _day_absent(check_date):
+                    """True if check_date is a working day that is absent/not-present."""
+                    if check_date.weekday() in weekend_days:
+                        return False  # Weekend itself — not a working absence
+                    d_s = check_date.isoformat()
+                    # In-month days: use updated status from days list
+                    if d_s in _days_by_date:
+                        s = _days_by_date[d_s].get("status")
+                        # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0), working/IN (2/2.0)
+                        return s not in [1, 1.0, 1.5, 0, 0.0, 2, 2.0, 0.5]
+                    # Out-of-month days: use raw attendance lookup
+                    rec = all_emp_attendance.get(d_s)
+                    if rec is None:
+                        return check_date < _today_ist  # No record in past → absent
+                    try:
+                        return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0, 2.0, 0.5]
+                    except (TypeError, ValueError):
+                        return True
+
+                def _day_present(check_date):
+                    """True if check_date is a working day with present status."""
+                    if check_date.weekday() in weekend_days:
+                        return False
+                    d_s = check_date.isoformat()
+                    if d_s in _days_by_date:
+                        s = _days_by_date[d_s].get("status")
+                        return s in [1, 1.0, 1.5, 0.5, 2, 2.0]  # full, holiday, half, working
+                    rec = all_emp_attendance.get(d_s)
+                    if rec is None:
+                        return False
+                    try:
+                        return float(rec.get("status", -1)) in [1.0, 1.5, 0.5, 2.0]
+                    except (TypeError, ValueError):
+                        return False
 
                 for day_data in days:
                     d_sun = date.fromisoformat(day_data["date"])
                     if d_sun.weekday() != 6:  # Only Sundays
                         continue
 
-                    saturday = d_sun - timedelta(days=1)  # Saturday before this Sunday
-                    monday   = d_sun + timedelta(days=1)  # Monday after this Sunday
-
-                    def _day_absent(check_date):
-                        """True if check_date is a working day that is absent/not-present."""
-                        if check_date.weekday() in weekend_days:
-                            return False  # Weekend itself — not a working absence
-                        d_s = check_date.isoformat()
-                        # In-month days: use updated status from days list
-                        if d_s in _days_by_date:
-                            s = _days_by_date[d_s].get("status")
-                            # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0), working/IN (2/2.0)
-                            return s not in [1, 1.0, 1.5, 0, 0.0, 2, 2.0, 0.5]
-                        # Out-of-month days: use raw attendance lookup
-                        rec = all_emp_attendance.get(d_s)
-                        if rec is None:
-                            return check_date < _today_ist  # No record in past → absent
-                        try:
-                            return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0, 2.0, 0.5]
-                        except (TypeError, ValueError):
-                            return True
+                    saturday = d_sun - timedelta(days=1)
+                    monday   = d_sun + timedelta(days=1)
 
                     sat_absent = _day_absent(saturday)
-                    # Don't penalise for a future Monday (they might still come in)
                     mon_absent = (monday <= _today_ist) and _day_absent(monday)
 
+                    # Count present days Mon-Sat of this week
+                    present_count = 0
+                    for offset in range(1, 7):  # Mon(-6) to Sat(-1)
+                        wd = d_sun - timedelta(days=7 - offset)  # Mon=d_sun-6 ... Sat=d_sun-1
+                        if wd > _today_ist:
+                            continue  # Future day, don't count
+                        if _day_present(wd):
+                            present_count += 1
+
+                    sunday_absent = False
+                    absent_reason = ""
+
                     if sat_absent or mon_absent:
-                        day_data["status"] = -1.0
-                        day_data["status_text"] = "Sunday (Absent — Sat/Mon absent)"
+                        sunday_absent = True
+                        absent_reason = "Sat/Mon absent"
+                    elif present_count < min_days_for_sunday and d_sun <= _today_ist:
+                        sunday_absent = True
+                        absent_reason = f"Only {present_count}/{min_days_for_sunday} days present"
+
+                    if sunday_absent:
+                        day_data["status"] = -1.0  # Always Absent, never Absconding
+                        day_data["status_text"] = f"Sunday (Absent — {absent_reason})"
                         day_data["is_sunday_present"] = False
                         absent_days += 1
                         total_days += 1

@@ -354,6 +354,18 @@ const getStatusBadge = (status, leaveStatus = null) => {
   }
 }
 
+// Format 24h time string (HH:MM:SS or HH:MM) to 12h AM/PM
+const formatTime12h = (timeStr) => {
+  if (!timeStr || timeStr === '—') return '—'
+  const parts = timeStr.split(':')
+  if (parts.length < 2) return timeStr
+  let h = parseInt(parts[0], 10)
+  const m = parts[1]
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${h}:${m} ${ampm}`
+}
+
 const getStatusText = (status) => {
   switch (status) {
     case "P":
@@ -2087,6 +2099,11 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                       <p className={`text-xl font-bold uppercase tracking-tight ${statusColorClass}`}>
                         {(attendanceDetail?.status_text || statusText || 'NOT MARKED').toUpperCase()}
                       </p>
+                      {(attendanceDetail?.comments || attendanceDetail?.attendance_details?.comments) && (
+                        <p className="text-[11px] text-zinc-400 mt-1 italic">
+                          {attendanceDetail?.comments || attendanceDetail?.attendance_details?.comments}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Total Hours</p>
@@ -2102,7 +2119,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Check In</span>
-                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time || '—'}</span>
+                        <span className="text-xs font-mono text-zinc-400">{formatTime12h(attendanceDetail?.check_in_time || attendanceDetail?.attendance_details?.check_in_time || '—')}</span>
                       </div>
                       <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
                         {(attendanceDetail?.check_in_photo_path || attendanceDetail?.check_in_photo || attendanceDetail?.attendance_details?.check_in_photo_path) ? (
@@ -2128,7 +2145,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     <div className="bg-black border border-white/10 rounded-xl p-3 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">Check Out</span>
-                        <span className="text-xs font-mono text-zinc-400">{attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time || '—'}</span>
+                        <span className="text-xs font-mono text-zinc-400">{formatTime12h(attendanceDetail?.check_out_time || attendanceDetail?.attendance_details?.check_out_time || '—')}</span>
                       </div>
                       <div className="aspect-square rounded-lg bg-[#0a0a0a] border border-white/5 overflow-hidden relative group flex items-center justify-center">
                         {(attendanceDetail?.check_out_photo_path || attendanceDetail?.check_out_photo || attendanceDetail?.attendance_details?.check_out_photo_path) ? (
@@ -2389,7 +2406,7 @@ export default function MonthlyAttendanceTable() {
   // and decides if they should be SP (Sunday Paid) when enough present days exist.
   const applyAttendanceRules = (records, settings, year, month) => {
     if (!settings) return records
-    const MIN_DAYS_FOR_SUNDAY = 4 // Minimum present days (including holidays) for Sunday to be paid
+    const MIN_DAYS_FOR_SUNDAY = settings?.minimum_working_days_for_sunday ?? 4
     return records.map(record => {
       const updated = { ...record }
       const daysInM = new Date(year, month, 0).getDate()
