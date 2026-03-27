@@ -3423,9 +3423,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     return false;
                 }
                 
-                // Calculate age in days
-                const currentDate = getCurrentIST();
-                const ageInDays = Math.floor((currentDate - leadDate) / (1000 * 60 * 60 * 24));
+                // Calculate age in days (calendar-date comparison in IST)
+                const nowIST = getCurrentIST();
+                const todayOnly = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
+                const leadDateIST = convertToIST(leadDate);
+                const leadDateOnly = leadDateIST
+                    ? new Date(leadDateIST.getFullYear(), leadDateIST.getMonth(), leadDateIST.getDate())
+                    : new Date(leadDate.getFullYear(), leadDate.getMonth(), leadDate.getDate());
+                const ageInDays = Math.floor((todayOnly - leadDateOnly) / (1000 * 60 * 60 * 24));
                 
                 let passesFilter = true;
                 
@@ -6154,13 +6159,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     // Calculate days old from current date (IST timezone)
     const calculateDaysOld = (date) => {
         if (!date) return 0;
-        // Get current date in IST using utility function
-        const currentDate = getCurrentIST();
-        // Convert input date to IST
-        const leadDate = convertToIST(date);
-        const timeDifference = currentDate.getTime() - leadDate.getTime();
+        // Get today's calendar date in IST (strip time component)
+        const nowIST = getCurrentIST();
+        const today = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
+        // Get lead's calendar date in IST (strip time component)
+        const leadDateIST = convertToIST(date);
+        if (!leadDateIST) return 0;
+        const leadDate = new Date(leadDateIST.getFullYear(), leadDateIST.getMonth(), leadDateIST.getDate());
+        const timeDifference = today.getTime() - leadDate.getTime();
         const daysDifference = Math.floor(timeDifference / (1000 * 3600 * 24));
-        return daysDifference;
+        return daysDifference < 0 ? 0 : daysDifference;
     };
 
     // Format date with age
