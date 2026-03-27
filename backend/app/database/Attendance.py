@@ -939,6 +939,9 @@ class AttendanceDB:
                     print(f"[AutoGrace] Error applying auto grace: {grace_err}")
 
             # Update attendance record with check-out data
+            # Preserve original check-in reason; store checkout comment separately
+            existing_comments = existing.get("comments", "")
+            checkout_comment = check_out_data.get("comments", "")
             update_data = {
                 "check_out_time": check_out_time,
                 "check_out_photo_path": check_out_data["check_out_photo_path"],
@@ -946,7 +949,8 @@ class AttendanceDB:
                 "total_working_hours": total_working_hours,
                 "status": final_status,
                 "grace_applied": grace_applied,
-                "comments": check_out_data.get("comments", existing.get("comments", "")),
+                "comments": existing_comments if existing_comments else checkout_comment,
+                "checkout_comments": checkout_comment,
                 "updated_at": get_ist_now()
             }
             

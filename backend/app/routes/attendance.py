@@ -1961,6 +1961,29 @@ async def get_attendance_details_for_date(
         elif attendance_record:
             # Debug info logged via middleware
             
+            # Compute status_reason from attendance data as fallback for overwritten comments
+            raw_comments = attendance_record.get("comments", "")
+            status_val = attendance_record.get("status")
+            # If comments look like a generic checkout message, compute the real reason
+            generic_checkout = raw_comments.lower().startswith("check-out") or raw_comments.lower().startswith("normal check") if raw_comments else True
+            if generic_checkout and status_val == 0.5:
+                ci_time = attendance_record.get("check_in_time", "")
+                if ci_time:
+                    try:
+                        ci_parts = ci_time.split(":")
+                        ci_hour, ci_min = int(ci_parts[0]), int(ci_parts[1])
+                        settings_db = SettingsDB()
+                        att_settings = await settings_db.get_attendance_settings()
+                        deadline_str = att_settings.get("reporting_deadline", "10:15")
+                        dl_parts = deadline_str.split(":")
+                        dl_hour, dl_min = int(dl_parts[0]), int(dl_parts[1])
+                        if (ci_hour > dl_hour) or (ci_hour == dl_hour and ci_min > dl_min):
+                            raw_comments = "Late check-in - Half day"
+                        else:
+                            raw_comments = "Half day - Early checkout / insufficient hours"
+                    except:
+                        raw_comments = "Half day"
+
             # Build attendance object with id for frontend edit flow
             attendance_obj = {
                 "id": attendance_record.get("id") or str(attendance_record.get("_id", "")),
@@ -1972,7 +1995,7 @@ async def get_attendance_details_for_date(
                 "check_in_time": attendance_record.get("check_in_time", ""),
                 "check_out_time": attendance_record.get("check_out_time", ""),
                 "total_working_hours": attendance_record.get("total_working_hours", 0.0),
-                "comments": attendance_record.get("comments", ""),
+                "comments": raw_comments,
                 "marked_by": attendance_record.get("marked_by", ""),
                 "is_holiday": attendance_record.get("is_holiday", False),
                 "photo_path": attendance_record.get("photo_path", ""),
@@ -3829,14 +3852,17 @@ async def check_out_attendance(
         else:
             final_status = 0.5  # Half day
         
-        # Update attendance record
+        # Update attendance record – preserve check-in reason
+        existing_comments = existing.get("comments", "")
+        checkout_comment = check_out_data.comments or ""
         update_data = {
             "check_out_time": check_out_time,
             "check_out_photo_path": photo_path,
             "check_out_geolocation": check_out_data.geolocation.dict() if check_out_data.geolocation else {"latitude": 0.0, "longitude": 0.0},
             "total_working_hours": round(working_hours, 2),
             "status": final_status,
-            "comments": existing.get("comments", "") + (f" | Check-out: {check_out_data.comments}" if check_out_data.comments else ""),
+            "comments": existing_comments if existing_comments else checkout_comment,
+            "checkout_comments": checkout_comment,
             "updated_at": get_ist_now()
         }
         
