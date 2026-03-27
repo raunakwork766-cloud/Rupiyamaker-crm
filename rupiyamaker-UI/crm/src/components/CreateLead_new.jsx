@@ -5086,13 +5086,26 @@ function CreateLead() {
                               return hrs > 0 && hrs < 24;
                             })();
                             const currentUserId = getUserId();
+                            const currentUserName = (localStorage.getItem('userName') || '').trim().toLowerCase();
                             const isOwnLead = (() => {
-                              if (!currentUserId) return false;
-                              const uid = String(currentUserId).trim();
-                              if (String(lead.created_by || '').trim() === uid) return true;
-                              const at = lead.assigned_to;
-                              if (Array.isArray(at)) return at.some(id => String(id).trim() === uid);
-                              return !!at && String(at).trim() === uid;
+                              if (!currentUserId && !currentUserName) return false;
+                              const uid = String(currentUserId || '').trim();
+                              // Check created_by
+                              if (uid && String(lead.created_by || '').trim() === uid) return true;
+                              // Check assigned_to (can be string or array)
+                              if (uid) {
+                                const at = lead.assigned_to;
+                                if (Array.isArray(at)) { if (at.some(id => String(id).trim() === uid)) return true; }
+                                else if (at && String(at).trim() === uid) return true;
+                              }
+                              // Fallback: match by user name (catches ID format mismatches)
+                              if (currentUserName) {
+                                const assignedName = (lead.assigned_to_name || '').trim().toLowerCase();
+                                const createdName = (lead.created_by_name || '').trim().toLowerCase();
+                                if (assignedName && assignedName === currentUserName) return true;
+                                if (createdName && createdName === currentUserName) return true;
+                              }
+                              return false;
                             })();
                             const rowBlocked = isLocked || rowLead24hLocked || isOwnLead;
                             return (
