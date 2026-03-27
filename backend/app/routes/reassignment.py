@@ -212,6 +212,7 @@ async def list_reassignment_requests(
         "reassignment_rejected_by": 1,
         "reassignment_rejected_at": 1,
         "reassignment_rejection_reason": 1,
+        "reassignment_approval_remark": 1,
         "reassignment_eligibility": 1,
         "reassignment_new_data_code": 1,
         "reassignment_new_campaign_name": 1,
@@ -974,6 +975,7 @@ async def create_reassignment_request(
 async def approve_reassignment(
     lead_id: str,
     user_id: str = Query(..., description="ID of the user approving the request"),
+    remark: Optional[str] = Body(None, embed=True, description="Manager's approval remark"),
     leads_db: LeadsDB = Depends(get_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
@@ -1084,7 +1086,9 @@ async def approve_reassignment(
         # Reset lead status
         "status": "ACTIVE LEADS",
         "sub_status": "NEW LEAD",
-        "file_sent_to_login": False
+        "file_sent_to_login": False,
+        # Save manager's approval remark for history display
+        "reassignment_approval_remark": remark or "",
     }
 
     logging.info(f"🔄 Setting assigned_to + created_by to requesting user: {requesting_user_id} ({requesting_user_name})")

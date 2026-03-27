@@ -162,17 +162,22 @@ const TransferRequestsPage = ({ user }) => {
 
     // Build combined timeline from reassignment_history + lead-level fields
     const combined = [];
+    const leadIsRejected = lead.reassignment_status === 'rejected' || lead.reassignment_status === 'auto_rejected' || lead.auto_rejected;
 
     // 1) reassignment_history entries (from activity collection, attached by list API)
     if (lead.reassignment_history && lead.reassignment_history.length > 0) {
       lead.reassignment_history.forEach(entry => {
         const action = (entry.action || '').toLowerCase();
+        // Skip ghost "approved" activities logged incorrectly for rejected leads (old data bug:
+        // rejection was logged as action="approved" with empty by_user due to null created_by)
+        if (action === 'approved' && !entry.by_user && leadIsRejected) return;
         combined.push({
           assigned_by_name: entry.by_user || '',
           assigned_date: entry.date || '',
           assignment_type: action === 'requested' ? 'reassignment_request'
             : action === 'approved_direct' ? 'direct_transfer'
             : action === 'approved' ? 'approved'
+            : action === 'rejected' ? 'rejected'
             : action,
           remark: entry.reason || entry.description || '',
           assigned_to_names: entry.to_user ? [entry.to_user] : [],
@@ -211,7 +216,7 @@ const TransferRequestsPage = ({ user }) => {
           assigned_by_name: lead.approved_by_name || '',
           assigned_date: lead.reassignment_approved_at || '',
           assignment_type: 'approved',
-          remark: '',
+          remark: lead.reassignment_approval_remark || '',
           assigned_to_names: lead.requestor_name ? [lead.requestor_name] : [],
           _source: 'synthesized',
         });
@@ -795,7 +800,11 @@ const TransferRequestsPage = ({ user }) => {
                           const isApproved = decision && (decisionType.includes('approv'));
                           const isRejected = decision && (decisionType.includes('reject'));
                           const decisionBy = decision?.assigned_by_name || decision?.by_user || '';
-                          const decisionNote = decision?.remark || decision?.reason || decision?.description || '';
+                          // Fallback to lead-level remark fields for old data where activity had no reason stored
+                          const decisionNote = decision?.remark || decision?.reason || decision?.description
+                            || (isRejected && !decisionType.includes('auto') ? (currentLead?.reassignment_rejection_reason || '') : '')
+                            || (isApproved ? (currentLead?.reassignment_approval_remark || '') : '')
+                            || '';
                           const decisionDate = decision?.assigned_date || decision?.date || '';
                           // Auto-rejection: system rejected it (no approver name, or note contains "auto" / "24 hours")
                           const isAutoRej = isRejected && (!decisionBy.trim() || (decisionNote || '').toLowerCase().includes('auto') || (decisionNote || '').toLowerCase().includes('24 hour') || (decisionBy || '').toLowerCase() === 'system');

@@ -3221,12 +3221,25 @@ class LeadsDB:
                         "data_code_change": update_data.get("reassignment_new_data_code"),
                         "campaign_name_change": update_data.get("reassignment_new_campaign_name")
                     }
+                elif update_data.get("reassignment_status") in ("rejected", "auto_rejected"):
+                    # Rejection: log with correct action and reason
+                    rejected_by = update_data.get("reassignment_rejected_by", "")
+                    activity_data["action"] = "rejected"
+                    activity_data["created_by"] = rejected_by if rejected_by != "system" else None
+                    activity_data["activity_description"] = "system" if rejected_by == "system" else ""
+                    activity_data["details"] = {
+                        "reason": update_data.get("reassignment_rejection_reason", ""),
+                        "from_user": _normalize_user_id(current_lead.get("assigned_to")),
+                        "rejected_by_system": rejected_by == "system",
+                    }
                 else:
+                    # Approval
                     activity_data["action"] = "approved"
                     activity_data["created_by"] = update_data.get("reassignment_approved_by")
                     activity_data["details"] = {
                         "assigned_to": _normalize_user_id(update_data.get("assigned_to")),
                         "from_user": _normalize_user_id(current_lead.get("assigned_to")),  # previous owner (plain string ID)
+                        "reason": update_data.get("reassignment_approval_remark", ""),
                         "field_changes": field_changes
                     }
             elif update_data.get("reassignment_status") == "approved":
