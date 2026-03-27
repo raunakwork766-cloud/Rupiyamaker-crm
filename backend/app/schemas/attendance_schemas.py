@@ -301,6 +301,8 @@ class AttendanceCalendarDay(BaseModel):
     status_text: Optional[str] = Field(None, description="Human readable status")
     is_holiday: bool = Field(False, description="Whether the date is a holiday")
     is_weekend: bool = Field(False, description="Whether the date is a weekend")
+    check_in_time: Optional[str] = Field(None, description="Check-in time HH:MM:SS")
+    check_out_time: Optional[str] = Field(None, description="Check-out time HH:MM:SS")
     comments: Optional[str] = Field(None, description="Comments")
     photo_path: Optional[str] = Field(None, description="Path to attendance photo")
     # Leave integration fields
