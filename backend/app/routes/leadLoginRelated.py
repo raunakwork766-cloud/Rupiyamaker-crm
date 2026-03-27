@@ -1031,6 +1031,7 @@ async def update_login_lead_obligations(
     login_lead_id: str,
     obligation_data: Dict[str, Any],
     user_id: str = Query(..., description="ID of the user making the request"),
+    context: Optional[str] = Query(None, description="Context: 'reassignment' or 'transfer'"),
     login_leads_db = Depends(get_login_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
@@ -1114,6 +1115,10 @@ async def update_login_lead_obligations(
     loan_required = obligation_data.get('loanRequired', '')
     
     description = f"Updated Obligation Section"
+    if context == "reassignment":
+        description += " (during reassignment review)"
+    elif context == "transfer":
+        description += " (during transfer review)"
     if obligations_count > 0:
         description += f" ({obligations_count} obligations)"
     if salary:

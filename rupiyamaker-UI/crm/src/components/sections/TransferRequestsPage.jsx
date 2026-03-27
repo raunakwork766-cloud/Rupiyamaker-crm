@@ -1171,6 +1171,7 @@ const TransferRequestsPage = ({ user }) => {
                 user={null}
                 readOnly={true}
                 allowedTabs={['details', 'obligations']}
+                saveContext="transfer"
                 onBack={() => { setViewFullLead(null); setViewFullLeadLoading(false); }}
               />
             </Suspense>

@@ -27,7 +27,7 @@ import Remarks from './sections/Remarks';
 import Activities from './sections/Activities';
 import RequestReassignmentButton from './sections/RequestReassignmentButton';
 
-export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly = false, obligationsReadOnly = false, allowedTabs = null }) {
+export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly = false, obligationsReadOnly = false, allowedTabs = null, saveContext }) {
     // Lock all editing when lead has a pending reassignment request
     const isReassignmentLocked = ['pending', 'requested'].includes(lead?.reassignment_status);
     const effectiveReadOnly = readOnly || isReassignmentLocked;
@@ -770,6 +770,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     <ObligationsSection
                                         canEdit={!obligationsReadOnly}
                                         insideOverlay={effectiveReadOnly}
+                                        saveContext={saveContext}
                                         leadData={{
                                             ...leadData,
                                             // Initialize obligations if they don't exist

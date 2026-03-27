@@ -341,13 +341,19 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                     {/* Lead Status */}
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       <div className="flex flex-col gap-1">
-                        {leadStatus && (
-                          <span className="inline-block px-2 py-0.5 bg-neutral-800 text-neutral-300 rounded text-xs font-medium">{leadStatus}</span>
+                        {lead.file_sent_to_login ? (
+                          <span className="inline-block px-2.5 py-1 bg-green-600 text-white rounded text-xs font-bold tracking-wide">LOGIN</span>
+                        ) : (
+                          <>
+                            {leadStatus && (
+                              <span className="inline-block px-2 py-0.5 bg-neutral-800 text-neutral-300 rounded text-xs font-medium">{leadStatus}</span>
+                            )}
+                            {leadSubStatus && (
+                              <span className="inline-block px-2 py-0.5 bg-blue-900/40 text-blue-300 rounded text-xs">{leadSubStatus}</span>
+                            )}
+                            {!leadStatus && !leadSubStatus && <span className="text-neutral-600 text-xs">—</span>}
+                          </>
                         )}
-                        {leadSubStatus && (
-                          <span className="inline-block px-2 py-0.5 bg-blue-900/40 text-blue-300 rounded text-xs">{leadSubStatus}</span>
-                        )}
-                        {!leadStatus && !leadSubStatus && <span className="text-neutral-600 text-xs">—</span>}
                       </div>
                     </td>
 
@@ -462,8 +468,14 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                                         </td>
                                         <td className="px-3 py-2 text-neutral-300">{dl.assigned_to_name || '—'}</td>
                                         <td className="px-3 py-2">
-                                          <span className="inline-block px-1.5 py-0.5 bg-neutral-800 text-neutral-300 rounded text-[10px]">{dl.status || '—'}</span>
-                                          {dl.sub_status && <span className="inline-block ml-1 px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-[10px]">{dl.sub_status}</span>}
+                                          {dl.file_sent_to_login ? (
+                                            <span className="inline-block px-1.5 py-0.5 bg-green-600 text-white rounded text-[10px] font-bold">LOGIN</span>
+                                          ) : (
+                                            <>
+                                              <span className="inline-block px-1.5 py-0.5 bg-neutral-800 text-neutral-300 rounded text-[10px]">{dl.status || '—'}</span>
+                                              {dl.sub_status && <span className="inline-block ml-1 px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-[10px]">{dl.sub_status}</span>}
+                                            </>
+                                          )}
                                         </td>
                                         <td className="px-3 py-2 text-neutral-400">{dl.loan_type || '—'}</td>
                                         <td className="px-3 py-2 text-neutral-500">{fmtDate(dl.created_at)}</td>
@@ -665,7 +677,9 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
                                 </span>
                               )}
                             </div>
-                            {dl.status && (
+                            {dl.file_sent_to_login ? (
+                              <p className="text-[10px] font-bold leading-tight" style={{ color: '#22c55e' }}>LOGIN</p>
+                            ) : dl.status && (
                               <p className="text-[10px] font-medium leading-tight" style={{ color: '#a1a1aa' }}>
                                 {dl.status}{dl.sub_status ? ` — ${dl.sub_status}` : ''}
                               </p>

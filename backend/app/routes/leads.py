@@ -4778,6 +4778,7 @@ async def update_lead_obligations(
     lead_id: ObjectIdStr,
     obligation_data: Dict[str, Any],
     user_id: str = Query(..., description="ID of the user making the request"),
+    context: Optional[str] = Query(None, description="Context: 'reassignment' or 'transfer'"),
     leads_db: LeadsDB = Depends(get_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
@@ -4886,6 +4887,69 @@ async def update_lead_obligations(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to update obligation data"
         )
+    
+    # ── Activity logging for obligation changes ──
+    try:
+        old_df = lead.get("dynamic_fields", {})
+        new_df = dynamic_fields
+        
+        # Compare key obligation fields
+        changes = []
+        field_map = {
+            "personal_details.salary": "Salary",
+            "personal_details.partner_salary": "Partner Salary",
+            "personal_details.company_name": "Company Name",
+            "personal_details.company_type": "Company Type",
+            "personal_details.company_category": "Company Category",
+            "personal_details.yearly_bonus": "Yearly Bonus",
+            "personal_details.cibil_score": "CIBIL Score",
+            "financial_details.loan_required": "Loan Required",
+            "eligibility_details.final_eligibility": "Final Eligibility",
+        }
+        
+        for dotpath, label in field_map.items():
+            parts = dotpath.split(".")
+            old_val = old_df
+            new_val = new_df
+            for p in parts:
+                old_val = old_val.get(p) if isinstance(old_val, dict) else None
+                new_val = new_val.get(p) if isinstance(new_val, dict) else None
+            old_str = str(old_val) if old_val is not None else ""
+            new_str = str(new_val) if new_val is not None else ""
+            if old_str != new_str and (old_str or new_str):
+                changes.append(f"{label}: {old_str or '(empty)'} → {new_str or '(empty)'}")
+        
+        # Compare obligations count
+        old_obl_count = len(old_df.get("obligations", []))
+        new_obl_count = len(new_df.get("obligations", []))
+        if old_obl_count != new_obl_count:
+            changes.append(f"Obligations count: {old_obl_count} → {new_obl_count}")
+        
+        if changes:
+            user_info = await users_db.get_user(user_id)
+            user_name = f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip() if user_info else "Unknown"
+            
+            context_label = ""
+            if context == "reassignment":
+                context_label = " (during reassignment review)"
+            elif context == "transfer":
+                context_label = " (during transfer review)"
+            
+            activity_data = {
+                "lead_id": lead_id,
+                "user_id": user_id,
+                "user_name": user_name,
+                "activity_type": "obligation_update",
+                "description": f"Obligation data updated{context_label}",
+                "details": {
+                    "changes": changes,
+                    "context": context or "normal"
+                },
+                "created_at": get_ist_now()
+            }
+            await leads_db.activity_collection.insert_one(activity_data)
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to log obligation activity: {e}")
     
     return {"message": "Obligation data updated successfully"}
 

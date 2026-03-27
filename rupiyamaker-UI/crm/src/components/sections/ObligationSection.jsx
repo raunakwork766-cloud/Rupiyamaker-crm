@@ -261,7 +261,7 @@ const fetchCompanyCategories = async () => {
   }
 };
 
-export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady }) {
+export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady, saveContext }) {
   // Immediate safety check to prevent any initialization errors
   if (typeof React === 'undefined' || !React.useState) {
     console.error('React is not properly loaded');
@@ -6447,9 +6447,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       // Use the raw API call instead of debounced version to avoid delayed saving
       // Determine if this is a login lead
       const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const contextParam = saveContext ? `&context=${encodeURIComponent(saveContext)}` : '';
       const apiUrl = isLoginLead
-        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/obligations?user_id=${userId}`
-        : `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}`;
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/obligations?user_id=${userId}${contextParam}`
+        : `${API_BASE_URL}/leads/${leadData._id}/obligations?user_id=${userId}${contextParam}`;
       
       console.log(`Making API call to: ${apiUrl} (${isLoginLead ? 'LOGIN' : 'MAIN'} leads)`);
       console.log('🌐 [API SAVE] Request payload:', JSON.stringify({

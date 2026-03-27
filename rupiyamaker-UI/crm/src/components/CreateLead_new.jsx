@@ -5956,6 +5956,7 @@ function CreateLead() {
                     user={null}
                     readOnly={true}
                     allowedTabs={['details', 'obligations']}
+                    saveContext="reassignment"
                     onBack={closeModal}
                   />
                 </Suspense>

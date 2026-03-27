@@ -413,6 +413,7 @@ async def list_reassignment_requests(
                     "phone": dl.get("phone", ""),
                     "status": dl.get("status", ""),
                     "sub_status": dl.get("sub_status", ""),
+                    "file_sent_to_login": dl.get("file_sent_to_login", False),
                     "assigned_to_name": assigned_name,
                     "created_by_name": created_name,
                     "loan_type": dl.get("loan_type_name") or dl.get("loan_type") or "",
