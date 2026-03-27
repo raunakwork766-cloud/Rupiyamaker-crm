@@ -682,13 +682,13 @@ class LeadsDB:
         
         print(f"MongoDB result - matched: {result.matched_count}, modified: {result.modified_count}")
         
-        if result.modified_count == 0:
-            print(f"❌ No documents were modified")
-            if result.matched_count == 0:
-                print(f"❌ No documents matched the filter")
-            else:
-                print(f"⚠️ Document matched but no changes were made (data might be identical)")
+        if result.matched_count == 0:
+            print(f"❌ No documents matched the filter")
             return False
+        
+        if result.modified_count == 0:
+            print(f"⚠️ Document matched but no changes were made (data identical) - treating as success")
+            return True
         
         print(f"✅ MongoDB update successful")
         

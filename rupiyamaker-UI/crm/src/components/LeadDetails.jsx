@@ -201,9 +201,9 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 try {
                     const errorJson = JSON.parse(errorText);
                     console.error('❌ Parsed error:', errorJson);
-                    setError(`Failed to update lead: ${errorJson.detail || errorText}`);
+                    setError(errorJson.detail || 'Failed to save');
                 } catch (e) {
-                    setError(`Failed to update lead: ${response.status} ${errorText}`);
+                    setError('Failed to save');
                 }
                 
                 setIsLoading(false);
@@ -286,7 +286,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 tokenLength: token?.length,
                 updateData: updatedData
             });
-            setError('Failed to update lead: ' + error.message);
+            setError('Failed to save: ' + error.message);
             setTimeout(() => setError(''), 5000);
             return false;
         } finally {
