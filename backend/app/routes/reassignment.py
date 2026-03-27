@@ -68,20 +68,52 @@ async def list_reassignment_requests(
     # Auto-reject pending requests older than cooldown period
     try:
         expiry_cutoff = get_ist_now() - timedelta(hours=cooldown_hours)
+        # Auto-reject expired pending requests
         expire_result = await leads_db.collection.update_many(
             {
                 "pending_reassignment": True,
+                "reassignment_status": "pending",
                 "reassignment_requested_at": {"$lt": expiry_cutoff}
             },
             {"$set": {
                 "pending_reassignment": False,
                 "reassignment_status": "auto_rejected",
-                "reassignment_rejection_reason": f"System Auto-Rejected: No action taken within {cooldown_hours} hours",
+                "reassignment_rejection_reason": f"System Auto-Rejected: No action taken within {cooldown_hours} hours cooldown period",
+                "reassignment_rejected_by": "system",
                 "reassignment_rejected_at": get_ist_now(),
             }}
         )
         if expire_result.modified_count:
             logging.info(f"⏰ Auto-rejected {expire_result.modified_count} pending reassignment request(s) older than {cooldown_hours}h")
+        
+        # Fix inconsistent state: pending_reassignment=True but status is already approved/rejected/auto_rejected
+        fix_result = await leads_db.collection.update_many(
+            {
+                "pending_reassignment": True,
+                "reassignment_status": {"$in": ["approved", "rejected", "auto_rejected"]}
+            },
+            {"$set": {"pending_reassignment": False}}
+        )
+        if fix_result.modified_count:
+            logging.info(f"🔧 Fixed {fix_result.modified_count} inconsistent pending_reassignment flag(s)")
+        
+        # Auto-reject pending requests that have no reassignment_requested_at (safety net)
+        orphan_result = await leads_db.collection.update_many(
+            {
+                "pending_reassignment": True,
+                "reassignment_status": "pending",
+                "reassignment_requested_at": {"$exists": False}
+            },
+            {"$set": {
+                "pending_reassignment": False,
+                "reassignment_status": "auto_rejected",
+                "reassignment_rejection_reason": f"System Auto-Rejected: Missing request timestamp",
+                "reassignment_rejected_by": "system",
+                "reassignment_rejected_at": get_ist_now(),
+            }}
+        )
+        if orphan_result.modified_count:
+            logging.info(f"🔧 Auto-rejected {orphan_result.modified_count} orphan pending request(s) with no timestamp")
     except Exception as _exp_err:
         logging.warning(f"⚠️ Auto-rejection error (non-fatal): {_exp_err}")
     """List reassignment requests with filtering and pagination
@@ -250,9 +282,12 @@ async def list_reassignment_requests(
 
         # Add rejected_by name
         if lead.get("reassignment_rejected_by"):
-            rejector = await users_db.get_user(lead["reassignment_rejected_by"])
-            if rejector:
-                lead_dict["rejected_by_name"] = f"{rejector.get('first_name', '')} {rejector.get('last_name', '')}".strip()
+            if lead["reassignment_rejected_by"] == "system":
+                lead_dict["rejected_by_name"] = "System"
+            else:
+                rejector = await users_db.get_user(lead["reassignment_rejected_by"])
+                if rejector:
+                    lead_dict["rejected_by_name"] = f"{rejector.get('first_name', '')} {rejector.get('last_name', '')}".strip()
 
         if lead.get("status"):
             lead_dict["lead_status"] = lead["status"]
@@ -272,8 +307,10 @@ async def list_reassignment_requests(
             lead_dict["status"] = "pending"
         elif lead.get("reassignment_status") == "approved":
             lead_dict["status"] = "approved"
-        elif lead.get("reassignment_status") == "rejected":
+        elif lead.get("reassignment_status") in ("rejected", "auto_rejected"):
             lead_dict["status"] = "rejected"
+            if lead.get("reassignment_status") == "auto_rejected":
+                lead_dict["auto_rejected"] = True
         else:
             lead_dict["status"] = "unknown"
         
@@ -298,9 +335,6 @@ async def list_reassignment_requests(
         if requester_id == user_id:
             # Cannot approve your own request — no exceptions
             lead_dict["can_approve_request"] = False
-        elif assigned_to_id == user_id:
-            # Cannot approve transfer of your own lead
-            lead_dict["can_approve_request"] = False
         elif is_super_admin:
             lead_dict["can_approve_request"] = True
         else:
@@ -309,9 +343,15 @@ async def list_reassignment_requests(
                 requester_user = await users_db.get_user(requester_id)
                 requester_role_id = str(requester_user.get("role_id") or "") if requester_user else ""
                 approvers_for_role = role_approver_map.get(requester_role_id, set())
-                # Only configured approvers for THIS specific role can approve
-                # Orphan roles (no configured route) → only Super Admin can approve
-                lead_dict["can_approve_request"] = (user_id in approvers_for_role)
+                is_role_approver = (user_id in approvers_for_role)
+                if is_role_approver:
+                    # Configured approver can approve even if lead is assigned to them
+                    lead_dict["can_approve_request"] = True
+                elif assigned_to_id == user_id:
+                    # Non-approver cannot approve transfer of their own lead
+                    lead_dict["can_approve_request"] = False
+                else:
+                    lead_dict["can_approve_request"] = False
             else:
                 lead_dict["can_approve_request"] = False
 
@@ -906,7 +946,14 @@ async def create_reassignment_request(
             "reassignment_requested_by": user_id,
             "reassignment_target_user": target_user_id,
             "reassignment_reason": reason,
-            "reassignment_requested_at": get_ist_now()
+            "reassignment_requested_at": get_ist_now(),
+            # Clear stale fields from any previous approval/rejection
+            "reassignment_status": "pending",
+            "reassignment_approved_by": None,
+            "reassignment_approved_at": None,
+            "reassignment_rejected_by": None,
+            "reassignment_rejected_at": None,
+            "reassignment_rejection_reason": None,
         }
         
         # Add data_code and campaign_name changes if provided

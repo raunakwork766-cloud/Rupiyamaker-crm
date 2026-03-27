@@ -586,13 +586,14 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
                     {tabs.map((tab) => {
                         // Check if user can view this tab
-                        const canViewTab = leadData.can_view_all_tabs ||
+                        const canViewTab = effectiveReadOnly ||
+                            leadData.can_view_all_tabs ||
                             tab.id === 'details' || // Details tab always visible
                             (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
                             (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
                             (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
                             (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
-                            (tab.id === 'obligations' && leadData.can_view_all_tabs);
+                            (tab.id === 'obligations' && (leadData.can_view_all_tabs || (Array.isArray(allowedTabs) && allowedTabs.includes('obligations'))));
 
                         if (!canViewTab) return null;
 

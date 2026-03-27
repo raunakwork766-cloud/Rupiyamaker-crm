@@ -183,17 +183,18 @@ const TransferRequestsPage = ({ user }) => {
       });
     }
 
-    // 2) Synthesize rejection entry from lead fields if rejected
-    if (lead.reassignment_status === 'rejected' || lead.reassignment_rejection_reason) {
+    // 2) Synthesize rejection entry from lead fields if rejected (including auto-rejected)
+    if (lead.reassignment_status === 'rejected' || lead.reassignment_status === 'auto_rejected' || lead.auto_rejected || lead.reassignment_rejection_reason) {
       const hasRejectionEntry = combined.some(e =>
         e.assignment_type === 'rejected' || (e.assignment_type || '').includes('reject')
       );
       if (!hasRejectionEntry) {
+        const isAutoRejected = lead.reassignment_status === 'auto_rejected' || lead.auto_rejected || (lead.reassignment_rejected_by === 'system');
         combined.push({
-          assigned_by_name: lead.rejected_by_name || '',
+          assigned_by_name: isAutoRejected ? 'System' : (lead.rejected_by_name || ''),
           assigned_date: lead.reassignment_rejected_at || '',
           assignment_type: 'rejected',
-          remark: lead.reassignment_rejection_reason || '',
+          remark: lead.reassignment_rejection_reason || (isAutoRejected ? 'System Auto-Rejected: No action taken within 24 hours cooldown period' : ''),
           assigned_to_names: [],
           _source: 'synthesized',
         });
@@ -395,7 +396,7 @@ const TransferRequestsPage = ({ user }) => {
             <thead>
               <tr className="bg-white border-b-2 border-[#03B0F5]">
                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5] w-12">#</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Lead Date & Age</th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Created By</th>
                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Team Name</th>
                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Customer Name</th>

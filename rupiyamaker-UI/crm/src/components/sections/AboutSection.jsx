@@ -167,6 +167,16 @@ function AssignPopup({ onClose, onSelect, assignableUsers = [] }) {
 export default function AboutSection({ lead, onSave, canEdit = true }) {
   // For dummy data, ensure lead has default values to prevent errors
   const safetyLead = lead || {};
+  const hasPendingReassignment =
+    String(lead?.reassignment_status || '').toLowerCase() === 'pending' ||
+    String(lead?.reassignment_request_status || '').toLowerCase() === 'pending';
+  const isReassignmentLocked = Boolean(
+    lead?.is_reassignment_locked ||
+    lead?.reassignment_locked ||
+    lead?.reassignment_pending ||
+    hasPendingReassignment
+  );
+  const canEditAssignedLead = canEdit && !isReassignmentLocked;
   
   // State for dropdown options
   const [loanTypes, setLoanTypes] = useState([]);
@@ -197,6 +207,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [assignedTo, setAssignedTo] = useState([]);
   const [assignReportTo, setAssignReportTo] = useState([]);
   const [showAssignReportToPopup, setShowAssignReportToPopup] = useState(false);
+
+  useEffect(() => {
+    if (!canEditAssignedLead && showAssignReportToPopup) {
+      setShowAssignReportToPopup(false);
+    }
+  }, [canEditAssignedLead, showAssignReportToPopup]);
   const [assignableUsers, setAssignableUsers] = useState([]);
   
   // Dropdown search functionality states
@@ -1506,6 +1522,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
 
   // Function to remove an assignee from Assigned TL field
   const handleRemoveAssignReportTo = (userToRemove) => {
+    if (!canEditAssignedLead) return;
     const updatedAssignReportTo = assignReportTo.filter((user) => 
       (typeof user === 'object' ? user.id : user) !== (typeof userToRemove === 'object' ? userToRemove.id : userToRemove)
     );
@@ -1517,6 +1534,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   
   // Function to add an assignee to Assigned TL field
   const handleAddAssignReportTo = (newAssigneeUser) => {
+    if (!canEditAssignedLead) return;
     const newUserId = typeof newAssigneeUser === 'object' ? newAssigneeUser.id : newAssigneeUser;
     const newUserName = typeof newAssigneeUser === 'object' ? newAssigneeUser.name : newAssigneeUser;
     
@@ -2059,8 +2077,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>ASSIGNED Lead</label>
             <div className="relative w-full dropdown-container">
               <div
-                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
-                onClick={() => setShowAssignReportToPopup(true)}
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${canEditAssignedLead ? 'bg-white cursor-pointer' : 'bg-gray-100 cursor-not-allowed'}`}
+                onClick={() => {
+                  if (canEditAssignedLead) {
+                    setShowAssignReportToPopup(true);
+                  }
+                }}
               >
                 {assignReportTo.length === 0 && (
                   <span className="text-gray-400">Don't select Team Manager</span>
@@ -2083,22 +2105,24 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                           .toUpperCase()}
                       </div>
                       <span className="text-xs">{displayName}</span>
-                      <button
-                        type="button"
-                        className="text-white hover:text-red-200 ml-1 text-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveAssignReportTo(assignee);
-                        }}
-                      >
-                        ×
-                      </button>
+                      {canEditAssignedLead && (
+                        <button
+                          type="button"
+                          className="text-white hover:text-red-200 ml-1 text-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveAssignReportTo(assignee);
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   );
                 })}
 
                 {/* Add button */}
-                {assignReportTo.length > 0 && (
+                {assignReportTo.length > 0 && canEditAssignedLead && (
                   <button
                     type="button"
                     className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm"
@@ -2117,7 +2141,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       </div>
       
       {/* AssignPopup component for Assigned TL field */}
-      {showAssignReportToPopup && (
+      {showAssignReportToPopup && canEditAssignedLead && (
         <AssignPopup
           onClose={() => setShowAssignReportToPopup(false)}
           onSelect={(user) => {

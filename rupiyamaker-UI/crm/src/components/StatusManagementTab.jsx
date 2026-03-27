@@ -245,15 +245,16 @@ const StatusManagementTab = ({
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                         <input
-                            type="number"
-                            min="1"
-                            max="168"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={cooldownInput}
-                            onChange={e => setCooldownInput(e.target.value)}
+                            onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); if (v === '' || (parseInt(v, 10) >= 0 && parseInt(v, 10) <= 168)) setCooldownInput(v); }}
                             onBlur={handleCooldownSave}
                             onKeyDown={e => e.key === 'Enter' && handleCooldownSave()}
                             disabled={cooldownSaving || !cooldownLoaded}
                             className="w-20 text-center px-2 py-1.5 rounded border border-gray-500 bg-black text-white text-sm disabled:opacity-50 focus:border-amber-400 outline-none"
+                            placeholder="24"
                         />
                         <span className="text-gray-300 text-sm font-medium">hours</span>
                     </div>

@@ -611,13 +611,17 @@ const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
 
 // Holiday Management Modal Component
 const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, selectedYear, selectedMonth }) => {
+  const [rangeMode, setRangeMode] = useState(false)
   const [newHolidayDate, setNewHolidayDate] = useState("")
+  const [newHolidayStartDate, setNewHolidayStartDate] = useState("")
+  const [newHolidayEndDate, setNewHolidayEndDate] = useState("")
   const [newHolidayName, setNewHolidayName] = useState("")
   const [newHolidayDescription, setNewHolidayDescription] = useState("")
   const [loading, setLoading] = useState(false)
   const [user, setUser] = useState(null)
   const [localHolidays, setLocalHolidays] = useState([])
   const [error, setError] = useState("")
+  const [addedCount, setAddedCount] = useState(0)
 
   // Get user data
   useEffect(() => {
@@ -663,33 +667,83 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
   })
 
   const handleAddHoliday = async () => {
-    if (!newHolidayDate || !newHolidayName || !user?.user_id) {
+    if (!newHolidayName || !user?.user_id) {
       setError("Please fill in all required fields")
       return
+    }
+    if (rangeMode) {
+      if (!newHolidayStartDate || !newHolidayEndDate) {
+        setError("Please select both start and end dates")
+        return
+      }
+      const start = new Date(newHolidayStartDate)
+      const end = new Date(newHolidayEndDate)
+      if (end < start) {
+        setError("End date must be on or after start date")
+        return
+      }
+      const maxRange = 31
+      const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1
+      if (diffDays > maxRange) {
+        setError(`Range cannot exceed ${maxRange} days`)
+        return
+      }
+    } else {
+      if (!newHolidayDate) {
+        setError("Please select a date")
+        return
+      }
     }
 
     setLoading(true)
     setError("")
+    setAddedCount(0)
     try {
-      const response = await attendanceAPI.addHoliday(
-        newHolidayName,
-        newHolidayDate,
-        newHolidayDescription,
-        user.user_id
-      )
-      
-      if (response.success) {
-        // Reload holidays to get updated list
-        await loadHolidays()
-        // Clear form
-        setNewHolidayDate("")
-        setNewHolidayName("")
-        setNewHolidayDescription("")
-        // Update parent component
-        onUpdateHolidays(localHolidays)
+      if (rangeMode) {
+        // Generate all dates in range and add each one
+        const start = new Date(newHolidayStartDate)
+        const end = new Date(newHolidayEndDate)
+        const dates = []
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          dates.push(d.toISOString().slice(0, 10))
+        }
+        let added = 0
+        for (const dateStr of dates) {
+          try {
+            const dayName = new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'Asia/Kolkata' })
+            const nameSuffix = dates.length > 1 ? ` (${dayName})` : ''
+            await attendanceAPI.addHoliday(
+              newHolidayName + nameSuffix,
+              dateStr,
+              newHolidayDescription,
+              user.user_id
+            )
+            added++
+          } catch (e) {
+            // skip duplicates silently
+          }
+        }
+        setAddedCount(added)
       } else {
-        setError(response.message || "Failed to add holiday")
+        const response = await attendanceAPI.addHoliday(
+          newHolidayName,
+          newHolidayDate,
+          newHolidayDescription,
+          user.user_id
+        )
+        if (!response.success) {
+          setError(response.message || "Failed to add holiday")
+          return
+        }
       }
+      // Reload and clear form
+      await loadHolidays()
+      setNewHolidayDate("")
+      setNewHolidayStartDate("")
+      setNewHolidayEndDate("")
+      setNewHolidayName("")
+      setNewHolidayDescription("")
+      onUpdateHolidays(localHolidays)
     } catch (error) {
       console.error('Error adding holiday:', error)
       setError(error.response?.data?.detail || "Failed to add holiday. Please try again.")
@@ -772,20 +826,73 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
 
           {/* Add New Holiday */}
           <div style={{marginBottom:'24px'}}>
-            <h3 style={{color:'#ffffff',fontSize:'13px',fontWeight:700,marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.5px',margin:'0 0 14px'}}>Add New Holiday</h3>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'12px'}}>
-              <div>
-                <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Holiday Date *</label>
-                <input
-                  type="date"
-                  value={newHolidayDate}
-                  onChange={(e) => setNewHolidayDate(e.target.value)}
-                  disabled={loading}
-                  style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
-                  onFocus={e => e.target.style.borderColor='#06b6d4'}
-                  onBlur={e => e.target.style.borderColor='#27272a'}
-                />
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}}>
+              <h3 style={{color:'#ffffff',fontSize:'13px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',margin:0}}>Add New Holiday</h3>
+              {/* Single / Range toggle */}
+              <div style={{display:'flex',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',overflow:'hidden'}}>
+                <button
+                  onClick={() => { setRangeMode(false); setError(''); setAddedCount(0) }}
+                  style={{padding:'5px 12px',fontSize:'11px',fontWeight:600,border:'none',cursor:'pointer',background:!rangeMode?'#06b6d4':'transparent',color:!rangeMode?'#000':'#a1a1aa',transition:'all 0.2s'}}
+                >
+                  Single Day
+                </button>
+                <button
+                  onClick={() => { setRangeMode(true); setError(''); setAddedCount(0) }}
+                  style={{padding:'5px 12px',fontSize:'11px',fontWeight:600,border:'none',cursor:'pointer',background:rangeMode?'#06b6d4':'transparent',color:rangeMode?'#000':'#a1a1aa',transition:'all 0.2s'}}
+                >
+                  Date Range
+                </button>
               </div>
+            </div>
+            {/* Success count flash */}
+            {addedCount > 0 && (
+              <div style={{marginBottom:'12px',padding:'10px 14px',backgroundColor:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:'6px'}}>
+                <p style={{color:'#10b981',fontSize:'12px',margin:0}}>✅ {addedCount} holiday{addedCount>1?'s':''} added successfully</p>
+              </div>
+            )}
+            <div style={{display:'grid',gridTemplateColumns: rangeMode ? '1fr 1fr' : '1fr 1fr',gap:'12px',marginBottom:'12px'}}>
+              {rangeMode ? (
+                <>
+                  <div>
+                    <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Start Date *</label>
+                    <input
+                      type="date"
+                      value={newHolidayStartDate}
+                      onChange={(e) => setNewHolidayStartDate(e.target.value)}
+                      disabled={loading}
+                      style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                      onFocus={e => e.target.style.borderColor='#06b6d4'}
+                      onBlur={e => e.target.style.borderColor='#27272a'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>End Date *</label>
+                    <input
+                      type="date"
+                      value={newHolidayEndDate}
+                      onChange={(e) => setNewHolidayEndDate(e.target.value)}
+                      min={newHolidayStartDate || undefined}
+                      disabled={loading}
+                      style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                      onFocus={e => e.target.style.borderColor='#06b6d4'}
+                      onBlur={e => e.target.style.borderColor='#27272a'}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Holiday Date *</label>
+                  <input
+                    type="date"
+                    value={newHolidayDate}
+                    onChange={(e) => setNewHolidayDate(e.target.value)}
+                    disabled={loading}
+                    style={{width:'100%',padding:'8px 12px',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',color:'#ffffff',fontSize:'13px',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+                    onFocus={e => e.target.style.borderColor='#06b6d4'}
+                    onBlur={e => e.target.style.borderColor='#27272a'}
+                  />
+                </div>
+              )}
               <div>
                 <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Holiday Name *</label>
                 <input
@@ -800,6 +907,11 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
                 />
               </div>
             </div>
+            {rangeMode && newHolidayStartDate && newHolidayEndDate && new Date(newHolidayEndDate) >= new Date(newHolidayStartDate) && (
+              <div style={{marginBottom:'10px',padding:'7px 12px',background:'rgba(6,182,212,0.08)',border:'1px solid rgba(6,182,212,0.25)',borderRadius:'5px',fontSize:'11px',color:'#06b6d4'}}>
+                📅 {Math.round((new Date(newHolidayEndDate) - new Date(newHolidayStartDate)) / (1000*60*60*24)) + 1} day{Math.round((new Date(newHolidayEndDate) - new Date(newHolidayStartDate)) / (1000*60*60*24)) + 1 > 1 ? 's' : ''} will be marked as holiday
+              </div>
+            )}
             <div style={{marginBottom:'12px'}}>
               <label style={{display:'block',fontSize:'11px',fontWeight:600,color:'#a1a1aa',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Description (Optional)</label>
               <input
@@ -815,11 +927,11 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
             </div>
             <button
               onClick={handleAddHoliday}
-              disabled={loading || !newHolidayDate || !newHolidayName}
-              style={{backgroundColor:'#06b6d4',color:'#000',border:'none',borderRadius:'6px',padding:'8px 16px',fontSize:'13px',fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:'6px',opacity:(loading || !newHolidayDate || !newHolidayName) ? 0.4 : 1,transition:'opacity 0.2s'}}
+              disabled={loading || !newHolidayName || (rangeMode ? (!newHolidayStartDate || !newHolidayEndDate) : !newHolidayDate)}
+              style={{backgroundColor:'#06b6d4',color:'#000',border:'none',borderRadius:'6px',padding:'8px 16px',fontSize:'13px',fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:'6px',opacity:(loading || !newHolidayName || (rangeMode ? (!newHolidayStartDate || !newHolidayEndDate) : !newHolidayDate)) ? 0.4 : 1,transition:'opacity 0.2s'}}
             >
               <Plus className="h-4 w-4" />
-              {loading ? 'Adding...' : 'Add Holiday'}
+              {loading ? 'Adding...' : (rangeMode ? 'Add Range' : 'Add Holiday')}
             </button>
           </div>
 
@@ -1066,6 +1178,120 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
 
           <div className="flex justify-end pt-2">
             <button onClick={onClose} className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-2 rounded-md transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Deduction Detail Modal Component
+const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
+  const [revoking, setRevoking] = useState(null)
+  if (!isOpen || !data) return null
+
+  const { employee, stats, calculatedSalary, monthlySalary, perDaySalary, warningPenalties, selectedYear, selectedMonth, daysInMonth } = data
+  const attendanceDeduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
+  const totalWarningFine = (warningPenalties || []).reduce((sum, p) => sum + (p.penalty_amount || 0), 0)
+  const totalDeduction = attendanceDeduction + Math.round(totalWarningFine)
+  const monthName = months[selectedMonth - 1]
+
+  const handleRevoke = async (warningId) => {
+    setRevoking(warningId)
+    await onRevoke(warningId, employee.mongoId)
+    setRevoking(null)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl">
+        <div className="bg-gradient-to-r from-red-700 to-rose-700 text-white p-4 rounded-t-lg relative">
+          <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-gray-200">
+            <X className="h-6 w-6" />
+          </button>
+          <h2 className="text-xl font-bold">Deduction Details</h2>
+          <p className="text-red-100 text-sm mt-1">{employee.name} — {monthName} {selectedYear}</p>
+        </div>
+        <div className="p-5 space-y-4 bg-gray-900">
+          {totalDeduction === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <div className="text-4xl mb-2">✅</div>
+              <div className="text-lg font-semibold text-gray-300">No Deductions</div>
+              <div className="text-sm mt-1">No attendance or warning deductions for {monthName} {selectedYear}</div>
+            </div>
+          ) : (
+            <>
+              {attendanceDeduction > 0 && (
+                <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                  <div className="text-sm font-semibold text-orange-300 mb-3">📅 Attendance Deduction</div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Monthly Salary (Fixed)</span>
+                      <span className="text-gray-200">₹{monthlySalary.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Days in Month</span>
+                      <span className="text-gray-200">{daysInMonth}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Per Day Rate</span>
+                      <span className="text-gray-200">₹{perDaySalary.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Attendance Score (days paid)</span>
+                      <span className="text-green-400 font-semibold">{stats.finalScore}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-gray-700">
+                      <span className="text-orange-300 font-semibold">Attendance Deduction</span>
+                      <span className="text-orange-400 font-bold">− ₹{attendanceDeduction.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {warningPenalties && warningPenalties.length > 0 && (
+                <div className="bg-gray-800 rounded-lg border border-red-800 p-4">
+                  <div className="text-sm font-semibold text-red-300 mb-3">⚠️ Warning Fines</div>
+                  <div className="space-y-3">
+                    {warningPenalties.map((p, idx) => (
+                      <div key={p.id || idx} className="flex items-start justify-between gap-3 pb-3 border-b border-gray-700 last:border-0 last:pb-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-red-300">{p.warning_type}</div>
+                          {p.warning_message && <div className="text-xs text-gray-500 mt-0.5 truncate">{p.warning_message}</div>}
+                          {p.issued_date && (
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              Issued: {new Date(p.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-red-400 font-bold">− ₹{Number(p.penalty_amount).toLocaleString('en-IN')}</span>
+                          <button
+                            disabled={revoking === p.id}
+                            onClick={() => handleRevoke(p.id)}
+                            className="text-xs bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1 rounded transition-colors font-semibold"
+                          >
+                            {revoking === p.id ? '...' : 'Revoke'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center pt-1 font-semibold text-sm">
+                      <span className="text-red-300">Total Warning Fines</span>
+                      <span className="text-red-400">− ₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 flex justify-between items-center">
+                <span className="text-red-200 font-bold text-lg">Total Deduction</span>
+                <span className="text-red-400 font-bold text-2xl">− ₹{totalDeduction.toLocaleString('en-IN')}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-end pt-2">
+            <button onClick={onClose} className="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2 rounded-md transition-colors">
               Close
             </button>
           </div>
@@ -2053,6 +2279,7 @@ const getDayNumericValue = (status) => {
 
 const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays) => {
   let presentScore = 0
+  let actualPresent = 0  // Only positive-value days (P, L, SP, HD) — for display
   let lvDaysTaken = 0  // Leave days taken (LV status) — counted for reference only
   let absconding = 0
   let holidaysCount = 0
@@ -2066,9 +2293,11 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
       lvDaysTaken++
     } else if (status === 'AB') {
       presentScore -= 1
+      actualPresent -= 1  // Absconding also reduces visible present count
       absconding++
     } else if (val !== null) {
       presentScore += val
+      if (val > 0) actualPresent += val  // count only actual present days
     }
   }
 
@@ -2088,6 +2317,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
 
   return {
     presentScore,
+    actualPresent,   // Days actually present (no negative deduction from absences)
     plDays,          // PL remaining (actual, from Leave Management)
     elDays,          // EL remaining (actual, from Leave Management)
     graceRemaining: graceRemainingMonthly, // Monthly grace remaining
@@ -2142,6 +2372,10 @@ export default function MonthlyAttendanceTable() {
   const [teamFilter, setTeamFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' })
+  // warningPenaltiesMap: { [mongoId]: { total_penalty: number, penalties: [] } }
+  const [warningPenaltiesMap, setWarningPenaltiesMap] = useState({})
+  const [deductionModalOpen, setDeductionModalOpen] = useState(false)
+  const [selectedDeductionData, setSelectedDeductionData] = useState(null)
 
   // Apply attendance rules to formatted records
   const applyAttendanceRules = (records, settings, year, month) => {
@@ -2459,6 +2693,7 @@ export default function MonthlyAttendanceTable() {
       setLoading(true)
       setError(null)
       setEditCounts({}) // Reset edit counts when month/year changes
+      setWarningPenaltiesMap({}) // Reset warning penalties when month/year changes
       
       try {
         // Fetch active employees list first
@@ -2568,6 +2803,30 @@ export default function MonthlyAttendanceTable() {
           const ruledData = applyAttendanceRules(enrichedData, settingsData, selectedYear, selectedMonth)
           console.log('Formatted data:', ruledData)
           setAttendanceData(ruledData)
+
+          // Batch-fetch warning penalties for all employees (background — non-blocking)
+          try {
+            const mongoIds = ruledData.map(r => r.mongoId).filter(Boolean)
+            if (mongoIds.length > 0) {
+              const penaltiesResp = await axios.get(
+                `${BASE_URL}/warnings/penalties/batch`,
+                {
+                  params: {
+                    employee_ids: mongoIds.join(','),
+                    month: selectedMonth,
+                    year: selectedYear,
+                    user_id: user.user_id
+                  },
+                  headers: getAuthHeaders()
+                }
+              )
+              if (penaltiesResp.data?.success) {
+                setWarningPenaltiesMap(penaltiesResp.data.data || {})
+              }
+            }
+          } catch (penErr) {
+            console.warn('Could not load warning penalties batch:', penErr)
+          }
 
           // Load real edit counts from DB so they survive hard refresh
           try {
@@ -2745,7 +3004,9 @@ export default function MonthlyAttendanceTable() {
   }
 
   const handleSalaryClick = async (employee, stats, calculatedSalary) => {
-    // Set modal data immediately (open it fast), then enrich with penalties
+    // Use pre-fetched cached penalties (populated when page loaded), or empty if not yet available
+    const cachedPenalties = (warningPenaltiesMap[employee.mongoId] || {}).penalties || []
+    // Set modal data immediately using cached data
     setSelectedSalaryData({
       employee,
       stats,
@@ -2755,11 +3016,11 @@ export default function MonthlyAttendanceTable() {
       selectedYear,
       selectedMonth,
       daysInMonth,
-      warningPenalties: []
+      warningPenalties: cachedPenalties
     })
     setSalaryModalOpen(true)
 
-    // Fetch warning penalties in background
+    // Fetch warning penalties in background to ensure freshest data
     try {
       const empId = employee.mongoId || employee.id
       const userData = getUserData()
@@ -2769,14 +3030,65 @@ export default function MonthlyAttendanceTable() {
           { headers: getAuthHeaders() }
         )
         if (resp.data?.success) {
+          const freshPenalties = resp.data.penalties || []
+          // Update modal with fresh data
           setSelectedSalaryData(prev => prev ? {
             ...prev,
-            warningPenalties: resp.data.penalties || []
+            warningPenalties: freshPenalties
           } : prev)
+          // Also update the map so the table cell reflects fresh data
+          setWarningPenaltiesMap(prev => ({
+            ...prev,
+            [empId]: { total_penalty: resp.data.total_penalty || 0, penalties: freshPenalties }
+          }))
         }
       }
     } catch (err) {
-      console.warn('Could not load warning penalties for salary:', err)
+      console.warn('Could not refresh warning penalties for salary:', err)
+    }
+  }
+
+  const handleDeductionClick = (record, stats, calculatedSalary) => {
+    const empPenalties = warningPenaltiesMap[record.mongoId] || {}
+    setSelectedDeductionData({
+      employee: record,
+      stats,
+      calculatedSalary,
+      monthlySalary: record.salary || 0,
+      perDaySalary: (record.salary || 0) / daysInMonth,
+      selectedYear,
+      selectedMonth,
+      daysInMonth,
+      warningPenalties: empPenalties.penalties || []
+    })
+    setDeductionModalOpen(true)
+  }
+
+  const handleRevokeWarning = async (warningId, empMongoId) => {
+    const userData = getUserData()
+    if (!userData?.user_id) return
+    try {
+      await axios.patch(
+        `${BASE_URL}/warnings/${warningId}/waive`,
+        {},
+        { params: { user_id: userData.user_id }, headers: getAuthHeaders() }
+      )
+      // Remove the revoked fine from cache
+      setWarningPenaltiesMap(prev => {
+        const emp = prev[empMongoId] || { total_penalty: 0, penalties: [] }
+        const newPenalties = emp.penalties.filter(p => p.id !== warningId)
+        const newTotal = newPenalties.reduce((sum, p) => sum + (p.penalty_amount || 0), 0)
+        return { ...prev, [empMongoId]: { total_penalty: newTotal, penalties: newPenalties } }
+      })
+      // Keep open modal in sync
+      setSelectedDeductionData(prev => {
+        if (!prev) return prev
+        const newPenalties = prev.warningPenalties.filter(p => p.id !== warningId)
+        return { ...prev, warningPenalties: newPenalties }
+      })
+    } catch (err) {
+      console.error('Failed to revoke warning penalty:', err)
+      alert('Failed to revoke warning penalty. Please try again.')
     }
   }
 
@@ -3323,7 +3635,12 @@ export default function MonthlyAttendanceTable() {
                 const monthlySalary = record.salary || 0
                 const perDaySalary = monthlySalary / daysInMonth
                 const calculatedSalary = Math.round(perDaySalary * stats.finalScore)
-                const deduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
+                const attendanceDeduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
+                // Warning penalty from batch-fetched map
+                const empPenalties = warningPenaltiesMap[record.mongoId] || {}
+                const warningFine = empPenalties.total_penalty || 0
+                const totalDeduction = attendanceDeduction + Math.round(warningFine)
+                const netSalary = Math.max(0, calculatedSalary - Math.round(warningFine))
                 
                 return (
                   <tr
@@ -3366,20 +3683,27 @@ export default function MonthlyAttendanceTable() {
                         {editCounts[record.id] || 0}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:stats.presentScore >= 0 ? '#10b981' : '#ff2a2a'}}>{stats.presentScore}</td>
+                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#10b981'}}>{Math.max(0, stats.actualPresent)}</td>
                     <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#e5e5e5'}}>{stats.graceRemaining}/{stats.graceTotal}</td>
                     <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.plDays}</td>
                     <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.elDays}</td>
                     <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#ffdd00'}}>{stats.finalScore}</td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#ff2a2a'}}>
-                      ₹{deduction.toLocaleString('en-IN')}
+                    <td
+                      className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
+                      style={{border:'1px solid #1f1f22',color: totalDeduction > 0 ? '#ff2a2a' : '#4b5563'}}
+                      title={totalDeduction > 0 ? (warningFine > 0 ? `Attendance: ₹${attendanceDeduction.toLocaleString('en-IN')} | Warning fine: ₹${Math.round(warningFine).toLocaleString('en-IN')} — click for details` : 'Click for deduction details') : 'No deductions'}
+                      onClick={() => handleDeductionClick(record, stats, calculatedSalary)}
+                    >
+                      ₹{totalDeduction.toLocaleString('en-IN')}
+                      {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ef4444',fontWeight:600}}>⚠ fine</span>}
                     </td>
                     <td
                       className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-gray-700 transition-colors"
-                      style={{border:'1px solid #1f1f22',color:'#10b981'}}
+                      style={{border:'1px solid #1f1f22',color: warningFine > 0 ? '#f59e0b' : '#10b981'}}
                       onClick={() => handleSalaryClick(record, stats, calculatedSalary)}
                     >
-                      ₹{calculatedSalary.toLocaleString('en-IN')}
+                      ₹{netSalary.toLocaleString('en-IN')}
+                      {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#f59e0b',fontWeight:600}}>net pay</span>}
                     </td>
                   </tr>
                 )
@@ -3417,6 +3741,14 @@ export default function MonthlyAttendanceTable() {
         isOpen={salaryModalOpen}
         onClose={() => setSalaryModalOpen(false)}
         salaryData={selectedSalaryData}
+      />
+
+      {/* Deduction Detail Modal */}
+      <DeductionDetailModal
+        isOpen={deductionModalOpen}
+        onClose={() => setDeductionModalOpen(false)}
+        data={selectedDeductionData}
+        onRevoke={handleRevokeWarning}
       />
 
       {/* Edit History Modal */}

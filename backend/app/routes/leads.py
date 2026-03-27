@@ -843,28 +843,24 @@ async def upload_documents(
         file_data = await save_upload_file(file, lead_media_dir)
         abs_path = file_data["file_path"]
         
-        # Permanently decrypt password-protected PDF on disk so it's always unlocked
+        # Permanently remove PDF password using qpdf — saves a fully unlocked copy
         stored_password = password.strip() if password and password.strip() else None
         if stored_password and file.filename.lower().endswith(".pdf"):
             try:
-                import io as _io
-                from pypdf import PdfReader, PdfWriter
-                with open(abs_path, "rb") as _f:
-                    _pdf_bytes = _f.read()
-                _reader = PdfReader(_io.BytesIO(_pdf_bytes))
-                if _reader.is_encrypted:
-                    _result = _reader.decrypt(stored_password)
-                    if _result.value > 0:
-                        _writer = PdfWriter()
-                        for _page in _reader.pages:
-                            _writer.add_page(_page)
-                        _out = _io.BytesIO()
-                        _writer.write(_out)
-                        with open(abs_path, "wb") as _wf:
-                            _wf.write(_out.getvalue())
-                        stored_password = None  # File is now permanently unlocked
+                import subprocess as _sp, shutil as _sh, tempfile as _tmp
+                _tmp_out = abs_path + ".tmp_unlocked.pdf"
+                _res = _sp.run(
+                    ['qpdf', '--decrypt', f'--password={stored_password}', abs_path, _tmp_out],
+                    capture_output=True, text=True
+                )
+                if _res.returncode == 0 and os.path.exists(_tmp_out):
+                    _sh.move(_tmp_out, abs_path)  # replace original with unlocked version
+                    stored_password = None  # no password needed anymore
+                else:
+                    if os.path.exists(_tmp_out): os.remove(_tmp_out)
+                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
             except Exception as _e:
-                import logging as _lg; _lg.warning(f"PDF permanent decrypt failed for {file.filename}: {_e}")
+                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
         
         # Convert path to URL for API usage
         relative_path = get_relative_media_url(abs_path)
@@ -3296,28 +3292,24 @@ async def upload_lead_attachment(
         file_data = await save_upload_file(file, lead_media_dir)
         abs_path = file_data["file_path"]
         
-        # Permanently decrypt password-protected PDF on disk so it's always unlocked
+        # Permanently remove PDF password using qpdf — saves a fully unlocked copy
         stored_password = password.strip() if password and password.strip() else None
         if stored_password and file.filename.lower().endswith(".pdf"):
             try:
-                import io as _io
-                from pypdf import PdfReader, PdfWriter
-                with open(abs_path, "rb") as _f:
-                    _pdf_bytes = _f.read()
-                _reader = PdfReader(_io.BytesIO(_pdf_bytes))
-                if _reader.is_encrypted:
-                    _result = _reader.decrypt(stored_password)
-                    if _result.value > 0:
-                        _writer = PdfWriter()
-                        for _page in _reader.pages:
-                            _writer.add_page(_page)
-                        _out = _io.BytesIO()
-                        _writer.write(_out)
-                        with open(abs_path, "wb") as _wf:
-                            _wf.write(_out.getvalue())
-                        stored_password = None  # File is now permanently unlocked
+                import subprocess as _sp, shutil as _sh
+                _tmp_out = abs_path + ".tmp_unlocked.pdf"
+                _res = _sp.run(
+                    ['qpdf', '--decrypt', f'--password={stored_password}', abs_path, _tmp_out],
+                    capture_output=True, text=True
+                )
+                if _res.returncode == 0 and os.path.exists(_tmp_out):
+                    _sh.move(_tmp_out, abs_path)  # replace original with unlocked version
+                    stored_password = None  # no password needed anymore
+                else:
+                    if os.path.exists(_tmp_out): os.remove(_tmp_out)
+                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
             except Exception as _e:
-                import logging as _lg; _lg.warning(f"PDF permanent decrypt failed for {file.filename}: {_e}")
+                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
         
         # Convert path to URL
         relative_path = get_relative_media_url(abs_path)
@@ -5417,7 +5409,8 @@ async def copy_lead(
     leads_db: LeadsDB = Depends(get_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    login_leads_db: LoginLeadsDB = Depends(get_login_leads_db)
 ):
     """Copy an existing lead with all related data"""
     # Check permission
@@ -5430,8 +5423,20 @@ async def copy_lead(
             detail="lead_id is required"
         )
     
-    # Get the original lead
+    # Get the original lead - check both leads and login_leads collections
+    is_login_lead = False
     original_lead = await leads_db.get_lead(lead_id)
+    if not original_lead:
+        # Try login_leads collection (for LoginCRM copy)
+        try:
+            if ObjectId.is_valid(lead_id):
+                login_lead = await login_leads_db.collection.find_one({"_id": ObjectId(lead_id)})
+                if login_lead:
+                    original_lead = login_lead
+                    is_login_lead = True
+        except Exception as e:
+            print(f"Error checking login_leads: {e}")
+    
     if not original_lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -5439,7 +5444,23 @@ async def copy_lead(
         )
     
     # Check if user can view the original lead
-    if not await can_view_lead(user_id, original_lead, users_db, roles_db):
+    # For login leads, check if user is assigned to it or created it
+    can_copy = False
+    if is_login_lead:
+        # For login leads, allow if user is assigned or created it or is super admin
+        assigned_to = original_lead.get("assigned_to")
+        created_by = original_lead.get("created_by")
+        if assigned_to == user_id or created_by == user_id:
+            can_copy = True
+        elif isinstance(assigned_to, list) and user_id in assigned_to:
+            can_copy = True
+        else:
+            # Check if super admin
+            can_copy = await can_view_lead(user_id, original_lead, users_db, roles_db)
+    else:
+        can_copy = await can_view_lead(user_id, original_lead, users_db, roles_db)
+    
+    if not can_copy:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to copy this lead"
@@ -5455,6 +5476,12 @@ async def copy_lead(
     
     # Create new lead dict without _id
     new_lead = {k: v for k, v in original_lead.items() if k != "_id"}
+    
+    # If copying from login_leads, remove login-specific fields
+    if is_login_lead:
+        login_specific_fields = ["original_lead_id", "login_created_at", "login_department", "login_lead_id"]
+        for field in login_specific_fields:
+            new_lead.pop(field, None)
     
     # Check if we should preserve original metadata
     preserve_metadata = copy_options.get("preserve_original_metadata", True)
@@ -5514,12 +5541,19 @@ async def copy_lead(
         # Copy activities
         if copy_options.get("copy_activities", True):
             print("Copying activities...")
-            await copy_lead_activities(lead_id, new_lead_id, user_id, leads_db)
+            if is_login_lead:
+                # Copy from login_lead_activities collection
+                await copy_login_lead_activities(lead_id, new_lead_id, user_id, leads_db, login_leads_db)
+            else:
+                await copy_lead_activities(lead_id, new_lead_id, user_id, leads_db)
         
         # Copy attachments
         if copy_options.get("copy_attachments", True):
             print("Copying attachments...")
-            await copy_lead_attachments(lead_id, new_lead_id, user_id, leads_db)
+            if is_login_lead:
+                await copy_login_lead_attachments(lead_id, new_lead_id, user_id, leads_db, login_leads_db)
+            else:
+                await copy_lead_attachments(lead_id, new_lead_id, user_id, leads_db)
         
         # Copy tasks
         if copy_options.get("copy_tasks", False):
@@ -5574,6 +5608,46 @@ async def copy_lead_activities(source_lead_id: str, new_lead_id: str, user_id: s
         print(f"Error copying activities: {e}")
         import traceback
         traceback.print_exc()
+
+async def copy_login_lead_activities(source_lead_id: str, new_lead_id: str, user_id: str, leads_db: LeadsDB, login_leads_db: LoginLeadsDB):
+    """Copy activities from login lead to new regular lead"""
+    try:
+        activities = await login_leads_db.activity_collection.find(
+            {"login_lead_id": source_lead_id}
+        ).to_list(None)
+        print(f"Found {len(activities)} login lead activities to copy from lead {source_lead_id}")
+        
+        for activity in activities:
+            new_activity = {k: v for k, v in activity.items() if k != "_id"}
+            new_activity.pop("login_lead_id", None)
+            new_activity["lead_id"] = new_lead_id
+            new_activity["created_at"] = get_ist_now()
+            new_activity["created_by"] = user_id
+            
+            await leads_db.activity_collection.insert_one(new_activity)
+            
+    except Exception as e:
+        print(f"Error copying login lead activities: {e}")
+
+async def copy_login_lead_attachments(source_lead_id: str, new_lead_id: str, user_id: str, leads_db: LeadsDB, login_leads_db: LoginLeadsDB):
+    """Copy attachments from login lead to new regular lead"""
+    try:
+        attachments = await login_leads_db.documents_collection.find(
+            {"login_lead_id": source_lead_id}
+        ).to_list(None)
+        print(f"Found {len(attachments)} login lead attachments to copy from lead {source_lead_id}")
+        
+        for attachment in attachments:
+            new_attachment = {k: v for k, v in attachment.items() if k != "_id"}
+            new_attachment.pop("login_lead_id", None)
+            new_attachment["lead_id"] = new_lead_id
+            new_attachment["uploaded_at"] = get_ist_now()
+            new_attachment["uploaded_by"] = user_id
+            
+            await leads_db.documents_collection.insert_one(new_attachment)
+            
+    except Exception as e:
+        print(f"Error copying login lead attachments: {e}")
 
 async def copy_lead_attachments(source_lead_id: str, new_lead_id: str, user_id: str, leads_db: LeadsDB):
     """Copy attachments from source lead to new lead"""

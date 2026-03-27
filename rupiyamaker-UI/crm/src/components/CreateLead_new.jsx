@@ -4694,6 +4694,15 @@ function CreateLead() {
     hasReassignmentPopupPermission
   } = useCreateLeadLogic();
 
+  const isAssignedLeadReadOnly = Boolean(
+    showLeadForm && (
+      mobileCheckResult?.found ||
+      allDuplicateLeads.length > 0 ||
+      existingLeadData?.id ||
+      existingLeadData?._id
+    )
+  );
+
   // Local UI state: controls visibility of Transfer Lead popup modal
   const [showReassignForm, setShowReassignForm] = useState(false);
   const [showDataCodePopup, setShowDataCodePopup] = useState(false);
@@ -4708,6 +4717,12 @@ function CreateLead() {
       setShowReviewModal(false);
     }
   }, [existingLeadData?.id]);
+
+  useEffect(() => {
+    if (isAssignedLeadReadOnly && showAssignPopup) {
+      setShowAssignPopup(false);
+    }
+  }, [isAssignedLeadReadOnly, showAssignPopup, setShowAssignPopup]);
 
   // Silent close — clears duplicate panel without alert or clearing mobile number
   const handleDuplicatePanelClose = () => {
@@ -4871,7 +4886,7 @@ function CreateLead() {
               setActiveTab("all");
             }}
           >
-            All
+            Create
           </button>
           <button
             className={`px-6 py-2 rounded-t-md font-extrabold text-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${activeTab === "reassignment"
@@ -4883,7 +4898,7 @@ function CreateLead() {
               setActiveTab("reassignment");
             }}
           >
-            Transfer Lead
+            Transfer Request
           </button>
         </div>
         {activeTab === "all" && (
@@ -5051,7 +5066,7 @@ function CreateLead() {
                         <thead>
                           <tr className="bg-[#060d1a] border-b border-neutral-700">
                             <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap w-12">#</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Lead Date & Age</th>
+                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Date</th>
                             <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
                             <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
                             <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
@@ -5070,13 +5085,18 @@ function CreateLead() {
                               const hrs = (Date.now() - new Date(reqAt).getTime()) / 3600000;
                               return hrs > 0 && hrs < 24;
                             })();
-                            const rowBlocked = isLocked || rowLead24hLocked;
+                            const currentUserId = getUserId();
+                            const isOwnLead = currentUserId && (
+                              String(lead.created_by) === String(currentUserId) ||
+                              String(lead.assigned_to) === String(currentUserId)
+                            );
+                            const rowBlocked = isLocked || rowLead24hLocked || isOwnLead;
                             return (
                               <tr
                                 key={lead.id || idx}
                                 className={`bg-neutral-900 hover:bg-neutral-800/20 transition-colors ${rowBlocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
                                 onClick={() => { if (rowBlocked) return; handleViewDuplicateLead(lead.id); }}
-                                title={isLocked ? `🔒 Lead is locked (${actualDR}d remaining) — cannot view details` : rowLead24hLocked ? '⏳ Reassignment pending — cannot view details' : 'Click to view full lead details'}
+                                title={isOwnLead ? "It's Your Own Lead" : isLocked ? `🔒 Lead is locked (${actualDR}d remaining) — cannot view details` : rowLead24hLocked ? '⏳ Reassignment pending — cannot view details' : 'Click to view full lead details'}
                               >
                                 {/* # */}
                                 <td className="px-4 py-3 text-center text-neutral-400 font-medium">{idx + 1}</td>
@@ -5101,10 +5121,17 @@ function CreateLead() {
                                 </td>
                                 {/* Lead Status — Card style */}
                                 <td className="px-4 py-3 text-center align-middle">
-                                  <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-neutral-700/50 bg-[#0B0E14] min-w-[130px]">
-                                    <span className="text-xs font-bold text-gray-200 mb-1">{lead.sub_status || lead.status || '—'}</span>
-                                    <span className="text-[10px] uppercase tracking-wider font-semibold text-blue-500">{lead.status || '—'}</span>
-                                  </div>
+                                  {lead.file_sent_to_login ? (
+                                    <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-green-700/50 bg-[#0B0E14] min-w-[130px]">
+                                      <span className="inline-block px-2 py-0.5 bg-green-600 text-white rounded text-xs font-bold mb-1">LOGIN</span>
+                                      {lead.sub_status && <span className="text-[10px] text-neutral-500">{lead.sub_status}</span>}
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex flex-col items-center justify-center p-2 rounded-lg border border-neutral-700/50 bg-[#0B0E14] min-w-[130px]">
+                                      <span className="text-xs font-bold text-gray-200 mb-1">{lead.sub_status || lead.status || '—'}</span>
+                                      <span className="text-[10px] uppercase tracking-wider font-semibold text-blue-500">{lead.status || '—'}</span>
+                                    </div>
+                                  )}
                                 </td>
                                 {/* Cooldown countdown */}
                                 <td className="px-4 py-3 text-center align-middle">
@@ -5133,14 +5160,21 @@ function CreateLead() {
                                     const lead24hRemaining = lead24hLocked ? Math.ceil(24 - lead24hElapsed) : 0;
                                     return (
                                       <div className="flex flex-col gap-1.5">
+                                        {/* Own lead badge */}
+                                        {isOwnLead && (
+                                          <div className="w-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-semibold px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs">
+                                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
+                                            It's Your Own Lead
+                                          </div>
+                                        )}
                                         {/* 24-hour reassignment lock badge */}
-                                        {lead24hLocked && (
+                                        {!isOwnLead && lead24hLocked && (
                                           <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-semibold px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs">
                                             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
                                             LOCKED · {lead24hRemaining}h left
                                           </div>
                                         )}
-                                        {idx === 0 && !lead24hLocked && (
+                                        {idx === 0 && !lead24hLocked && !isOwnLead && (
                                           isLocked ? (
                                             <div className="flex flex-col items-center gap-1.5">
                                               <button disabled className="w-full bg-neutral-800 text-neutral-500 cursor-not-allowed font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm">
@@ -5776,8 +5810,12 @@ function CreateLead() {
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ASSIGNED LEAD <span className="text-red-500">*</span></label>
                       <div
-                        className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
-                        onClick={() => setShowAssignPopup(true)}
+                        className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
+                        onClick={() => {
+                          if (!isAssignedLeadReadOnly) {
+                            setShowAssignPopup(true);
+                          }
+                        }}
                       >
                         {assignedTo.length === 0 && (
                           <span className="text-gray-400 font-normal text-sm">Click to select assignee</span>
@@ -5791,11 +5829,13 @@ function CreateLead() {
                                 {displayName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                               </div>
                               <span className="text-xs font-bold">{displayName}</span>
-                              <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
+                              {!isAssignedLeadReadOnly && (
+                                <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
+                              )}
                             </div>
                           );
                         })}
-                        {assignedTo.length > 0 && (
+                        {assignedTo.length > 0 && !isAssignedLeadReadOnly && (
                           <button type="button" className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm" onClick={(e) => { e.stopPropagation(); setShowAssignPopup(true); }}>+</button>
                         )}
                       </div>
@@ -5940,7 +5980,7 @@ function CreateLead() {
       )}
 
       {/* AssignPopup component */}
-      {showAssignPopup && (
+      {showAssignPopup && !isAssignedLeadReadOnly && (
         <AssignPopup
           onClose={() => {
 

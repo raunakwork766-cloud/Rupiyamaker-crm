@@ -191,12 +191,13 @@ class LeadsDB:
         
     async def create_lead(self, lead_data: dict) -> str:
         """Create a new lead with timestamps"""
-        # Add timestamps (IST timezone)
+        # Add timestamps (IST timezone) - only if not already set (e.g. when copying a lead)
         current_time = get_ist_now()
-        lead_data["created_at"] = current_time
+        if "created_at" not in lead_data or not lead_data["created_at"]:
+            lead_data["created_at"] = current_time
         lead_data["updated_at"] = current_time
         
-        # Generate custom lead ID
+        # Always generate a new custom lead ID for uniqueness
         custom_lead_id = await self._get_next_lead_id()
         lead_data["custom_lead_id"] = custom_lead_id
         

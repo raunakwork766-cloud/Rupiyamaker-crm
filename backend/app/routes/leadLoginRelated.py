@@ -1327,6 +1327,26 @@ async def upload_login_lead_documents(
         # Save file
         file_data = await save_upload_file(file, lead_media_dir)
         
+        # Permanently remove PDF password using qpdf — saves a fully unlocked copy
+        _abs_path = file_data["file_path"]
+        _stored_password = password.strip() if password and password.strip() else None
+        if _stored_password and file.filename.lower().endswith(".pdf"):
+            try:
+                import subprocess as _sp, shutil as _sh, os as _os
+                _tmp_out = _abs_path + ".tmp_unlocked.pdf"
+                _res = _sp.run(
+                    ['qpdf', '--decrypt', f'--password={_stored_password}', _abs_path, _tmp_out],
+                    capture_output=True, text=True
+                )
+                if _res.returncode == 0 and _os.path.exists(_tmp_out):
+                    _sh.move(_tmp_out, _abs_path)  # replace original with unlocked version
+                    _stored_password = None  # no password needed anymore
+                else:
+                    if _os.path.exists(_tmp_out): _os.remove(_tmp_out)
+                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
+            except Exception as _e:
+                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
+        
         # Convert path to URL for API usage
         relative_path = get_relative_media_url(file_data["file_path"])
         
@@ -1340,7 +1360,7 @@ async def upload_login_lead_documents(
             "document_type": document_type,
             "category": category,
             "description": description,
-            "password": password if password and password.strip() else None,
+            "password": _stored_password,
             "status": "received",
             "uploaded_by": user_id,
             "uploaded_at": get_ist_now(),

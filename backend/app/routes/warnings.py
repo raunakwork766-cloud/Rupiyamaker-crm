@@ -1092,6 +1092,92 @@ async def get_employee_penalties(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get employee penalties: {str(e)}")
 
+
+@router.get("/penalties/batch", response_model=dict)
+async def get_batch_employee_penalties(
+    employee_ids: str = Query(..., description="Comma-separated employee MongoDB _id values"),
+    month: int = Query(..., ge=1, le=12, description="Month number (1-12)"),
+    year: int = Query(..., ge=2020, description="Year"),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get active (non-waived) warning penalties for multiple employees in a given month/year.
+    Returns a map of employee_id -> {total_penalty, penalties}."""
+    try:
+        import calendar as _calendar
+
+        ids = [eid.strip() for eid in employee_ids.split(',') if eid.strip()]
+        if not ids:
+            return {"success": True, "data": {}}
+
+        last_day_num = _calendar.monthrange(year, month)[1]
+        end_dt = datetime(year, month, last_day_num, 23, 59, 59)
+
+        # Build ObjectId list
+        oid_list = []
+        valid_ids = []
+        for eid in ids:
+            try:
+                oid_list.append(ObjectId(eid))
+                valid_ids.append(eid)
+            except Exception:
+                pass
+
+        if not oid_list:
+            return {"success": True, "data": {}}
+
+        # Single DB query for all employees at once
+        cursor = warnings_db.collection.find({
+            "issued_to": {"$in": oid_list},
+            "penalty_amount": {"$gt": 0},
+            "created_at": {"$lte": end_dt}
+        })
+
+        result_map: dict = {}
+        async for w in cursor:
+            # Skip waived warnings
+            if w.get("is_waived", False):
+                continue
+
+            emp_oid = w.get("issued_to")
+            emp_id_str = str(emp_oid) if emp_oid else ""
+            if not emp_id_str:
+                continue
+
+            amount = 0.0
+            try:
+                amount = float(w.get("penalty_amount", 0))
+            except Exception:
+                pass
+
+            if amount <= 0:
+                continue
+
+            if emp_id_str not in result_map:
+                result_map[emp_id_str] = {"total_penalty": 0.0, "penalties": []}
+
+            issued_date_raw = w.get("issued_date") or w.get("created_at", "")
+            issued_date_str = issued_date_raw.isoformat() if hasattr(issued_date_raw, "isoformat") else str(issued_date_raw)
+
+            result_map[emp_id_str]["total_penalty"] += amount
+            result_map[emp_id_str]["penalties"].append({
+                "id": str(w.get("_id", "")),
+                "warning_type": w.get("warning_type", ""),
+                "warning_message": w.get("warning_message", ""),
+                "penalty_amount": amount,
+                "issued_date": issued_date_str,
+                "is_waived": False
+            })
+
+        return {"success": True, "data": result_map}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get batch penalties: {str(e)}")
+
+
 @router.get("/stats/summary")
 async def get_warning_statistics(
     department_id: Optional[str] = Query(None),
