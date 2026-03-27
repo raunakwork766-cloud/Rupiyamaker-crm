@@ -118,7 +118,7 @@ const ReassignmentPanel = ({ userPermissions, onLeadAction, onViewLead }) => {
       const res = await fetch(`${API_BASE_URL}/reassignment/approve/${actionModal.lead._id}?user_id=${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approval_reason: actionRemark.trim() })
+        body: JSON.stringify({ remark: actionRemark.trim() })
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
