@@ -2990,26 +2990,31 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
   const btnRef = useRef(null);
 
   useEffect(() => {
+    if (!isDropdownOpen) return;
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
           btnRef.current && !btnRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
       }
     }
+    function handleScroll() { setIsDropdownOpen(false); }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [isDropdownOpen]);
 
   const handleToggleDropdown = (e) => {
     e.stopPropagation();
     if (!isDropdownOpen && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      const dropdownHeight = 160;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const openUpward = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+      const dropdownWidth = 208;
+      const rightEdge = window.innerWidth - rect.right;
       setDropdownPos({
-        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
-        right: window.innerWidth - rect.right
+        top: rect.top,
+        right: rightEdge + rect.width + 6,
       });
     }
     setIsDropdownOpen(prev => !prev);
@@ -3145,7 +3150,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
         </div>
       </td>
 
-      <td className="px-4 py-3 text-right relative" ref={dropdownRef}>
+      <td className="px-4 py-3 text-right relative">
         <div className="flex items-center justify-end gap-1.5">
           
           {activeTab !== 'rejected' && activeTab !== 'hired' && !isNoShow && primaryBtn && (
