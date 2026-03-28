@@ -5103,6 +5103,11 @@ function CreateLead() {
                                 if (Array.isArray(at)) { if (at.some(id => String(id).trim() === uid)) return true; }
                                 else if (at && String(at).trim() === uid) return true;
                               }
+                              // Check assign_report_to (the "Assigned Lead" field)
+                              if (uid) {
+                                const art = lead.assign_report_to;
+                                if (Array.isArray(art) && art.some(id => String(id).trim() === uid)) return true;
+                              }
                               // Name fallback
                               if (currentUserName) {
                                 const assignedName = (lead.assigned_to_name || '').trim().toLowerCase();
