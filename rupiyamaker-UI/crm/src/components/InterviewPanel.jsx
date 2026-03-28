@@ -2470,6 +2470,7 @@ const InterviewPanel = () => {
                           primaryBtn={primaryBtn}
                           isNoShow={isNoShow}
                           activeTab={activeTab}
+                          activeSubTab={activeSubTab}
                           isGlobalSearch={isGlobalSearch}
                           checkboxVisible={checkboxVisible}
                           isSelected={selectedInterviews.includes(interview._id)}
@@ -2982,7 +2983,7 @@ const Tag = ({ icon, text, color }) => {
 };
 
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
-const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
+const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, activeSubTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
@@ -3003,7 +3004,13 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
     e.stopPropagation();
     if (!isDropdownOpen && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+      const dropdownHeight = 160;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUpward = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+      setDropdownPos({
+        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        right: window.innerWidth - rect.right
+      });
     }
     setIsDropdownOpen(prev => !prev);
   };
@@ -3167,7 +3174,7 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
                   {(stage === 'Interview' || stage === 'Round 2') && (
                     <>
                       <button onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Calendar size={14}/> Reschedule Date</button>
-                      {!isNoShow && stage === 'Interview' && (
+                      {!isNoShow && stage === 'Interview' && activeSubTab !== 'no_show' && (
                         <button onClick={() => { onMarkNoShow(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"><PhoneOff size={14}/> Mark No-Show</button>
                       )}
                     </>
