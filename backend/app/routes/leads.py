@@ -464,13 +464,17 @@ async def check_phone_number(
 
         # Determine if this lead belongs to the requesting user
         lead_assigned_to = lead.get("assigned_to")
-        lead_created_by = str(lead.get("created_by", ""))
+        lead_created_by = str(lead.get("created_by", "")).strip()
+        uid = str(user_id).strip()
         if isinstance(lead_assigned_to, list):
-            is_own = any(str(x).strip() == str(user_id).strip() for x in lead_assigned_to)
+            is_own = (
+                any(str(x).strip() == uid for x in lead_assigned_to)
+                or lead_created_by == uid
+            )
         else:
             is_own = (
-                str(lead_assigned_to or "").strip() == str(user_id).strip()
-                or lead_created_by.strip() == str(user_id).strip()
+                str(lead_assigned_to or "").strip() == uid
+                or lead_created_by == uid
             )
 
         lead_results.append({
