@@ -1594,7 +1594,8 @@ const handleMobileNumberChange = (e) => {
       days_elapsed: daysElapsed,
       reassignment_period: reassignmentPeriod,
       days_remaining: daysRemaining,
-      is_manager_permission_required: isManagerPermissionRequired
+      is_manager_permission_required: isManagerPermissionRequired,
+      is_own_lead: lead.is_own_lead === true,  // preserve backend flag
     };
     setExistingLeadData(leadData);
     
@@ -5089,6 +5090,7 @@ function CreateLead() {
                             // Frontend fallback for any edge cases
                             const currentUserId = getUserId();
                             const currentUserName = (localStorage.getItem('userName') || '').trim().toLowerCase();
+                            console.log('[DEBUG isOwnLead]', { leadId: lead.id, is_own_lead: lead.is_own_lead, assigned_to: lead.assigned_to, created_by: lead.created_by, currentUserId, currentUserName, leadKeys: Object.keys(lead) });
                             const isOwnLead = (() => {
                               // Primary: trust the backend flag (most reliable)
                               if (lead.is_own_lead === true) return true;
