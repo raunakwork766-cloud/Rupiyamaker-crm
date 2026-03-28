@@ -887,7 +887,7 @@ class SettingsDB:
                 "grace_usage_limit": 2,
                 "auto_grace_enabled": True,
                 "auto_grace_monthly_limit": 3,
-                "default_earned_leave_monthly": 1.5,
+                "default_earned_leave_monthly": 0,
                 "default_paid_leave_monthly": 1.0,
                 "auto_grace_threshold_1": 15,
                 "auto_grace_threshold_2": 20,

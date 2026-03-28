@@ -1939,9 +1939,9 @@ async def get_employee_leave_balance(
                 "casual_leaves_total": 5,
                 "casual_leaves_used": 0,
                 "casual_leaves_remaining": 5,
-                "grace_leaves_total": 24,
+                "grace_leaves_total": 3,
                 "grace_leaves_used": 0,
-                "grace_leaves_remaining": 24,
+                "grace_leaves_remaining": 3,
             }
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
@@ -1966,7 +1966,7 @@ async def reset_leave_balance_defaults(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Reset EL to 0 and PL to 1 for ALL employees who still have old defaults"""
+    """Reset EL to 0, PL to 1, Grace to 3 for ALL employees"""
     await check_permission(user_id, "settings", "edit", users_db, roles_db)
     try:
         db = settings_db.db
@@ -1986,11 +1986,20 @@ async def reset_leave_balance_defaults(
                 "paid_leaves_remaining": {"$max": [0, {"$subtract": [1, {"$ifNull": ["$paid_leaves_used", 0]}]}]},
             }}]
         )
+        # Reset grace leaves: set total & remaining to 3 (keep used as-is)
+        gr_result = await db.leave_balances.update_many(
+            {},
+            [{"$set": {
+                "grace_leaves_total": 3,
+                "grace_leaves_remaining": {"$max": [0, {"$subtract": [3, {"$ifNull": ["$grace_leaves_used", 0]}]}]},
+            }}]
+        )
         return {
             "success": True,
             "el_updated": el_result.modified_count,
             "pl_updated": pl_result.modified_count,
-            "message": "All employees reset to EL=0, PL=1"
+            "gr_updated": gr_result.modified_count,
+            "message": "All employees reset to EL=0, PL=1, Grace=3"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
