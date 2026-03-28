@@ -5085,20 +5085,23 @@ function CreateLead() {
                               const hrs = (Date.now() - new Date(reqAt).getTime()) / 3600000;
                               return hrs > 0 && hrs < 24;
                             })();
+                            // Backend sets is_own_lead=true when the requesting user owns this lead
+                            // Frontend fallback for any edge cases
                             const currentUserId = getUserId();
                             const currentUserName = (localStorage.getItem('userName') || '').trim().toLowerCase();
                             const isOwnLead = (() => {
+                              // Primary: trust the backend flag (most reliable)
+                              if (lead.is_own_lead === true) return true;
+                              // Fallback: frontend ID comparison
                               if (!currentUserId && !currentUserName) return false;
                               const uid = String(currentUserId || '').trim();
-                              // Check created_by
                               if (uid && String(lead.created_by || '').trim() === uid) return true;
-                              // Check assigned_to (can be string or array)
                               if (uid) {
                                 const at = lead.assigned_to;
                                 if (Array.isArray(at)) { if (at.some(id => String(id).trim() === uid)) return true; }
                                 else if (at && String(at).trim() === uid) return true;
                               }
-                              // Fallback: match by user name (catches ID format mismatches)
+                              // Name fallback
                               if (currentUserName) {
                                 const assignedName = (lead.assigned_to_name || '').trim().toLowerCase();
                                 const createdName = (lead.created_by_name || '').trim().toLowerCase();

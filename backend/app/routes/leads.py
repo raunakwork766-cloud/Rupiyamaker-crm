@@ -462,6 +462,17 @@ async def check_phone_number(
             except Exception:
                 pass
 
+        # Determine if this lead belongs to the requesting user
+        lead_assigned_to = lead.get("assigned_to")
+        lead_created_by = str(lead.get("created_by", ""))
+        if isinstance(lead_assigned_to, list):
+            is_own = any(str(x).strip() == str(user_id).strip() for x in lead_assigned_to)
+        else:
+            is_own = (
+                str(lead_assigned_to or "").strip() == str(user_id).strip()
+                or lead_created_by.strip() == str(user_id).strip()
+            )
+
         lead_results.append({
             "id": str(lead.get("_id", "")),
             "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),
@@ -474,14 +485,15 @@ async def check_phone_number(
             "login_department_sent_date": lead.get("login_department_sent_date", ""),
             "created_at": lead.get("created_at", ""),
             "_created_dt": created_dt,          # internal, removed before response
-            "assigned_to": lead.get("assigned_to"),
+            "assigned_to": lead_assigned_to,
             "assigned_to_name": assigned_to_name,
-            "created_by": str(lead.get("created_by", "")),
+            "created_by": lead_created_by,
             "assign_report_to": lead.get("assign_report_to"),
             "age_days": lead_age_days,
             "action": "processing",
             "can_reassign": False,
             "is_locking_lead": False,           # will be set below for earliest lead
+            "is_own_lead": is_own,              # True if requesting user owns this lead
             "created_by_name": created_by_name,
             "department_name": dept_name,
             "bank_name": bank_name,
@@ -5373,8 +5385,10 @@ async def approve_lead_reassignment(
     
     # Update assignment and clear pending flag
     update_data = {
-        "assigned_to": target_user_id,
+        "assigned_to": [],  # Clear assigned_to after reassignment
+        "assign_report_to": [],  # Clear TL assignment too
         "pending_reassignment": False,
+        "reassignment_status": "approved",
         "reassignment_approved_by": user_id,
         "reassignment_approved_at": get_ist_now(),
         "status": "active",  # Set status to active after reassignment
@@ -5507,24 +5521,55 @@ async def copy_lead(
             detail=f"Lead with ID {lead_id} not found"
         )
     
-    # Check if user can view the original lead
-    # For login leads, check if user is assigned to it or created it
+    # Check if user can copy the original lead
+    # Use str() comparison to handle ObjectId vs string mismatches
     can_copy = False
-    if is_login_lead:
-        # For login leads, allow if user is assigned or created it or is super admin
-        assigned_to = original_lead.get("assigned_to")
-        created_by = original_lead.get("created_by")
-        if assigned_to == user_id or created_by == user_id:
-            can_copy = True
-        elif isinstance(assigned_to, list) and user_id in assigned_to:
-            can_copy = True
-        else:
-            # Check if super admin
-            can_copy = await can_view_lead(user_id, original_lead, users_db, roles_db)
-    else:
+    user_id_str = str(user_id) if user_id else ""
+    
+    def _matches_user(value):
+        """Check if a field value matches user_id (handles str, ObjectId, list, list of dicts)"""
+        if not value:
+            return False
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    if str(item.get("id", "")) == user_id_str or str(item.get("user_id", "")) == user_id_str:
+                        return True
+                elif str(item) == user_id_str:
+                    return True
+            return False
+        return str(value) == user_id_str
+    
+    # Check created_by, assigned_to, and assign_report_to
+    if _matches_user(original_lead.get("created_by")):
+        can_copy = True
+    elif _matches_user(original_lead.get("assigned_to")):
+        can_copy = True
+    elif _matches_user(original_lead.get("assign_report_to")):
+        can_copy = True
+    
+    # Fall back to full permission check (handles admin, view_other, junior, etc.)
+    if not can_copy:
         can_copy = await can_view_lead(user_id, original_lead, users_db, roles_db)
     
+    # For login leads, also check login-specific visibility (uses login page permissions)
+    if not can_copy and is_login_lead:
+        from app.utils.permissions import get_login_visibility_filter
+        login_filter = await get_login_visibility_filter(user_id, users_db, roles_db)
+        # If filter is empty, user has full login access (super admin / login admin)
+        if login_filter == {} or not login_filter:
+            can_copy = True
+        else:
+            # Check if this specific lead matches the user's login visibility filter
+            lead_id_obj = original_lead.get("_id")
+            if lead_id_obj:
+                combined_filter = {"$and": [{"_id": lead_id_obj}, login_filter]}
+                match = await login_leads_db.collection.find_one(combined_filter, {"_id": 1})
+                if match:
+                    can_copy = True
+    
     if not can_copy:
+        print(f"COPY_DEBUG: 403 for user={user_id}, assigned_to={original_lead.get('assigned_to')}, created_by={original_lead.get('created_by')}, assign_report_to={original_lead.get('assign_report_to')}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to copy this lead"
