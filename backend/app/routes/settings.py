@@ -1901,14 +1901,21 @@ async def delete_channel_name(
 async def get_employee_leave_balance(
     employee_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
+    period: str = Query(None, description="Month period YYYY-MM (e.g. 2026-03). Defaults to current month."),
     settings_db: SettingsDB = Depends(get_settings_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Get leave balance for a specific employee"""
+    """Get leave balance for a specific employee, per month"""
     try:
         from app.schemas.attendance_schemas import EmployeeLeaveBalance
-        
+        from datetime import datetime
+
+        # Default period = current month in IST
+        if not period:
+            now_ist = get_ist_now()
+            period = now_ist.strftime("%Y-%m")
+
         # Get employee details
         employee = await users_db.get_user(employee_id)
         if not employee:
@@ -1916,36 +1923,41 @@ async def get_employee_leave_balance(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee not found"
             )
-        
-        # Get or create leave balance
-        balance = await settings_db.get_leave_balance(employee_id)
-        
+
+        # Get or create leave balance for this period
+        balance = await settings_db.get_leave_balance(employee_id, period)
+
         if not balance:
-            # Create default balance for new employee
+            # Create default monthly balance
             default_balance = {
                 "employee_id": employee_id,
                 "employee_name": employee.get("name", ""),
                 "employee_code": employee.get("employee_code"),
                 "department": employee.get("department"),
+                "period": period,
                 "paid_leaves_total": 1,
                 "paid_leaves_used": 0,
                 "paid_leaves_remaining": 1,
                 "earned_leaves_total": 0,
                 "earned_leaves_used": 0,
                 "earned_leaves_remaining": 0,
-                "sick_leaves_total": 7,
+                "sick_leaves_total": 0,
                 "sick_leaves_used": 0,
-                "sick_leaves_remaining": 7,
-                "casual_leaves_total": 5,
+                "sick_leaves_remaining": 0,
+                "casual_leaves_total": 0,
                 "casual_leaves_used": 0,
-                "casual_leaves_remaining": 5,
+                "casual_leaves_remaining": 0,
                 "grace_leaves_total": 3,
                 "grace_leaves_used": 0,
                 "grace_leaves_remaining": 3,
             }
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
-        
+
+        # Ensure period is set on legacy records
+        if "period" not in balance or not balance.get("period"):
+            balance["period"] = period
+
         return {
             "success": True,
             "data": convert_object_id(balance)
@@ -2024,6 +2036,9 @@ async def allocate_leave_to_employee(
         leave_type = allocation.get("leave_type", "paid").lower()
         quantity = allocation.get("quantity", 0)
         reason = allocation.get("reason", "")
+        period = allocation.get("period")  # YYYY-MM
+        if not period:
+            period = get_ist_now().strftime("%Y-%m")
         
         if not employee_id or quantity <= 0:
             raise HTTPException(
@@ -2032,20 +2047,33 @@ async def allocate_leave_to_employee(
             )
         
         # Validate leave type
-        valid_types = ["paid", "earned", "sick", "casual"]
+        valid_types = ["paid", "earned", "sick", "casual", "grace"]
         if leave_type not in valid_types:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Leave type must be one of: {', '.join(valid_types)}"
             )
         
-        # Get current balance
-        balance = await settings_db.get_leave_balance(employee_id)
+        # Get or auto-create monthly balance
+        balance = await settings_db.get_leave_balance(employee_id, period)
         if not balance:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee leave balance not found"
-            )
+            employee = await users_db.get_user(employee_id)
+            if not employee:
+                raise HTTPException(status_code=404, detail="Employee not found")
+            default_balance = {
+                "employee_id": employee_id,
+                "employee_name": employee.get("name", ""),
+                "employee_code": employee.get("employee_code"),
+                "department": employee.get("department"),
+                "period": period,
+                "paid_leaves_total": 1, "paid_leaves_used": 0, "paid_leaves_remaining": 1,
+                "earned_leaves_total": 0, "earned_leaves_used": 0, "earned_leaves_remaining": 0,
+                "sick_leaves_total": 0, "sick_leaves_used": 0, "sick_leaves_remaining": 0,
+                "casual_leaves_total": 0, "casual_leaves_used": 0, "casual_leaves_remaining": 0,
+                "grace_leaves_total": 3, "grace_leaves_used": 0, "grace_leaves_remaining": 3,
+            }
+            await settings_db.create_leave_balance(default_balance)
+            balance = default_balance
         
         # Calculate new balance
         field_total = f"{leave_type}_leaves_total"
@@ -2064,7 +2092,7 @@ async def allocate_leave_to_employee(
             "last_updated": get_ist_now()
         }
         
-        success = await settings_db.update_leave_balance(employee_id, update_data)
+        success = await settings_db.update_leave_balance(employee_id, update_data, period)
         
         if success:
             # Log the transaction
@@ -2078,6 +2106,7 @@ async def allocate_leave_to_employee(
                 "transaction_type": "allocation",
                 "quantity": quantity,
                 "reason": reason,
+                "period": period,
                 "performed_by": user_id,
                 "performed_by_name": admin_name,
                 "timestamp": get_ist_now(),
@@ -2124,6 +2153,9 @@ async def deduct_leave_from_employee(
         leave_type = deduction.get("leave_type", "paid").lower()
         quantity = deduction.get("quantity", 0)
         reason = deduction.get("reason", "")
+        period = deduction.get("period")
+        if not period:
+            period = get_ist_now().strftime("%Y-%m")
         
         if not employee_id or quantity <= 0:
             raise HTTPException(
@@ -2131,12 +2163,12 @@ async def deduct_leave_from_employee(
                 detail="Invalid employee_id or quantity"
             )
         
-        # Get current balance
-        balance = await settings_db.get_leave_balance(employee_id)
+        # Get monthly balance
+        balance = await settings_db.get_leave_balance(employee_id, period)
         if not balance:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee leave balance not found"
+                detail="Employee leave balance not found for this period"
             )
         
         # Calculate new balance
@@ -2158,7 +2190,7 @@ async def deduct_leave_from_employee(
             "last_updated": get_ist_now()
         }
         
-        success = await settings_db.update_leave_balance(employee_id, update_data)
+        success = await settings_db.update_leave_balance(employee_id, update_data, period)
         
         if success:
             # Log the transaction
@@ -2172,6 +2204,7 @@ async def deduct_leave_from_employee(
                 "transaction_type": "deduction",
                 "quantity": quantity,
                 "reason": reason,
+                "period": period,
                 "performed_by": user_id,
                 "performed_by_name": admin_name,
                 "timestamp": get_ist_now(),
@@ -2202,13 +2235,14 @@ async def deduct_leave_from_employee(
 async def get_leave_history(
     employee_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
+    period: str = Query(None, description="Filter by period YYYY-MM"),
     settings_db: SettingsDB = Depends(get_settings_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Get leave transaction history for an employee"""
     try:
-        history = await settings_db.get_leave_history(employee_id)
+        history = await settings_db.get_leave_history(employee_id, period)
         return [convert_object_id(h) for h in history]
     except Exception as e:
         raise HTTPException(

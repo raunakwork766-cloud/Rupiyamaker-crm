@@ -949,9 +949,17 @@ class SettingsDB:
     
     # ==================== LEAVE BALANCE MANAGEMENT ====================
     
-    async def get_leave_balance(self, employee_id: str) -> dict:
-        """Get leave balance for an employee"""
-        balance = await self.db.leave_balances.find_one({"employee_id": employee_id})
+    async def get_leave_balance(self, employee_id: str, period: str = None) -> dict:
+        """Get leave balance for an employee, optionally for a specific period (YYYY-MM)"""
+        query = {"employee_id": employee_id}
+        if period:
+            query["period"] = period
+        else:
+            query["period"] = {"$exists": False}
+        balance = await self.db.leave_balances.find_one(query)
+        # Fallback: legacy record without period field
+        if not balance and period:
+            balance = await self.db.leave_balances.find_one({"employee_id": employee_id, "period": {"$exists": False}})
         if balance:
             balance["_id"] = str(balance["_id"])
         return balance
@@ -965,12 +973,16 @@ class SettingsDB:
         result = await self.db.leave_balances.insert_one(balance_data)
         return str(result.inserted_id)
     
-    async def update_leave_balance(self, employee_id: str, update_data: dict) -> bool:
+    async def update_leave_balance(self, employee_id: str, update_data: dict, period: str = None) -> bool:
         """Update leave balance for an employee"""
         update_data["last_updated"] = get_ist_now()
-        
+        query = {"employee_id": employee_id}
+        if period:
+            query["period"] = period
+        else:
+            query["period"] = {"$exists": False}
         result = await self.db.leave_balances.update_one(
-            {"employee_id": employee_id},
+            query,
             {"$set": update_data}
         )
         return result.modified_count > 0
@@ -992,13 +1004,13 @@ class SettingsDB:
         result = await self.db.leave_history.insert_one(history_entry)
         return str(result.inserted_id)
     
-    async def get_leave_history(self, employee_id: str, limit: int = 50) -> list:
+    async def get_leave_history(self, employee_id: str, period: str = None, limit: int = 100) -> list:
         """Get leave transaction history for an employee"""
         history = []
-        
-        cursor = self.db.leave_history.find(
-            {"employee_id": employee_id}
-        ).sort("timestamp", -1).limit(limit)
+        query = {"employee_id": employee_id}
+        if period:
+            query["period"] = period
+        cursor = self.db.leave_history.find(query).sort("timestamp", -1).limit(limit)
         
         async for entry in cursor:
             entry["_id"] = str(entry["_id"])

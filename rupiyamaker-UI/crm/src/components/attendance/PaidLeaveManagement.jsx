@@ -8,6 +8,12 @@ const empName = e => `${e.first_name || ''} ${e.last_name || ''}`.trim() || 'Unk
 const empInit = e => empName(e).split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 const fmt = d => { if (!d) return '—'; try { return new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }); } catch { return String(d); } };
 
+const getISTMonth = () => {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+const periodLabel = p => { if (!p) return ''; const [y, m] = p.split('-'); return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' }); };
+
 const LEAVES = [
   { k: 'earned', l: 'Earned Leave', s: 'EL', c: '#38bdf8', bg: 'rgba(56,189,248,0.10)', dot: '#0ea5e9', fp: 'earned_leaves' },
   { k: 'paid',   l: 'Paid Leave',   s: 'PL', c: '#4ade80', bg: 'rgba(74,222,128,0.10)', dot: '#22c55e', fp: 'paid_leaves' },
@@ -20,6 +26,7 @@ const PaidLeaveManagement = () => {
   const [loading, setLoading] = useState(false);
   const [toast, setToast]     = useState(null);
   const [q, setQ]             = useState('');
+  const [period, setPeriod]   = useState(getISTMonth); // YYYY-MM
 
   // Modal
   const [sel, setSel]             = useState(null);
@@ -35,7 +42,7 @@ const PaidLeaveManagement = () => {
   const [aErr, setAErr]       = useState(null);
   const [ql, setQl]           = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [period]);
 
   /* ── Data loading ── */  const load = async () => {
     setLoading(true);
@@ -44,7 +51,7 @@ const PaidLeaveManagement = () => {
       const allEmps = Array.isArray(empResp?.data) ? empResp.data : [];
       const list = allEmps.filter(e => e.employee_status === 'active');
       const bals = await Promise.allSettled(
-        list.map(e => axios.get(`${BASE}/settings/leave-balance/${e._id || e.id}?user_id=${uid()}`).then(r => r.data?.data || null))
+        list.map(e => axios.get(`${BASE}/settings/leave-balance/${e._id || e.id}?user_id=${uid()}&period=${period}`).then(r => r.data?.data || null))
       );
       const newRows = list.map((e, i) => ({ e, b: bals[i].status === 'fulfilled' ? bals[i].value : null }));
       setRows(newRows);
@@ -62,7 +69,7 @@ const PaidLeaveManagement = () => {
   const loadHist = async id => {
     setHistLoad(true);
     try {
-      const r = await axios.get(`${BASE}/settings/leave-balance/history/${id}?user_id=${uid()}`);
+      const r = await axios.get(`${BASE}/settings/leave-balance/history/${id}?user_id=${uid()}&period=${period}`);
       setHist(Array.isArray(r.data) ? r.data : []);
     } catch { setHist([]); } finally { setHistLoad(false); }
   };
@@ -75,7 +82,7 @@ const PaidLeaveManagement = () => {
     try {
       await axios.post(`${BASE}/settings/leave-balance/${mode === 'allot' ? 'allocate' : 'deduct'}?user_id=${uid()}`, {
         employee_id: sel.e._id || sel.e.id, leave_type: aType,
-        quantity: parseFloat(aQty), reason: aReason.trim(),
+        quantity: parseFloat(aQty), reason: aReason.trim(), period,
       });
       showToast('ok', `${mode === 'allot' ? 'Allocated' : 'Deducted'} ${aQty} ${aType} leave for ${empName(sel.e)}`);
       setAQty(''); setAReason(''); setAErr(null);
@@ -91,6 +98,7 @@ const PaidLeaveManagement = () => {
       await axios.post(`${BASE}/settings/leave-balance/allocate?user_id=${uid()}`, {
         employee_id: id, leave_type: 'earned', quantity: amt,
         reason: `Quick EL: ${amt === 1 ? 'Full day' : amt === 0.5 ? 'Half day' : amt + ' days'}`,
+        period,
       });
       showToast('ok', `+${amt} EL → ${empName(emp)}`);
       load();
@@ -142,10 +150,20 @@ const PaidLeaveManagement = () => {
             Leave Management
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#52525b' }}>
-            Manage employee leaves &bull; {rows.length} active employees
+            Manage employee leaves &bull; {rows.length} active employees &bull; <span style={{ color: '#38bdf8', fontWeight: 700 }}>{periodLabel(period)}</span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Month Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#09090b', border: '1px solid #27272a', borderRadius: 8, padding: '6px 10px' }}>
+            <svg width="14" height="14" fill="none" stroke="#52525b" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <input
+              type="month"
+              value={period}
+              onChange={e => { if (e.target.value) setPeriod(e.target.value); }}
+              style={{ background: 'transparent', border: 'none', color: '#38bdf8', fontSize: 13, fontWeight: 700, outline: 'none', cursor: 'pointer' }}
+            />
+          </div>
           <div style={{ position: 'relative' }}>
             <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: '#52525b', pointerEvents: 'none' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
