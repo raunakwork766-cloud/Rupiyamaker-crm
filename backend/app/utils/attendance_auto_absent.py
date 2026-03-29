@@ -435,6 +435,143 @@ async def run_consecutive_absent_absconding_job(check_date: date = None):
         logger.error(f"[AutoAbsent] Error in consecutive-absent absconding job: {e}", exc_info=True)
 
 
+async def run_historical_absconding_backfill(from_date: date = None, to_date: date = None) -> dict:
+    """
+    One-time / on-demand backfill: apply the consecutive-absent→absconding rule
+    across ALL historical absent records (or a date range if provided).
+    Returns a summary dict with counts.
+    """
+    try:
+        from app.database.Attendance import AttendanceDB
+        from app.database import get_database_instances
+        from collections import defaultdict
+
+        settings = await _get_settings()
+        threshold = int(settings.get("consecutive_absent_absconding_days", 3))
+
+        db = get_database_instances()
+        attendance_db: AttendanceDB = db["attendance"]
+
+        # Build the query — fetch ALL absent records (optionally within date range)
+        query: dict = {"status": -1}  # absent only
+        if from_date or to_date:
+            date_filter: dict = {}
+            if from_date:
+                date_filter["$gte"] = from_date.isoformat()
+            if to_date:
+                date_filter["$lte"] = to_date.isoformat()
+            query["date"] = date_filter
+
+        logger.info(f"[Backfill] Starting historical absconding backfill (threshold={threshold}, from={from_date}, to={to_date})")
+
+        # Fetch all matching absent records
+        cursor = attendance_db.collection.find(query, {"_id": 1, "date": 1, "user_id": 1, "employee_id": 1})
+        user_absences: dict = defaultdict(list)
+        async for rec in cursor:
+            uid = str(rec.get("user_id") or rec.get("employee_id") or "")
+            if uid and rec.get("date"):
+                user_absences[uid].append((rec["date"], rec["_id"]))
+
+        logger.info(f"[Backfill] Found absent records for {len(user_absences)} employee(s)")
+
+        if not user_absences:
+            return {"converted_records": 0, "converted_users": 0, "message": "No absent records found"}
+
+        converted_users = 0
+        converted_records = 0
+        skipped_users = 0
+
+        for uid, absence_list in user_absences.items():
+            # Sort and build map
+            absence_list_sorted = sorted(absence_list, key=lambda x: x[0])
+            id_map = {d: oid for d, oid in absence_list_sorted}
+            all_dates_sorted = [date.fromisoformat(d) for d, _ in absence_list_sorted]
+
+            # Build consecutive Mon-Sat streaks
+            streak: list = []
+            streaks_to_convert: list = []
+
+            for i, d in enumerate(all_dates_sorted):
+                if d.weekday() == 6:  # skip Sunday
+                    continue
+                if streak and (d - streak[-1]).days > 2:
+                    # Gap > 1 working day (allowing for Sunday in between)
+                    # Actually check: is the gap only because of one Sunday?
+                    prev = streak[-1]
+                    days_gap = (d - prev).days
+                    # Allow gap of 2 if the day in between is a Sunday
+                    middle = prev + timedelta(days=1)
+                    if days_gap == 2 and middle.weekday() == 6:
+                        pass  # Saturday→Sunday→Monday is still consecutive
+                    elif days_gap == 1:
+                        pass  # directly consecutive
+                    else:
+                        # real break
+                        if len(streak) >= threshold:
+                            streaks_to_convert.extend([s.isoformat() for s in streak])
+                        streak = []
+                streak.append(d)
+
+            if len(streak) >= threshold:
+                streaks_to_convert.extend([s.isoformat() for s in streak])
+
+            if not streaks_to_convert:
+                skipped_users += 1
+                continue
+
+            # Verify no approved leave for each qualifying day
+            days_without_leave = []
+            for date_str in streaks_to_convert:
+                d = date.fromisoformat(date_str)
+                approved = None
+                try:
+                    approved = await check_approved_leave_for_date(uid, d)
+                except Exception:
+                    pass
+                if not approved:
+                    days_without_leave.append(date_str)
+
+            if len(days_without_leave) < threshold:
+                skipped_users += 1
+                continue
+
+            # Convert to absconding
+            for date_str in days_without_leave:
+                oid = id_map.get(date_str)
+                if not oid:
+                    continue
+                await attendance_db.collection.update_one(
+                    {"_id": oid},
+                    {"$set": {
+                        "status": -2,
+                        "auto_absconding": True,
+                        "auto_absconding_reason": f"Backfill: {threshold}+ consecutive absent days without approved leave",
+                        "updated_at": datetime.now(IST),
+                    }}
+                )
+                converted_records += 1
+
+            if days_without_leave:
+                converted_users += 1
+                logger.info(
+                    f"[Backfill] User {uid}: {len(days_without_leave)} day(s) → absconding "
+                    f"({', '.join(days_without_leave)})"
+                )
+
+        summary = {
+            "converted_records": converted_records,
+            "converted_users": converted_users,
+            "skipped_users": skipped_users,
+            "message": f"Backfill done: {converted_records} record(s) across {converted_users} employee(s) converted to absconding."
+        }
+        logger.info(f"[Backfill] {summary['message']}")
+        return summary
+
+    except Exception as e:
+        logger.error(f"[Backfill] Error in historical absconding backfill: {e}", exc_info=True)
+        raise
+
+
 def start_attendance_scheduler():
     """Called from app lifespan to start the scheduler as a background task."""
     global _scheduler_running

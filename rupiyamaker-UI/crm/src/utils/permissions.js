@@ -347,23 +347,11 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
                     return true;
                 }
 
-                // Check if actions is "all" (wildcard equivalent)
-                if (perm.actions === 'all') {
-                    console.log('✅ hasUniversalPermission: "All" actions (wildcard)');
-                    return true;
-                }
-
                 // Check if actions is an array containing the permission
                 if (Array.isArray(perm.actions)) {
                     // Check for wildcard in actions array
                     if (perm.actions.includes('*')) {
                         console.log('✅ hasUniversalPermission: Wildcard in actions array');
-                        return true;
-                    }
-
-                    // Check for "all" permission - acts as wildcard for any action
-                    if (perm.actions.includes('all')) {
-                        console.log('✅ hasUniversalPermission: "All" in actions array (wildcard)');
                         return true;
                     }
 
@@ -385,7 +373,7 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
             // e.g. checking "leads" + "show" → matches "leads.create_lead" entry that has "show"
             if (perm.page.toLowerCase().startsWith(page.toLowerCase() + '.')) {
                 const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
-                if (actions.includes('*') || actions.includes('all') || actions.includes(action)) {
+                if (actions.includes('*') || actions.includes(action)) {
                     console.log(`✅ hasUniversalPermission: Sub-page ${perm.page} satisfies parent ${page}.${action}`);
                     return true;
                 }
@@ -490,19 +478,18 @@ export const hasPermission = (userPermissions, page, action) => {
                     return true;
                 }
     
-                // Check if all actions are allowed for this page (actions "*" or "all")
-                if (userPermissions[pageVar]['*'] === true || userPermissions[pageVar]['all'] === true) {
-                    console.log(`✅ hasPermission: Wildcard/All permission ${pageVar}.*`);
+                // Check if all actions are allowed for this page (actions "*")
+                if (userPermissions[pageVar]['*'] === true) {
+                    console.log(`✅ hasPermission: Wildcard permission ${pageVar}.*`);
                     return true;
                 }
             }
     
             // If page permissions exist as array (backwards compatibility)
             if (Array.isArray(userPermissions[pageVar])) {
-                // Check if action is in the array or if '*' or 'all' is in the array
+                // Check if action is in the array or if '*' is in the array
                 if (userPermissions[pageVar].includes(action) || 
-                    userPermissions[pageVar].includes('*') ||
-                    userPermissions[pageVar].includes('all')) {
+                    userPermissions[pageVar].includes('*')) {
                     console.log(`✅ hasPermission: Array permission ${pageVar}.${action}`);
                     return true;
                 }
@@ -658,7 +645,12 @@ export const canDeletePost = (userPermissions, post, currentUserId) => {
     }
 
     // Check specific delete permission for feeds
-    if (hasPermission(userPermissions, 'feeds', 'post')) {
+    if (hasPermission(userPermissions, 'feeds', 'delete')) {
+        return true;
+    }
+
+    // Check 'all' permission for feeds (manage all posts)
+    if (hasPermission(userPermissions, 'feeds', 'all')) {
         return true;
     }
 
@@ -842,7 +834,7 @@ export const canViewEmployees = (userPermissions) => {
   }
   
   // Check for employees_show permission
-  return hasPermission(userPermissions, 'Employees', 'employees_show');
+  return hasPermission(userPermissions, 'employees', 'show');
 };
 
 /**
@@ -864,7 +856,7 @@ export const canEditEmployees = (userPermissions) => {
   }
   
   // Check for employees_edit permission
-  return hasPermission(userPermissions, 'Employees', 'employees_edit');
+  return hasPermission(userPermissions, 'employees', 'all') || hasPermission(userPermissions, 'employees', 'junior');
 };
 
 /**
@@ -886,7 +878,7 @@ export const canViewLeaves = (userPermissions) => {
   }
   
   // Check for leaves_show permission
-  return hasPermission(userPermissions, 'Leaves', 'leaves_show');
+  return hasPermission(userPermissions, 'leaves', 'show');
 };
 
 /**
@@ -907,8 +899,8 @@ export const canAdminLeaves = (userPermissions) => {
     return true;
   }
   
-  // Check for leave_admin permission
-  return hasPermission(userPermissions, 'Leaves', 'leave_admin');
+  // Check for all permission (full admin access to leaves)
+  return hasPermission(userPermissions, 'leaves', 'all');
 };
 
 /**
@@ -930,7 +922,7 @@ export const canViewAttendance = (userPermissions) => {
   }
   
   // Check for attendance_show permission
-  return hasPermission(userPermissions, 'Attendance', 'attendance_show');
+  return hasPermission(userPermissions, 'attendance', 'show');
 };
 
 /**
@@ -951,8 +943,8 @@ export const canAdminAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for attendance_admin permission
-  return hasPermission(userPermissions, 'Attendance', 'attendance_admin');
+  // Check for all permission (full admin access to attendance)
+  return hasPermission(userPermissions, 'attendance', 'all');
 };
 
 /**
@@ -974,7 +966,7 @@ export const canMarkAttendance = (userPermissions) => {
   }
   
   // Check for attendance_mark permission
-  return hasPermission(userPermissions, 'Attendance', 'attendance_mark');
+  return hasPermission(userPermissions, 'attendance', 'update');
 };
 
 /**
@@ -990,8 +982,8 @@ export const canViewJuniorLeaves = (userPermissions) => {
     return true;
   }
   
-  // Check for leaves edit permission (can see all)
-  if (hasPermission(userPermissions, 'Leaves', 'edit')) {
+  // Check for leaves all permission (can see all)
+  if (hasPermission(userPermissions, 'leaves', 'all')) {
     return true;
   }
   
@@ -1001,7 +993,7 @@ export const canViewJuniorLeaves = (userPermissions) => {
   }
   
   // Check for junior permission
-  return hasPermission(userPermissions, 'Leaves', 'junior');
+  return hasPermission(userPermissions, 'leaves', 'junior');
 };
 
 /**
@@ -1017,8 +1009,8 @@ export const canViewJuniorAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for attendance admin permission (can see all)
-  if (hasPermission(userPermissions, 'Attendance', 'admin')) {
+  // Check for attendance all permission (can see all)
+  if (hasPermission(userPermissions, 'attendance', 'all')) {
     return true;
   }
   
@@ -1028,7 +1020,7 @@ export const canViewJuniorAttendance = (userPermissions) => {
   }
   
   // Check for junior permission
-  return hasPermission(userPermissions, 'Attendance', 'junior');
+  return hasPermission(userPermissions, 'attendance', 'junior');
 };
 
 /**
@@ -1039,15 +1031,14 @@ export const canViewJuniorAttendance = (userPermissions) => {
 export const getLeavesVisibilityScope = (userPermissions) => {
   if (!userPermissions) return 'own';
   
-  // Super admin or edit permission - can see all
+  // Super admin or all permission - can see all
   if (isSuperAdmin(userPermissions) || 
-      hasPermission(userPermissions, 'Leaves', 'edit') ||
-      hasPermission(userPermissions, 'Leaves', 'admin')) {
+      hasPermission(userPermissions, 'leaves', 'all')) {
     return 'all';
   }
   
   // View junior permission - can see subordinates
-  if (hasPermission(userPermissions, 'Leaves', 'junior')) {
+  if (hasPermission(userPermissions, 'leaves', 'junior')) {
     return 'junior';
   }
   
@@ -1063,15 +1054,14 @@ export const getLeavesVisibilityScope = (userPermissions) => {
 export const getAttendanceVisibilityScope = (userPermissions) => {
   if (!userPermissions) return 'own';
   
-  // Super admin or admin permission - can see all
+  // Super admin or all permission - can see all
   if (isSuperAdmin(userPermissions) || 
-      hasPermission(userPermissions, 'Attendance', 'admin') ||
-      hasPermission(userPermissions, 'Attendance', 'edit')) {
+      hasPermission(userPermissions, 'attendance', 'all')) {
     return 'all';
   }
   
   // View junior permission - can see subordinates
-  if (hasPermission(userPermissions, 'Attendance', 'junior')) {
+  if (hasPermission(userPermissions, 'attendance', 'junior')) {
     return 'junior';
   }
   
@@ -1098,7 +1088,7 @@ export const canViewCharts = (userPermissions) => {
   }
   
   // Check for charts show permission
-  return hasPermission(userPermissions, 'Charts', 'show');
+  return hasPermission(userPermissions, 'charts', 'show');
 };
 
 /**
@@ -1120,7 +1110,7 @@ export const canCreatePosts = (userPermissions) => {
   }
   
   // Check for post permission
-  return hasPermission(userPermissions, 'Feeds', 'post');
+  return hasPermission(userPermissions, 'feeds', 'post');
 };
 
 /**
@@ -1142,8 +1132,8 @@ export const canCreateTickets = (userPermissions) => {
     return true;
   }
   
-  // Check for create permission
-  return hasPermission(userPermissions, 'Tickets', 'create');
+  // Check for show permission (tickets don't have a separate 'create' action)
+  return hasPermission(userPermissions, 'tickets', 'show');
 };
 
 /**

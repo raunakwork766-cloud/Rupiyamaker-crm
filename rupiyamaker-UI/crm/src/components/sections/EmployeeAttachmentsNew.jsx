@@ -316,9 +316,32 @@ export default function EmployeeAttachmentsNew({ employee }) {
   // Group by category
   const grouped = EMPLOYEE_DOC_CATEGORIES.map(cat => ({
     ...cat,
-    types: allDisplayTypes.filter(t => cat.keywords.some(kw => t.name.toLowerCase().includes(kw)))
+    types: allDisplayTypes.filter(t =>
+      (t.category && t.category.trim().toUpperCase() === cat.title) ||
+      (!t.category && cat.keywords.some(kw => t.name.toLowerCase().includes(kw)))
+    )
   })).filter(cat => cat.types.length > 0);
+
   const matchedNames = new Set(grouped.flatMap(g => g.types.map(t => t.name)));
+  const knownEmpTitles = new Set(EMPLOYEE_DOC_CATEGORIES.map(c => c.title));
+
+  // Dynamic groups for custom categories added in Settings
+  const customEmpCatMap = new Map();
+  allDisplayTypes.forEach(t => {
+    if (matchedNames.has(t.name)) return;
+    if (t.category) {
+      const key = t.category.trim().toUpperCase();
+      if (!knownEmpTitles.has(key)) {
+        if (!customEmpCatMap.has(key)) {
+          customEmpCatMap.set(key, { id: key.toLowerCase().replace(/\W+/g, '_'), title: key, types: [] });
+        }
+        customEmpCatMap.get(key).types.push(t);
+        matchedNames.add(t.name);
+      }
+    }
+  });
+  customEmpCatMap.forEach(g => grouped.push(g));
+
   const otherTypes = allDisplayTypes.filter(t => !matchedNames.has(t.name));
   if (otherTypes.length > 0) grouped.push({ id: 'other', title: 'OTHER DOCUMENTS', types: otherTypes });
 

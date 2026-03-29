@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Form, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse, FileResponse
+from pydantic import BaseModel
 from typing import List, Dict, Optional, Any, Union, Set
 from bson import ObjectId
 import uuid
@@ -3255,6 +3256,72 @@ async def get_lead_attachments(
         enhanced_documents.append(doc_dict)
     
     return enhanced_documents
+
+
+# ─── Extra Document Fields (per-lead custom document types) ──────────────────
+
+class ExtraDocumentFieldCreate(BaseModel):
+    name: str
+    category_id: Optional[str] = None
+
+
+@router.get("/{lead_id}/extra-document-fields", response_model=List[Dict[str, Any]])
+async def get_extra_document_fields(
+    lead_id: ObjectIdStr,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+):
+    """Get extra (custom) document fields for a specific lead"""
+    lead = await leads_db.get_lead(lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+    return lead.get("extra_document_fields", [])
+
+
+@router.post("/{lead_id}/extra-document-fields", response_model=Dict[str, Any])
+async def add_extra_document_field(
+    lead_id: ObjectIdStr,
+    body: ExtraDocumentFieldCreate,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+):
+    """Add a new extra (custom) document field to a lead"""
+    lead = await leads_db.get_lead(lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Field name cannot be empty")
+    field = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "category_id": body.category_id or "other",
+        "created_at": get_ist_now().isoformat(),
+    }
+    await leads_db.collection.update_one(
+        {"_id": ObjectId(lead_id)},
+        {"$push": {"extra_document_fields": field}}
+    )
+    return field
+
+
+@router.delete("/{lead_id}/extra-document-fields/{field_id}", response_model=Dict[str, str])
+async def delete_extra_document_field(
+    lead_id: ObjectIdStr,
+    field_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+):
+    """Delete an extra (custom) document field from a lead"""
+    lead = await leads_db.get_lead(lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+    await leads_db.collection.update_one(
+        {"_id": ObjectId(lead_id)},
+        {"$pull": {"extra_document_fields": {"id": field_id}}}
+    )
+    return {"message": "Deleted successfully"}
+
 
 @router.post("/{lead_id}/attachments", response_model=Dict[str, List[str]])
 async def upload_lead_attachment(

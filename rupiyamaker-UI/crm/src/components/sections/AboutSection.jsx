@@ -214,6 +214,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     }
   }, [canEditAssignedLead, showAssignReportToPopup]);
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]); // for super admin Created By dropdown
+  const [departments, setDepartments] = useState([]); // for super admin Team Name dropdown
+  const [createdBySearch, setCreatedBySearch] = useState('');
+  const [showCreatedByDropdown, setShowCreatedByDropdown] = useState(false);
+  const [teamNameSearch, setTeamNameSearch] = useState('');
+  const [showTeamNameDropdown, setShowTeamNameDropdown] = useState(false);
   
   // Dropdown search functionality states
   const [showProductDropdown, setShowProductDropdown] = useState(false);
@@ -494,6 +500,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     fetchDataCodes();
     fetchAssignableUsers();
     checkUserPermissions();
+    fetchAllUsersForSuperAdmin();
+    fetchDepartments();
   }, []);
 
   // Close dropdowns when clicking outside
@@ -606,7 +614,43 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       setAssignableUsers([]);
     }
   };
-  
+
+  // Fetch all users (for super admin Created By dropdown)
+  const fetchAllUsersForSuperAdmin = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/users/?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const users = Array.isArray(data) ? data : (data.users || data.items || []);
+        setAllUsers(users.map(u => ({
+          id: u._id || u.id,
+          name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || 'Unknown',
+          department: u.department_name || u.department || '',
+          role_name: u.role_name || u.role || ''
+        })));
+      }
+    } catch (e) { console.warn('fetchAllUsersForSuperAdmin failed:', e); }
+  };
+
+  // Fetch departments (for super admin Team Name dropdown)
+  const fetchDepartments = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/departments/?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDepartments(Array.isArray(data) ? data : (data.departments || data.items || []));
+      }
+    } catch (e) { console.warn('fetchDepartments failed:', e); }
+  };
+
   // Function to update assigned users with proper names from the available users list
   const updateAssignedUsersWithNames = async (assignedToData, assignReportToData, availableUsers) => {
     if (!assignedToData && !assignReportToData) return;
@@ -703,18 +747,13 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       isSuperAdminUser = true;
     }
     
-    // Check for wildcard permissions (page: "*", actions: "*")
-    if (userPermissions && Array.isArray(userPermissions)) {
-      const hasSuperAdminPermissions = userPermissions.some(perm => 
-        perm.page === "*" && perm.actions === "*"
-      );
-      if (hasSuperAdminPermissions) {
-        isSuperAdminUser = true;
-      }
+    // Use isSuperAdmin utility which handles both array and object permission formats
+    if (!isSuperAdminUser && isSuperAdmin(userPermissions)) {
+      isSuperAdminUser = true;
     }
     
-    // Check role-based permissions in userData
-    if (userData.permissions && Array.isArray(userData.permissions)) {
+    // Also check role-based permissions in userData (original array format from backend)
+    if (!isSuperAdminUser && userData.permissions && Array.isArray(userData.permissions)) {
       const hasSuperAdminPermissions = userData.permissions.some(perm => 
         perm.page === "*" && perm.actions === "*"
       );
@@ -1199,6 +1238,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         alternateNumber: 'alternative_phone',
         pincode_city: 'pincode_city',
         createdDate: 'created_at',
+        createdByName: 'created_by_name',
+        teamName: 'department_name',
       };
 
       const apiField = apiFieldMap[field] || field;
@@ -1746,49 +1787,123 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           {/* Created By Field */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>CREATED BY</label>
-            <input
-              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-              value={(() => {
-                if (lead?.created_by_name) {
-                  return typeof lead.created_by_name === 'object' 
-                    ? (lead.created_by_name.name || lead.created_by_name.first_name || 'Unknown')
-                    : lead.created_by_name;
-                }
-                if (lead?.created_by) {
-                  return typeof lead.created_by === 'object' 
-                    ? (lead.created_by.name || lead.created_by.first_name || 'Unknown')
-                    : lead.created_by;
-                }
-                return 'N/A';
-              })()}
-              readOnly={true}
-              placeholder="Created By (Read-only)"
-              title="User who created this lead"
-            />
+            {isUserSuperAdmin ? (
+              <div className="relative dropdown-container">
+                <input
+                  type="text"
+                  className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
+                  value={createdBySearch !== '' ? createdBySearch : (() => {
+                    if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || '') : lead.created_by_name;
+                    if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : lead.created_by;
+                    return '';
+                  })()}
+                  placeholder="Search user..."
+                  onChange={e => { setCreatedBySearch(e.target.value); setShowCreatedByDropdown(true); }}
+                  onFocus={() => setShowCreatedByDropdown(true)}
+                />
+                {showCreatedByDropdown && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                    {allUsers
+                      .filter(u => !createdBySearch || u.name.toLowerCase().includes(createdBySearch.toLowerCase()))
+                      .slice(0, 30)
+                      .map(u => (
+                        <div
+                          key={u.id}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-800"
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            // Save created_by_name
+                            handleBlur('createdByName', u.name);
+                            // Auto-fill team name from this user's department
+                            if (u.department) {
+                              handleBlur('teamName', u.department);
+                            }
+                            setCreatedBySearch('');
+                            setShowCreatedByDropdown(false);
+                          }}
+                        >
+                          <div className="font-bold">{u.name}</div>
+                          {(u.role_name || u.department) && (
+                            <div className="text-xs text-gray-400">{u.role_name}{u.department ? ` · ${u.department}` : ''}</div>
+                          )}
+                        </div>
+                      ))}
+                    {allUsers.filter(u => !createdBySearch || u.name.toLowerCase().includes(createdBySearch.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-gray-400">No users found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <input
+                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                value={(() => {
+                  if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || lead.created_by_name.first_name || 'Unknown') : lead.created_by_name;
+                  if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || lead.created_by.first_name || 'Unknown') : lead.created_by;
+                  return 'N/A';
+                })()}
+                readOnly={true}
+                placeholder="Created By (Read-only)"
+                title="User who created this lead"
+              />
+            )}
           </div>
 
           {/* Team Name Field */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>TEAM NAME</label>
-            <input
-              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-              value={(() => {
-                if (lead?.department_name) {
-                  return typeof lead.department_name === 'object' 
-                    ? (lead.department_name.name || 'Unknown')
-                    : lead.department_name;
-                }
-                if (lead?.team_name) {
-                  return typeof lead.team_name === 'object' 
-                    ? (lead.team_name.name || 'Unknown')
-                    : lead.team_name;
-                }
-                return 'N/A';
-              })()}
-              readOnly={true}
-              placeholder="Team Name (Read-only)"
-              title="Department/Team name for this lead"
-            />
+            {isUserSuperAdmin ? (
+              <div className="relative dropdown-container">
+                <input
+                  type="text"
+                  className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
+                  value={teamNameSearch !== '' ? teamNameSearch : (() => {
+                    if (lead?.department_name) return typeof lead.department_name === 'object' ? (lead.department_name.name || '') : lead.department_name;
+                    if (lead?.team_name) return typeof lead.team_name === 'object' ? (lead.team_name.name || '') : lead.team_name;
+                    return '';
+                  })()}
+                  placeholder="Search team..."
+                  onChange={e => { setTeamNameSearch(e.target.value); setShowTeamNameDropdown(true); }}
+                  onFocus={() => setShowTeamNameDropdown(true)}
+                />
+                {showTeamNameDropdown && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                    {departments
+                      .filter(d => !teamNameSearch || (d.name || '').toLowerCase().includes(teamNameSearch.toLowerCase()))
+                      .slice(0, 30)
+                      .map(d => (
+                        <div
+                          key={d._id || d.id}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-800 font-bold"
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            handleBlur('teamName', d.name);
+                            setTeamNameSearch('');
+                            setShowTeamNameDropdown(false);
+                          }}
+                        >
+                          {d.name}
+                        </div>
+                      ))}
+                    {departments.filter(d => !teamNameSearch || (d.name || '').toLowerCase().includes(teamNameSearch.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-gray-400">No teams found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <input
+                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                value={(() => {
+                  if (lead?.department_name) return typeof lead.department_name === 'object' ? (lead.department_name.name || 'Unknown') : lead.department_name;
+                  if (lead?.team_name) return typeof lead.team_name === 'object' ? (lead.team_name.name || 'Unknown') : lead.team_name;
+                  return 'N/A';
+                })()}
+                readOnly={true}
+                placeholder="Team Name (Read-only)"
+                title="Department/Team name for this lead"
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

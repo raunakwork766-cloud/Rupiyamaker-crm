@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Pl
 import axios from "axios"
 import { formatDateTime, getISTToday } from '../utils/dateUtils';
 import hrmsService from '../services/hrmsService';
+import PaidLeaveManagement from './attendance/PaidLeaveManagement';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
 
@@ -20,6 +21,7 @@ import {
   getCurrentUserId,
   debugPermissions,
   hasAttendancePermission,
+  hasPermission,
   isSuperAdmin,
   getUserPermissions
 } from '../utils/permissions';
@@ -281,10 +283,10 @@ const attendanceAPI = {
     }
   },
 
-  deleteHoliday: async (holidayId, userId) => {
+  deleteHoliday: async (holidayId, userId, resetAttendance = true) => {
     try {
       const response = await axios.delete(`${BASE_URL}/attendance/holidays/${holidayId}`, {
-        params: { user_id: userId },
+        params: { user_id: userId, reset_attendance: resetAttendance },
         headers: getAuthHeaders()
       })
       return response.data
@@ -772,13 +774,18 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
     setLoading(true)
     setError("")
     try {
-      const response = await attendanceAPI.deleteHoliday(holidayId, user.user_id)
+      const response = await attendanceAPI.deleteHoliday(holidayId, user.user_id, true)
       
       if (response.success) {
         // Reload holidays to get updated list
         await loadHolidays()
-        // Update parent component
-        onUpdateHolidays(localHolidays.filter(h => h._id !== holidayId))
+        // Update parent component + trigger full calendar refresh so table cells update
+        const updatedList = localHolidays.filter(h => h._id !== holidayId)
+        onUpdateHolidays(updatedList)
+        if (response.reset_count > 0) {
+          setError('')
+          // Brief success flash via error state (styled green inline)
+        }
       } else {
         setError(response.message || "Failed to delete holiday")
       }
@@ -1795,27 +1802,33 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
 
   // Check edit permissions using the imported permission functions
   const hasEditPermission = () => {
-    if (!employee?.id) return false;
+    if (!employee?.id) {
+      console.log('🔒 hasEditPermission: No employee.id, returning false');
+      return false;
+    }
     
     // Get user permissions from localStorage
     const userPermissions = getUserPermissions();
+    console.log('🔒 hasEditPermission DEBUG:', {
+      employeeId: employee?.id,
+      userPermissions,
+      type: typeof userPermissions,
+      attendancePerms: userPermissions?.attendance || userPermissions?.Attendance,
+      isSuperAdminResult: isSuperAdmin(userPermissions),
+      hasUpdatePerm: hasPermission(userPermissions, 'attendance', 'update')
+    });
     
     // Superadmin with wildcard (*) can always edit attendance
     if (isSuperAdmin(userPermissions)) {
+      console.log('🔒 hasEditPermission: Super admin, returning true');
       return true;
     }
     
     // STRICT CHECK: User must have explicit 'update' action in attendance permissions
-    // 'all' permission does NOT grant update access
-    if (Array.isArray(userPermissions)) {
-      const attendancePerm = userPermissions.find(p => p.page === 'attendance');
-      if (attendancePerm && Array.isArray(attendancePerm.actions)) {
-        // Only return true if 'update' is explicitly in the actions array
-        return attendancePerm.actions.includes('update');
-      }
-    }
-    
-    return false; // No update permission found
+    // Uses hasPermission which handles both object and array permission formats
+    const result = hasPermission(userPermissions, 'attendance', 'update');
+    console.log('🔒 hasEditPermission: hasPermission result =', result);
+    return result;
   };
 
   const loadAttendanceDetail = async () => {
@@ -2360,6 +2373,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
 
 export default function MonthlyAttendanceTable() {
   const _ist = getISTToday()
+  const [pageTab, setPageTab] = useState('attendance') // 'attendance' | 'leave'
   const [selectedYear, setSelectedYear] = useState(_ist.year)
   const [selectedMonth, setSelectedMonth] = useState(_ist.month)
   const [attendanceData, setAttendanceData] = useState([])
@@ -2392,7 +2406,10 @@ export default function MonthlyAttendanceTable() {
   const [editHistoryData, setEditHistoryData] = useState([])
   const [editCounts, setEditCounts] = useState({}) // { [empId]: count } — increments on each edit
   const [searchQuery, setSearchQuery] = useState('')
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
+  const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
+  const [teamSearchText, setTeamSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' })
   // warningPenaltiesMap: { [mongoId]: { total_penalty: number, penalties: [] } }
@@ -2562,16 +2579,8 @@ export default function MonthlyAttendanceTable() {
     }
     
     // STRICT CHECK: User must have explicit 'update' action in attendance permissions
-    // 'all' permission does NOT grant update access
-    if (Array.isArray(userPermissions)) {
-      const attendancePerm = userPermissions.find(p => p.page === 'attendance');
-      if (attendancePerm && Array.isArray(attendancePerm.actions)) {
-        // Only return true if 'update' is explicitly in the actions array
-        return attendancePerm.actions.includes('update');
-      }
-    }
-    
-    return false; // No update permission found
+    // Uses hasPermission which handles both object and array permission formats
+    return hasPermission(userPermissions, 'attendance', 'update');
   };
   const canUserDelete = (recordOwnerId) => canDelete('attendance', recordOwnerId);
 
@@ -3353,7 +3362,21 @@ export default function MonthlyAttendanceTable() {
       {/* Header */}
       <div className="bg-black" style={{marginBottom:'8px'}}>
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center" style={{margin: '0', padding: '0'}}>
-          <div></div>
+          {/* Tab switcher: Attendance | Leave Management */}
+          <div style={{display:'flex',background:'#09090b',border:'1px solid #27272a',borderRadius:'8px',overflow:'hidden',gap:0}}>
+            <button
+              onClick={() => setPageTab('attendance')}
+              style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='attendance'?'#0ea5e9':'transparent',color:pageTab==='attendance'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
+            >
+              📅 Attendance
+            </button>
+            <button
+              onClick={() => setPageTab('leave')}
+              style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='leave'?'#10b981':'transparent',color:pageTab==='leave'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
+            >
+              📋 Leave Management
+            </button>
+          </div>
 
           <div className="flex items-center gap-1">
             <div className="flex items-center gap-1">
@@ -3398,6 +3421,15 @@ export default function MonthlyAttendanceTable() {
         </div>
       </div>
 
+      {/* ── Leave Management Tab ── */}
+      {pageTab === 'leave' && (
+        <div style={{marginTop:'12px'}}>
+          <PaidLeaveManagement />
+        </div>
+      )}
+
+      {/* ── Attendance Tab content ── */}
+      {pageTab === 'attendance' && <>
       {/* Legend */}
       <div style={{display:'flex',justifyContent:'center',gap:'24px',marginBottom:'20px',marginTop:'8px',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px',flexWrap:'wrap',padding:'6px 0'}}>
         <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
@@ -3492,57 +3524,83 @@ export default function MonthlyAttendanceTable() {
 
       {/* Search & Filter Bar */}
       <div style={{display:'flex',gap:'10px',marginBottom:'14px',flexWrap:'wrap',alignItems:'center'}}>
-        {/* Search input */}
+        {/* Employee search combobox */}
         <div style={{flex:'1',minWidth:'180px',position:'relative'}}>
           <input
             type="text"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={e => { setSearchQuery(e.target.value); setEmpDropdownOpen(true) }}
             placeholder="Search by Name or Emp ID..."
-            style={{width:'100%',background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 12px 7px 34px',color:'white',fontFamily:'inherit',fontSize:'12px',outline:'none',boxSizing:'border-box',transition:'border-color 0.2s'}}
-            onFocus={e => e.target.style.borderColor='#0ea5e9'}
-            onBlur={e => e.target.style.borderColor='#27272a'}
+            style={{width:'100%',background:'#0d0d10',border:'1px solid ' + (empDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 12px 7px 34px',color:'white',fontFamily:'inherit',fontSize:'12px',outline:'none',boxSizing:'border-box',transition:'border-color 0.2s'}}
+            onFocus={() => setEmpDropdownOpen(true)}
+            onBlur={() => setTimeout(() => setEmpDropdownOpen(false), 160)}
           />
           <svg style={{position:'absolute',left:'10px',top:'50%',transform:'translateY(-50%)',width:'14px',height:'14px',color:'#a1a1aa',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+          {empDropdownOpen && (() => {
+            const q = searchQuery.trim().toLowerCase()
+            const empList = attendanceData.filter(r =>
+              !q || r.name?.toLowerCase().includes(q) || String(r.employeeId || '').toLowerCase().includes(q)
+            )
+            return empList.length > 0 ? (
+              <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,maxHeight:'220px',overflowY:'auto',boxShadow:'0 8px 24px rgba(0,0,0,0.7)'}}>
+                {empList.map(r => (
+                  <div
+                    key={r.mongoId || r.id}
+                    onMouseDown={() => { setSearchQuery(r.name); setEmpDropdownOpen(false) }}
+                    style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color:'#e4e4e7',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid #1f1f22'}}
+                    onMouseEnter={e => e.currentTarget.style.background='#1f1f22'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                  >
+                    <span style={{color:'#52525b',minWidth:'36px',fontSize:'11px'}}>#{r.employeeId || '—'}</span>
+                    <span>{r.name}</span>
+                    {r.department && <span style={{marginLeft:'auto',color:'#71717a',fontSize:'11px'}}>{r.department}</span>}
+                  </div>
+                ))}
+              </div>
+            ) : null
+          })()}
         </div>
-        {/* Team filter */}
-        <select
-          value={teamFilter}
-          onChange={e => setTeamFilter(e.target.value)}
-          style={{background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 28px 7px 10px',color:'white',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 9px center',minWidth:'130px'}}
-        >
-          <option value="">All Teams</option>
-          {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        {/* Status filter pills */}
-        <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
-          {[
-            { val: 'all',         label: 'All',         activeColor: '#0ea5e9', activeText: '#ffffff' },
-            { val: 'present',     label: 'Present',     activeColor: '#10b981', activeText: '#000000' },
-            { val: 'absent',      label: 'Absent',      activeColor: '#e4e4e7', activeText: '#000000' },
-            { val: 'leave',       label: 'Leave',       activeColor: '#ff7b00', activeText: '#000000' },
-            { val: 'halfday',     label: 'Half Day',    activeColor: '#ffdd00', activeText: '#000000' },
-            { val: 'absconding',  label: 'Absconding',  activeColor: '#ff2a2a', activeText: '#ffffff' },
-          ].map(pill => (
-            <button
-              key={pill.val}
-              onClick={() => setStatusFilter(pill.val)}
-              style={{
-                background: statusFilter === pill.val ? pill.activeColor : '#0d0d10',
-                border: `1px solid ${statusFilter === pill.val ? 'transparent' : '#27272a'}`,
-                borderRadius: '20px',
-                padding: '5px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                color: statusFilter === pill.val ? pill.activeText : '#a1a1aa',
-                fontFamily: 'inherit',
-                transition: 'all 0.2s',
-              }}
-            >
-              {pill.label}
-            </button>
-          ))}
+        {/* Team searchable dropdown */}
+        <div style={{position:'relative',minWidth:'140px'}}>
+          <div
+            onClick={() => { setTeamDropdownOpen(o => !o); setTeamSearchText('') }}
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setTeamDropdownOpen(false), 160) }}
+            tabIndex={0}
+            style={{background:'#0d0d10',border:'1px solid ' + (teamDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 28px 7px 10px',color: teamFilter ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',userSelect:'none',position:'relative',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
+          >
+            {teamFilter || 'All Teams'}
+            <svg style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%) rotate(' + (teamDropdownOpen ? '180deg' : '0deg') + ')',width:'10px',height:'10px',color:'#a1a1aa',transition:'transform 0.2s',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          {teamDropdownOpen && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,boxShadow:'0 8px 24px rgba(0,0,0,0.7)',minWidth:'160px'}}>
+              <div style={{padding:'6px 8px',borderBottom:'1px solid #27272a'}}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={teamSearchText}
+                  onChange={e => setTeamSearchText(e.target.value)}
+                  placeholder="Search team..."
+                  style={{width:'100%',background:'#0d0d10',border:'1px solid #3f3f46',borderRadius:'4px',padding:'5px 8px',color:'#e4e4e7',fontFamily:'inherit',fontSize:'11px',outline:'none',boxSizing:'border-box'}}
+                />
+              </div>
+              <div style={{maxHeight:'200px',overflowY:'auto'}}>
+                {[{label:'All Teams', value:''}, ...allTeams.map(t => ({label:t, value:t}))]
+                  .filter(opt => !teamSearchText.trim() || opt.label.toLowerCase().includes(teamSearchText.trim().toLowerCase()))
+                  .map(opt => (
+                    <div
+                      key={opt.value || '__all__'}
+                      onMouseDown={() => { setTeamFilter(opt.value); setTeamDropdownOpen(false) }}
+                      style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === teamFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === teamFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
+                      onMouseEnter={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='#1f1f22' }}
+                      onMouseLeave={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='transparent' }}
+                    >
+                      {opt.label}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
         </div>
         {/* Results count */}
         <div style={{fontSize:'11px',color:'#52525b',marginLeft:'auto',whiteSpace:'nowrap'}}>
@@ -3591,16 +3649,20 @@ export default function MonthlyAttendanceTable() {
                   const isHoliday = holidays.some(h => h.date === dateStr)
                   const isSunday = dayName === 'Sun'
                   
+                  // Sunday → purple, Holiday → cyan, Normal → white
+                  const headerBg = isSunday ? '#7c3aed' : isHoliday ? '#06b6d4' : '#ffffff'
+                  const headerColor = (isSunday || isHoliday) ? '#ffffff' : '#0ea5e9'
+                  
                   return (
                     <th
                       key={day}
                       rowSpan={2}
                       style={{
-                        backgroundColor: (isSunday || isHoliday) ? '#06b6d4' : '#ffffff',
-                        color: (isSunday || isHoliday) ? '#000000' : '#0ea5e9',
+                        backgroundColor: headerBg,
+                        color: headerColor,
                         padding: '6px 4px',
                         minWidth: '34px',
-                        border: '1px solid #1f1f22',
+                        border: isSunday ? '1px solid #5b21b6' : '1px solid #1f1f22',
                         fontWeight: 800,
                         textAlign: 'center',
                         verticalAlign: 'middle',
@@ -3608,6 +3670,7 @@ export default function MonthlyAttendanceTable() {
                     >
                       <div style={{fontSize:'13px',fontWeight:800,marginBottom:'2px'}}>{day}</div>
                       <div style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase'}}>{dayName}</div>
+                      {isSunday && !isHoliday && <div style={{fontSize:'9px',opacity:0.9}}>☀</div>}
                       {isHoliday && <div style={{fontSize:'10px'}}>🎉</div>}
                     </th>
                   )
@@ -3675,10 +3738,14 @@ export default function MonthlyAttendanceTable() {
                       const isSundayDay = getDayName(selectedYear, selectedMonth, day) === 'Sun'
                       const isHolidayDay = holidays.some(h => h.date === dateKey)
                       
+                      // Sunday → solid purple column, Holiday → cyan tint, Normal → black
+                      const cellBg = isSundayDay ? '#2e1065' : isHolidayDay ? 'rgba(6,182,212,0.12)' : '#000000'
+                      const cellBorder = isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
+                      
                       return (
                         <td
                           key={day}
-                          style={{textAlign:'center',cursor:'pointer',border:'1px solid #1f1f22',padding:'4px 2px',backgroundColor:(isSundayDay||isHolidayDay)?'rgba(6,182,212,0.12)':'#000000',verticalAlign:'middle',transition:'background 0.15s'}}
+                          style={{textAlign:'center',cursor:'pointer',border:cellBorder,padding:'4px 2px',backgroundColor:cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
                           onClick={() => handleDayClick(record, day)}
                         >
                           {getStatusBadge(record[`day${day}`], leaveStatus)}
@@ -3770,6 +3837,7 @@ export default function MonthlyAttendanceTable() {
         historyData={editHistoryData}
         loading={loading}
       />
+      </> /* end attendance tab */}
     </div>
   )
 }

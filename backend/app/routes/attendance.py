@@ -3613,11 +3613,13 @@ async def update_holiday(
 async def delete_holiday(
     holiday_id: str,
     user_id: str = Query(..., description="User ID deleting the holiday"),
+    reset_attendance: bool = Query(False, description="Reset holiday attendance records to Absent"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
-    holidays_db = Depends(get_holidays_db)
+    holidays_db = Depends(get_holidays_db),
+    attendance_db: AttendanceDB = Depends(get_attendance_db)
 ):
-    """Delete a holiday"""
+    """Delete a holiday. If reset_attendance=True, all attendance records for that date with status H/SP are reset to A (absent)."""
     try:
         # Check permissions
         permissions = await get_user_permissions(user_id, users_db, roles_db)
@@ -3634,6 +3636,8 @@ async def delete_holiday(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Holiday not found"
             )
+
+        holiday_date = existing_holiday.get("date")
         
         # Delete holiday
         success = await holidays_db.delete_holiday(holiday_id)
@@ -3643,9 +3647,22 @@ async def delete_holiday(
                 detail="Failed to delete holiday"
             )
         
+        # Optionally reset attendance for that date from H/SP -> A (absent)
+        reset_count = 0
+        if reset_attendance and holiday_date:
+            try:
+                result = await attendance_db.collection.update_many(
+                    {"date": holiday_date, "status": {"$in": ["H", "SP"]}},
+                    {"$set": {"status": "A", "is_holiday": False, "updated_at": get_ist_now(), "updated_by": user_id}}
+                )
+                reset_count = result.modified_count
+            except Exception as re:
+                print(f"Warning: failed to reset attendance for holiday date {holiday_date}: {re}")
+        
         return {
             "success": True,
-            "message": "Holiday deleted successfully"
+            "message": f"Holiday deleted successfully{f' — {reset_count} attendance record(s) reset to Absent' if reset_count else ''}",
+            "reset_count": reset_count
         }
         
     except HTTPException:

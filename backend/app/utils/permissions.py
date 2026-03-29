@@ -14,19 +14,25 @@ from app.database.Roles import RolesDB
 # Updated standard permissions based on frontend permission structure
 DEFAULT_PERMISSIONS = {
     "global": ["show", "*"],  # show = visibility in menu, * = full system access
-    "feeds": ["show", "feeds", "post", "*"],  # show = visibility, feeds = view posts, post = create posts, * = all permissions including delete
-    "leads": ["show", "create", "assign", "own", "view_other", "all", "junior", "*"],
-    "login": ["show", "own", "view_other", "all", "junior", "*"],
-    "tasks": ["show", "create", "edit_others", "*"],
-    "tickets": ["show", "own", "junior", "*"],
+    "feeds": ["show", "post", "all", "delete", "*"],
+    "leads": ["show", "add", "own", "junior", "all", "assign", "reassignment_popup", "download_obligation", "status_update", "delete", "*"],
+    "login": ["show", "own", "junior", "all", "channel", "edit", "delete", "*"],
+    "tasks": ["show", "own", "junior", "all", "delete", "*"],
+    "tickets": ["show", "own", "junior", "all", "delete", "*"],
     "hrms": ["show", "*"],  # General HRMS access
-    "employees": ["employees_show", "employees_edit", "employees_create", "employees_delete", "all_employees", "*"],
-    "leaves": ["leaves_show", "leaves_own", "leave_admin", "leaves_create", "*"],
-    "attendance": ["attendance_show", "attendance_own", "attendance_admin", "attendance_edit", "attendance_mark", "*"],
-    "warnings": ["show", "warnings_own", "warnings_admin", "*"],
+    "employees": ["show", "password", "junior", "all", "role", "delete", "*"],
+    "leaves": ["show", "own", "junior", "all", "delete", "*"],
+    "attendance": ["show", "own", "junior", "all", "update", "delete", "*"],
+    "warnings": ["show", "own", "junior", "all", "delete", "issue", "view_mistakes", "create_mistake", "edit_mistake", "delete_mistake", "*"],
+    "interview": ["show", "junior", "all", "settings", "delete", "*"],
+    "dialer_report": ["show"],
+    "apps": ["show", "manage", "*"],
+    "notification": ["show", "delete", "send", "*"],
+    "reports": ["show"],
+    "knowledge_base": ["show"],
     "charts": ["show"],
     "emi_calculator": ["show"],
-    "settings": ["show", "edit", "*"]  # Settings management permissions
+    "settings": ["show", "*"]
 }
 
 
@@ -115,29 +121,19 @@ class PermissionManager:
                     print(f"DEBUG: Permission granted for {page}.{action} via wildcard actions")
                     return True
                 
-                # Case 1.5: actions is "all" string (equivalent to wildcard for all actions)
-                if isinstance(actions, str) and actions.lower() == "all":
-                    print(f"DEBUG: Permission granted for {page}.{action} via 'all' actions")
-                    return True
-                    
                 # Case 2: actions is a string that matches the requested action (case-insensitive)
                 if isinstance(actions, str) and actions.lower() == action_lower:
                     print(f"DEBUG: Permission granted for {page}.{action} via direct string match")
                     return True
                     
-                # Case 3: actions is a list containing either "*", "all", or specific action (case-insensitive)
+                # Case 3: actions is a list containing "*" or specific action (case-insensitive)
                 if isinstance(actions, list):
                     if "*" in actions:
                         print(f"DEBUG: Permission granted for {page}.{action} via wildcard in list")
                         return True
                     
-                    # Check for "all" in actions list (case-insensitive)
-                    actions_lower = [a.lower() if isinstance(a, str) else a for a in actions]
-                    if "all" in actions_lower:
-                        print(f"DEBUG: Permission granted for {page}.{action} via 'all' in list")
-                        return True
-                    
                     # Case-insensitive comparison for each action in the list
+                    actions_lower = [a.lower() if isinstance(a, str) else a for a in actions]
                     if action_lower in actions_lower:
                         print(f"DEBUG: Permission granted for {page}.{action} via list of actions (case-insensitive)")
                         return True

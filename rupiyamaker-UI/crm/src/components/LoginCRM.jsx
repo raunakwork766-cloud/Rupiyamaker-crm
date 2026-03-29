@@ -2189,7 +2189,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             }
             
             const userId = localStorage.getItem('userId');
-            const response = await fetch(`${API_BASE_URL}/users/all-users?user_id=${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/users/?user_id=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
@@ -2198,7 +2198,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
             if (response.ok) {
                 const data = await response.json();
-                const users = data.users || [];
+                const users = Array.isArray(data) ? data : (data.users || []);
                 setUsers(users);
                 
                 // ⚡ Cache the result

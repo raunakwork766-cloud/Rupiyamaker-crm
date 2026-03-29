@@ -10,7 +10,7 @@ import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
 import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate, getISTToday } from '../utils/dateUtils';
-import { hasPermission, getUserPermissions } from '../utils/permissions';
+import { hasPermission, getUserPermissions, isSuperAdmin as utilIsSuperAdmin } from '../utils/permissions';
 import InterviewSettings from './InterviewSettings';
 
 // API base URL - Use proxy in development
@@ -217,7 +217,7 @@ const InterviewPanel = () => {
 
   // Check user permissions for interviews (like Tickets/Warnings)
   const checkInterviewPermissions = () => {
-    const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+    const userPermissions = getUserPermissions();
     
     console.log('🔍 checkInterviewPermissions - userPermissions:', userPermissions);
     console.log('🔍 checkInterviewPermissions - isSuperAdmin():', isSuperAdmin());
@@ -233,47 +233,13 @@ const InterviewPanel = () => {
       };
     }
     
-    // Check for explicit delete OR all permission
-    const hasDeletePermission = () => {
-      if (Array.isArray(userPermissions)) {
-        for (const perm of userPermissions) {
-          if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
-            console.log('🔍 Found interview permission:', perm);
-            if (Array.isArray(perm.actions)) {
-              // Check for explicit delete OR all permission
-              const hasDelete = perm.actions.includes('delete') || perm.actions.includes('all');
-              console.log('🔍 Has delete permission?', hasDelete, 'Actions:', perm.actions);
-              return hasDelete;
-            } else if (perm.actions === 'delete' || perm.actions === 'all' || perm.actions === '*') {
-              console.log('🔍 Has delete permission? TRUE (string match)');
-              return true;
-            }
-          }
-        }
-      }
-      console.log('🔍 Has delete permission? FALSE (no match found)');
-      return false;
-    };
-
-    // Check for all permission (show all interviews)
-    const hasAllPermission = () => {
-      if (Array.isArray(userPermissions)) {
-        for (const perm of userPermissions) {
-          if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
-            if (Array.isArray(perm.actions)) {
-              return perm.actions.includes('all') || perm.actions.includes('*');
-            } else if (perm.actions === 'all' || perm.actions === '*') {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    };
+    // Use hasPermission utility which handles both array and object formats
+    const hasDeletePerm = hasPermission(userPermissions, 'interview', 'delete');
+    const hasAllPerm = hasPermission(userPermissions, 'interview', 'all');
 
     const calculatedPermissions = {
-      can_view_all: hasAllPermission(),
-      can_delete: hasDeletePermission(),
+      can_view_all: hasAllPerm,
+      can_delete: hasDeletePerm || hasAllPerm,
       can_add: true, // Default to true for now
       can_edit: true  // Default to true for now
     };
@@ -284,19 +250,10 @@ const InterviewPanel = () => {
 
   // Check if user is super admin (can see and do everything)
   const isSuperAdmin = () => {
-    const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
     const designation = localStorage.getItem('designation')?.toLowerCase();
     const roleName = localStorage.getItem('roleName')?.toLowerCase();
     const userRole = localStorage.getItem('userRole')?.toLowerCase();
     const role = localStorage.getItem('role')?.toLowerCase();
-    
-    console.log('🔍 isSuperAdmin Check - All Values:', {
-      designation,
-      roleName,
-      userRole,
-      role,
-      userPermissions
-    });
     
     // Check if user has admin designation or role
     if (
@@ -315,29 +272,12 @@ const InterviewPanel = () => {
       role === 'super admin' ||
       role === 'superadmin'
     ) {
-      console.log('✅ isSuperAdmin: TRUE (by designation/role)');
       return true;
     }
     
-    // Check if user has global wildcard permission
-    if (Array.isArray(userPermissions)) {
-      for (const perm of userPermissions) {
-        if (perm && (perm.page === '*' || perm.page === 'Global' || perm.page === 'global')) {
-          console.log('✅ isSuperAdmin: TRUE (by global permission)');
-          return true;
-        }
-        // Check for interview with all permissions
-        if (perm && (perm.page === 'interview' || perm.page === 'Interview' || perm.page === 'interviews' || perm.page === 'Interviews')) {
-          if (perm.actions === '*' || perm.actions === 'all' || (Array.isArray(perm.actions) && (perm.actions.includes('*') || perm.actions.includes('all')))) {
-            console.log('✅ isSuperAdmin: TRUE (by interview all permission)');
-            return true;
-          }
-        }
-      }
-    }
-    
-    console.log('❌ isSuperAdmin: FALSE');
-    return false;
+    // Use utility isSuperAdmin which handles both array and object formats
+    const userPermissions = getUserPermissions();
+    return utilIsSuperAdmin(userPermissions);
   };
 
   // Load job opening and interview type options from backend
@@ -3010,11 +2950,13 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
     e.stopPropagation();
     if (!isDropdownOpen && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      const dropdownWidth = 208;
-      const rightEdge = window.innerWidth - rect.right;
+      const dropdownHeight = 160; // approximate max height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openAbove = spaceBelow < dropdownHeight && spaceAbove > dropdownHeight;
       setDropdownPos({
-        top: rect.top,
-        right: rightEdge + rect.width + 6,
+        top: openAbove ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        right: window.innerWidth - rect.right,
       });
     }
     setIsDropdownOpen(prev => !prev);

@@ -1,5 +1,5 @@
 // Fix for Status Management Tab issue
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Settings,
     Plus,
@@ -334,6 +334,7 @@ const SettingsPage = () => {
     const [atCatCollapsed, setAtCatCollapsed] = useState({});
     const [atDraftDirty, setAtDraftDirty] = useState(false);
     const [atSaving, setAtSaving] = useState(false);
+    const pendingDraftRef = useRef(null); // queued draft when a save is already in-flight
     const [atNewCatInput, setAtNewCatInput] = useState('');
     const [atNewDocInputs, setAtNewDocInputs] = useState({});
     const [atNewDocTargets, setAtNewDocTargets] = useState({});
@@ -3054,7 +3055,11 @@ const updateStatus = async (statusId, statusData) => {
     const renderAttachmentTypesTable = () => {
         // ── Draft mutation helpers (auto-save on every change) ──
         const saveWithDraft = async (draftCats) => {
-            if (atSaving) { setAtDraftDirty(true); return; }
+            if (atSaving) {
+                // Queue this draft — will be picked up after current save finishes
+                pendingDraftRef.current = draftCats;
+                return;
+            }
             setAtSaving(true);
             try {
                 const draftDocs = [];
@@ -3091,6 +3096,12 @@ const updateStatus = async (statusId, statusData) => {
                 setAtDraftDirty(true);
             } finally {
                 setAtSaving(false);
+                // If a newer draft was queued while we were saving, process it now
+                if (pendingDraftRef.current) {
+                    const next = pendingDraftRef.current;
+                    pendingDraftRef.current = null;
+                    saveWithDraft(next);
+                }
             }
         };
         const updateDraft = (updater) => {
@@ -3135,7 +3146,7 @@ const updateStatus = async (statusId, statusData) => {
         const addDocToCategory = (catIdx) => {
             const val = (atNewDocInputs[catIdx] || '').trim().toUpperCase();
             if (!val) return;
-            const targetType = atNewDocTargets[catIdx] || 'leads';
+            const targetType = attachmentTypeFilter || 'leads';
             updateDraft(draft => {
                 draft[catIdx].docs.push({
                     name: val,
@@ -3377,19 +3388,11 @@ const updateStatus = async (statusId, statusData) => {
                                                         placeholder="NEW DOC TITLE..."
                                                         className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none flex-1 uppercase shadow-inner focus:border-blue-400 bg-white text-gray-800 placeholder-gray-400"
                                                     />
-                                                    <select
-                                                        value={atNewDocTargets[catIdx] || 'leads'}
-                                                        onChange={e => setAtNewDocTargets(prev => ({ ...prev, [catIdx]: e.target.value }))}
-                                                        className="text-[10px] font-bold px-2 py-1.5 rounded border border-gray-300 outline-none bg-white text-gray-800 focus:border-blue-400 shrink-0"
-                                                    >
-                                                        <option value="leads">Leads</option>
-                                                        <option value="employees">Employees</option>
-                                                    </select>
                                                     <button
                                                         onClick={() => addDocToCategory(catIdx)}
                                                         className="bg-gray-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold shadow-sm uppercase shrink-0 transition"
                                                     >
-                                                        Add Doc
+                                                        ADD DOC
                                                     </button>
                                                 </div>
                                             )}

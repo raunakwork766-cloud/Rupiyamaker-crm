@@ -381,39 +381,15 @@ export default function TicketPage() {
       // Add permission-based filtering parameters
       const apiParams = statusFilter ? { status: statusFilter } : {};
       
-      // CRITICAL: Read permissions fresh from localStorage and check directly
-      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      // Use the permission utility which handles both object and array formats
+      const userPermissions = getUserPermissions();
       
-      console.log('🔍 Raw userPermissions from localStorage:', userPermissions);
-      console.log('🔍 Type of userPermissions:', typeof userPermissions, 'Is array:', Array.isArray(userPermissions));
-      console.log('🔍 userData from localStorage:', localStorage.getItem('userData'));
+      console.log('🔍 userPermissions:', userPermissions);
+
+      // Check ticket permissions using hasPermission (handles both formats correctly)
+      const hasJunior = isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'tickets', 'junior');
+      const hasAll = isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'tickets', 'all');
       
-      // Direct check for tickets permissions without using hasPermission (to avoid "all" wildcard behavior)
-      let hasJunior = false;
-      let hasAll = false;
-      let foundTicketPermission = false;
-      
-      if (Array.isArray(userPermissions)) {
-        for (const perm of userPermissions) {
-          console.log('🔍 Checking permission entry:', perm);
-          if (perm && (perm.page === 'tickets' || perm.page === 'Tickets')) {
-            foundTicketPermission = true;
-            console.log('🎯 Found tickets permission:', perm);
-            if (Array.isArray(perm.actions)) {
-              hasJunior = perm.actions.includes('junior');
-              hasAll = perm.actions.includes('all');
-              console.log('🔍 Actions array check - junior:', hasJunior, 'all:', hasAll);
-            } else if (perm.actions === 'junior') {
-              hasJunior = true;
-            } else if (perm.actions === 'all') {
-              hasAll = true;
-            }
-            break;
-          }
-        }
-      }
-      
-      console.log('🔍 Ticket permission found:', foundTicketPermission);
       console.log('🔍 Direct permission check - junior:', hasJunior, 'all:', hasAll);
       
       // IMPORTANT: Backend requires user_id parameter for identification
@@ -522,38 +498,21 @@ export default function TicketPage() {
       // Fetch all tickets without status filter for counting
       const apiParams = {};
       
-      // CRITICAL: Read permissions fresh from localStorage and check directly
-      const userPermissions = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      // Use permission utility which handles both object and array formats
+      const userPermissions = getUserPermissions();
       
-      // Direct check for tickets permissions without using hasPermission (to avoid "all" wildcard behavior)
-      let hasJunior = false;
-      let hasAll = false;
-      
-      if (Array.isArray(userPermissions)) {
-        for (const perm of userPermissions) {
-          if (perm && (perm.page === 'tickets' || perm.page === 'Tickets')) {
-            if (Array.isArray(perm.actions)) {
-              hasJunior = perm.actions.includes('junior');
-              hasAll = perm.actions.includes('all');
-            } else if (perm.actions === 'junior') {
-              hasJunior = true;
-            } else if (perm.actions === 'all') {
-              hasAll = true;
-            }
-            break;
-          }
-        }
-      }
+      // Check ticket permissions using hasPermission (handles both formats correctly)
+      const hasJunior = isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'tickets', 'junior');
+      const hasAll = isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'tickets', 'all');
       
       // If user doesn't have permission to view others' tickets, add user filter
       // Check both junior and all permissions - either allows viewing all tickets
       if (!hasJunior && !hasAll) {
         apiParams.user_id = parsedUserData.user_id;
         apiParams.created_by_me = true;
-      } else {
       }
       
-      console.log('📊 Fetching all tickets for counting with direct permissions:', { junior: hasJunior, all: hasAll, filtering: !hasJunior && !hasAll });
+      console.log('📊 Fetching all tickets for counting with permissions:', { junior: hasJunior, all: hasAll, filtering: !hasJunior && !hasAll });
       
       // Fetch all tickets for counting - optimized to fetch just one page
       const countingResponse = await API.tickets.getTickets(1, 100, apiParams);

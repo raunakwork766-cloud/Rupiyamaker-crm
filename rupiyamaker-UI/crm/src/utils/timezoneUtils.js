@@ -86,9 +86,9 @@ export const formatDateTimeIST = (dateString) => {
     year: 'numeric'
   });
 
-  const timeStr = date.toLocaleTimeString('en-IN', {
+  const timeStr = date.toLocaleTimeString('en-US', {
     timeZone: IST_TZ,
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
     hour12: true
   });

@@ -643,6 +643,16 @@ async def check_login_phone_number(
             fin = lead.get("financial_details", {}) or {}
             bank_name = fin.get("bank_name", "") or ""
         if not bank_name:
+            # Check dynamic_fields.process.processing_bank (set by HowToProcessSection)
+            dyn = lead.get("dynamic_fields", {}) or {}
+            bank_name = (
+                dyn.get("process", {}).get("processing_bank", "")
+                or dyn.get("login_form", {}).get("processing_bank", "")
+                or dyn.get("processingBank", "")
+                or dyn.get("processing_bank", "")
+                or ""
+            )
+        if not bank_name:
             # Check processing_banks list
             pb = lead.get("processing_banks", []) or []
             if isinstance(pb, list) and pb:

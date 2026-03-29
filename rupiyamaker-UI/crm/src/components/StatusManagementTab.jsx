@@ -228,7 +228,7 @@ const StatusManagementTab = ({
                             : 'text-gray-400 hover:text-gray-200'
                     }`}
                 >
-                    <Shield className="w-4 h-4" /> Permission Roles
+                    <Shield className="w-4 h-4" /> Reassignment Permission
                 </button>
             </div>
 

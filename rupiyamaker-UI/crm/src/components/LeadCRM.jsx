@@ -5324,7 +5324,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     // Make a second API call to ensure the status is set to "Active Leads"
                     const statusUpdateUrl = `/api/leads/${newLeadId}?user_id=${userId}`;
                     const statusUpdateResponse = await fetch(statusUpdateUrl, {
-                        method: 'PATCH',
+                        method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${localStorage.getItem('token')}`

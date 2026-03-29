@@ -89,6 +89,7 @@ export default function Attachments({ leadId, userId }) {
   const [pdfPasswordInput, setPdfPasswordInput] = useState(''); // password typed in the PDF password modal
   const [showPdfPwdVisible, setShowPdfPwdVisible] = useState(false); // toggle show/hide password text
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadingKey, setUploadingKey] = useState(null); // tracks which doc-type is currently uploading
   const [isDownloadingAll, setIsDownloadingAll] = useState(false); // State for download all operation
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
   const [showPasswordFor, setShowPasswordFor] = useState({});
@@ -97,6 +98,12 @@ export default function Attachments({ leadId, userId }) {
   const [editingFileId, setEditingFileId] = useState(null); // ID of file being renamed
   const [editingFileName, setEditingFileName] = useState(''); // edit value (base name only)
   const [viewerDoc, setViewerDoc] = useState(null); // { blobUrl, downloadUrl, name, isPdf, isImage, loading, error }
+
+  // Extra document fields (per-lead custom doc types)
+  const [extraDocFields, setExtraDocFields] = useState([]); // [{ id, name, created_at }]
+  const [showAddExtraForm, setShowAddExtraForm] = useState(null); // null = closed, catId = open for that category
+  const [newExtraDocName, setNewExtraDocName] = useState('');
+  const [addingExtraDoc, setAddingExtraDoc] = useState(false);
 
   // Base URL for API calls
   const BASE_URL = '/api';
@@ -915,10 +922,72 @@ export default function Attachments({ leadId, userId }) {
     }
   }, [currentUserId]);
 
+  // Load extra document fields for this lead
+  const loadExtraDocFields = async () => {
+    if (!leadId || !currentUserId) return;
+    try {
+      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`);
+      if (response.ok) {
+        const fields = await response.json();
+        setExtraDocFields(fields);
+      }
+    } catch (error) {
+      console.error('Error loading extra document fields:', error);
+    }
+  };
+
+  const handleAddExtraDocField = async () => {
+    const name = newExtraDocName.trim();
+    if (!name) return;
+    setAddingExtraDoc(true);
+    try {
+      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, category_id: showAddExtraForm }),
+      });
+      if (response.ok) {
+        const field = await response.json();
+        setExtraDocFields(prev => [...prev, field]);
+        // initialise upload state for the new type
+        const key = field.name.toLowerCase().replace(/\s+/g, '_');
+        setDynamicRefs(prev => ({ ...prev, [key]: React.createRef() }));
+        setDynamicFiles(prev => ({ ...prev, [key]: [] }));
+        setDynamicPasswords(prev => ({ ...prev, [key]: '' }));
+        setNewExtraDocName('');
+        setShowAddExtraForm(null);
+        showNotification(`Extra document field "${field.name}" added.`, 'info');
+      } else {
+        showNotification('Failed to add field.', 'error');
+      }
+    } catch (error) {
+      showNotification('Error adding field.', 'error');
+    } finally {
+      setAddingExtraDoc(false);
+    }
+  };
+
+  const handleDeleteExtraDocField = async (fieldId, fieldName) => {
+    try {
+      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setExtraDocFields(prev => prev.filter(f => f.id !== fieldId));
+        showNotification(`Extra document field "${fieldName}" deleted.`, 'info');
+      } else {
+        showNotification('Failed to delete field.', 'error');
+      }
+    } catch (error) {
+      showNotification('Error deleting field.', 'error');
+    }
+  };
+
   // Load lead data when leadId changes to determine if it's a login lead
   useEffect(() => {
     if (leadId && currentUserId) {
       fetchLeadData();
+      loadExtraDocFields();
     }
   }, [leadId, currentUserId]);
 
@@ -928,6 +997,20 @@ export default function Attachments({ leadId, userId }) {
       loadUploadedDocuments();
     }
   }, [leadId, leadData, loadingTypes, currentUserId]);
+
+  // Check if a PDF file is password-protected by scanning its bytes for the /Encrypt marker
+  const isPdfEncrypted = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const bytes = new Uint8Array(ev.target.result);
+        const text = new TextDecoder('latin1').decode(bytes);
+        resolve(text.includes('/Encrypt'));
+      } catch { resolve(false); }
+    };
+    reader.onerror = () => resolve(false);
+    reader.readAsArrayBuffer(file);
+  });
 
   // Handler for dynamic file input changes - now triggers direct upload
   const handleFileChange = (attachmentKey) => async (e) => {
@@ -965,13 +1048,16 @@ export default function Attachments({ leadId, userId }) {
         return;
       }
 
-      // If any selected file is a PDF, pause and show password prompt modal
-      const hasPdf = files.some(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (hasPdf) {
-        setPendingUpload({ attachmentType, files, inputEl: e.target });
-        setPdfPasswordInput('');
-        setShowPdfPwdVisible(false);
-        return;
+      // If any selected PDF is actually encrypted, show the password prompt modal
+      const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfFiles.length > 0) {
+        const encryptedFlags = await Promise.all(pdfFiles.map(isPdfEncrypted));
+        if (encryptedFlags.some(Boolean)) {
+          setPendingUpload({ attachmentType, files, inputEl: e.target });
+          setPdfPasswordInput('');
+          setShowPdfPwdVisible(false);
+          return;
+        }
       }
 
       // Store files temporarily for upload
@@ -1064,6 +1150,7 @@ export default function Attachments({ leadId, userId }) {
       
       // Get the key for this attachment type
       const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
+      setUploadingKey(key);
       
       // Add files to form data
       files.forEach(file => {
@@ -1156,6 +1243,7 @@ export default function Attachments({ leadId, userId }) {
       showNotification('Upload failed: ' + error.message, 'error');
     } finally {
       setIsLoading(false);
+      setUploadingKey(null);
     }
   };
 
@@ -1248,7 +1336,32 @@ export default function Attachments({ leadId, userId }) {
     }
   };
 
-  // Handler for downloading all files as ZIP
+  // Build download folder name from lead data: CustomerName-CustomerNumber-Phone-AlternatePhone
+  const getDownloadFolderName = (ld) => {
+    const custName = ld?.first_name || ld?.customer_name || '';
+    const custNum = ld?.custom_lead_id || ld?.lead_number || ld?.customer_number || '';
+    const phone = ld?.phone || ld?.mobile || '';
+    const altPhone = ld?.alternative_phone || ld?.alternate_phone || '';
+    const parts = [custName, custNum, phone, altPhone].filter(Boolean);
+    // Sanitize for filesystem: remove anything not alphanumeric, dash, underscore, or space
+    const raw = parts.length > 0 ? parts.join('-') : `Lead_${leadId}`;
+    return raw.replace(/[<>:"/\\|?*]+/g, '_');
+  };
+
+  // Helper: write a blob to a directory handle
+  const writeFileToDir = async (dirHandle, filename, blob) => {
+    const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  };
+
+  // Helper: get or create subfolder inside a directory handle
+  const getSubDir = async (parentHandle, name) => {
+    return await parentHandle.getDirectoryHandle(name, { create: true });
+  };
+
+  // Handler for downloading all files directly to a folder (no ZIP)
   const handleDownloadAll = async () => {
     if (!leadId || uploadedDocuments.length === 0) {
       showNotification('No documents available to download', 'warning');
@@ -1257,290 +1370,289 @@ export default function Attachments({ leadId, userId }) {
 
     try {
       setIsDownloadingAll(true);
-      showNotification('Preparing download... This may take a moment.', 'info');
 
-      // Create JSZip instance directly
-      const zip = new JSZip();
-      
-      if (!zip || typeof zip.file !== 'function') {
-        throw new Error('JSZip instance is invalid');
+      // Fetch lead data first so we can build the folder name
+      let currentLeadData = leadData;
+      if (!currentLeadData) {
+        currentLeadData = await fetchLeadData();
       }
+
+      const folderName = getDownloadFolderName(currentLeadData);
+
+      // Check if File System Access API is available (Chrome / Edge)
+      const hasFileSystemAccess = typeof window.showDirectoryPicker === 'function';
+
+      if (!hasFileSystemAccess) {
+        // Fallback: download as ZIP with the correct folder name
+        showNotification('Your browser does not support folder downloads. Downloading as ZIP...', 'info');
+        await _downloadAsZip(currentLeadData, folderName);
+        return;
+      }
+
+      // Use File System Access API — user picks a location, we create the named folder inside
+      showNotification(`Select a location to save "${folderName}" folder`, 'info');
+      let parentDir;
+      try {
+        parentDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+      } catch (e) {
+        // User cancelled the picker
+        setIsDownloadingAll(false);
+        return;
+      }
+
+      // Create the named folder inside the selected location
+      const rootDir = await getSubDir(parentDir, folderName);
+      const allDir = await getSubDir(rootDir, 'All');
 
       const passwordInfo = [];
       let downloadedCount = 0;
       let failedCount = 0;
 
-      // Create folders for different document types
-      const documentsByType = {};
-      uploadedDocuments.forEach(doc => {
-        const type = doc.document_type || 'Other';
-        if (!documentsByType[type]) {
-          documentsByType[type] = [];
-        }
-        documentsByType[type].push(doc);
-      });
-
-      // Create "All" folder first (with prefix to ensure it appears at the top)
-      const allFolder = zip.folder("All");
-      let allFolderDownloadedCount = 0;
-      
-      // Fetch lead data and add PDF forms to "All" folder
-      let currentLeadData = leadData;
-      if (!currentLeadData) {
-        console.log('📋 No leadData prop provided, fetching from API...');
-        currentLeadData = await fetchLeadData();
-      }
-      
-      console.log('📋 Current lead data:', currentLeadData);
-      console.log('📋 Lead ID:', currentLeadData?._id);
-      console.log('📋 Dynamic fields:', currentLeadData?.dynamic_fields);
-      console.log('📋 Applicant form data:', currentLeadData?.dynamic_fields?.applicant_form);
-      console.log('📋 Co-applicant form data:', currentLeadData?.dynamic_fields?.co_applicant_form);
-      console.log('📋 Legacy loginForm:', currentLeadData?.loginForm);
-      console.log('📋 Legacy coApplicantForm:', currentLeadData?.coApplicantForm);
-      
+      // ─── Generate Applicant & Co-Applicant PDFs into All/Applicant and Co-Applicant Form ───
       if (currentLeadData && currentLeadData._id) {
-        // Create "Applicant and Co-Applicant Form" subfolder within "All" folder
-        const formsFolder = allFolder.folder("Applicant and Co-Applicant Form");
-        console.log('📁 Forms folder created:', formsFolder);
-        
-        // PDF GENERATION - Create Applicant and Co-Applicant forms
-        console.log('🔒 PDF GENERATION STARTING...');
-        console.log('🔒 jsPDF available?', typeof jsPDF);
-        console.log('🔒 JSZip available?', typeof JSZip);
-        console.log('🔒 formsFolder created?', !!formsFolder);
-        
-        // 1. Always create Applicant PDF using improved function
+        const formsDir = await getSubDir(allDir, 'Applicant and Co-Applicant Form');
+
+        // Applicant PDF
         try {
-          console.log('📝 Creating IMPROVED Applicant PDF...');
-          
-          // Define form data sources with proper fallbacks
-          const applicantFormData = currentLeadData.dynamic_fields?.applicant_form || 
-                                   currentLeadData.loginForm || 
-                                   {};
-          
-          console.log('🔍 Applicant form data for PDF:', applicantFormData);
-          
-          // Create comprehensive form data by merging all available sources
+          const applicantFormData = currentLeadData.dynamic_fields?.applicant_form || currentLeadData.loginForm || {};
           const allAvailableApplicantData = {
-            // Base lead data
             customerName: currentLeadData.first_name || currentLeadData.customer_name || '',
             mobileNumber: currentLeadData.mobile || currentLeadData.phone || '',
             personalEmail: currentLeadData.email || '',
-            
-            // Merge all form data sources
             ...currentLeadData.dynamic_fields?.applicant_form,
             ...currentLeadData.loginForm,
             ...applicantFormData,
-            
-            // Add any top-level fields that might be relevant
             alternateNumber: currentLeadData.alternative_phone || currentLeadData.alternate_phone,
             ...Object.keys(currentLeadData)
               .filter(key => !['dynamic_fields', 'loginForm', '_id', '__v', 'created_at', 'updated_at'].includes(key))
-              .reduce((acc, key) => {
-                const value = currentLeadData[key];
-                if (value && typeof value !== 'object') {
-                  acc[key] = value;
-                }
-                return acc;
-              }, {})
+              .reduce((acc, key) => { const v = currentLeadData[key]; if (v && typeof v !== 'object') acc[key] = v; return acc; }, {})
           };
-          
-          console.log('🔍 MERGED applicant data for PDF:', allAvailableApplicantData);
-          
           const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
-          
           if (applicantBlob) {
-            const applicantFilename = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
-            console.log('💾 Adding applicant PDF to folder:', applicantFilename, 'Size:', applicantBlob.size);
-            formsFolder.file(applicantFilename, applicantBlob);
-            allFolderDownloadedCount++;
-            console.log('✅ IMPROVED Applicant PDF created and added to ZIP');
-          } else {
-            console.error('❌ Failed to generate Applicant PDF');
+            const fn = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
+            await writeFileToDir(formsDir, fn, applicantBlob);
+            await writeFileToDir(allDir, fn, applicantBlob);
           }
-        } catch (error) {
-          console.error('❌ IMPROVED Applicant PDF failed:', error);
-          console.error('❌ Error stack:', error.stack);
-        }
-        
-        // 2. Create Co-Applicant PDF using improved function
+        } catch (e) { console.error('Applicant PDF failed:', e); }
+
+        // Co-Applicant PDF
         try {
-          console.log('📝 Creating IMPROVED Co-Applicant PDF...');
-          
-          // Check for co-applicant data
-          const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || 
-                                     currentLeadData.coApplicantForm || 
-                                     {};
-          
-          console.log('🔍 Co-applicant form data for PDF:', coApplicantFormData);
-          
-          // Create comprehensive co-applicant data by merging all available sources
+          const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || currentLeadData.coApplicantForm || {};
           const allCoApplicantData = {
-            // Base lead data for co-applicant (if they share some basic info)
             ...currentLeadData.dynamic_fields?.co_applicant_form,
             ...currentLeadData.coApplicantForm,
             ...coApplicantFormData
           };
-          
-          console.log('🔍 MERGED co-applicant data for PDF:', allCoApplicantData);
-          
           const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
-          
           if (coApplicantBlob) {
-            const coApplicantFilename = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
-            console.log('💾 Adding co-applicant PDF to folder:', coApplicantFilename, 'Size:', coApplicantBlob.size);
-            formsFolder.file(coApplicantFilename, coApplicantBlob);
-            allFolderDownloadedCount++;
-            console.log('✅ IMPROVED Co-Applicant PDF created and added to ZIP');
-          } else {
-            console.error('❌ Failed to generate Co-Applicant PDF');
+            const fn = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
+            await writeFileToDir(formsDir, fn, coApplicantBlob);
+            await writeFileToDir(allDir, fn, coApplicantBlob);
           }
-        } catch (error) {
-          console.error('❌ IMPROVED Co-Applicant PDF creation failed:', error);
-          console.error('❌ Error stack:', error.stack);
-        }
-        
-        console.log('🔒 GUARANTEED PDF GENERATION COMPLETED!');
-        console.log('📊 Total PDFs added to forms folder:', allFolderDownloadedCount);
-        
-      } else {
-        console.error('❌ No lead data available - cannot generate form PDFs');
-        console.log('📋 leadData prop:', leadData);
-        console.log('📋 leadId:', leadId);
+        } catch (e) { console.error('Co-Applicant PDF failed:', e); }
       }
-      
+
+      // ─── Download each document from server ───
+      // Organize by type for subfolders
+      const documentsByType = {};
+      uploadedDocuments.forEach(doc => {
+        const type = doc.document_type || 'Other';
+        if (!documentsByType[type]) documentsByType[type] = [];
+        documentsByType[type].push(doc);
+      });
+
       for (const doc of uploadedDocuments) {
         try {
-          // Fetch the file from the server
           const response = await fetch(
             `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-              }
-            }
+            { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
           );
-
           if (response.ok) {
             const blob = await response.blob();
             const filename = doc.filename || doc.file_name || `document_${doc._id}`;
-            
-            // Add file directly to "All" folder without any subfolders
-            allFolder.file(filename, blob);
-            allFolderDownloadedCount++;
-          }
-        } catch (error) {
-          console.error(`Error downloading ${doc.filename || doc._id} for All folder:`, error);
-        }
+            // Write to "All" folder
+            await writeFileToDir(allDir, filename, blob);
+            downloadedCount++;
+          } else { failedCount++; }
+        } catch (e) { failedCount++; console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
       }
 
-      // Download each document and add to ZIP (organized by type)
+      // Also write into type-organized subfolders
       for (const [docType, docs] of Object.entries(documentsByType)) {
-        const folder = zip.folder(docType);
-        
+        const typeDir = await getSubDir(rootDir, docType);
         for (const doc of docs) {
           try {
-            // Fetch the file from the server
             const response = await fetch(
               `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-              }
+              { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
             );
-
             if (response.ok) {
               const blob = await response.blob();
               const filename = doc.filename || doc.file_name || `document_${doc._id}`;
-              
-              // Add file to the appropriate folder in ZIP
-              folder.file(filename, blob);
-              downloadedCount++;
-
-              // If the document has a password, add it to password info
+              await writeFileToDir(typeDir, filename, blob);
               if (doc.has_password) {
                 const password = getDocumentPassword(doc);
-                passwordInfo.push({
-                  folder: docType,
-                  filename: filename,
-                  password: password && !password.includes("not available") ? password : "Password not available"
-                });
+                passwordInfo.push({ folder: docType, filename, password: password && !password.includes("not available") ? password : "Password not available" });
               }
-            } else {
-              console.error(`Failed to download ${doc.filename || doc._id}`);
-              failedCount++;
             }
-          } catch (error) {
-            console.error(`Error downloading ${doc.filename || doc._id}:`, error);
-            failedCount++;
-          }
+          } catch (e) { console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
         }
       }
 
-      // Create password information file if there are password-protected files
+      // Write PASSWORDS.txt if needed
       if (passwordInfo.length > 0) {
-        let passwordText = "PASSWORD INFORMATION FOR DOWNLOADED FILES\n";
-        passwordText += "=" + "=".repeat(45) + "\n\n";
+        let passwordText = "PASSWORD INFORMATION FOR DOWNLOADED FILES\n" + "=".repeat(46) + "\n\n";
         passwordText += `Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}\n`;
         passwordText += `Lead ID: ${leadId}\n\n`;
-        
-        // Group by folder
         const passwordsByFolder = {};
-        passwordInfo.forEach(info => {
-          if (!passwordsByFolder[info.folder]) {
-            passwordsByFolder[info.folder] = [];
-          }
-          passwordsByFolder[info.folder].push(info);
-        });
-
+        passwordInfo.forEach(info => { if (!passwordsByFolder[info.folder]) passwordsByFolder[info.folder] = []; passwordsByFolder[info.folder].push(info); });
         Object.entries(passwordsByFolder).forEach(([folder, files]) => {
-          passwordText += `${folder}:\n`;
-          passwordText += "-".repeat(folder.length + 1) + "\n";
-          files.forEach(file => {
-            passwordText += `• ${file.filename}\n`;
-            passwordText += `  Password: ${file.password}\n\n`;
-          });
+          passwordText += `${folder}:\n` + "-".repeat(folder.length + 1) + "\n";
+          files.forEach(f => { passwordText += `• ${f.filename}\n  Password: ${f.password}\n\n`; });
           passwordText += "\n";
         });
-
-        passwordText += "\nIMPORTANT NOTES:\n";
-        passwordText += "- Keep this file secure and delete it after use\n";
-        passwordText += "- Some documents may not require passwords despite being listed\n";
-        passwordText += "- If 'Password not available' is shown, the file might not be password protected\n";
-
-        // Add password file to the root of the ZIP
-        zip.file("PASSWORDS.txt", passwordText);
+        passwordText += "\nIMPORTANT NOTES:\n- Keep this file secure and delete it after use\n- If 'Password not available' is shown, the file might not be password protected\n";
+        const pwBlob = new Blob([passwordText], { type: 'text/plain' });
+        await writeFileToDir(rootDir, 'PASSWORDS.txt', pwBlob);
       }
 
-      // Generate and download the ZIP file
       if (downloadedCount > 0) {
-        console.log('📦 Final ZIP structure before generation:', {
-          totalDownloadedCount: downloadedCount,
-          allFolderDownloadedCount: allFolderDownloadedCount,
-          zipFolders: Object.keys(zip.files)
-        });
-        const zipBlob = await zip.generateAsync({ type: "blob" });
-        const zipFilename = `Lead_${leadId}_Documents_${getISTDateYMD()}.zip`;
-        saveAs(zipBlob, zipFilename);
-
-        let successMessage = `Successfully downloaded ${downloadedCount} file(s) as ZIP archive.`;
-        if (allFolderDownloadedCount > 0) {
-          successMessage += ` Includes "All" folder with ${allFolderDownloadedCount} files.`;
-        }
-        if (passwordInfo.length > 0) {
-          successMessage += ` Password information is included in PASSWORDS.txt file.`;
-        }
-        if (failedCount > 0) {
-          successMessage += ` ${failedCount} file(s) failed to download.`;
-        }
-        
-        showNotification(successMessage, 'success');
+        let msg = `Successfully saved ${downloadedCount} file(s) to "${folderName}" folder.`;
+        if (failedCount > 0) msg += ` ${failedCount} file(s) failed.`;
+        if (passwordInfo.length > 0) msg += ` Password info saved in PASSWORDS.txt.`;
+        showNotification(msg, 'success');
       } else {
         showNotification('No files could be downloaded', 'error');
       }
 
+    } catch (error) {
+      console.error('Error downloading files:', error);
+      showNotification('Failed to download files: ' + error.message, 'error');
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
+  // Fallback: download as ZIP when File System Access API is not available
+  const _downloadAsZip = async (currentLeadData, folderName) => {
+    try {
+      const zip = new JSZip();
+      if (!zip || typeof zip.file !== 'function') throw new Error('JSZip instance is invalid');
+
+      const passwordInfo = [];
+      let downloadedCount = 0;
+      let failedCount = 0;
+
+      const documentsByType = {};
+      uploadedDocuments.forEach(doc => {
+        const type = doc.document_type || 'Other';
+        if (!documentsByType[type]) documentsByType[type] = [];
+        documentsByType[type].push(doc);
+      });
+
+      const allFolder = zip.folder("All");
+      let allFolderDownloadedCount = 0;
+
+      if (currentLeadData && currentLeadData._id) {
+        const formsFolder = allFolder.folder("Applicant and Co-Applicant Form");
+
+        try {
+          const applicantFormData = currentLeadData.dynamic_fields?.applicant_form || currentLeadData.loginForm || {};
+          const allAvailableApplicantData = {
+            customerName: currentLeadData.first_name || currentLeadData.customer_name || '',
+            mobileNumber: currentLeadData.mobile || currentLeadData.phone || '',
+            personalEmail: currentLeadData.email || '',
+            ...currentLeadData.dynamic_fields?.applicant_form,
+            ...currentLeadData.loginForm,
+            ...applicantFormData,
+            alternateNumber: currentLeadData.alternative_phone || currentLeadData.alternate_phone,
+            ...Object.keys(currentLeadData)
+              .filter(key => !['dynamic_fields', 'loginForm', '_id', '__v', 'created_at', 'updated_at'].includes(key))
+              .reduce((acc, key) => { const v = currentLeadData[key]; if (v && typeof v !== 'object') acc[key] = v; return acc; }, {})
+          };
+          const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
+          if (applicantBlob) {
+            const fn = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
+            formsFolder.file(fn, applicantBlob);
+            allFolder.file(fn, applicantBlob);
+            allFolderDownloadedCount++;
+          }
+        } catch (e) { console.error('Applicant PDF failed:', e); }
+
+        try {
+          const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || currentLeadData.coApplicantForm || {};
+          const allCoApplicantData = { ...currentLeadData.dynamic_fields?.co_applicant_form, ...currentLeadData.coApplicantForm, ...coApplicantFormData };
+          const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
+          if (coApplicantBlob) {
+            const fn = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
+            formsFolder.file(fn, coApplicantBlob);
+            allFolder.file(fn, coApplicantBlob);
+            allFolderDownloadedCount++;
+          }
+        } catch (e) { console.error('Co-Applicant PDF failed:', e); }
+      }
+
+      for (const doc of uploadedDocuments) {
+        try {
+          const response = await fetch(
+            `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
+            { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
+          );
+          if (response.ok) {
+            const blob = await response.blob();
+            const filename = doc.filename || doc.file_name || `document_${doc._id}`;
+            allFolder.file(filename, blob);
+            allFolderDownloadedCount++;
+          }
+        } catch (e) { console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
+      }
+
+      for (const [docType, docs] of Object.entries(documentsByType)) {
+        const folder = zip.folder(docType);
+        for (const doc of docs) {
+          try {
+            const response = await fetch(
+              `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
+              { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
+            );
+            if (response.ok) {
+              const blob = await response.blob();
+              const filename = doc.filename || doc.file_name || `document_${doc._id}`;
+              folder.file(filename, blob);
+              downloadedCount++;
+              if (doc.has_password) {
+                const password = getDocumentPassword(doc);
+                passwordInfo.push({ folder: docType, filename, password: password && !password.includes("not available") ? password : "Password not available" });
+              }
+            } else { failedCount++; }
+          } catch (e) { failedCount++; }
+        }
+      }
+
+      if (passwordInfo.length > 0) {
+        let passwordText = "PASSWORD INFORMATION FOR DOWNLOADED FILES\n" + "=".repeat(46) + "\n\n";
+        passwordText += `Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}\n`;
+        passwordText += `Lead ID: ${leadId}\n\n`;
+        const passwordsByFolder = {};
+        passwordInfo.forEach(info => { if (!passwordsByFolder[info.folder]) passwordsByFolder[info.folder] = []; passwordsByFolder[info.folder].push(info); });
+        Object.entries(passwordsByFolder).forEach(([folder, files]) => {
+          passwordText += `${folder}:\n` + "-".repeat(folder.length + 1) + "\n";
+          files.forEach(f => { passwordText += `• ${f.filename}\n  Password: ${f.password}\n\n`; });
+          passwordText += "\n";
+        });
+        passwordText += "\nIMPORTANT NOTES:\n- Keep this file secure and delete it after use\n- If 'Password not available' is shown, the file might not be password protected\n";
+        zip.file("PASSWORDS.txt", passwordText);
+      }
+
+      if (downloadedCount > 0 || allFolderDownloadedCount > 0) {
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        saveAs(zipBlob, `${folderName}.zip`);
+        let msg = `Successfully downloaded ${downloadedCount} file(s).`;
+        if (failedCount > 0) msg += ` ${failedCount} file(s) failed.`;
+        showNotification(msg, 'success');
+      } else {
+        showNotification('No files could be downloaded', 'error');
+      }
     } catch (error) {
       console.error('Error creating ZIP file:', error);
       showNotification('Failed to create download archive: ' + error.message, 'error');
@@ -1851,13 +1963,22 @@ export default function Attachments({ leadId, userId }) {
     );
   }
 
-  // active types + historical types that have uploaded files
+  // active types + historical types that have uploaded files + extra (per-lead) doc fields
   const allDisplayTypes = [
-    ...attachmentTypes.map(t => ({ ...t, isHistorical: false })),
+    ...attachmentTypes.map(t => ({ ...t, isHistorical: false, isExtra: false })),
     ...historicalAttachmentTypes
       .filter(t => !attachmentTypes.some(a => a.name === t.name))
       .filter(t => getProfileDocs(uploadedDocuments.filter(d => d.document_type === t.name)).length > 0)
-      .map(t => ({ ...t, isHistorical: true }))
+      .map(t => ({ ...t, isHistorical: true, isExtra: false })),
+    ...extraDocFields.map(f => ({
+      id: f.id,
+      _id: f.id,
+      name: f.name,
+      description: null,
+      isHistorical: false,
+      isExtra: true,
+      category_id: f.category_id || 'other',
+    })),
   ];
 
   // ── render ────────────────────────────────────────────────────
@@ -1931,10 +2052,37 @@ export default function Attachments({ leadId, userId }) {
           const grouped = DOCUMENT_CATEGORIES.map(cat => ({
             ...cat,
             types: allDisplayTypes.filter(t =>
-              cat.keywords.some(kw => t.name.toLowerCase().includes(kw))
+              // Extra fields: match by stored category_id
+              (t.isExtra && t.category_id === cat.id) ||
+              // Normal fields: match by stored category field first, then keyword fallback
+              (!t.isExtra && (
+                (t.category && t.category.trim().toUpperCase() === cat.title) ||
+                (!t.category && cat.keywords.some(kw => t.name.toLowerCase().includes(kw)))
+              ))
             ),
           })).filter(cat => cat.types.length > 0);
+
           const matchedNames = new Set(grouped.flatMap(g => g.types.map(t => t.name)));
+          const knownTitles = new Set(DOCUMENT_CATEGORIES.map(c => c.title));
+
+          // Dynamic groups for custom categories added in Settings (not in hardcoded DOCUMENT_CATEGORIES)
+          const customCatMap = new Map();
+          allDisplayTypes.forEach(t => {
+            if (matchedNames.has(t.name)) return;
+            if (!t.isExtra && t.category) {
+              const key = t.category.trim().toUpperCase();
+              if (!knownTitles.has(key)) {
+                if (!customCatMap.has(key)) {
+                  customCatMap.set(key, { id: key.toLowerCase().replace(/\W+/g, '_'), title: key, types: [] });
+                }
+                customCatMap.get(key).types.push(t);
+                matchedNames.add(t.name);
+              }
+            }
+          });
+          customCatMap.forEach(g => grouped.push(g));
+
+          // 'other' group: remaining unmatched
           const otherTypes = allDisplayTypes.filter(t => !matchedNames.has(t.name));
           if (otherTypes.length > 0) grouped.push({ id: 'other', title: 'OTHER DOCUMENTS', types: otherTypes });
 
@@ -1945,6 +2093,7 @@ export default function Attachments({ leadId, userId }) {
               </div>
               <div className="space-y-2.5">
                 {cat.types.map((attachmentType) => {
+
             const key = attachmentType.name.toLowerCase().replace(/\s+/g, '_');
             const inputRef = dynamicRefs[key];
             const password = dynamicPasswords[key] || '';
@@ -1958,20 +2107,34 @@ export default function Attachments({ leadId, userId }) {
             return (
               <div
                 key={attachmentType.id || attachmentType._id}
-                className="bg-white border border-gray-200 rounded-lg p-2 flex flex-col md:flex-row gap-2.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm"
+                className={`bg-white border rounded-lg p-2 flex flex-col md:flex-row gap-2.5 items-start md:items-stretch shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors hover:border-gray-300 relative group/docrow hover:shadow-sm ${attachmentType.isExtra ? 'border-violet-200 bg-violet-50/40' : 'border-gray-200'}`}
               >
+                {/* ── EXTRA: top-right × remove button ── */}
+                {attachmentType.isExtra && (
+                  <button
+                    onClick={() => handleDeleteExtraDocField(attachmentType.id || attachmentType._id, attachmentType.name)}
+                    className="absolute top-1 right-1 z-10 w-5 h-5 flex items-center justify-center rounded-full bg-red-100 hover:bg-red-500 text-red-500 hover:text-white text-[10px] font-black transition shadow-sm"
+                    title="Remove this extra document field"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                )}
                 {/* ── LEFT: doc label ── */}
                 <div className="w-full md:w-1/4 lg:w-1/5 shrink-0 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded bg-[#eff6ff] text-[#2563eb] flex items-center justify-center text-sm shrink-0">
-                    <i className="fa-solid fa-file-invoice"></i>
+                  <div className={`w-8 h-8 rounded flex items-center justify-center text-sm shrink-0 ${attachmentType.isExtra ? 'bg-violet-100 text-violet-600' : 'bg-[#eff6ff] text-[#2563eb]'}`}>
+                    <i className={`fa-solid ${attachmentType.isExtra ? 'fa-file-circle-plus' : 'fa-file-invoice'}`}></i>
                   </div>
                   <div className="pt-0.5 flex-1 min-w-0">
-                    <h4 className="font-bold text-gray-900 text-xs leading-tight pr-1 tracking-tight">
+                    <h4 className="font-bold text-gray-900 text-xs leading-tight tracking-tight">
                       {attachmentType.name.toUpperCase()}
                     </h4>
+                    {attachmentType.isExtra && (
+                      <span className="inline-flex items-center mt-0.5 px-1 py-px bg-violet-100 text-violet-700 text-[7px] font-black rounded border border-violet-300 uppercase tracking-wide">EXTRA</span>
+                    )}
                     {attachmentType.isHistorical && (
                       <span className="inline-block mt-1 px-1 py-0.5 bg-yellow-100 text-yellow-800 text-[8px] font-bold rounded">ARCHIVE</span>
                     )}
+
                     {attachmentType.description && (
                       <div className="relative mt-1">
                         <div
@@ -2170,11 +2333,11 @@ export default function Attachments({ leadId, userId }) {
                       ref={inputRef}
                       onChange={handleFileChange(key)}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
-                      disabled={isLoading}
+                      disabled={uploadingKey === key}
                       title=""
                     />
                     <button className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-2 px-2 rounded shadow-sm text-[11px] flex items-center justify-center gap-1.5 transition uppercase pointer-events-none whitespace-nowrap">
-                      {isLoading
+                      {uploadingKey === key
                         ? <><i className="fa-solid fa-spinner fa-spin"></i> Uploading…</>
                         : <><i className="fa-solid fa-cloud-arrow-up"></i> Attach</>
                       }
@@ -2184,6 +2347,51 @@ export default function Attachments({ leadId, userId }) {
               </div>
             );
           })}
+
+              {/* ── Add Extra Document button for this category ── */}
+              <div className="mt-2 flex flex-col items-end gap-2">
+                {showAddExtraForm === cat.id ? (
+                  <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gray-50 border border-gray-300 rounded-xl shadow-sm">
+                    <div className="flex-1">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={newExtraDocName}
+                        onChange={e => setNewExtraDocName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleAddExtraDocField(); }
+                          else if (e.key === 'Escape') { setShowAddExtraForm(null); setNewExtraDocName(''); }
+                        }}
+                        placeholder="Enter document field name…"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-gray-500 placeholder-gray-400"
+                      />
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={handleAddExtraDocField}
+                        disabled={addingExtraDoc || !newExtraDocName.trim()}
+                        className="flex-1 sm:flex-none bg-black hover:bg-gray-800 disabled:opacity-50 text-white font-black text-xs px-4 py-2 rounded-lg transition flex items-center gap-1.5"
+                      >
+                        {addingExtraDoc ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving…</> : <><i className="fa-solid fa-check"></i> Save</>}
+                      </button>
+                      <button
+                        onClick={() => { setShowAddExtraForm(null); setNewExtraDocName(''); }}
+                        className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 py-2 rounded-lg transition flex items-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-xmark"></i> Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setShowAddExtraForm(cat.id); setNewExtraDocName(''); }}
+                    className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white font-black text-xs px-4 py-2 rounded-xl shadow-sm transition"
+                  >
+                    <i className="fa-solid fa-circle-plus"></i>
+                    Add Extra Document
+                  </button>
+                )}
+              </div>
               </div>
             </div>
           ));
@@ -2233,7 +2441,7 @@ export default function Attachments({ leadId, userId }) {
               <div className="relative">
                 <input
                   autoFocus
-                  type={showPdfPwdVisible ? 'text' : 'password'}
+                  type="text"
                   value={pdfPasswordInput}
                   onChange={e => setPdfPasswordInput(e.target.value)}
                   onKeyDown={e => {
@@ -2250,16 +2458,9 @@ export default function Attachments({ leadId, userId }) {
                     }
                   }}
                   placeholder="Enter PDF password..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-9 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  style={{ color: '#111827', WebkitTextFillColor: '#111827', backgroundColor: '#ffffff' }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPdfPwdVisible(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  tabIndex={-1}
-                >
-                  <i className={`fa-solid ${showPdfPwdVisible ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
-                </button>
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5">
                 <i className="fa-solid fa-circle-info mr-1"></i>
