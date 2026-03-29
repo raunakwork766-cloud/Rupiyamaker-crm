@@ -2576,3 +2576,51 @@ async def get_reassignment_approvers_for_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching reassignment approvers: {str(e)}"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backfill: apply consecutive-absent → absconding rule on historical data
+# ─────────────────────────────────────────────────────────────────────────────
+@router.post("/settings/absconding-backfill")
+async def trigger_absconding_backfill(
+    from_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD (optional)"),
+    to_date:   Optional[str] = Query(None, description="End date YYYY-MM-DD (optional)"),
+    user_id: str = Query(...),
+):
+    """
+    One-time backfill: apply the consecutive-absent→absconding rule to all
+    historical absent records.  Only superadmin can trigger this.
+    """
+    try:
+        users_db, settings_db = await _get_db()
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+        role = (user.get("role_name") or user.get("role") or "").lower()
+        # Also allow if user has a superadmin role_id (roles collection check)
+        if role not in ("superadmin", "admin", "super_admin"):
+            # Check via roles collection
+            role_id = user.get("role_id")
+            if role_id:
+                roles_db = get_database_instances().get("roles")
+                if roles_db:
+                    role_doc = await roles_db.collection.find_one({"_id": ObjectId(str(role_id))})
+                    if role_doc:
+                        role = (role_doc.get("role_name") or role_doc.get("name") or "").lower()
+            if role not in ("superadmin", "admin", "super_admin"):
+                raise HTTPException(status_code=403, detail="Only superadmin can run backfill")
+
+        from datetime import date as date_type
+        fd = date_type.fromisoformat(from_date) if from_date else None
+        td = date_type.fromisoformat(to_date)   if to_date   else None
+
+        from app.utils.attendance_auto_absent import run_historical_absconding_backfill
+        result = await run_historical_absconding_backfill(from_date=fd, to_date=td)
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Backfill error: {str(e)}"
+        )
