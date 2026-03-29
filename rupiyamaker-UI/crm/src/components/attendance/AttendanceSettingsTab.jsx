@@ -36,6 +36,8 @@ const AttendanceSettingsTab = ({ userId }) => {
     // Leave & Absconding Rules (New)
     pending_leave_auto_convert_days: 3, // Convert to absconding after 3 days
     absconding_penalty: -1, // Count as -1 day
+    enable_consecutive_absent_absconding: true,
+    consecutive_absent_absconding_days: 3,
     
     // Sunday & Sandwich Rules (New)
     enable_sunday_sandwich_rule: true,
@@ -498,6 +500,26 @@ const AttendanceSettingsTab = ({ userId }) => {
                 <InfoBox type="error">
                   Leave not approved for <strong>{settings.pending_leave_auto_convert_days} days</strong> → Auto Absconding (-1). Manager can still approve to convert back.
                 </InfoBox>
+                <div className="border-t border-gray-100 pt-3 space-y-3">
+                  <Toggle
+                    label="Consecutive Absent → Absconding"
+                    desc="Auto-convert consecutive absent days (Mon–Sat) without approved leave to Absconding"
+                    field="enable_consecutive_absent_absconding"
+                    value={settings.enable_consecutive_absent_absconding ?? true}
+                    color="red"
+                  />
+                  <NumberInput
+                    label="Consecutive Absent Threshold"
+                    hint="days"
+                    field="consecutive_absent_absconding_days"
+                    value={settings.consecutive_absent_absconding_days ?? 3}
+                    min={2} max={7}
+                    disabled={!settings.enable_consecutive_absent_absconding}
+                  />
+                  <InfoBox type="warning">
+                    <strong>{settings.consecutive_absent_absconding_days ?? 3}+ consecutive absent days</strong> (Mon–Sat) without approved leave → auto-marked as <strong>Absconding</strong> by scheduler.
+                  </InfoBox>
+                </div>
               </div>
             </SectionCard>
 

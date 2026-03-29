@@ -97,6 +97,8 @@ class AttendanceSettings(BaseModel):
     # Sunday Sandwich Rule
     enable_sunday_sandwich_rule: bool = Field(True, description="Enable Sunday sandwich rule")
     enable_adjacent_absconding_rule: bool = Field(True, description="Saturday AB → next Sunday absent; Monday AB → prev Saturday absent")
+    enable_consecutive_absent_absconding: bool = Field(True, description="Auto-convert to absconding after N consecutive absent days without approved leave")
+    consecutive_absent_absconding_days: int = Field(3, description="Number of consecutive absent days (Mon-Sat) to trigger absconding")
     minimum_working_days_for_sunday: int = Field(5, description="Minimum working days (Mon-Sat) to keep Sunday as holiday")
     
     # Legacy fields (for backwards compatibility)
@@ -138,6 +140,8 @@ class AttendanceSettingsUpdate(BaseModel):
     absconding_penalty: Optional[int] = Field(None, description="Absconding penalty")
     enable_sunday_sandwich_rule: Optional[bool] = Field(None, description="Enable Sunday sandwich rule")
     enable_adjacent_absconding_rule: Optional[bool] = Field(None, description="Adjacent absconding rule")
+    enable_consecutive_absent_absconding: Optional[bool] = Field(None, description="Enable consecutive absent absconding rule")
+    consecutive_absent_absconding_days: Optional[int] = Field(None, description="Days for consecutive absent absconding")
     minimum_working_days_for_sunday: Optional[int] = Field(None, description="Minimum working days for Sunday")
     
     # Legacy fields
