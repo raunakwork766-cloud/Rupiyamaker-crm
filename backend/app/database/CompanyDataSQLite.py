@@ -93,6 +93,12 @@ class CompanyDataSQLite:
                 )
             """)
     
+    def get_count(self) -> int:
+        """Get total active record count - INSTANT"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT COUNT(*) FROM companies WHERE is_active = 1")
+            return cursor.fetchone()[0]
+
     def get_all(self, limit: int = None, offset: int = 0) -> List[Dict[str, Any]]:
         """Get all records with pagination - FAST"""
         with sqlite3.connect(self.db_path) as conn:
@@ -555,79 +561,68 @@ class CompanyDataSQLite:
             """)
             banks = [row[0] for row in cursor.fetchall()]
             return banks
+
+    def get_bank_stats(self) -> List[dict]:
+        """Get per-bank stats: name, count, last_updated"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT bank, COUNT(*) as count, MAX(updated_at) as last_updated
+                FROM companies
+                WHERE is_active = 1 AND bank != ''
+                GROUP BY bank
+                ORDER BY bank
+            """)
+            stats = [
+                {"bank_name": row[0], "count": row[1], "last_updated": row[2]}
+                for row in cursor.fetchall()
+            ]
+            return stats
     
     def delete_by_bank(self, bank_name: str) -> Dict[str, Any]:
-        """Delete all companies associated with a specific bank"""
-        with sqlite3.connect(self.db_path) as conn:
+        """Permanently delete all companies for a specific bank"""
+        with sqlite3.connect(self.db_path, timeout=30) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
-                conn.execute("BEGIN TRANSACTION")
-                
-                # First, get count of companies to be deleted
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM companies 
-                    WHERE is_active = 1 AND (
-                        bank = ? OR 
-                        bank_names LIKE '%"' || ? || '"%'
-                    )
-                """, (bank_name, bank_name))
+                # Count records to be deleted
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM companies WHERE bank = ?",
+                    (bank_name,)
+                )
                 count_to_delete = cursor.fetchone()[0]
-                
+
                 if count_to_delete == 0:
-                    conn.execute("ROLLBACK")
                     return {
-                        'success': True,
+                        'success': False,
                         'deleted': 0,
                         'deleted_count': 0,
                         'remaining': 0,
                         'message': f'No companies found for bank: {bank_name}'
                     }
-                
-                # Get IDs of companies to be deleted for FTS cleanup
-                cursor = conn.execute("""
-                    SELECT id FROM companies 
-                    WHERE is_active = 1 AND (
-                        bank = ? OR 
-                        bank_names LIKE '%"' || ? || '"%'
-                    )
-                """, (bank_name, bank_name))
-                company_ids = [row[0] for row in cursor.fetchall()]
-                
-                # Soft delete companies (set is_active = 0)
-                cursor = conn.execute("""
-                    UPDATE companies 
-                    SET is_active = 0, updated_at = ?
-                    WHERE is_active = 1 AND (
-                        bank = ? OR 
-                        bank_names LIKE '%"' || ? || '"%'
-                    )
-                """, (get_ist_now().isoformat(), bank_name, bank_name))
-                
-                # Remove from FTS index
-                for company_id in company_ids:
-                    conn.execute("DELETE FROM companies_fts WHERE id = ?", (company_id,))
-                
-                conn.execute("COMMIT")
-                
-                # Get remaining count for this bank
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM companies 
-                    WHERE is_active = 1 AND (
-                        bank = ? OR 
-                        bank_names LIKE '%"' || ? || '"%'
-                    )
-                """, (bank_name, bank_name))
-                remaining_count = cursor.fetchone()[0]
-                
+
+                # Clean FTS index first (single bulk delete instead of per-row loop)
+                conn.execute(
+                    "DELETE FROM companies_fts WHERE id IN (SELECT id FROM companies WHERE bank = ?)",
+                    (bank_name,)
+                )
+
+                # Hard delete
+                conn.execute(
+                    "DELETE FROM companies WHERE bank = ?",
+                    (bank_name,)
+                )
+                conn.commit()
+
                 return {
                     'success': True,
                     'deleted': count_to_delete,
                     'deleted_count': count_to_delete,
-                    'remaining': remaining_count,
+                    'remaining': 0,
                     'message': f'Successfully deleted {count_to_delete} companies for bank: {bank_name}'
                 }
-                
+
             except Exception as e:
-                conn.execute("ROLLBACK")
+                conn.rollback()
                 return {
                     'success': False,
                     'deleted': 0,

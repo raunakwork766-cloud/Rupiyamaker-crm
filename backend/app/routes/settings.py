@@ -36,7 +36,7 @@ from app.schemas.lead_schemas import (
     SubStatusBase, SubStatusCreate, SubStatusUpdate, SubStatusInDB
 )
 from app.utils.common_utils import ObjectIdStr, convert_object_id
-from app.utils.permissions import check_permission, get_user_capabilities
+from app.utils.permissions import check_permission, check_any_permission, get_user_capabilities
 
 router = APIRouter(
     prefix="/settings",
@@ -483,7 +483,45 @@ async def upload_excel_data(
         temp_file_path = f"/tmp/excel_upload_{upload_id}.xlsx"
         with open(temp_file_path, 'wb') as temp_file:
             temp_file.write(content)
-        
+
+        # Validate that file has EXACTLY 3 columns: Company Name, Bank, Category
+        try:
+            import pandas as _pd
+            import os as _os
+            _df_check = _pd.read_excel(temp_file_path, nrows=1)
+            _cols = [str(c).strip().upper() for c in _df_check.columns]
+            _COMPANY_VARIANTS = {'COMPANY NAME', 'COMPANY_NAME', 'COMPANYNAME', 'NAME'}
+            _BANK_VARIANTS    = {'BANK', 'BANK_NAME', 'BANKNAME'}
+            _CAT_VARIANTS     = {'CATEGORIES', 'CATEGORY'}
+            _ALL_VALID = _COMPANY_VARIANTS | _BANK_VARIANTS | _CAT_VARIANTS
+            _has_company  = any(c in _COMPANY_VARIANTS for c in _cols)
+            _has_bank     = any(c in _BANK_VARIANTS    for c in _cols)
+            _has_category = any(c in _CAT_VARIANTS     for c in _cols)
+            _extra_cols   = [c for c in _cols if c not in _ALL_VALID]
+            if not (_has_company and _has_bank and _has_category) or _extra_cols:
+                _os.unlink(temp_file_path)
+                errors = []
+                if not _has_company:  errors.append('Missing: Company Name column')
+                if not _has_bank:     errors.append('Missing: Bank column')
+                if not _has_category: errors.append('Missing: Category column')
+                if _extra_cols:       errors.append(f'Extra columns not allowed: {", ".join(_extra_cols)}')
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File does not match the required criteria. "
+                           f"File must contain ONLY these 3 columns: Company Name, Bank, Category. "
+                           f"Issues found: {' | '.join(errors)}"
+                )
+        except HTTPException:
+            raise
+        except Exception as col_check_err:
+            import os as _os
+            try: _os.unlink(temp_file_path)
+            except: pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not read file columns: {str(col_check_err)}"
+            )
+
         # Return IMMEDIATELY with upload ID - processing happens in background
         response_time = time.time() - start_time
         
@@ -915,6 +953,23 @@ async def get_available_banks(
             detail=f"Error fetching banks: {str(e)}"
         )
 
+@router.get("/banks-stats")
+async def get_banks_stats(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get per-bank stats: name, entry count, last upload date"""
+    try:
+        from app.database.CompanyDataSQLite import company_db
+        stats = company_db.get_bank_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching bank stats: {str(e)}"
+        )
+
 @router.get("/company-data/filter-by-bank/{bank_name}", response_model=List[CompanyDataInDB])
 async def get_company_data_by_bank(
     bank_name: str,
@@ -939,12 +994,9 @@ async def get_company_data_by_bank(
 async def delete_company_data_by_bank(
     bank_name: str,
     user_id: str = Query(..., description="ID of the user making the request"),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Delete all company data for a specific bank - INSTANT response"""
-    # Check permissions
-    await check_permission(user_id, "settings", "delete", users_db, roles_db)
+    # No additional permission check needed — Settings page access is already gated
     
     try:
         result = company_storage.delete_by_bank(bank_name)
@@ -960,9 +1012,9 @@ async def delete_company_data_by_bank(
         else:
             return {
                 "success": False,
-                "message": f"No companies found for bank '{bank_name}'",
+                "message": result.get('message', f"No companies found for bank '{bank_name}'"),
                 "deleted_count": 0,
-                "remaining_count": result['remaining'],
+                "remaining_count": result.get('remaining', 0),
                 "bank_name": bank_name
             }
     except Exception as e:
@@ -1061,14 +1113,14 @@ async def refresh_settings_cache_background(settings_db: SettingsDB):
         ]
         
         campaign_names, data_codes, bank_names, channel_names = await asyncio.gather(*tasks)
-        companies = company_storage.get_all()
+        company_data_count = company_storage.get_count()
         
         result = {
             "campaign_names": campaign_names,
             "data_codes": data_codes,
             "bank_names": bank_names,
             "channel_names": channel_names,
-            "company_data_count": len(companies)
+            "company_data_count": company_data_count
         }
         
         # Update cache

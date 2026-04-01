@@ -2373,6 +2373,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
 
 export default function MonthlyAttendanceTable() {
   const _ist = getISTToday()
+
   const [pageTab, setPageTab] = useState('attendance') // 'attendance' | 'leave'
   const [selectedYear, setSelectedYear] = useState(_ist.year)
   const [selectedMonth, setSelectedMonth] = useState(_ist.month)
@@ -2397,6 +2398,7 @@ export default function MonthlyAttendanceTable() {
     default_earned_leave_monthly: 1.5,
     default_paid_leave_monthly: 1.0,
   })
+
   const [salaryModalOpen, setSalaryModalOpen] = useState(false)
   const [selectedSalaryData, setSelectedSalaryData] = useState(null)
   const [monthlyLeaves, setMonthlyLeaves] = useState([])
@@ -2564,6 +2566,14 @@ export default function MonthlyAttendanceTable() {
   // Simplified permission checking using new 3-type system
   const permissionLevel = getPermissionLevel('attendance');
   const currentUserId = getCurrentUserId();
+
+  // Leave Management tab visibility
+  const canShowLeaveManagement = (() => {
+    const userPermissions = getUserPermissions();
+    if (isSuperAdmin(userPermissions)) return true;
+    return hasPermission(userPermissions, 'leave_management', 'show') ||
+           hasPermission(userPermissions, 'leaves', 'show');
+  })();
   
   // Permission check functions  
   const canUserViewAll = () => canViewAll('attendance');
@@ -3370,12 +3380,14 @@ export default function MonthlyAttendanceTable() {
             >
               📅 Attendance
             </button>
-            <button
-              onClick={() => setPageTab('leave')}
-              style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='leave'?'#10b981':'transparent',color:pageTab==='leave'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
-            >
-              📋 Leave Management
-            </button>
+            {canShowLeaveManagement && (
+              <button
+                onClick={() => setPageTab('leave')}
+                style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='leave'?'#10b981':'transparent',color:pageTab==='leave'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
+              >
+                📋 Leave Management
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -3741,14 +3753,25 @@ export default function MonthlyAttendanceTable() {
                       // Sunday → solid purple column, Holiday → cyan tint, Normal → black
                       const cellBg = isSundayDay ? '#2e1065' : isHolidayDay ? 'rgba(6,182,212,0.12)' : '#000000'
                       const cellBorder = isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
-                      
+
+                      // Compute todayKey fresh each render — avoids ANY stale-closure/hook issues
+                      const _ist = getISTToday()
+                      const todayKey = `${_ist.year}-${String(_ist.month).padStart(2,'0')}-${String(_ist.day).padStart(2,'0')}`
+
+                      // Rule: blank cell on today or any past working date → show Absent ("0")
+                      // Sundays, holidays, and cells with an existing leave status are untouched.
+                      let cellStatus = record[`day${day}`]
+                      if (!cellStatus && !isSundayDay && !isHolidayDay && !leaveStatus && dateKey <= todayKey) {
+                        cellStatus = 'A'
+                      }
+
                       return (
                         <td
                           key={day}
                           style={{textAlign:'center',cursor:'pointer',border:cellBorder,padding:'4px 2px',backgroundColor:cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
                           onClick={() => handleDayClick(record, day)}
                         >
-                          {getStatusBadge(record[`day${day}`], leaveStatus)}
+                          {getStatusBadge(cellStatus, leaveStatus)}
                         </td>
                       )
                     })}

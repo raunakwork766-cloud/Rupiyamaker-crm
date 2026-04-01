@@ -1,14 +1,20 @@
 """
 Attendance Auto-Absent Scheduler
 ---------------------------------
-Runs two jobs daily (IST):
+Runs three jobs daily (IST):
 
-1.  END-OF-DAY JOB  (triggers just after check_out_end_time, default 20:05 IST)
+1.  REPORTING-DEADLINE JOB  (triggers just after reporting_deadline, default 10:20 IST)
+    • Finds every active user who has NOT checked in yet today.
+    • Creates an absent record (-1) with flag auto_absent_late = True.
+    • If the user checks in after this, the check-in updates the record to status 0.5
+      (half day) automatically — no separate handling needed.
+
+2.  END-OF-DAY JOB  (triggers just after check_out_end_time, default 20:05 IST)
     • Finds every active user who has checked IN but NOT checked OUT today.
     • Marks their status = -1 (Absent) and sets a comment "Auto-absent: no check-out recorded".
     • Also records that checkout was missed so the UI can signal it.
 
-2.  MIDNIGHT JOB  (triggers at 00:05 IST for the PREVIOUS calendar day)
+3.  MIDNIGHT JOB  (triggers at 00:05 IST for the PREVIOUS calendar day)
     • Finds every active user who has NO attendance record at all for yesterday.
     • Skips weekends (from settings) and holidays.
     • Creates an absent record (-1) with comment "Auto-absent: did not check in".
@@ -226,6 +232,108 @@ async def run_daily_absent_job(target_date: date = None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Job 0 – Reporting-deadline: mark absent users who haven't checked in yet
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def run_reporting_deadline_absent_job():
+    """
+    Triggered just after reporting_deadline (default 10:15 IST → fires at 10:20).
+    For every active user who has NOT checked in today, creates an absent record
+    with status = -1 and flag auto_absent_late = True.
+
+    If the user checks in AFTER this job runs, the check-in endpoint will:
+      • Find the existing absent record (check_in_time is null)
+      • Update it with check-in data and set status = 0.5 (late / half day)
+      • Clear the auto_absent_late flag automatically
+    """
+    try:
+        from app.database.Attendance import AttendanceDB
+        from app.database import get_database_instances
+
+        ist_today = datetime.now(IST).date()
+        today_str = ist_today.isoformat()
+        logger.info(f"[AutoAbsent] Running reporting-deadline absent job for {today_str}")
+
+        settings = await _get_settings()
+
+        # Skip weekends
+        if await _is_weekend(ist_today, settings):
+            logger.info(f"[AutoAbsent] {today_str} is a weekend — skipping reporting-deadline job.")
+            return
+
+        # Skip holidays
+        if await _is_holiday(ist_today):
+            logger.info(f"[AutoAbsent] {today_str} is a holiday — skipping reporting-deadline job.")
+            return
+
+        db = get_database_instances()
+        attendance_db: AttendanceDB = db["attendance"]
+
+        # Get all active users
+        users = await _get_active_users()
+        if not users:
+            logger.warning("[AutoAbsent] No active users found.")
+            return
+
+        # Find users who have ALREADY checked in today
+        checked_in_cursor = attendance_db.collection.find(
+            {
+                "date": today_str,
+                "check_in_time": {"$exists": True, "$nin": [None, ""]},
+            },
+            {"user_id": 1}
+        )
+        checked_in_ids: set = set()
+        async for rec in checked_in_cursor:
+            uid = rec.get("user_id") or rec.get("employee_id")
+            if uid:
+                checked_in_ids.add(str(uid))
+
+        inserted = 0
+        for user in users:
+            uid = str(user.get("_id", ""))
+            if not uid or uid in checked_in_ids:
+                continue
+            if user.get("is_disabled") or user.get("employee_status") == "inactive":
+                continue
+
+            dept_id = user.get("department_id")
+            absent_doc = {
+                "user_id": uid,
+                "employee_id": user.get("employee_id", ""),
+                "employee_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
+                "department_id": str(dept_id) if dept_id else None,
+                "department_name": user.get("department_name", ""),
+                "date": today_str,
+                "status": -1,  # Absent
+                "check_in_time": None,
+                "check_out_time": None,
+                "total_working_hours": 0.0,
+                "comments": "Auto-absent: did not check in before reporting deadline",
+                "auto_absent_late": True,  # Flag: can still check in later (will become half-day)
+                "is_holiday": False,
+                "marked_by": "system",
+                "marked_at": datetime.now(IST),
+                "created_at": datetime.now(IST),
+                "updated_at": datetime.now(IST),
+            }
+            try:
+                # Only insert if no record already exists for this user today
+                await attendance_db.collection.update_one(
+                    {"user_id": uid, "date": today_str},
+                    {"$setOnInsert": absent_doc},
+                    upsert=True
+                )
+                inserted += 1
+            except Exception as e:
+                logger.warning(f"[AutoAbsent] Reporting-deadline: could not insert absent for user {uid}: {e}")
+
+        logger.info(f"[AutoAbsent] Reporting-deadline absent job done: {inserted} record(s) created.")
+    except Exception as e:
+        logger.error(f"[AutoAbsent] Error in reporting-deadline absent job: {e}", exc_info=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Scheduler loop
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -237,8 +345,9 @@ async def _attendance_scheduler_loop():
     Main loop that sleeps until each daily trigger time and fires the job.
 
     Trigger times (IST):
-      • End-of-day job : check_out_end_time + 5 min  (default 20:05)
-      • Midnight job   : 00:05
+      • Reporting-deadline job : reporting_deadline + 5 min  (default 10:20)
+      • End-of-day job         : check_out_end_time + 5 min  (default 20:05)
+      • Midnight job           : 00:05
     """
     global _scheduler_running
     logger.info("[AutoAbsent] Scheduler started.")
@@ -247,26 +356,35 @@ async def _attendance_scheduler_loop():
         try:
             settings = await _get_settings()
 
+            # Parse reporting_deadline from settings (default "10:15")
+            rd_str = settings.get("reporting_deadline", "10:15")
+            rd_h, rd_m = map(int, rd_str.split(":"))
+            rd_trigger_h = rd_h
+            rd_trigger_m = rd_m + 5
+            if rd_trigger_m >= 60:
+                rd_trigger_h += 1
+                rd_trigger_m -= 60
+
             # Parse check_out_end_time from settings (default "20:00")
             eod_str = settings.get("check_out_end_time", "20:00")
             eod_h, eod_m = map(int, eod_str.split(":"))
-            # Fire 5 minutes after shift end
             eod_trigger_h = eod_h
             eod_trigger_m = eod_m + 5
             if eod_trigger_m >= 60:
                 eod_trigger_h += 1
                 eod_trigger_m -= 60
 
-            # Sleep until whichever comes first: EOD job or midnight job
-            secs_eod = _seconds_until(eod_trigger_h, eod_trigger_m)
-            secs_midnight = _seconds_until(0, 5)
-
-            next_secs = min(secs_eod, secs_midnight)
-            is_eod_next = secs_eod < secs_midnight
+            # Determine which job fires next
+            secs_map = [
+                (_seconds_until(rd_trigger_h, rd_trigger_m), "reporting_deadline"),
+                (_seconds_until(eod_trigger_h, eod_trigger_m), "eod_no_checkout"),
+                (_seconds_until(0, 5), "midnight_absent"),
+            ]
+            secs_map.sort(key=lambda x: x[0])
+            next_secs, next_job = secs_map[0]
 
             logger.info(
-                f"[AutoAbsent] Next job in {next_secs/60:.1f} min "
-                f"({'EOD no-checkout' if is_eod_next else 'midnight absent'})."
+                f"[AutoAbsent] Next job in {next_secs/60:.1f} min ({next_job})."
             )
 
             # Sleep in chunks so we can respect stop requests
@@ -279,7 +397,9 @@ async def _attendance_scheduler_loop():
             if not _scheduler_running:
                 break
 
-            if is_eod_next:
+            if next_job == "reporting_deadline":
+                await run_reporting_deadline_absent_job()
+            elif next_job == "eod_no_checkout":
                 await run_missing_checkout_job()
             else:
                 await run_daily_absent_job()

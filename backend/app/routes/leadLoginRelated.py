@@ -1358,9 +1358,19 @@ async def upload_login_lead_documents(
                     _stored_password = None  # no password needed anymore
                 else:
                     if _os.path.exists(_tmp_out): _os.remove(_tmp_out)
-                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
+                    if _os.path.exists(_abs_path): _os.remove(_abs_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Wrong PDF password for file '{file.filename}'. Upload rejected."
+                    )
+            except HTTPException:
+                raise
             except Exception as _e:
-                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
+                if _os.path.exists(_abs_path): _os.remove(_abs_path)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"PDF password verification failed for '{file.filename}': {str(_e)}"
+                )
         
         # Convert path to URL for API usage
         relative_path = get_relative_media_url(file_data["file_path"])

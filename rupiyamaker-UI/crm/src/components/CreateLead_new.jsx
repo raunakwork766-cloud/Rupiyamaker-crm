@@ -266,7 +266,7 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
 
     const data = await response.json();
 
-    // Locking info is now computed by the backend (earliest lead governs all duplicates).
+    // Locking info is now computed by the backend (latest lead governs all duplicates).
     // Populate top-level convenience fields from locking_info so the rest of the UI
     // works without changes.
     if (data && data.found && data.leads && data.leads.length > 0) {
@@ -277,7 +277,7 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
       data.days_elapsed              = li.days_elapsed     ?? data.days_elapsed     ?? 0;
       data.is_manager_permission_required = li.is_manager_permission_required ?? false;
       data.reassignment_reason       = li.is_locked
-        ? `Locked for ${li.days_remaining} more day(s) (based on earliest duplicate lead)`
+        ? `Locked for ${li.days_remaining} more day(s) (based on latest duplicate lead)`
         : 'Available for transfer';
     }
 
@@ -4718,6 +4718,11 @@ function CreateLead() {
       setShowReviewModal(false);
     }
   }, [existingLeadData?.id]);
+  // Collapse duplicate list to show only latest when new duplicate check arrives
+  useEffect(() => {
+    setShowAllDuplicates(false);
+    setShowAllLoginDuplicates(false);
+  }, [allDuplicateLeads]);
 
   useEffect(() => {
     if (isAssignedLeadReadOnly && showAssignPopup) {
@@ -5133,7 +5138,7 @@ function CreateLead() {
                                   <div className="text-gray-500 text-xs mt-1">{fmtAge(displayDate)}</div>
                                   {isLockingRow && (
                                     <div className="inline-flex items-center gap-1 mt-1 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-500/30 whitespace-nowrap">
-                                      ★ EARLIEST — GOVERNS LOCK
+                                      ★ LATEST — GOVERNS LOCK
                                     </div>
                                   )}
                                 </td>
@@ -5243,20 +5248,7 @@ function CreateLead() {
                               </tr>
                             );
                           })}
-                          {/* Expand/Collapse more leads */}
-                          {leads.length > 1 && (
-                            <tr className="bg-neutral-800/30 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setShowAllDuplicates(p => !p)}>
-                              <td colSpan={colCount} className="px-5 py-2">
-                                <div className="flex items-center justify-center gap-2">
-                                  <svg className={`w-3.5 h-3.5 text-cyan-400 transition-transform ${showAllDuplicates ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                                  <span className="text-cyan-400 text-xs font-bold">
-                                    {showAllDuplicates ? 'Hide' : `Show ${leads.length - 1} more lead${leads.length - 1 > 1 ? 's' : ''}`}
-                                  </span>
-                                  <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold">{leads.length}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
+
 
                         </tbody>
                       </table>
@@ -5505,7 +5497,7 @@ function CreateLead() {
                               {otherLeads.map((lcard, li) => {
                                 const hasLogin = lcard.file_sent_to_login || lcard.bank_name;
                                 const cardDate = hasBankLogins ? (lcard.login_department_sent_date || lcard.created_at) : lcard.created_at;
-                                const isEarliest = lcard.is_locking_lead === true && leads.length > 1;
+                                const isLatest = lcard.is_locking_lead === true && leads.length > 1;
                                 return (
                                   <div
                                     key={lcard.id || li}
@@ -5515,7 +5507,7 @@ function CreateLead() {
                                     <div className="flex items-center justify-between mb-1.5">
                                       <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">#{li + 1}</span>
                                       <div className="flex items-center gap-1.5">
-                                        {isEarliest && <span className="text-[9px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full">EARLIEST</span>}
+                                        {isLatest && <span className="text-[9px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full">LATEST</span>}
                                         <svg className="w-3.5 h-3.5 text-gray-300 group-hover:text-indigo-400 transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
                                       </div>
                                     </div>

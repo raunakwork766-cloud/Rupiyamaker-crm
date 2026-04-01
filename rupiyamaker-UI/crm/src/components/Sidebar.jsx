@@ -1550,6 +1550,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                    checkPermission('warnings', 'show') ||
                    checkPermission('attendance', 'show') ||
                    checkPermission('leaves', 'show') ||
+                   checkPermission('offer_letter', 'show') ||
+                   checkPermission('Offer Letter', 'show') ||
                    isSuperAdmin(userPermissions),
       
       // Employees
@@ -1619,6 +1621,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                      checkPermission('leave', 'show') ||
                      checkPermission('hrms', 'show') ||
                      isSuperAdmin(userPermissions),
+
+      // Offer Letter - individual check for HRMS dropdown items
+      canShowOfferLetter: checkPermission('offer_letter', 'show') ||
+                          checkPermission('Offer Letter', 'show') ||
+                          checkPermission('offerLetter', 'show') ||
+                          isSuperAdmin(userPermissions),
 
       // Knowledge Base - admin always sees it, others need explicit permission
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
@@ -1855,7 +1863,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                   ...(permissions.canShowLeaves ? [{ label: "Leave", icon: icons["Leave"] }] : []),
                   ...(permissions.canShowAttendance ? [{ label: "Attendance", icon: icons["Attendance"] }] : []),
                   ...(permissions.canShowDialerReport ? [{ label: "Dialer Report", icon: icons["Dialer Report"] }] : []),
-                  ...(isSuperAdmin(userPermissions) ? [{ label: "Offer Letter", icon: icons["Offer Letter"] }] : []),
+                  ...(permissions.canShowOfferLetter ? [{ label: "Offer Letter", icon: icons["Offer Letter"] }] : []),
                 ]}
                 onItemSelect={handleSelection}
               />

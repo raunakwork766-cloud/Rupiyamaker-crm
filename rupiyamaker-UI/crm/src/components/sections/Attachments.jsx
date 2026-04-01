@@ -85,8 +85,12 @@ export default function Attachments({ leadId, userId }) {
   const [dynamicRefs, setDynamicRefs] = useState({});
   const [dynamicPasswords, setDynamicPasswords] = useState({});
   const [documentPasswords, setDocumentPasswords] = useState({}); // State to store document passwords (indexed by document ID)
-  const [pendingUpload, setPendingUpload] = useState(null); // { attachmentType, files, inputRef } — awaiting password entry
-  const [pdfPasswordInput, setPdfPasswordInput] = useState(''); // password typed in the PDF password modal
+  // pendingUpload: { attachmentType, files: [{file, isEncrypted}], inputEl }
+  const [pendingUpload, setPendingUpload] = useState(null);
+  // perFilePasswords: { [index]: string } — password per file in the pending modal
+  const [perFilePasswords, setPerFilePasswords] = useState({});
+  // perFileErrors: { [index]: string } — inline error message per file (e.g. wrong password)
+  const [perFileErrors, setPerFileErrors] = useState({});
   const [showPdfPwdVisible, setShowPdfPwdVisible] = useState(false); // toggle show/hide password text
   const [isLoading, setIsLoading] = useState(false);
   const [uploadingKey, setUploadingKey] = useState(null); // tracks which doc-type is currently uploading
@@ -104,6 +108,8 @@ export default function Attachments({ leadId, userId }) {
   const [showAddExtraForm, setShowAddExtraForm] = useState(null); // null = closed, catId = open for that category
   const [newExtraDocName, setNewExtraDocName] = useState('');
   const [addingExtraDoc, setAddingExtraDoc] = useState(false);
+  // Pool of attachment types marked as EXTRA DOC in Settings (is_primary=false)
+  const [extraPoolTypes, setExtraPoolTypes] = useState([]);
 
   // Base URL for API calls
   const BASE_URL = '/api';
@@ -163,7 +169,11 @@ export default function Attachments({ leadId, userId }) {
         console.log('Loaded active attachment types:', activeTypes);
         console.log('Loaded all attachment types:', allTypes);
         
-        setAttachmentTypes(activeTypes);
+        // Split active types: is_primary=false → extra pool (dropdown), rest → main display
+        const primaryTypes = activeTypes.filter(t => t.is_primary !== false);
+        const extraPool = activeTypes.filter(t => t.is_primary === false);
+        setAttachmentTypes(primaryTypes);
+        setExtraPoolTypes(extraPool);
         setHistoricalAttachmentTypes(allTypes);
         
         // Initialize dynamic states for all attachment types (including historical ones)
@@ -171,8 +181,8 @@ export default function Attachments({ leadId, userId }) {
         const initialRefs = {};
         const initialPasswords = {};
         
-        // First add active types
-        activeTypes.forEach(type => {
+        // First add active primary types
+        primaryTypes.forEach(type => {
           const key = type.name.toLowerCase().replace(/\s+/g, '_');
           initialFiles[key] = [];
           initialRefs[key] = React.createRef();
@@ -1024,12 +1034,15 @@ export default function Attachments({ leadId, userId }) {
     
     console.log('Files selected:', files.length, files.map(f => f.name));
     
-    // Find the attachment type for this key
+    // Find the attachment type for this key — also search extra doc fields
     const attachmentType = attachmentTypes.find(type => 
       type.name.toLowerCase().replace(/\s+/g, '_') === attachmentKey
     ) || historicalAttachmentTypes.find(type => 
       type.name.toLowerCase().replace(/\s+/g, '_') === attachmentKey
-    );
+    ) || (() => {
+      const ef = extraDocFields.find(f => f.name.toLowerCase().replace(/\s+/g, '_') === attachmentKey);
+      return ef ? { id: ef.id, _id: ef.id, name: ef.name, isExtra: true } : null;
+    })();
     
     if (attachmentType) {
       console.log('Found attachment type:', attachmentType.name);
@@ -1048,28 +1061,25 @@ export default function Attachments({ leadId, userId }) {
         return;
       }
 
-      // If any selected PDF is actually encrypted, show the password prompt modal
-      const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (pdfFiles.length > 0) {
-        const encryptedFlags = await Promise.all(pdfFiles.map(isPdfEncrypted));
-        if (encryptedFlags.some(Boolean)) {
-          setPendingUpload({ attachmentType, files, inputEl: e.target });
-          setPdfPasswordInput('');
-          setShowPdfPwdVisible(false);
-          return;
-        }
+      // Check encryption status per file (only PDFs can be encrypted)
+      const encryptedFlags = await Promise.all(
+        files.map(f => f.name.toLowerCase().endsWith('.pdf') ? isPdfEncrypted(f) : Promise.resolve(false))
+      );
+      const hasAnyEncrypted = encryptedFlags.some(Boolean);
+
+      if (hasAnyEncrypted) {
+        // Show per-file password modal
+        const enriched = files.map((file, i) => ({ file, isEncrypted: encryptedFlags[i] }));
+        setPendingUpload({ attachmentType, files: enriched, inputEl: e.target });
+        setPerFilePasswords({});
+        setPerFileErrors({});
+        setShowPdfPwdVisible(false);
+        return;
       }
 
-      // Store files temporarily for upload
-      setDynamicFiles(prev => ({
-        ...prev,
-        [attachmentKey]: files
-      }));
-      
-      // Show uploading notification
+      // No encrypted files — upload directly
+      setDynamicFiles(prev => ({ ...prev, [attachmentKey]: files }));
       showNotification(`Uploading ${files.length} file(s) for ${attachmentType.name}...`, 'info');
-      
-      // Trigger direct upload
       try {
         await handleUpload(attachmentType, files);
       } catch (error) {
@@ -1078,8 +1088,6 @@ export default function Attachments({ leadId, userId }) {
       }
     } else {
       console.error('Attachment type not found for key:', attachmentKey);
-      console.log('Available attachment types:', attachmentTypes.map(t => t.name));
-      console.log('Available historical types:', historicalAttachmentTypes.map(t => t.name));
       showNotification('Attachment type not found. Please try again.', 'error');
     }
   };
@@ -1233,14 +1241,18 @@ export default function Attachments({ leadId, userId }) {
         
         // Reload uploaded documents
         loadUploadedDocuments();
+        return { success: true };
       } else {
-        const error = await response.json();
-        console.error('Upload error:', error);
-        showNotification(`Upload failed: ${error.detail || 'Unknown error'}`, 'error');
+        const errData = await response.json();
+        const detail = errData.detail || 'Unknown error';
+        console.error('Upload error:', errData);
+        showNotification(`Upload failed: ${detail}`, 'error');
+        return { success: false, detail };
       }
     } catch (error) {
       console.error('Error uploading files:', error);
       showNotification('Upload failed: ' + error.message, 'error');
+      return { success: false, detail: error.message };
     } finally {
       setIsLoading(false);
       setUploadingKey(null);
@@ -1339,10 +1351,9 @@ export default function Attachments({ leadId, userId }) {
   // Build download folder name from lead data: CustomerName-CustomerNumber-Phone-AlternatePhone
   const getDownloadFolderName = (ld) => {
     const custName = ld?.first_name || ld?.customer_name || '';
-    const custNum = ld?.custom_lead_id || ld?.lead_number || ld?.customer_number || '';
     const phone = ld?.phone || ld?.mobile || '';
     const altPhone = ld?.alternative_phone || ld?.alternate_phone || '';
-    const parts = [custName, custNum, phone, altPhone].filter(Boolean);
+    const parts = [custName, phone, altPhone].filter(Boolean);
     // Sanitize for filesystem: remove anything not alphanumeric, dash, underscore, or space
     const raw = parts.length > 0 ? parts.join('-') : `Lead_${leadId}`;
     return raw.replace(/[<>:"/\\|?*]+/g, '_');
@@ -1361,7 +1372,7 @@ export default function Attachments({ leadId, userId }) {
     return await parentHandle.getDirectoryHandle(name, { create: true });
   };
 
-  // Handler for downloading all files directly to a folder (no ZIP)
+  // Handler for downloading all files as ZIP
   const handleDownloadAll = async () => {
     if (!leadId || uploadedDocuments.length === 0) {
       showNotification('No documents available to download', 'warning');
@@ -1371,160 +1382,13 @@ export default function Attachments({ leadId, userId }) {
     try {
       setIsDownloadingAll(true);
 
-      // Fetch lead data first so we can build the folder name
       let currentLeadData = leadData;
       if (!currentLeadData) {
         currentLeadData = await fetchLeadData();
       }
 
-      const folderName = getDownloadFolderName(currentLeadData);
-
-      // Check if File System Access API is available (Chrome / Edge)
-      const hasFileSystemAccess = typeof window.showDirectoryPicker === 'function';
-
-      if (!hasFileSystemAccess) {
-        // Fallback: download as ZIP with the correct folder name
-        showNotification('Your browser does not support folder downloads. Downloading as ZIP...', 'info');
-        await _downloadAsZip(currentLeadData, folderName);
-        return;
-      }
-
-      // Use File System Access API — user picks a location, we create the named folder inside
-      showNotification(`Select a location to save "${folderName}" folder`, 'info');
-      let parentDir;
-      try {
-        parentDir = await window.showDirectoryPicker({ mode: 'readwrite' });
-      } catch (e) {
-        // User cancelled the picker
-        setIsDownloadingAll(false);
-        return;
-      }
-
-      // Create the named folder inside the selected location
-      const rootDir = await getSubDir(parentDir, folderName);
-      const allDir = await getSubDir(rootDir, 'All');
-
-      const passwordInfo = [];
-      let downloadedCount = 0;
-      let failedCount = 0;
-
-      // ─── Generate Applicant & Co-Applicant PDFs into All/Applicant and Co-Applicant Form ───
-      if (currentLeadData && currentLeadData._id) {
-        const formsDir = await getSubDir(allDir, 'Applicant and Co-Applicant Form');
-
-        // Applicant PDF
-        try {
-          const applicantFormData = currentLeadData.dynamic_fields?.applicant_form || currentLeadData.loginForm || {};
-          const allAvailableApplicantData = {
-            customerName: currentLeadData.first_name || currentLeadData.customer_name || '',
-            mobileNumber: currentLeadData.mobile || currentLeadData.phone || '',
-            personalEmail: currentLeadData.email || '',
-            ...currentLeadData.dynamic_fields?.applicant_form,
-            ...currentLeadData.loginForm,
-            ...applicantFormData,
-            alternateNumber: currentLeadData.alternative_phone || currentLeadData.alternate_phone,
-            ...Object.keys(currentLeadData)
-              .filter(key => !['dynamic_fields', 'loginForm', '_id', '__v', 'created_at', 'updated_at'].includes(key))
-              .reduce((acc, key) => { const v = currentLeadData[key]; if (v && typeof v !== 'object') acc[key] = v; return acc; }, {})
-          };
-          const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
-          if (applicantBlob) {
-            const fn = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
-            await writeFileToDir(formsDir, fn, applicantBlob);
-            await writeFileToDir(allDir, fn, applicantBlob);
-          }
-        } catch (e) { console.error('Applicant PDF failed:', e); }
-
-        // Co-Applicant PDF
-        try {
-          const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || currentLeadData.coApplicantForm || {};
-          const allCoApplicantData = {
-            ...currentLeadData.dynamic_fields?.co_applicant_form,
-            ...currentLeadData.coApplicantForm,
-            ...coApplicantFormData
-          };
-          const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
-          if (coApplicantBlob) {
-            const fn = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
-            await writeFileToDir(formsDir, fn, coApplicantBlob);
-            await writeFileToDir(allDir, fn, coApplicantBlob);
-          }
-        } catch (e) { console.error('Co-Applicant PDF failed:', e); }
-      }
-
-      // ─── Download each document from server ───
-      // Organize by type for subfolders
-      const documentsByType = {};
-      uploadedDocuments.forEach(doc => {
-        const type = doc.document_type || 'Other';
-        if (!documentsByType[type]) documentsByType[type] = [];
-        documentsByType[type].push(doc);
-      });
-
-      for (const doc of uploadedDocuments) {
-        try {
-          const response = await fetch(
-            `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
-            { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
-          );
-          if (response.ok) {
-            const blob = await response.blob();
-            const filename = doc.filename || doc.file_name || `document_${doc._id}`;
-            // Write to "All" folder
-            await writeFileToDir(allDir, filename, blob);
-            downloadedCount++;
-          } else { failedCount++; }
-        } catch (e) { failedCount++; console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
-      }
-
-      // Also write into type-organized subfolders
-      for (const [docType, docs] of Object.entries(documentsByType)) {
-        const typeDir = await getSubDir(rootDir, docType);
-        for (const doc of docs) {
-          try {
-            const response = await fetch(
-              `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
-              { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
-            );
-            if (response.ok) {
-              const blob = await response.blob();
-              const filename = doc.filename || doc.file_name || `document_${doc._id}`;
-              await writeFileToDir(typeDir, filename, blob);
-              if (doc.has_password) {
-                const password = getDocumentPassword(doc);
-                passwordInfo.push({ folder: docType, filename, password: password && !password.includes("not available") ? password : "Password not available" });
-              }
-            }
-          } catch (e) { console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
-        }
-      }
-
-      // Write PASSWORDS.txt if needed
-      if (passwordInfo.length > 0) {
-        let passwordText = "PASSWORD INFORMATION FOR DOWNLOADED FILES\n" + "=".repeat(46) + "\n\n";
-        passwordText += `Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}\n`;
-        passwordText += `Lead ID: ${leadId}\n\n`;
-        const passwordsByFolder = {};
-        passwordInfo.forEach(info => { if (!passwordsByFolder[info.folder]) passwordsByFolder[info.folder] = []; passwordsByFolder[info.folder].push(info); });
-        Object.entries(passwordsByFolder).forEach(([folder, files]) => {
-          passwordText += `${folder}:\n` + "-".repeat(folder.length + 1) + "\n";
-          files.forEach(f => { passwordText += `• ${f.filename}\n  Password: ${f.password}\n\n`; });
-          passwordText += "\n";
-        });
-        passwordText += "\nIMPORTANT NOTES:\n- Keep this file secure and delete it after use\n- If 'Password not available' is shown, the file might not be password protected\n";
-        const pwBlob = new Blob([passwordText], { type: 'text/plain' });
-        await writeFileToDir(rootDir, 'PASSWORDS.txt', pwBlob);
-      }
-
-      if (downloadedCount > 0) {
-        let msg = `Successfully saved ${downloadedCount} file(s) to "${folderName}" folder.`;
-        if (failedCount > 0) msg += ` ${failedCount} file(s) failed.`;
-        if (passwordInfo.length > 0) msg += ` Password info saved in PASSWORDS.txt.`;
-        showNotification(msg, 'success');
-      } else {
-        showNotification('No files could be downloaded', 'error');
-      }
-
+      const zipName = getDownloadFolderName(currentLeadData);
+      await _downloadAsZip(currentLeadData, zipName);
     } catch (error) {
       console.error('Error downloading files:', error);
       showNotification('Failed to download files: ' + error.message, 'error');
@@ -1533,7 +1397,7 @@ export default function Attachments({ leadId, userId }) {
     }
   };
 
-  // Fallback: download as ZIP when File System Access API is not available
+  // Download all files as a ZIP archive
   const _downloadAsZip = async (currentLeadData, folderName) => {
     try {
       const zip = new JSZip();
@@ -1963,11 +1827,15 @@ export default function Attachments({ leadId, userId }) {
     );
   }
 
+  // names already claimed by extra doc fields — exclude from historical list to avoid ARCHIVE duplicates
+  const extraDocNames = new Set(extraDocFields.map(f => f.name));
+
   // active types + historical types that have uploaded files + extra (per-lead) doc fields
   const allDisplayTypes = [
     ...attachmentTypes.map(t => ({ ...t, isHistorical: false, isExtra: false })),
     ...historicalAttachmentTypes
       .filter(t => !attachmentTypes.some(a => a.name === t.name))
+      .filter(t => !extraDocNames.has(t.name)) // skip names used by extra doc fields
       .filter(t => getProfileDocs(uploadedDocuments.filter(d => d.document_type === t.name)).length > 0)
       .map(t => ({ ...t, isHistorical: true, isExtra: false })),
     ...extraDocFields.map(f => ({
@@ -2349,49 +2217,60 @@ export default function Attachments({ leadId, userId }) {
           })}
 
               {/* ── Add Extra Document button for this category ── */}
-              <div className="mt-2 flex flex-col items-end gap-2">
-                {showAddExtraForm === cat.id ? (
-                  <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gray-50 border border-gray-300 rounded-xl shadow-sm">
-                    <div className="flex-1">
-                      <input
-                        autoFocus
-                        type="text"
-                        value={newExtraDocName}
-                        onChange={e => setNewExtraDocName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') { e.preventDefault(); handleAddExtraDocField(); }
-                          else if (e.key === 'Escape') { setShowAddExtraForm(null); setNewExtraDocName(''); }
-                        }}
-                        placeholder="Enter document field name…"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-gray-500 placeholder-gray-400"
-                      />
-                    </div>
-                    <div className="flex gap-1.5 shrink-0">
+              {(() => {
+                // Extra pool types for this category that haven't been added yet
+                const usedNames = new Set(extraDocFields.map(f => f.name));
+                const availableOptions = extraPoolTypes.filter(t => {
+                  if (usedNames.has(t.name)) return false;
+                  return (t.category && t.category.trim().toUpperCase() === cat.title) ||
+                    (!t.category && (cat.keywords || []).some(kw => t.name.toLowerCase().includes(kw)));
+                });
+                if (availableOptions.length === 0) return null;
+                return (
+                  <div className="mt-2 flex flex-col items-end gap-2">
+                    {showAddExtraForm === cat.id ? (
+                      <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gray-50 border border-gray-300 rounded-xl shadow-sm">
+                        <div className="flex-1">
+                          <select
+                            autoFocus
+                            value={newExtraDocName}
+                            onChange={e => setNewExtraDocName(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-gray-500"
+                          >
+                            <option value="">-- Select document --</option>
+                            {availableOptions.map(t => (
+                              <option key={t._id || t.id} value={t.name}>{t.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={handleAddExtraDocField}
+                            disabled={addingExtraDoc || !newExtraDocName.trim()}
+                            className="flex-1 sm:flex-none bg-black hover:bg-gray-800 disabled:opacity-50 text-white font-black text-xs px-4 py-2 rounded-lg transition flex items-center gap-1.5"
+                          >
+                            {addingExtraDoc ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving…</> : <><i className="fa-solid fa-check"></i> Add</>}
+                          </button>
+                          <button
+                            onClick={() => { setShowAddExtraForm(null); setNewExtraDocName(''); }}
+                            className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 py-2 rounded-lg transition flex items-center gap-1.5"
+                          >
+                            <i className="fa-solid fa-xmark"></i> Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                       <button
-                        onClick={handleAddExtraDocField}
-                        disabled={addingExtraDoc || !newExtraDocName.trim()}
-                        className="flex-1 sm:flex-none bg-black hover:bg-gray-800 disabled:opacity-50 text-white font-black text-xs px-4 py-2 rounded-lg transition flex items-center gap-1.5"
+                        onClick={() => { setShowAddExtraForm(cat.id); setNewExtraDocName(''); }}
+                        className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white font-black text-xs px-4 py-2 rounded-xl shadow-sm transition"
                       >
-                        {addingExtraDoc ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving…</> : <><i className="fa-solid fa-check"></i> Save</>}
+                        <i className="fa-solid fa-circle-plus"></i>
+                        Add Extra Document
                       </button>
-                      <button
-                        onClick={() => { setShowAddExtraForm(null); setNewExtraDocName(''); }}
-                        className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 py-2 rounded-lg transition flex items-center gap-1.5"
-                      >
-                        <i className="fa-solid fa-xmark"></i> Cancel
-                      </button>
-                    </div>
+                    )}
                   </div>
-                ) : (
-                  <button
-                    onClick={() => { setShowAddExtraForm(cat.id); setNewExtraDocName(''); }}
-                    className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white font-black text-xs px-4 py-2 rounded-xl shadow-sm transition"
-                  >
-                    <i className="fa-solid fa-circle-plus"></i>
-                    Add Extra Document
-                  </button>
-                )}
-              </div>
+                );
+              })()}
               </div>
             </div>
           ));
@@ -2400,76 +2279,60 @@ export default function Attachments({ leadId, userId }) {
 
       <textarea id="copy-helper" style={{ position: 'absolute', left: '-9999px' }} readOnly></textarea>
 
-      {/* ── PDF Password Prompt Modal ── */}
+      {/* ── Per-File PDF Password Modal ── */}
       {pendingUpload && (
         <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/60" onClick={() => { if (pendingUpload.inputEl) pendingUpload.inputEl.value = ''; setPendingUpload(null); }}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="bg-[#1e40af] px-5 py-4 flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
                 <i className="fa-solid fa-file-shield text-white text-base"></i>
               </div>
               <div>
-                <h3 className="text-white font-black text-sm tracking-tight">PDF Password (Optional)</h3>
-                <p className="text-blue-200 text-[11px] mt-0.5">
-                  {pendingUpload.attachmentType.name.toUpperCase()}
-                </p>
+                <h3 className="text-white font-black text-sm tracking-tight">Upload Files</h3>
+                <p className="text-blue-200 text-[11px] mt-0.5">{pendingUpload.attachmentType.name.toUpperCase()}</p>
               </div>
             </div>
 
-            {/* File list */}
-            <div className="px-5 pt-4 pb-2">
-              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Files to upload</p>
-              <div className="space-y-1 max-h-28 overflow-y-auto">
-                {pendingUpload.files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded px-2.5 py-1.5">
-                    <i className={`fa-solid ${f.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf text-red-500' : 'fa-file text-gray-400'} text-sm shrink-0`}></i>
-                    <span className="text-[11px] font-bold text-gray-700 truncate flex-1">{f.name}</span>
-                    <span className="text-[10px] text-gray-400 shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+            {/* Per-file rows */}
+            <div className="px-5 pt-4 pb-2 space-y-3 max-h-80 overflow-y-auto">
+              {pendingUpload.files.map(({ file, isEncrypted }, i) => (
+                <div key={i} className={`rounded-lg border px-3 py-2.5 ${isEncrypted ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <i className={`fa-solid ${file.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf text-red-500' : 'fa-file text-gray-400'} text-sm shrink-0`}></i>
+                    <span className="text-[11px] font-bold text-gray-800 truncate flex-1">{file.name}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+                    {isEncrypted && <span className="text-[9px] font-black px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded-full shrink-0">🔒 LOCKED</span>}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Password field */}
-            <div className="px-5 pb-4 pt-2">
-              <label className="block text-[11px] font-bold text-gray-700 mb-1.5">
-                <i className="fa-solid fa-lock mr-1.5 text-[#1e40af]"></i>
-                PDF Password
-                <span className="ml-1.5 text-[10px] font-normal text-gray-400">(leave blank if not password-protected)</span>
-              </label>
-              <div className="relative">
-                <input
-                  autoFocus
-                  type="text"
-                  value={pdfPasswordInput}
-                  onChange={e => setPdfPasswordInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const { attachmentType, files, inputEl } = pendingUpload;
-                      setPendingUpload(null);
-                      showNotification(`Uploading ${files.length} file(s) for ${attachmentType.name}...`, 'info');
-                      handleUpload(attachmentType, files, pdfPasswordInput || null);
-                      if (inputEl) inputEl.value = '';
-                    } else if (e.key === 'Escape') {
-                      if (pendingUpload.inputEl) pendingUpload.inputEl.value = '';
-                      setPendingUpload(null);
-                    }
-                  }}
-                  placeholder="Enter PDF password..."
-                  style={{ color: '#111827', WebkitTextFillColor: '#111827', backgroundColor: '#ffffff' }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <p className="text-[10px] text-gray-400 mt-1.5">
-                <i className="fa-solid fa-circle-info mr-1"></i>
-                Password will be saved — you won't need to enter it again when opening this file.
-              </p>
+                  {isEncrypted && (
+                    <div>
+                      <input
+                        type="password"
+                        value={perFilePasswords[i] || ''}
+                        onChange={e => {
+                          setPerFilePasswords(prev => ({ ...prev, [i]: e.target.value }));
+                          if (perFileErrors[i]) setPerFileErrors(prev => ({ ...prev, [i]: '' }));
+                        }}
+                        placeholder="Enter PDF password…"
+                        className={`w-full border rounded-lg px-3 py-1.5 text-xs text-gray-900 bg-white focus:outline-none focus:ring-2 placeholder-gray-400 ${perFileErrors[i] ? 'border-red-400 focus:ring-red-400' : 'border-amber-300 focus:ring-amber-400'}`}
+                        autoFocus={i === pendingUpload.files.findIndex(f2 => f2.isEncrypted)}
+                      />
+                      {perFileErrors[i] ? (
+                        <p className="text-[10px] text-red-600 mt-1 font-semibold"><i className="fa-solid fa-circle-xmark mr-1"></i>{perFileErrors[i]}</p>
+                      ) : (perFilePasswords[i] === '' || perFilePasswords[i] == null) ? (
+                        <p className="text-[10px] text-amber-700 mt-1"><i className="fa-solid fa-triangle-exclamation mr-1"></i>Password required — file is encrypted</p>
+                      ) : null}
+                    </div>
+                  )}
+                  {!isEncrypted && (
+                    <p className="text-[10px] text-gray-400"><i className="fa-solid fa-circle-check mr-1 text-green-500"></i>No password needed — will upload directly</p>
+                  )}
+                </div>
+              ))}
             </div>
 
             {/* Action buttons */}
-            <div className="px-5 pb-5 flex gap-2.5">
+            <div className="px-5 pb-5 pt-3 flex gap-2.5">
               <button
                 onClick={() => { if (pendingUpload.inputEl) pendingUpload.inputEl.value = ''; setPendingUpload(null); }}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2 rounded-lg transition"
@@ -2477,17 +2340,58 @@ export default function Attachments({ leadId, userId }) {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const { attachmentType, files, inputEl } = pendingUpload;
-                  setPendingUpload(null);
-                  showNotification(`Uploading ${files.length} file(s) for ${attachmentType.name}...`, 'info');
-                  handleUpload(attachmentType, files, pdfPasswordInput || null);
-                  if (inputEl) inputEl.value = '';
+                  // Validate all encrypted files have a password
+                  const missing = files.filter(({ isEncrypted }, i) => isEncrypted && !(perFilePasswords[i] || '').trim());
+                  if (missing.length > 0) {
+                    showNotification(`Please enter password for: ${missing.map(f => f.file.name).join(', ')}`, 'warning');
+                    return;
+                  }
+                  // Clear previous errors
+                  setPerFileErrors({});
+                  // Upload each file individually with its own password
+                  const newErrors = {};
+                  const successIndices = new Set();
+                  for (let i = 0; i < files.length; i++) {
+                    const { file, isEncrypted } = files[i];
+                    const pwd = isEncrypted ? (perFilePasswords[i] || null) : null;
+                    const result = await handleUpload(attachmentType, [file], pwd);
+                    if (result?.success) {
+                      successIndices.add(i);
+                    } else if (isEncrypted) {
+                      const detail = (result?.detail || '').toLowerCase();
+                      newErrors[i] = detail.includes('password') ? 'Incorrect password, try again' : (result?.detail || 'Upload failed');
+                    }
+                  }
+                  if (Object.keys(newErrors).length > 0) {
+                    // Keep modal open — remove succeeded files, keep failed with inline errors
+                    const remainingFiles = files.filter((_, i) => !successIndices.has(i));
+                    // Remap errors/passwords to new indices
+                    const newPasswords = {};
+                    const remappedErrors = {};
+                    let newIdx = 0;
+                    files.forEach((_, oldI) => {
+                      if (!successIndices.has(oldI)) {
+                        newPasswords[newIdx] = perFilePasswords[oldI] || '';
+                        remappedErrors[newIdx] = newErrors[oldI] || '';
+                        newIdx++;
+                      }
+                    });
+                    setPendingUpload(prev => ({ ...prev, files: remainingFiles }));
+                    setPerFilePasswords(newPasswords);
+                    setPerFileErrors(remappedErrors);
+                  } else {
+                    // All succeeded — close modal
+                    setPendingUpload(null);
+                    if (inputEl) inputEl.value = '';
+                    setPerFileErrors({});
+                  }
                 }}
                 className="flex-2 bg-[#1e40af] hover:bg-blue-800 text-white font-bold text-sm py-2 px-5 rounded-lg transition flex items-center justify-center gap-2"
               >
                 <i className="fa-solid fa-cloud-arrow-up"></i>
-                Upload
+                Upload All
               </button>
             </div>
           </div>

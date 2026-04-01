@@ -777,9 +777,16 @@ class AttendanceDB:
                 if "status" in check_in_data:
                     update_data["status"] = check_in_data["status"]
                 
+                update_op = {"$set": update_data}
+
+                # If this record was auto-marked absent for missing reporting deadline,
+                # clear that flag — the user has now checked in (late but present)
+                if existing.get("auto_absent_late"):
+                    update_op["$unset"] = {"auto_absent_late": ""}
+
                 await self.collection.update_one(
                     {"_id": existing["_id"]},
-                    {"$set": update_data}
+                    update_op
                 )
                 return str(existing["_id"])
             else:

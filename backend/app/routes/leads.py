@@ -501,7 +501,7 @@ async def check_phone_number(
             "age_days": lead_age_days,
             "action": "processing",
             "can_reassign": False,
-            "is_locking_lead": False,           # will be set below for earliest lead
+            "is_locking_lead": False,           # will be set below for latest lead
             "is_own_lead": is_own,              # True if requesting user owns this lead
             "created_by_name": created_by_name,
             "department_name": dept_name,
@@ -518,12 +518,12 @@ async def check_phone_number(
         })
 
     # ── Locking period logic ─────────────────────────────────────────────────
-    # Find the EARLIEST created lead — its status's reassignment_period governs ALL.
-    earliest_lr = None
+    # Find the LATEST created lead — its status's reassignment_period governs ALL.
+    latest_lr = None
     for lr in lead_results:
         dt = lr.get("_created_dt")
-        if dt and (earliest_lr is None or dt < earliest_lr.get("_created_dt")):
-            earliest_lr = lr
+        if dt and (latest_lr is None or dt > latest_lr.get("_created_dt")):
+            latest_lr = lr
 
     locking_info: Dict[str, Any] = {
         "is_locked": False,
@@ -533,15 +533,15 @@ async def check_phone_number(
         "is_manager_permission_required": False,
     }
 
-    if earliest_lr:
-        earliest_lr["is_locking_lead"] = True
-        status_name = earliest_lr.get("status", "")
-        sub_status_name = earliest_lr.get("sub_status", "")
+    if latest_lr:
+        latest_lr["is_locking_lead"] = True
+        status_name = latest_lr.get("status", "")
+        sub_status_name = latest_lr.get("sub_status", "")
 
         # If lead is sent to login, use the login lead's status for locking rules
-        if earliest_lr.get("file_sent_to_login"):
+        if latest_lr.get("file_sent_to_login"):
             try:
-                lead_id_str = earliest_lr.get("id", "")
+                lead_id_str = latest_lr.get("id", "")
                 if lead_id_str:
                     login_lead = await login_leads_db.get_login_lead_by_original_id(lead_id_str)
                     if login_lead:
@@ -551,7 +551,7 @@ async def check_phone_number(
                             # Uppercase to match statuses collection naming (e.g. "Active Login" → "ACTIVE LOGIN")
                             status_name = login_status.upper()
                             sub_status_name = (login_sub_status or "").upper()
-                            logging.info(f"🔒 Using login lead status for locking: {status_name}/{sub_status_name} (original CRM: {earliest_lr.get('status')}/{earliest_lr.get('sub_status')})")
+                            logging.info(f"🔒 Using login lead status for locking: {status_name}/{sub_status_name} (original CRM: {latest_lr.get('status')}/{latest_lr.get('sub_status')})")
             except Exception as e:
                 logging.error(f"❌ Error looking up login lead for locking: {e}")
 
@@ -578,10 +578,10 @@ async def check_phone_number(
         locking_info["is_manager_permission_required"] = is_manager_required
 
         if reassignment_period and reassignment_period > 0:
-            # Reference date: login sent date (if sent to login) else created_at of earliest lead
-            ref_dt = earliest_lr.get("_created_dt") or current_time
-            if earliest_lr.get("file_sent_to_login") and earliest_lr.get("login_department_sent_date"):
-                parsed = _parse_dt(earliest_lr["login_department_sent_date"])
+            # Reference date: login sent date (if sent to login) else created_at of latest lead
+            ref_dt = latest_lr.get("_created_dt") or current_time
+            if latest_lr.get("file_sent_to_login") and latest_lr.get("login_department_sent_date"):
+                parsed = _parse_dt(latest_lr["login_department_sent_date"])
                 if parsed:
                     ref_dt = parsed
 
@@ -593,7 +593,7 @@ async def check_phone_number(
             locking_info.update({
                 "is_locked": is_locked,
                 "locked_since": ref_dt.isoformat(),
-                "locking_lead_id": earliest_lr.get("id"),
+                "locking_lead_id": latest_lr.get("id"),
                 "locking_status": status_name,
                 "locking_sub_status": sub_status_name,
                 "reassignment_period": reassignment_period,
@@ -868,7 +868,7 @@ async def upload_documents(
         stored_password = password.strip() if password and password.strip() else None
         if stored_password and file.filename.lower().endswith(".pdf"):
             try:
-                import subprocess as _sp, shutil as _sh, tempfile as _tmp
+                import subprocess as _sp, shutil as _sh
                 _tmp_out = abs_path + ".tmp_unlocked.pdf"
                 _res = _sp.run(
                     ['qpdf', '--decrypt', f'--password={stored_password}', abs_path, _tmp_out],
@@ -878,10 +878,21 @@ async def upload_documents(
                     _sh.move(_tmp_out, abs_path)  # replace original with unlocked version
                     stored_password = None  # no password needed anymore
                 else:
+                    # Wrong password — delete the saved file and reject the upload
                     if os.path.exists(_tmp_out): os.remove(_tmp_out)
-                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
+                    if os.path.exists(abs_path): os.remove(abs_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Wrong PDF password for file '{file.filename}'. Upload rejected."
+                    )
+            except HTTPException:
+                raise
             except Exception as _e:
-                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
+                if os.path.exists(abs_path): os.remove(abs_path)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"PDF password verification failed for '{file.filename}': {str(_e)}"
+                )
         
         # Convert path to URL for API usage
         relative_path = get_relative_media_url(abs_path)
@@ -3394,9 +3405,19 @@ async def upload_lead_attachment(
                     stored_password = None  # no password needed anymore
                 else:
                     if os.path.exists(_tmp_out): os.remove(_tmp_out)
-                    import logging as _lg; _lg.warning(f"qpdf unlock failed for {file.filename}: {_res.stderr}")
+                    if os.path.exists(abs_path): os.remove(abs_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Wrong PDF password for file '{file.filename}'. Upload rejected."
+                    )
+            except HTTPException:
+                raise
             except Exception as _e:
-                import logging as _lg; _lg.warning(f"PDF unlock error for {file.filename}: {_e}")
+                if os.path.exists(abs_path): os.remove(abs_path)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"PDF password verification failed for '{file.filename}': {str(_e)}"
+                )
         
         # Convert path to URL
         relative_path = get_relative_media_url(abs_path)

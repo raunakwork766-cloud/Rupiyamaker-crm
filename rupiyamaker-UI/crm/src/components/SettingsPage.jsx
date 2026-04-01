@@ -331,6 +331,7 @@ const SettingsPage = () => {
     const [atQuickAddTarget, setAtQuickAddTarget] = useState('leads');
     // Category-based settings UI (matching premium_document_upload.html settings popup)
     const [atDraftCategories, setAtDraftCategories] = useState([]);
+    const atDraftCategoriesRef = useRef([]); // always up-to-date ref for async callbacks
     const [atCatCollapsed, setAtCatCollapsed] = useState({});
     const [atDraftDirty, setAtDraftDirty] = useState(false);
     const [atSaving, setAtSaving] = useState(false);
@@ -447,9 +448,14 @@ const SettingsPage = () => {
 
     // Bank filter states
     const [availableBanks, setAvailableBanks] = useState([]);
+    const [bankStats, setBankStats] = useState([]); // [{bank_name, count, last_updated}]
     const [selectedBankFilter, setSelectedBankFilter] = useState('');
     const [showBankDeleteModal, setShowBankDeleteModal] = useState(false);
     const [bankToDelete, setBankToDelete] = useState('');
+    const [showBankDropdown, setShowBankDropdown] = useState(false);
+    const [bankSearchQuery, setBankSearchQuery] = useState('');
+    // Inline Excel upload in Company Data tab
+    const [showInlineUpload, setShowInlineUpload] = useState(false);
 
     const BASE_URL = API_BASE_URL;
     
@@ -804,6 +810,16 @@ const SettingsPage = () => {
         }
     }, []);
 
+    // Close bank dropdown when clicking outside
+    useEffect(() => {
+        if (!showBankDropdown) return;
+        const handler = (e) => {
+            if (!e.target.closest('[data-bank-dropdown]')) setShowBankDropdown(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showBankDropdown]);
+
     // Load data on component mount (only if has access)
     useEffect(() => {
         if (hasSettingsAccess) {
@@ -827,6 +843,7 @@ const SettingsPage = () => {
                 setCurrentPage(1); // Reset to first page when switching to this tab
                 loadCompanyData(1, itemsPerPage);
                 loadAvailableBanks();
+                loadBankStats();
                 break;
             case 'attachmentTypes':
                 loadAttachmentTypes();
@@ -928,6 +945,7 @@ const SettingsPage = () => {
             loadChannelNames(),
             loadCompanyData(1, 50),
             loadAvailableBanks(),
+            loadBankStats(),
             loadAttachmentTypes(),
             loadDepartments(),
             loadDesignations(),
@@ -1024,6 +1042,15 @@ const SettingsPage = () => {
         }
     };
 
+    const loadBankStats = async () => {
+        try {
+            const response = await axios.get(`${BASE_URL}/settings/banks-stats?user_id=${user_id}`);
+            setBankStats(response.data || []);
+        } catch (error) {
+            console.error('Error loading bank stats:', error);
+        }
+    };
+
     const handleBankFilterChange = async (bankName) => {
         setSelectedBankFilter(bankName);
         setCurrentPage(1); // Reset to first page when filtering
@@ -1033,34 +1060,32 @@ const SettingsPage = () => {
     const handleDeleteByBank = async () => {
         if (!bankToDelete) return;
 
-        if (!window.confirm(`Are you sure you want to delete ALL companies for bank "${bankToDelete}"? This action cannot be undone!`)) {
-            return;
-        }
+        const deletingBank = bankToDelete;
+        // Close modal immediately
+        setShowBankDeleteModal(false);
+        setBankToDelete('');
 
         try {
-            const response = await axios.delete(`${BASE_URL}/settings/company-data/delete-by-bank/${encodeURIComponent(bankToDelete)}?user_id=${user_id}`);
-            
+            const response = await axios.delete(`${BASE_URL}/settings/company-data/delete-by-bank/${encodeURIComponent(deletingBank)}?user_id=${user_id}`);
+
             if (response.data.success) {
-                alert(`Successfully deleted ${response.data.deleted_count} companies for bank "${bankToDelete}"`);
-                
-                // Reload data with pagination
-                setCurrentPage(1); // Reset to first page
-                await loadCompanyData(1, itemsPerPage);
-                await loadAvailableBanks();
-                
-                // Reset filter if the deleted bank was selected
-                if (selectedBankFilter === bankToDelete) {
+                // Optimistically remove from state immediately
+                setBankStats(prev => prev.filter(s => s.bank_name !== deletingBank));
+                if (selectedBankFilter === deletingBank) {
                     setSelectedBankFilter('');
                 }
+                setCurrentPage(1);
+                // Reload company data (without the deleted bank filter)
+                await loadCompanyData(1, itemsPerPage);
+                await loadAvailableBanks();
+                await loadBankStats();
+                alert(`Successfully deleted ${response.data.deleted_count} companies for bank "${deletingBank}"`);
             } else {
-                alert(response.data.message);
+                alert(`Delete failed: ${response.data.message}`);
             }
         } catch (error) {
             console.error('Error deleting companies by bank:', error);
             alert('Error deleting companies: ' + (error.response?.data?.detail || error.message));
-        } finally {
-            setShowBankDeleteModal(false);
-            setBankToDelete('');
         }
     };
 
@@ -1068,23 +1093,28 @@ const SettingsPage = () => {
         try {
             const result = await hrmsService.getAllAttachmentTypes();
             if (result.success) {
-                // Ensure each attachment type has both id and _id fields for compatibility
                 const processedAttachmentTypes = result.data.map(item => {
                     const processedItem = {...item};
-                    
-                    // Ensure both _id and id properties exist
-                    if (processedItem._id && !processedItem.id) {
-                        processedItem.id = processedItem._id;
-                    } else if (processedItem.id && !processedItem._id) {
-                        processedItem._id = processedItem.id;
-                    }
-                    
+                    if (processedItem._id && !processedItem.id) processedItem.id = processedItem._id;
+                    else if (processedItem.id && !processedItem._id) processedItem._id = processedItem.id;
                     return processedItem;
                 });
-                
                 setAttachmentTypes(processedAttachmentTypes);
-                // Build category draft for settings UI
-                setAtDraftCategories(buildDraftCategories(processedAttachmentTypes));
+                const freshDraft = buildDraftCategories(processedAttachmentTypes);
+                const freshTitles = new Set(freshDraft.map(c => c.title));
+                // Preserve any empty categories (headings with no docs yet) from current draft
+                const currentDraft = atDraftCategoriesRef.current || [];
+                const emptyCats = currentDraft.filter(c => c.docs.length === 0 && !freshTitles.has(c.title));
+                // Also restore empty cats saved to localStorage (survives hard refresh)
+                const storedEmpty = (() => { try { return JSON.parse(localStorage.getItem('rupiyame_empty_attachment_cats') || '[]'); } catch { return []; } })();
+                const stillStoredEmpty = storedEmpty.filter(t => !freshTitles.has(t));
+                // Update localStorage — remove any that now have docs in DB
+                localStorage.setItem('rupiyame_empty_attachment_cats', JSON.stringify(stillStoredEmpty));
+                const allEmptyTitles = new Set([...emptyCats.map(c => c.title), ...stillStoredEmpty]);
+                const mergedEmpty = [...allEmptyTitles].map(t => ({ title: t, docs: [] }));
+                const merged = mergedEmpty.length > 0 ? [...freshDraft, ...mergedEmpty] : freshDraft;
+                setAtDraftCategories(merged);
+                atDraftCategoriesRef.current = merged;
                 setAtDraftDirty(false);
             }
         } catch (error) {
@@ -3106,6 +3136,7 @@ const updateStatus = async (statusId, statusData) => {
         };
         const updateDraft = (updater) => {
             const next = updater(JSON.parse(JSON.stringify(atDraftCategories)));
+            atDraftCategoriesRef.current = next;
             setAtDraftCategories(next);
             saveWithDraft(next);
         };
@@ -3116,7 +3147,14 @@ const updateStatus = async (statusId, statusData) => {
 
         const renameCategory = (catIdx, val) => {
             if (!val.trim()) return;
+            const oldTitle = atDraftCategories[catIdx].title;
             const newTitle = val.trim().toUpperCase();
+            // Update localStorage for empty cat if it was stored there
+            try {
+                const stored = JSON.parse(localStorage.getItem('rupiyame_empty_attachment_cats') || '[]');
+                const updated = stored.map(t => t === oldTitle ? newTitle : t);
+                localStorage.setItem('rupiyame_empty_attachment_cats', JSON.stringify(updated));
+            } catch {}
             updateDraft(draft => {
                 draft[catIdx].title = newTitle;
                 draft[catIdx].docs.forEach(d => { d.category = newTitle; });
@@ -3126,6 +3164,12 @@ const updateStatus = async (statusId, statusData) => {
 
         const deleteCategory = (catIdx) => {
             if (!window.confirm(`Delete "${atDraftCategories[catIdx].title}" and all its documents?`)) return;
+            const title = atDraftCategories[catIdx].title;
+            // Remove from localStorage if it was an empty cat
+            try {
+                const stored = JSON.parse(localStorage.getItem('rupiyame_empty_attachment_cats') || '[]');
+                localStorage.setItem('rupiyame_empty_attachment_cats', JSON.stringify(stored.filter(t => t !== title)));
+            } catch {}
             updateDraft(draft => { draft.splice(catIdx, 1); return draft; });
         };
 
@@ -3165,6 +3209,11 @@ const updateStatus = async (statusId, statusData) => {
         const addCategory = () => {
             const val = atNewCatInput.trim().toUpperCase();
             if (!val) return;
+            // Persist to localStorage so it survives hard refresh
+            try {
+                const stored = JSON.parse(localStorage.getItem('rupiyame_empty_attachment_cats') || '[]');
+                if (!stored.includes(val)) localStorage.setItem('rupiyame_empty_attachment_cats', JSON.stringify([...stored, val]));
+            } catch {}
             updateDraft(draft => { draft.push({ title: val, docs: [] }); return draft; });
             setAtNewCatInput('');
         };
@@ -3452,77 +3501,304 @@ const updateStatus = async (statusId, statusData) => {
 
         return (
             <div className="space-y-6">
-                {/* Bank Filter Section */}
-                <div className="bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-700">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <Building className="text-orange-400" size={24} />
-                        Bank Filter & Management
-                    </h3>
-                    <div className="flex flex-wrap gap-4 mb-4">
-                        <select
-                            value={selectedBankFilter}
-                            onChange={(e) => handleBankFilterChange(e.target.value)}
-                            className="bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]"
-                        >
-                            <option value="">All Banks ({totalCompanies} companies)</option>
-                            {availableBanks.map((bank) => (
-                                <option key={bank} value={bank}>
-                                    {bank}
-                                </option>
-                            ))}
-                        </select>
-                        
-                        {selectedBankFilter && (
-                            <button
-                                onClick={() => {
-                                    setBankToDelete(selectedBankFilter);
-                                    setShowBankDeleteModal(true);
-                                }}
-                                className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-red-600 hover:to-red-700 transition-all shadow-lg"
-                            >
-                                <Trash2 size={16} />
-                                Delete All for "{selectedBankFilter}"
-                            </button>
-                        )}
-                        
-                        <button
-                            onClick={() => {
-                                setSelectedBankFilter('');
-                                setCurrentPage(1);
-                                loadCompanyData(1, itemsPerPage);
-                            }}
-                            className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-gray-700 hover:to-gray-800 transition-all shadow-lg"
-                        >
-                            <X size={16} />
-                            Clear Filter
-                        </button>
-                    </div>
-                    
-                    {selectedBankFilter && (
-                        <div className="text-sm text-gray-300 bg-gray-700 p-3 rounded-lg border-l-4 border-orange-400">
-                            Showing companies for bank: <strong className="text-orange-400">{selectedBankFilter}</strong>
+                {/* Inline Excel Upload Section (collapsible) */}
+                <div className="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+                    <button
+                        onClick={() => setShowInlineUpload(!showInlineUpload)}
+                        className="w-full p-4 flex items-center justify-between text-white hover:bg-gray-700 transition-colors"
+                    >
+                        <span className="flex items-center gap-2 font-semibold text-base">
+                            <Upload className="text-blue-400" size={20} />
+                            Upload Company Data Excel
+                        </span>
+                        {showInlineUpload ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+                    </button>
+                    {showInlineUpload && (
+                        <div className="p-5 border-t border-gray-700">
+                            {activeUploads.size > 0 && (
+                                <div className="mb-4 bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+                                    <h4 className="text-blue-400 font-medium mb-2 text-sm">🔄 Active Processing ({activeUploads.size})</h4>
+                                    {Array.from(activeUploads.entries()).map(([uploadId, upload]) => (
+                                        <div key={uploadId} className="mb-2 last:mb-0">
+                                            <div className="flex justify-between text-xs text-blue-200 mb-1">
+                                                <span>{upload.filename}</span>
+                                                <span>{upload.progress}%</span>
+                                            </div>
+                                            <div className="bg-blue-800 rounded-full h-1.5">
+                                                <div
+                                                    className="bg-gradient-to-r from-blue-400 to-green-400 h-1.5 rounded-full transition-all duration-500"
+                                                    style={{ width: `${upload.progress}%` }}
+                                                />
+                                            </div>
+                                            <p className="text-xs text-blue-300 mt-0.5">{upload.message || upload.status}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <label
+                                        htmlFor="inline-file-upload"
+                                        className="cursor-pointer flex items-center gap-2 bg-gray-700 border border-gray-600 hover:border-blue-500 text-gray-200 px-4 py-2.5 rounded-lg transition-colors"
+                                    >
+                                        <FileSpreadsheet size={18} className="text-blue-400 flex-shrink-0" />
+                                        <span className="truncate text-sm">
+                                            {uploadFile ? uploadFile.name : 'Choose Excel file (.xlsx, .xls)'}
+                                        </span>
+                                    </label>
+                                    <input
+                                        id="inline-file-upload"
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            setUploadFile(file);
+                                        }}
+                                        className="hidden"
+                                    />
+                                </div>
+                                {uploadFile && (
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        {uploadProgress > 0 && (
+                                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                                                <div className="w-24 bg-gray-600 rounded-full h-2">
+                                                    <div
+                                                        className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all"
+                                                        style={{ width: `${uploadProgress}%` }}
+                                                    />
+                                                </div>
+                                                <span>{uploadProgress}%</span>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={handleFileUpload}
+                                            disabled={loading}
+                                            className="bg-gradient-to-r from-green-500 to-green-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50 shadow text-sm font-medium"
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                                    Uploading...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload size={16} />
+                                                    Upload
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => { setUploadFile(null); setUploadProgress(0); }}
+                                            className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                                            title="Remove file"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">Required columns: COMPANY NAME, CATEGORIES, BANK</p>
                         </div>
                     )}
                 </div>
 
+                {/* Bank Management - Searchable Dropdown with Table */}
+                <div className="bg-gray-800 rounded-xl shadow-lg border border-gray-700" style={{ overflow: 'visible' }}>
+                    <div className="p-5 border-b border-gray-700 flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <Building className="text-orange-400" size={20} />
+                            Bank Management
+                            {bankStats.length > 0 && (
+                                <span style={{fontSize: 11, fontWeight: 600, color: '#a1a1aa', marginLeft: 4}}>
+                                    {bankStats.length} banks · {bankStats.reduce((s, b) => s + b.count, 0).toLocaleString()} total
+                                </span>
+                            )}
+                        </h3>
+                        {selectedBankFilter && (
+                            <button
+                                onClick={() => {
+                                    setSelectedBankFilter('');
+                                    setCurrentPage(1);
+                                    loadCompanyData(1, itemsPerPage);
+                                }}
+                                className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-lg transition-colors border border-gray-600"
+                            >
+                                <X size={14} />
+                                Clear Filter
+                            </button>
+                        )}
+                    </div>
+                    <div className="p-4">
+                        {/* Searchable trigger input */}
+                        <div style={{ position: 'relative' }} data-bank-dropdown>
+                            <div
+                                onClick={() => setShowBankDropdown(v => !v)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    background: '#0d0d10', border: `1px solid ${showBankDropdown ? '#f97316' : '#3f3f46'}`,
+                                    borderRadius: showBankDropdown ? '8px 8px 0 0' : 8,
+                                    padding: '8px 12px', cursor: 'pointer', transition: 'border-color 0.15s',
+                                    userSelect: 'none',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Building size={14} style={{ color: '#f97316', flexShrink: 0 }} />
+                                    {selectedBankFilter ? (
+                                        <span style={{ color: '#f97316', fontWeight: 600, fontSize: 13 }}>{selectedBankFilter}</span>
+                                    ) : (
+                                        <span style={{ color: '#71717a', fontSize: 13 }}>
+                                            {bankStats.length === 0 ? 'No banks available' : `Select a bank to filter... (${bankStats.length} banks)`}
+                                        </span>
+                                    )}
+                                </div>
+                                <svg width="12" height="8" viewBox="0 0 12 8" style={{ color: '#71717a', transition: 'transform 0.2s', transform: showBankDropdown ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
+                                    <path d="M1 1l5 5 5-5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                            </div>
+
+                            {/* Dropdown panel */}
+                            {showBankDropdown && bankStats.length > 0 && (
+                                <div style={{
+                                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+                                    background: '#09090b', border: '1px solid #27272a', borderTop: 'none',
+                                    borderRadius: '0 0 8px 8px', boxShadow: '0 16px 40px rgba(0,0,0,0.9)',
+                                    maxHeight: 340, display: 'flex', flexDirection: 'column',
+                                }}>
+                                    {/* Search inside dropdown */}
+                                    <div style={{ padding: '8px 10px', borderBottom: '1px solid #1f1f22', flexShrink: 0 }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#52525b' }} />
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                value={bankSearchQuery}
+                                                onChange={e => setBankSearchQuery(e.target.value)}
+                                                placeholder="Search banks..."
+                                                style={{
+                                                    width: '100%', boxSizing: 'border-box',
+                                                    background: '#111115', border: '1px solid #27272a', borderRadius: 6,
+                                                    padding: '5px 8px 5px 26px', color: '#fff',
+                                                    fontFamily: 'inherit', fontSize: 12, outline: 'none',
+                                                }}
+                                            />
+                                            {bankSearchQuery && (
+                                                <button onClick={() => setBankSearchQuery('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                                                    <X size={11} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Table header */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 32px', padding: '6px 10px', borderBottom: '1px solid #1f1f22', flexShrink: 0 }}>
+                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b' }}>Bank Name</span>
+                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b', textAlign: 'right' }}>Entries</span>
+                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b', textAlign: 'right', paddingRight: 4 }}>Last Updated</span>
+                                        <span></span>
+                                    </div>
+
+                                    {/* Bank rows */}
+                                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                                        {(() => {
+                                            const maxCount = Math.max(...bankStats.map(s => s.count));
+                                            const filtered = bankStats.filter(s =>
+                                                !bankSearchQuery || s.bank_name.toLowerCase().includes(bankSearchQuery.toLowerCase())
+                                            );
+                                            if (filtered.length === 0) return (
+                                                <div style={{ padding: '16px', textAlign: 'center', color: '#52525b', fontSize: 12 }}>No banks match your search</div>
+                                            );
+                                            return filtered.map(stat => {
+                                                const pct = maxCount > 0 ? Math.round((stat.count / maxCount) * 100) : 0;
+                                                const isSelected = selectedBankFilter === stat.bank_name;
+                                                return (
+                                                    <div
+                                                        key={stat.bank_name}
+                                                        style={{
+                                                            display: 'grid', gridTemplateColumns: '1fr 80px 100px 32px',
+                                                            padding: '7px 10px', alignItems: 'center',
+                                                            borderBottom: '1px solid #111115', cursor: 'pointer',
+                                                            background: isSelected ? 'rgba(249,115,22,0.12)' : 'transparent',
+                                                            borderLeft: isSelected ? '2px solid #f97316' : '2px solid transparent',
+                                                            transition: 'background 0.1s',
+                                                        }}
+                                                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#111115'; }}
+                                                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                        onClick={() => {
+                                                            handleBankFilterChange(isSelected ? '' : stat.bank_name);
+                                                            setShowBankDropdown(false);
+                                                            setBankSearchQuery('');
+                                                        }}
+                                                    >
+                                                        {/* Bank Name + bar */}
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#f97316' : '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {stat.bank_name}
+                                                            </div>
+                                                            <div style={{ height: 2, background: '#1f1f22', borderRadius: 2, marginTop: 3, overflow: 'hidden', maxWidth: 180 }}>
+                                                                <div style={{ height: '100%', background: isSelected ? '#f97316' : '#0ea5e9', width: `${pct}%`, borderRadius: 2 }} />
+                                                            </div>
+                                                        </div>
+                                                        {/* Count */}
+                                                        <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#f97316' : '#0ea5e9', textAlign: 'right' }}>
+                                                            {stat.count.toLocaleString()}
+                                                        </div>
+                                                        {/* Date */}
+                                                        <div style={{ fontSize: 10, color: '#71717a', textAlign: 'right', paddingRight: 4 }}>
+                                                            {stat.last_updated ? new Date(stat.last_updated).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                                        </div>
+                                                        {/* Delete */}
+                                                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                                            <button
+                                                                onClick={e => { e.stopPropagation(); setBankToDelete(stat.bank_name); setShowBankDeleteModal(true); setShowBankDropdown(false); }}
+                                                                title={`Delete ${stat.bank_name}`}
+                                                                style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 3, opacity: 0.4, display: 'flex', borderRadius: 4 }}
+                                                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
                 {/* Search Section */}
-                <div className="bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-700">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <Search className="text-green-400" size={24} />
+                <div className="bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-700">
+                    <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                        <Search className="text-green-400" size={20} />
                         Search Similar Companies
                     </h3>
-                    <div className="flex gap-4">
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Enter company name to search..."
-                            className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-green-500 placeholder-gray-400"
-                        />
+                    <div className="flex gap-3">
+                        <div className="relative flex-1">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleCompanySearch()}
+                                placeholder="Enter company name to search..."
+                                className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 pr-9 focus:ring-2 focus:ring-green-500 focus:border-green-500 placeholder-gray-400"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                                    title="Clear search"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
                         <button
                             onClick={handleCompanySearch}
                             disabled={loading}
-                            className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50 shadow-lg"
+                            className="bg-gradient-to-r from-green-500 to-green-600 text-white px-5 py-2 rounded-lg flex items-center gap-2 hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50 shadow-lg"
                         >
                             <Search size={16} />
                             Search
@@ -3531,17 +3807,25 @@ const updateStatus = async (statusId, statusData) => {
 
                     {searchResults.length > 0 && (
                         <div className="mt-4">
-                            <h4 className="font-semibold text-white mb-2">Search Results:</h4>
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-semibold text-white text-sm">{searchResults.length} result(s) found:</h4>
+                                <button
+                                    onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+                                >
+                                    <X size={12} /> Close
+                                </button>
+                            </div>
                             <div className="space-y-2">
                                 {searchResults.map((result, index) => (
                                     <div key={index} className="bg-gray-700 p-3 rounded-lg border border-gray-600">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="font-medium text-white">{result.company_name}</p>
-                                                <p className="text-sm text-gray-300">Categories: {result.categories.join(', ')}</p>
-                                                <p className="text-sm text-gray-300">Banks: {result.bank_names.join(', ')}</p>
+                                                <p className="font-medium text-white text-sm">{result.company_name}</p>
+                                                <p className="text-xs text-gray-300 mt-0.5">Categories: {result.categories.join(', ')}</p>
+                                                <p className="text-xs text-gray-300">Banks: {result.bank_names.join(', ')}</p>
                                             </div>
-                                            <span className="bg-blue-600 text-white px-2 py-1 rounded text-sm font-medium">
+                                            <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-medium ml-3 flex-shrink-0">
                                                 {result.similarity_percentage}% match
                                             </span>
                                         </div>

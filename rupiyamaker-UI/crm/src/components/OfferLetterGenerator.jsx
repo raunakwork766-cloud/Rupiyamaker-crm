@@ -254,7 +254,7 @@ const OfferLetterGenerator = ({ user }) => {
   const [tpl, setTpl] = useState(DEFAULT_TPL);
   const [saveStatus, setSaveStatus] = useState('');
   const [editingSec, setEditingSec] = useState(null);
-  const [pageBreakIdx, setPageBreakIdx] = useState(null);
+  const [pageGroups, setPageGroups] = useState(null); // null = not yet measured; array of arrays of section indices
   const [dragState, setDragState] = useState(null);
   const [resizeState, setResizeState] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(85);
@@ -265,8 +265,7 @@ const OfferLetterGenerator = ({ user }) => {
   const [empLoading, setEmpLoading] = useState(false);
   const importTplRef = useRef(null);
 
-  const page1Ref = useRef(null);
-  const page2Ref = useRef(null);
+  const pageRefs = useRef([]); // array of A4 page DOM refs
   const measureRef = useRef(null);
   const userId = user?._id || user?.id || '';
 
@@ -421,30 +420,76 @@ const OfferLetterGenerator = ({ user }) => {
     .replace(/\{\{salaryWords\}\}/g, '<span style="color:#1a5ba8;font-weight:700">' + salaryWords + '</span>')
     .replace(/\{\{target\}\}/g, '<span style="color:#1a5ba8;font-weight:700">' + formattedTarget + '</span>');
 
-  // Measure to find page break
+  // Measure to find page breaks — supports N pages
   useEffect(() => {
     const el = measureRef.current;
     if (!el) return;
     const hdrEl = el.querySelector('.m-hdr');
     const introEl = el.querySelector('.m-intro');
+    const acceptEl = el.querySelector('.m-accept');
     const headerH = hdrEl ? hdrEl.offsetHeight : 120;
     const introH = introEl ? introEl.offsetHeight : 100;
-    const available = A4_PX_H - headerH - 5 - introH - 32 - 48;
-    let acc = 0, brk = activeSections.length;
-    const footerTextReserve = (tpl.footer_text || tpl.footer_sub_text) ? 60 : 20;
+    const acceptH = acceptEl ? acceptEl.offsetHeight : 200;
+    const scale = tpl.content_scale || 1;
+    const ftrReserve = (tpl.footer_text || tpl.footer_sub_text) ? 62 : 16;
+    // Header height for subsequent pages (if shown on all pages)
+    const subHdrH = (tpl.header_all_pages !== false) ? headerH + 5 : 0;
+    // Available logical height — acceptance block is ONLY on the last page.
+    // ftrReserve is placed in the NUMERATOR (physical pixels) so it doesn't scale up
+    // with content_scale — prevents body from physically overflowing into footer zone.
+    // BODY_PAD uses a small fixed bottom pad (8px) just for cosmetic spacing.
+    const SAFETY = 24;
+    const avPage1 = (A4_PX_H - headerH - ftrReserve - 5) / scale - 18 - introH - SAFETY;
+    const avPageN = (A4_PX_H - subHdrH - ftrReserve) / scale - 38 - SAFETY;
     const secEls = el.querySelectorAll('.m-sec');
-    for (let i = 0; i < secEls.length; i++) {
-      acc += secEls[i].offsetHeight + 14;
-      if (acc > available - footerTextReserve) { brk = i; break; }
+    const nSec = secEls.length;
+    const secHeights = Array.from(secEls).map(e => e.offsetHeight + 14);
+    // Greedy packing (no acceptance reservation yet)
+    const groups = [];
+    let curGroup = [];
+    let acc = 0;
+    let avail = Math.max(80, avPage1);
+    for (let i = 0; i < nSec; i++) {
+      const h = secHeights[i];
+      if (curGroup.length > 0 && acc + h > avail) {
+        groups.push(curGroup);
+        curGroup = [i];
+        acc = h;
+        avail = Math.max(80, avPageN);
+      } else {
+        curGroup.push(i);
+        acc += h;
+      }
     }
-    setPageBreakIdx(brk);
+    groups.push(curGroup);
+    // Ensure last page has room for acceptance block — spill overflow to a new page
+    const lastAvail = groups.length === 1 ? Math.max(80, avPage1) : Math.max(80, avPageN);
+    const lastSpillAt = lastAvail - acceptH;
+    if (lastSpillAt > 0) {
+      const lastGrp = groups[groups.length - 1];
+      let runAcc = 0, splitAt = lastGrp.length;
+      for (let i = 0; i < lastGrp.length; i++) {
+        if (runAcc + secHeights[lastGrp[i]] > lastSpillAt) { splitAt = i; break; }
+        runAcc += secHeights[lastGrp[i]];
+      }
+      if (splitAt > 0 && splitAt < lastGrp.length) {
+        groups.push(lastGrp.splice(splitAt));
+      }
+    }
+    // Post-process: don't strand a heading at the start of a page — move it back to previous page
+    for (let g = groups.length - 1; g > 0; g--) {
+      if (groups[g].length > 0 && activeSections[groups[g][0]].type === 'heading') {
+        groups[g - 1].push(groups[g].shift());
+        if (groups[g].length === 0) groups.splice(g, 1);
+      }
+    }
+    const flat = JSON.stringify(groups);
+    setPageGroups(prev => JSON.stringify(prev) !== flat ? groups : prev);
   });
 
-  const pIdx = pageBreakIdx !== null ? pageBreakIdx : Math.ceil(activeSections.length / 2);
-  const page1Secs = activeSections.slice(0, pIdx);
-  const page2Secs = activeSections.slice(pIdx);
-  const hasPage2 = page2Secs.length > 0;
-  const totalPages = hasPage2 ? 2 : 1;
+  // Derive page groups — fallback: all sections on one page until measured
+  const groups = pageGroups || [activeSections.map((_, i) => i)];
+  const totalPages = groups.length;
 
   const set = (k, v) => setTpl(p => ({ ...p, [k]: v }));
 
@@ -453,6 +498,33 @@ const OfferLetterGenerator = ({ user }) => {
     const secs = [...(tpl[k] || [])];
     secs[si] = { ...secs[si], [key]: val };
     setTpl(p => ({ ...p, [k]: secs }));
+  };
+
+  const deleteSection = (si) => {
+    const k = letterType === 'hr' ? 'hr_sections' : 'consultant_sections';
+    const secs = [...(tpl[k] || [])];
+    secs.splice(si, 1);
+    setEditingSec(null);
+    setPageGroups(null); // reset stale index groups — will recalculate on next render
+    setTpl(p => ({ ...p, [k]: secs }));
+  };
+
+  const addSection = () => {
+    const k = letterType === 'hr' ? 'hr_sections' : 'consultant_sections';
+    const secs = [...(tpl[k] || [])];
+    secs.push({ title: 'New Section', clauses: ['<strong>New point:</strong> Edit this clause.'] });
+    setPageGroups(null);
+    setTpl(p => ({ ...p, [k]: secs }));
+    setEditingSec(secs.length - 1);
+  };
+
+  const addHeading = () => {
+    const k = letterType === 'hr' ? 'hr_sections' : 'consultant_sections';
+    const secs = [...(tpl[k] || [])];
+    secs.push({ type: 'heading', title: 'New Heading' });
+    setPageGroups(null);
+    setTpl(p => ({ ...p, [k]: secs }));
+    setEditingSec(secs.length - 1);
   };
 
   // Generic drag starter – reused by header elements AND footer image
@@ -696,6 +768,7 @@ const OfferLetterGenerator = ({ user }) => {
         titleRef.current.innerHTML = sec.title;
     }, [sec.title]);
     useEffect(() => {
+      if (!sec.clauses) return;
       sec.clauses.forEach((cl, ci) => {
         if (clauseRefs.current[ci] && document.activeElement !== clauseRefs.current[ci])
           clauseRefs.current[ci].innerHTML = renderClause(cl);
@@ -713,6 +786,47 @@ const OfferLetterGenerator = ({ user }) => {
     };
     const commitNote = () => { if (noteRef.current) updateSection(si, 'note', noteRef.current.innerHTML); };
 
+    // ── Heading type: standalone bold divider heading ──
+    if (sec.type === 'heading') {
+      return (
+        <div style={{ marginBottom:10, marginTop:4 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ flex:1, height:1.5, background:'linear-gradient(90deg,transparent,#0a1c3e44)' }} />
+            <span
+              ref={titleRef}
+              contentEditable={editing}
+              suppressContentEditableWarning
+              data-olg-editable="1"
+              onBlur={commitTitle}
+              style={{
+                fontFamily:'Poppins,sans-serif', fontSize:'.91rem', fontWeight:800, color:'#0a1c3e',
+                textAlign:'center', letterSpacing:'.04em', textTransform:'uppercase',
+                outline: editing ? '2px dashed #0099cc' : 'none',
+                borderRadius:4, padding: editing ? '2px 8px' : '2px 6px',
+                background: editing ? '#f0f9ff' : 'transparent',
+                cursor: editing ? 'text' : 'default', whiteSpace:'nowrap',
+              }}
+            />
+            <div style={{ flex:1, height:1.5, background:'linear-gradient(90deg,#0a1c3e44,transparent)' }} />
+            {isEditMode && (
+              <>
+                <button onClick={() => setEditingSec(editing ? null : si)} style={{
+                  background: editing ? '#f0fdf4' : '#fef9ec', border:'1px solid ' + (editing ? '#86efac' : '#fde68a'),
+                  borderRadius:5, padding:'2px 8px', fontSize:'.6rem', color: editing ? '#15803d' : '#92400e',
+                  cursor:'pointer', fontWeight:700, flexShrink:0,
+                }}>{editing ? 'Done ✓' : 'Edit'}</button>
+                <button
+                  onClick={() => { if (window.confirm('Delete this heading?')) deleteSection(si); }}
+                  title="Delete heading"
+                  style={{ background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:5, padding:'2px 7px', fontSize:'.6rem', color:'#dc2626', cursor:'pointer', fontWeight:800, flexShrink:0 }}
+                >🗑</button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={{ marginBottom:13 }}>
         <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7, paddingBottom:4, borderBottom:'2px solid #e2e8f4' }}>
@@ -726,30 +840,37 @@ const OfferLetterGenerator = ({ user }) => {
             style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, color:'#0a1c3e', outline: editing ? '1.5px dashed #0099cc' : 'none', borderRadius:3, padding: editing ? '1px 3px' : 0, flex:1, cursor: editing ? 'text' : 'default', minWidth:20 }}
           />
           {isEditMode && (
-            <button onClick={() => setEditingSec(editing ? null : si)} style={{
-              background: editing ? '#f0fdf4' : '#f0f9ff', border:'1px solid ' + (editing ? '#86efac' : '#bae6fd'),
-              borderRadius:5, padding:'2px 8px', fontSize:'.6rem', color: editing ? '#15803d' : '#0369a1',
-              cursor:'pointer', fontWeight:700, flexShrink:0,
-            }}>{editing ? 'Done ✓' : 'Edit'}</button>
+            <>
+              <button onClick={() => setEditingSec(editing ? null : si)} style={{
+                background: editing ? '#f0fdf4' : '#f0f9ff', border:'1px solid ' + (editing ? '#86efac' : '#bae6fd'),
+                borderRadius:5, padding:'2px 8px', fontSize:'.6rem', color: editing ? '#15803d' : '#0369a1',
+                cursor:'pointer', fontWeight:700, flexShrink:0,
+              }}>{editing ? 'Done ✓' : 'Edit'}</button>
+              <button
+                onClick={() => { if (window.confirm('Delete this entire section?')) deleteSection(si); }}
+                title="Delete section"
+                style={{ background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:5, padding:'2px 7px', fontSize:'.6rem', color:'#dc2626', cursor:'pointer', fontWeight:800, flexShrink:0 }}
+              >🗑 Del</button>
+            </>
           )}
         </div>
         <ul style={{ paddingLeft:0, margin:0, listStyle:'none' }}>
-          {sec.clauses.map((cl, ci) => (
-            <li key={ci} style={{ fontSize:'.81rem', lineHeight:1.7, color:'#111827', marginBottom:4, paddingLeft:24, position:'relative', textAlign:'justify', fontWeight:500 }}>
-              <span style={{ position:'absolute', left:0, top:0, fontWeight:700, color:'#0099cc', fontSize:'.81rem', fontFamily:'Poppins,sans-serif' }}>{String.fromCharCode(97+ci)}.</span>
+          {(sec.clauses || []).map((cl, ci) => (
+            <li key={ci} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.81rem', lineHeight:1.7, color:'#111827', marginBottom:7, textAlign:'justify', fontWeight:500 }}>
+              <span style={{ flexShrink:0, fontWeight:700, color:'#0099cc', fontSize:'.81rem', fontFamily:'Poppins,sans-serif', marginTop:1, minWidth:18 }}>{String.fromCharCode(97+ci)}.</span>
               <span
                 ref={el => clauseRefs.current[ci] = el}
                 contentEditable={editing}
                 suppressContentEditableWarning
                 data-olg-editable="1"
                 onBlur={() => commitClause(ci)}
-                style={{ outline: editing ? '1px dashed #e2e8f0' : 'none', borderRadius:2, display:'inline', cursor: editing ? 'text' : 'default' }}
+                style={{ outline: editing ? '1px dashed #e2e8f0' : 'none', borderRadius:2, flex:1, cursor: editing ? 'text' : 'default', wordBreak:'break-word' }}
               />
               {editing && sec.clauses.length > 1 && (
                 <button
                   onClick={() => { const next = sec.clauses.filter((_, j) => j !== ci); updateSection(si, 'clauses', next); }}
                   title="Delete this clause"
-                  style={{ position:'absolute', right:-6, top:2, background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:4, width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:'.6rem', color:'#dc2626', fontWeight:800, lineHeight:1, padding:0 }}
+                  style={{ flexShrink:0, background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:4, width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:'.6rem', color:'#dc2626', fontWeight:800, lineHeight:1, padding:0, marginTop:3 }}
                 >✕</button>
               )}
             </li>
@@ -827,15 +948,17 @@ const OfferLetterGenerator = ({ user }) => {
   const PAGE_STYLE = {
     width:A4_PX_W, minHeight:A4_PX_H, background:'#fff',
     boxShadow:'0 4px 28px rgba(0,0,0,.2)', borderRadius:3,
-    position:'relative', overflow:'hidden', flexShrink:0,
+    position:'relative', overflow:'visible', flexShrink:0,
   };
   const footerTextReserveH = (tpl.footer_text || tpl.footer_sub_text) ? 62 : 16;
-  const BODY_PAD = { padding:`18px 36px ${footerTextReserveH}px`, position:'relative', zIndex:1, zoom: tpl.content_scale || 1 };
+  // padding-bottom is a small cosmetic gap only — footer clearance is now enforced
+  // in the packing formula (ftrReserve in numerator = constant physical px, not scaled)
+  const BODY_PAD = { padding:'18px 36px 8px', position:'relative', zIndex:1, zoom: tpl.content_scale || 1 };
 
   // PDF download — opens browser print dialog → user selects "Save as PDF"
   const downloadPDF = useCallback(async () => {
     setPdfLoading(true);
-    const pages = [page1Ref.current, page2Ref.current].filter(Boolean);
+    const pages = pageRefs.current.filter(Boolean);
     if (pages.length === 0) { setPdfLoading(false); return; }
     const candName = candidateName.trim() || 'Candidate';
     const fn = 'Offer_Letter_' + (letterType === 'hr' ? 'HR' : 'Consultant') + '_' + candName.replace(/\s+/g, '_');
@@ -864,14 +987,7 @@ const OfferLetterGenerator = ({ user }) => {
           if (n.style) {
             if (n.style.userSelect === 'none') n.style.userSelect = '';
             if (n.style.webkitUserSelect === 'none') n.style.webkitUserSelect = '';
-            if (n.style.zoom && n.style.zoom !== '' && n.style.zoom !== '1') {
-              const z = parseFloat(n.style.zoom) || 1;
-              n.style.zoom = '';
-              n.style.transform = 'scale(' + z + ')';
-              n.style.transformOrigin = 'top left';
-            } else if (n.style.zoom) {
-              n.style.zoom = '';
-            }
+            // Keep zoom as-is — transform:scale() doesn't affect layout so causes cut-off
             if (n.style.pointerEvents === 'none' && n.tagName !== 'IMG') n.style.pointerEvents = '';
             if (n.style.cursor === 'grab' || n.style.cursor === 'grabbing') n.style.cursor = '';
           }
@@ -960,25 +1076,49 @@ const OfferLetterGenerator = ({ user }) => {
         </div>
       )}
 
-      {/* Hidden measurement container */}
+      {/* Hidden measurement container — NO zoom here; offsetHeight returns logical px */}
       <div ref={measureRef} style={{ position:'fixed', top:-99999, left:-99999, width:A4_PX_W, visibility:'hidden', pointerEvents:'none', fontFamily:'Inter,sans-serif' }}>
         <div className="m-hdr">{renderHeader()}</div>
+        {/* Intro block — logical heights */}
         <div className="m-intro" style={{ padding:'18px 36px 0' }}>
           <div style={{ height:20, marginBottom:16 }} />
           <div style={{ height:30, marginBottom:12 }} />
-          <div style={{ fontSize:'.83rem', lineHeight:1.72, marginBottom:10 }} dangerouslySetInnerHTML={{ __html: (tpl.greeting_intro||'') + (tpl.greeting_intro2||'') }} />
+          <div style={{ fontSize:'.82rem', lineHeight:1.7, marginBottom:6 }}>Dear Candidate,</div>
+          {tpl.greeting_intro && <div style={{ fontSize:'.82rem', lineHeight:1.7, marginBottom:8 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro }} />}
+          {tpl.greeting_intro2 && <div style={{ fontSize:'.82rem', lineHeight:1.7, marginBottom:12 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro2 }} />}
         </div>
+        {/* Section blocks — logical heights */}
         {activeSections.map((sec, si) => (
           <div key={si} className="m-sec" style={{ padding:'0 36px', marginBottom:14 }}>
-            <div style={{ height:22, marginBottom:7 }} />
-            <ul style={{ paddingLeft:0, margin:0, listStyle:'none' }}>
-              {sec.clauses.map((cl, ci) => (
-                <li key={ci} style={{ fontSize:'.81rem', lineHeight:1.7, marginBottom:4, paddingLeft:24 }} dangerouslySetInnerHTML={{ __html: renderClause(cl) }} />
-              ))}
-            </ul>
-            {sec.note && <div style={{ padding:'7px 11px', margin:'5px 0', fontSize:'.79rem' }} dangerouslySetInnerHTML={{ __html: sec.note }} />}
+            {sec.type === 'heading' ? (
+              <div style={{ height:18, marginBottom:6 }} />
+            ) : (
+              <>
+                <div style={{ height:22, marginBottom:7 }} />
+                <ul style={{ paddingLeft:0, margin:0, listStyle:'none' }}>
+                  {(sec.clauses || []).map((cl, ci) => (
+                    <li key={ci} style={{ fontSize:'.81rem', lineHeight:1.7, marginBottom:4, paddingLeft:24 }} dangerouslySetInnerHTML={{ __html: renderClause(cl) }} />
+                  ))}
+                </ul>
+                {sec.note && <div style={{ padding:'7px 11px', margin:'5px 0', fontSize:'.79rem' }} dangerouslySetInnerHTML={{ __html: sec.note }} />}
+              </>
+            )}
           </div>
         ))}
+        {/* Acceptance block — measure its logical height */}
+        <div className="m-accept" style={{ padding:'0 36px' }}>
+          <div style={{ marginTop:20, paddingTop:14 }}>
+            <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, marginBottom:10, textAlign:'center' }}>Acceptance of Offer</div>
+            <div style={{ padding:'12px 15px', border:'1.5px solid #b8cfe8', borderRadius:8 }}>
+              <div style={{ fontSize:'.8rem', marginBottom:7, paddingBottom:6 }}>Reply to confirm your acceptance:</div>
+              <div style={{ fontSize:'.76rem', marginBottom:5 }}>Copy &amp; reply via email</div>
+              <div style={{ fontSize:'.8rem', lineHeight:1.75, padding:'9px 13px' }}>
+                I, {displayName}, accept the Offer of Appointment for the role of {currentDesignation} at Fix Your Finance, dated {formattedDate}. I have read and agree to all terms and conditions.
+              </div>
+              {tpl.acceptance_note && <p style={{ fontSize:'.72rem', marginTop:8, lineHeight:1.55 }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_note }} />}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ─── LEFT PANEL ─── */}
@@ -1254,7 +1394,7 @@ const OfferLetterGenerator = ({ user }) => {
         <div style={{ flex:1, overflowY:'auto', padding:'28px 32px 60px', display:'flex', flexDirection:'column', alignItems:'center', gap:28 }}>
           <div style={{ width: Math.round(A4_PX_W * previewZoom / 100), display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
             {isEditMode ? (
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                 <span style={{ fontSize:'.72rem', color:'#0369a1', fontWeight:600, fontFamily:'Inter,sans-serif' }}>✏️ Edit mode — click a section's Edit button to modify</span>
                 <button
                   onClick={() => { handleSaveTemplate(); setIsEditMode(false); setEditingSec(null); }}
@@ -1274,55 +1414,50 @@ const OfferLetterGenerator = ({ user }) => {
             <span style={{ fontSize:'.68rem', color:'#94a3b8' }}>A4 · {totalPages} page{totalPages>1?'s':''} · {Math.round((tpl.content_scale||1)*100)}% text</span>
           </div>
 
-          {/* PAGE 1 — zoom wrapper */}
-          <div style={{ width: Math.round(A4_PX_W * previewZoom/100), height: Math.round(A4_PX_H * previewZoom/100), position:'relative', flexShrink:0 }}>
-            <div style={{ position:'absolute', top:0, left:0, transformOrigin:'top left', transform:`scale(${previewZoom/100})` }}>
-              <div ref={page1Ref} style={PAGE_STYLE} className="olg-page">
-                {wm}
-                {renderHeader()}
-                {brandStrip}
-                <div style={BODY_PAD}>
-                  <div style={{ textAlign:'right', fontSize:'.8rem', color:'#718096', marginBottom:14, fontFamily:'Inter,sans-serif' }}>
-                    Date: <strong style={{ color:'#0a1c3e' }}>{formattedDate}</strong>
-                  </div>
-                  <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.96rem', fontWeight:800, color:'#0a1c3e', textAlign:'center', padding:'7px 0 13px', borderBottom:'2px solid #0a1c3e', marginBottom:11 }}
-                    dangerouslySetInnerHTML={{ __html: tpl.subject_line || 'Offer of Appointment' }} />
-                  <div style={{ fontSize:'.84rem', marginBottom:6, color:'#1a2540', fontWeight:600, fontFamily:'Inter,sans-serif' }}>
-                    Dear <strong style={{ color:'#0a1c3e' }}>{displayName}</strong>,
-                  </div>
-                  {tpl.greeting_intro && <p style={{ fontSize:'.82rem', lineHeight:1.7, color:'#111827', marginBottom:8, textAlign:'justify', fontFamily:'Inter,sans-serif', fontWeight:500 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro }} />}
-                  {tpl.greeting_intro2 && <p style={{ fontSize:'.82rem', lineHeight:1.7, color:'#111827', marginBottom:12, textAlign:'justify', fontFamily:'Inter,sans-serif', fontWeight:500 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro2 }} />}
-                  {page1Secs.map((sec, si) => <SectionBlock key={si} sec={sec} si={si} />)}
-                  {!hasPage2 && acceptanceBlock}
-                </div>
-                {(()=>{ const fp=tpl.footer_page||'last'; return (fp==='first'||fp==='all'||(fp==='last'&&!hasPage2))&&renderFooter(); })()}
-              </div>
-            </div>
-          </div>
-
-          {/* PAGE 2 — zoom wrapper */}
-          {hasPage2 && (
-            <div style={{ width: Math.round(A4_PX_W * previewZoom/100), height: Math.round(A4_PX_H * previewZoom/100), position:'relative', flexShrink:0 }}>
-              <div style={{ position:'absolute', top:0, left:0, transformOrigin:'top left', transform:`scale(${previewZoom/100})` }}>
-                <div ref={page2Ref} style={PAGE_STYLE} className="olg-page">
-                  {wm}
-                  {tpl.header_all_pages !== false && renderHeader()}
-                  {tpl.header_all_pages !== false && brandStrip}
-                  <div style={BODY_PAD}>
-                    {/* Continued strip — keeps page 2 contextual, prevents sections from running off the top */}
-                    <div style={{ fontSize:'.72rem', color:'#94a3b8', borderBottom:'1px solid #e8edf5', marginBottom:14, paddingBottom:7, fontFamily:'Inter,sans-serif', display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontWeight:700, color:'#0a1c3e', fontSize:'.75rem' }} dangerouslySetInnerHTML={{ __html: tpl.subject_line || 'Offer of Appointment' }} />
-                      <span style={{ color:'#cbd5e1' }}>—</span>
-                      <span>Continued</span>
+          {/* N PAGES — rendered dynamically */}
+          {groups.map((group, pgIdx) => {
+            const isFirst = pgIdx === 0;
+            const isLast = pgIdx === groups.length - 1;
+            const showHeader = isFirst || tpl.header_all_pages !== false;
+            const bodyStyle = isFirst ? BODY_PAD : { ...BODY_PAD, paddingTop: 38 };
+            const fp = tpl.footer_page || 'last';
+            const showFooter = fp === 'all' || (fp === 'first' && isFirst) || (fp === 'last' && isLast);
+            return (
+              <div key={pgIdx} style={{ width: Math.round(A4_PX_W * previewZoom/100), height: Math.round(A4_PX_H * previewZoom/100), position:'relative', flexShrink:0 }}>
+                <div style={{ position:'absolute', top:0, left:0, transformOrigin:'top left', transform:`scale(${previewZoom/100})` }}>
+                  <div ref={el => { pageRefs.current[pgIdx] = el; }} style={PAGE_STYLE} className="olg-page">
+                    {wm}
+                    {showHeader && renderHeader()}
+                    {showHeader && brandStrip}
+                    <div style={bodyStyle}>
+                      {isFirst && (
+                        <>
+                          <div style={{ textAlign:'right', fontSize:'.8rem', color:'#718096', marginBottom:14, fontFamily:'Inter,sans-serif' }}>
+                            Date: <strong style={{ color:'#0a1c3e' }}>{formattedDate}</strong>
+                          </div>
+                          <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.96rem', fontWeight:800, color:'#0a1c3e', textAlign:'center', padding:'7px 0 13px', borderBottom:'2px solid #0a1c3e', marginBottom:11 }}
+                            dangerouslySetInnerHTML={{ __html: tpl.subject_line || 'Offer of Appointment' }} />
+                          <div style={{ fontSize:'.84rem', marginBottom:6, color:'#1a2540', fontWeight:600, fontFamily:'Inter,sans-serif' }}>
+                            Dear <strong style={{ color:'#0a1c3e' }}>{displayName}</strong>,
+                          </div>
+                          {tpl.greeting_intro && <p style={{ fontSize:'.82rem', lineHeight:1.7, color:'#111827', marginBottom:8, textAlign:'justify', fontFamily:'Inter,sans-serif', fontWeight:500 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro }} />}
+                          {tpl.greeting_intro2 && <p style={{ fontSize:'.82rem', lineHeight:1.7, color:'#111827', marginBottom:12, textAlign:'justify', fontFamily:'Inter,sans-serif', fontWeight:500 }} dangerouslySetInnerHTML={{ __html: tpl.greeting_intro2 }} />}
+                        </>
+                      )}
+                      {group.map(si => <SectionBlock key={si} sec={activeSections[si]} si={si} />)}
+                      {isEditMode && isLast && (
+                        <div data-pdf-hide="1" style={{ display:'flex', gap:8, marginBottom:14, marginTop:4 }}>
+                          <button onClick={addSection} style={{ width:'100%', padding:'7px 0', background:'#f0f9ff', border:'1.5px dashed #7dd3fc', borderRadius:6, color:'#0369a1', fontSize:'.72rem', fontWeight:700, cursor:'pointer', fontFamily:'Poppins,sans-serif' }}>➕ Add Section</button>
+                        </div>
+                      )}
+                      {isLast && acceptanceBlock}
                     </div>
-                    {page2Secs.map((sec, i) => <SectionBlock key={pIdx+i} sec={sec} si={pIdx+i} />)}
-                    {acceptanceBlock}
+                    {showFooter && renderFooter()}
                   </div>
-                  {(()=>{ const fp=tpl.footer_page||'last'; return (fp==='last'||fp==='all')&&renderFooter(); })()}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
 
         {/* ── Zoom bar (Word-style bottom) ── */}

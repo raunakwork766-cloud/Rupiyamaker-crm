@@ -83,6 +83,8 @@ const RoleSettings = () => {
         'leaves': ['show', 'own', 'junior', 'all', 'delete'],
         'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
         'dialer_report': ['show'],
+        'offer_letter': ['show'],
+        'leave_management': ['show'],
         'apps': ['show', 'manage'],
         "notification":['show', 'delete', 'send'],
         'reports': ['show'],
@@ -107,6 +109,8 @@ const RoleSettings = () => {
             'leaves': { show:'Sidebar', own:'Own Leaves', junior:'Junior Leaves', all:'All Leaves', delete:'Delete' },
             'attendance': { show:'Sidebar', own:'Own Attendance', junior:'Junior Attendance', all:'All Attendance', update:'Update Attendance', delete:'Delete' },
             'dialer_report': { show:'View Dialer Report' },
+            'offer_letter': { show:'Sidebar Access' },
+            'leave_management': { show:'Show Leave Management Tab' },
             'apps': { show:'Sidebar', manage:'Manage Apps' },
             'notification': { show:'View', delete:'Delete', send:'Send Notification' },
             'reports': { show:'Access Reports' },
@@ -128,7 +132,7 @@ const RoleSettings = () => {
                     }
                 });
             } else if (Array.isArray(actions)) {
-                mods.push({ label: module.toUpperCase(), originalModule: module, section: null, actions, isNested: false });
+                mods.push({ label: module.replace(/_/g, ' ').toUpperCase(), originalModule: module, section: null, actions, isNested: false });
             }
         });
         return mods;
