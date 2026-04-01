@@ -36,6 +36,7 @@ const StatusManagementTab = ({
     const [savingId, setSavingId] = useState(null);
     // Local edits for reassign days (status_id -> value)
     const [reassignEdits, setReassignEdits] = useState({});
+    const [categoryEdits, setCategoryEdits] = useState({});
 
     // ── Permission Roles tab state ──
     const [allRoles, setAllRoles] = useState([]);
@@ -186,10 +187,13 @@ const StatusManagementTab = ({
     const handleToggleManager = async (status) => {
         const id = status._id || status.id;
         setSavingId(id + '_mgr');
-        await updateStatus(id, {
-            is_manager_permission_required: !status.is_manager_permission_required
-        });
-        setSavingId(null);
+        try {
+            await updateStatus(id, {
+                is_manager_permission_required: !status.is_manager_permission_required
+            });
+        } finally {
+            setSavingId(null);
+        }
     };
 
     const handleReassignSave = async (status) => {
@@ -199,9 +203,23 @@ const StatusManagementTab = ({
         const days = parseInt(val, 10);
         if (isNaN(days) || days < 0) return;
         setSavingId(id + '_days');
-        await updateStatus(id, { reassignment_period: days });
-        setSavingId(null);
-        setReassignEdits(prev => { const n = {...prev}; delete n[id]; return n; });
+        try {
+            await updateStatus(id, { reassignment_period: days });
+        } finally {
+            setSavingId(null);
+            setReassignEdits(prev => { const n = {...prev}; delete n[id]; return n; });
+        }
+    };
+
+    const handleCategorySave = async (status, value) => {
+        const id = status._id || status.id;
+        setSavingId(id + '_cat');
+        try {
+            await updateStatus(id, { category: value });
+        } finally {
+            setSavingId(null);
+            setCategoryEdits(prev => { const n = {...prev}; delete n[id]; return n; });
+        }
     };
 
     return (
@@ -303,6 +321,9 @@ const StatusManagementTab = ({
                             <th className="px-4 py-2 text-left">Color</th>
                             <th className="px-4 py-2 text-center">Reassign (days)</th>
                             <th className="px-4 py-2 text-center">Manager Approval</th>
+                            {selectedDepartment === 'login' && (
+                                <th className="px-4 py-2 text-center">Category</th>
+                            )}
                             <th className="px-4 py-2 text-left">Sub-Options</th>
                             <th className="px-4 py-2 text-center">Actions</th>
                         </tr>
@@ -396,6 +417,31 @@ const StatusManagementTab = ({
                                         );
                                     })()}
                                 </td>
+                                {selectedDepartment === 'login' && (
+                                    <td className="px-4 py-3 text-center">
+                                        {(() => {
+                                            const id = status._id || status.id;
+                                            const isSaving = savingId === id + '_cat';
+                                            const currentVal = categoryEdits[id] !== undefined ? categoryEdits[id] : (status.category || '');
+                                            return (
+                                                <select
+                                                    value={currentVal}
+                                                    disabled={isSaving}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setCategoryEdits(prev => ({...prev, [id]: val}));
+                                                        handleCategorySave(status, val);
+                                                    }}
+                                                    className="bg-gray-800 text-white border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50 cursor-pointer"
+                                                >
+                                                    <option value="">-- Select --</option>
+                                                    <option value="open">Open</option>
+                                                    <option value="closed">Closed</option>
+                                                </select>
+                                            );
+                                        })()}
+                                    </td>
+                                )}
                                 <td className="px-4 py-3">
                                     <div className="max-w-xs">
                                         {/* Sub-options Header with Add Button */}

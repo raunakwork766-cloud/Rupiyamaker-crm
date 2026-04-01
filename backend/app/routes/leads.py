@@ -518,12 +518,44 @@ async def check_phone_number(
         })
 
     # ── Locking period logic ─────────────────────────────────────────────────
-    # Find the LATEST created lead — its status's reassignment_period governs ALL.
-    latest_lr = None
-    for lr in lead_results:
-        dt = lr.get("_created_dt")
-        if dt and (latest_lr is None or dt > latest_lr.get("_created_dt")):
-            latest_lr = lr
+    # Priority rule:
+    #   1. Among all leads sent to login, find those whose login-status has category="open"
+    #      → use the LATEST such "open" login lead for locking.
+    #   2. If no open-category login lead exists, fall back to the LATEST lead overall.
+
+    # Step 1: Check category of each login-sent lead
+    locking_candidate = None  # The lead that will govern locking
+
+    for lr in sorted(lead_results, key=lambda x: x.get("_created_dt") or datetime.min.replace(tzinfo=timezone.utc), reverse=True):
+        if not lr.get("file_sent_to_login"):
+            continue
+        try:
+            lead_id_str = lr.get("id", "")
+            if not lead_id_str:
+                continue
+            login_lead = await login_leads_db.get_login_lead_by_original_id(lead_id_str)
+            if not login_lead:
+                continue
+            login_status_name = (login_lead.get("status", "") or "").upper()
+            if not login_status_name:
+                continue
+            s_obj = await leads_db.get_status_by_name(login_status_name)
+            if s_obj and (s_obj.get("category") or "").lower() == "open":
+                locking_candidate = lr
+                locking_candidate["_resolved_status_name"] = login_status_name
+                locking_candidate["_resolved_sub_status_name"] = (login_lead.get("sub_status", "") or "").upper()
+                logging.info(f"🔓 Open-category login status '{login_status_name}' found on lead {lead_id_str} — using for locking")
+                break
+        except Exception as e:
+            logging.error(f"❌ Error checking login status category: {e}")
+
+    # Step 2: Fall back to latest lead overall if no open-category lead found
+    if locking_candidate is None:
+        for lr in sorted(lead_results, key=lambda x: x.get("_created_dt") or datetime.min.replace(tzinfo=timezone.utc), reverse=True):
+            locking_candidate = lr
+            break
+
+    latest_lr = locking_candidate
 
     locking_info: Dict[str, Any] = {
         "is_locked": False,
@@ -535,11 +567,12 @@ async def check_phone_number(
 
     if latest_lr:
         latest_lr["is_locking_lead"] = True
-        status_name = latest_lr.get("status", "")
-        sub_status_name = latest_lr.get("sub_status", "")
+        # Use pre-resolved status names if set (from open-category login lead lookup above)
+        status_name = latest_lr.pop("_resolved_status_name", None) or latest_lr.get("status", "")
+        sub_status_name = latest_lr.pop("_resolved_sub_status_name", None) or latest_lr.get("sub_status", "")
 
-        # If lead is sent to login, use the login lead's status for locking rules
-        if latest_lr.get("file_sent_to_login"):
+        # If lead is sent to login AND we haven't already resolved its status above, look up now
+        if latest_lr.get("file_sent_to_login") and not status_name.startswith("_RESOLVED"):
             try:
                 lead_id_str = latest_lr.get("id", "")
                 if lead_id_str:
@@ -548,7 +581,6 @@ async def check_phone_number(
                         login_status = login_lead.get("status", "")
                         login_sub_status = login_lead.get("sub_status", "")
                         if login_status:
-                            # Uppercase to match statuses collection naming (e.g. "Active Login" → "ACTIVE LOGIN")
                             status_name = login_status.upper()
                             sub_status_name = (login_sub_status or "").upper()
                             logging.info(f"🔒 Using login lead status for locking: {status_name}/{sub_status_name} (original CRM: {latest_lr.get('status')}/{latest_lr.get('sub_status')})")
