@@ -774,8 +774,8 @@ export default function FeedPage({ user }) {
       const currentFeed = feeds.find(feed => feed.id === feedId);
       const isCurrentlyLiked = currentFeed?.liked || false;
       const endpoint = isCurrentlyLiked
-        ? buildApiUrl(`feeds/${feedId}/unlike/?user_id=${currentUserId}`)
-        : buildApiUrl(`feeds/${feedId}/like/?user_id=${currentUserId}`);
+        ? buildApiUrl(`feeds/${feedId}/unlike?user_id=${currentUserId}`)
+        : buildApiUrl(`feeds/${feedId}/like?user_id=${currentUserId}`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
