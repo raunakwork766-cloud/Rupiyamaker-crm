@@ -603,7 +603,14 @@ async def get_attendance_calendar(
                 leave_approved_by = None
                 leave_approved_by_name = None
                 
-                if leave_info:
+                if is_holiday:
+                    # ── Holiday takes TOP priority ──
+                    # Even if an attendance/auto-absent record exists for this day,
+                    # a declared holiday always shows as Holiday (1.5).
+                    status = 1.5
+                    status_text = "Holiday"
+
+                elif leave_info:
                     # Employee has approved leave
                     status = 0
                     status_text = f"Leave ({leave_info['leave_type_display']})"
@@ -690,7 +697,7 @@ async def get_attendance_calendar(
                     elif status == -2 or status == -2.0:
                         absconding_days += 1
                         
-                elif not is_weekend and not is_holiday:
+                elif not is_weekend:
                     # ── Rule: No attendance record on a past working day = Absent ──
                     _day_date_obj = date.fromisoformat(date_str)
                     _today_ist = get_ist_now().date()
@@ -772,6 +779,10 @@ async def get_attendance_calendar(
                 for day_data in days:
                     d_sun = date.fromisoformat(day_data["date"])
                     if d_sun.weekday() != 6:  # Only Sundays
+                        continue
+
+                    # ── Holiday takes priority: skip Sunday rule for holiday Sundays ──
+                    if day_data.get("is_holiday"):
                         continue
 
                     saturday = d_sun - timedelta(days=1)
@@ -3465,7 +3476,13 @@ async def add_holiday(
         
         # Add holiday
         holiday_id = await holidays_db.add_holiday(holiday_data)
-        
+
+        # Invalidate calendar cache so the UI gets fresh data immediately
+        try:
+            invalidate_cache_pattern("get_calendar_attendance")
+        except Exception:
+            pass
+
         return {
             "success": True,
             "message": "Holiday added successfully",
@@ -3647,21 +3664,36 @@ async def delete_holiday(
                 detail="Failed to delete holiday"
             )
         
-        # Optionally reset attendance for that date from H/SP -> A (absent)
+        # Reset attendance records for that date that were marked as holiday
         reset_count = 0
         if reset_attendance and holiday_date:
             try:
+                # Match both numeric 1.5 (stored by auto-mark) and legacy string "H"/"SP"
                 result = await attendance_db.collection.update_many(
-                    {"date": holiday_date, "status": {"$in": ["H", "SP"]}},
-                    {"$set": {"status": "A", "is_holiday": False, "updated_at": get_ist_now(), "updated_by": user_id}}
+                    {"date": holiday_date, "$or": [
+                        {"status": {"$in": [1.5, "H", "SP"]}},
+                        {"is_holiday": True}
+                    ]},
+                    {"$set": {
+                        "status": -1,  # Reset to Absent
+                        "is_holiday": False,
+                        "updated_at": get_ist_now(),
+                        "updated_by": user_id
+                    }}
                 )
                 reset_count = result.modified_count
             except Exception as re:
                 print(f"Warning: failed to reset attendance for holiday date {holiday_date}: {re}")
-        
+
+        # Invalidate calendar cache so the UI gets fresh data immediately
+        try:
+            invalidate_cache_pattern("get_calendar_attendance")
+        except Exception:
+            pass
+
         return {
             "success": True,
-            "message": f"Holiday deleted successfully{f' — {reset_count} attendance record(s) reset to Absent' if reset_count else ''}",
+            "message": f"Holiday deleted successfully{f' — {reset_count} attendance record(s) reset' if reset_count else ''}",
             "reset_count": reset_count
         }
         

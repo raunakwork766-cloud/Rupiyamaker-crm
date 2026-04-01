@@ -606,7 +606,8 @@ class StatusUpdate(BaseModel):
     is_active: Optional[bool] = None
     sub_statuses: Optional[List[Union[str, Dict[str, Any], SubStatusObject]]] = None  # List of sub-status IDs or objects
     reassignment_period: Optional[int] = None  # Days until reassignment is allowed
-    is_manager_permission_required: Optional[bool] = False  # Whether manager approval is needed for reassignment
+    is_manager_permission_required: Optional[bool] = None  # Whether manager approval is needed for reassignment
+    category: Optional[str] = None  # open or closed (for login statuses)
 
 
 

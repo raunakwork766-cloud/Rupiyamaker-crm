@@ -2700,10 +2700,10 @@ export default function MonthlyAttendanceTable() {
             } else {
               employeeRecord[dayKey] = ''; // Default empty
             }
-          } else if (day.is_weekend) {
-            employeeRecord[dayKey] = 'W'; // Weekend
           } else if (day.is_holiday) {
-            employeeRecord[dayKey] = 'H'; // Holiday (fallback check)
+            employeeRecord[dayKey] = 'H'; // Holiday takes priority — even on Sunday
+          } else if (day.is_weekend) {
+            employeeRecord[dayKey] = 'W'; // Weekend (non-holiday)
           } else {
             employeeRecord[dayKey] = ''; // null status = today/future (not yet marked)
           }
@@ -3750,9 +3750,10 @@ export default function MonthlyAttendanceTable() {
                       const isSundayDay = getDayName(selectedYear, selectedMonth, day) === 'Sun'
                       const isHolidayDay = holidays.some(h => h.date === dateKey)
                       
-                      // Sunday → solid purple column, Holiday → cyan tint, Normal → black
-                      const cellBg = isSundayDay ? '#2e1065' : isHolidayDay ? 'rgba(6,182,212,0.12)' : '#000000'
-                      const cellBorder = isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
+                      // Holiday takes priority over Sunday for background colour
+                      // Sunday → solid purple, Holiday (incl. Sunday holiday) → cyan tint, Normal → black
+                      const cellBg = isHolidayDay ? 'rgba(6,182,212,0.12)' : isSundayDay ? '#2e1065' : '#000000'
+                      const cellBorder = isHolidayDay ? '1px solid #06b6d4' : isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
 
                       // Compute todayKey fresh each render — avoids ANY stale-closure/hook issues
                       const _ist = getISTToday()
