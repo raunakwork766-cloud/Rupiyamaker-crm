@@ -3,6 +3,7 @@ import { Search, Filter, CheckSquare, Plus, Eye, Edit, Trash2, User, Building, C
 import { checkForDirectLeadView, handleDirectLeadViewOnMount } from '../utils/leadDirectViewFallback';
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
 import { leadEvents } from '../utils/auth';
+import useModalHistory from '../hooks/useModalHistory';
 import { getCurrentIST, formatDateIST, formatTimeIST, formatDateTimeIST, formatShortDateIST, convertToIST } from '../utils/timezoneUtils';
 import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
@@ -934,30 +935,52 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         const checkForDirectLeadViewInternal = async () => {
             try {
                 // Check for direct view parameter in different storage locations
-                const directViewLeadId = sessionStorage.getItem('directViewLeadId') || 
+                let directViewLeadId = sessionStorage.getItem('directViewLeadId') || 
                                          localStorage.getItem('lastViewedLeadId') ||
                                          (window.isDirectLeadView ? new URLSearchParams(window.location.search).get('lead_id') : null);
+                
+                let restoreTab = 0;
+                let isRefreshRestore = false;
+
+                if (!directViewLeadId) {
+                    // Check for refresh-persist restoration (survives refresh, cleared only on back-to-table)
+                    const savedRestore = sessionStorage.getItem('leadcrm_restore');
+                    if (savedRestore) {
+                        try {
+                            const parsed = JSON.parse(savedRestore);
+                            directViewLeadId = parsed.id;
+                            restoreTab = parsed.tab || 0;
+                            isRefreshRestore = true;
+                        } catch (e) { /* ignore */ }
+                    }
+                }
                 
                 // If we have a lead ID and authentication token, try to load the lead directly
                 if (directViewLeadId && localStorage.getItem('token')) {
                     
-                    // Clear storage to prevent repeated processing
-                    sessionStorage.removeItem('directViewLeadId');
-                    localStorage.removeItem('lastViewedLeadId');
+                    // Clear one-time direct-view storage only (not the refresh-restore key)
+                    if (!isRefreshRestore) {
+                        sessionStorage.removeItem('directViewLeadId');
+                        localStorage.removeItem('lastViewedLeadId');
+                    }
                     
                     try {
-                        // Try to directly view the lead
-                        const leadData = await handleViewLead(directViewLeadId);
+                        // Try to directly view the lead, passing targetTab so handleViewLead doesn't reset to 0
+                        const leadData = await handleViewLead(directViewLeadId, {
+                            targetTab: restoreTab,
+                            targetSections: restoreTab === 0 ? [0] : []
+                        });
                         
                         if (leadData) {
                             // Ensure lead details are shown instead of table
                             setSelectedLead(leadData);
-                            setOpenSections([0]); // Open first section
-                            setActiveTab(0);      // Set to Lead Details tab
+                            setOpenSections(restoreTab === 0 ? [0] : []);
+                            setActiveTab(restoreTab);
                         }
                     } catch (error) {
                         console.error('LeadCRM: Secondary attempt to view lead failed:', error);
-                        message.error(`Could not load the requested lead: ${error.message}`);
+                        // If lead not found (e.g. deleted), clear the restore state
+                        sessionStorage.removeItem('leadcrm_restore');
                     }
                 }
             } catch (error) {
@@ -970,20 +993,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         return () => clearTimeout(timer);
     }, []);
     
-    // Use the fallback utility as a final safeguard
-    useEffect(() => {
-        // Check if we need to handle direct lead viewing
-        const leadId = checkForDirectLeadView();
-        if (leadId) {
-        }
-        
-        // Try to handle direct lead viewing on component mount
-        const timer = setTimeout(() => {
-            handleDirectLeadViewOnMount(handleViewLead);
-        }, 1000); // Longer delay to ensure other initialization is complete
-        
-        return () => clearTimeout(timer);
-    }, []);
+    // Note: Direct lead view fallback is handled by the dedicated restore effect above.
+    // The handleDirectLeadViewOnMount utility is no longer needed here since it would call
+    // handleViewLead without the targetTab option and reset to tab 0.
 
     // ⚡ PERFORMANCE: Memoized loan type change handler with cache invalidation
     const handleLeadCrmLoanTypeChange = useCallback((event) => {
@@ -1112,6 +1124,21 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [checkedRows, setCheckedRows] = useState([]);
     const [activeTab, setActiveTab] = useState(0);
     const [openSections, setOpenSections] = useState([]); // Changed to array to allow multiple sections open
+
+    // Persist open lead + tab to sessionStorage so page refresh restores it
+    useEffect(() => {
+        if (selectedLead?._id) {
+            sessionStorage.setItem('leadcrm_restore', JSON.stringify({ id: selectedLead._id, tab: activeTab }));
+        }
+    }, [selectedLead?._id, activeTab]);
+
+    // Push browser history when lead detail is opened, handle back button to close detail
+    useModalHistory(!!selectedLead, () => {
+        setSelectedLead(null);
+        setActiveTab(0);
+        setOpenSections([]);
+        sessionStorage.removeItem('leadcrm_restore');
+    });
 
     // Lock body scroll when OBLIGATION tab is active (prevents page-level scrollbar)
     useEffect(() => {
@@ -1725,6 +1752,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         if (pendingTabNavigation !== null) {
             // Handle special case for back to table navigation
             if (pendingTabNavigation === 'back_to_table') {
+                sessionStorage.removeItem('leadcrm_restore');
                 setSelectedLead(null);
             } else {
                 setActiveTab(pendingTabNavigation);
@@ -2444,6 +2472,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             <LazySection height="100%">
                                 <ObligationSection
                                 leadData={leadData}
+                                canEdit={!['requested', 'pending'].includes(leadData?.reassignment_status)}
                                 handleChangeFunc={(field, value) => {
                                     // Mark as having unsaved changes when obligation data is modified
                                     setHasUnsavedObligationChanges(true);
@@ -3487,16 +3516,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     let totalIncome = 0;
                     let foundField = null;
                     
-                    // Use the SAME extraction logic as the column display
+                    // Priority: dynamic_fields (actual obligation data) > root-level (legacy/stale)
                     const incomeSources = [
-                        { value: lead.totalIncome, field: 'totalIncome' },
-                        { value: lead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
-                        { value: lead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
                         { value: lead.dynamic_fields?.eligibility_details?.totalIncome, field: 'dynamic_fields.eligibility_details.totalIncome' },
                         { value: lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome, field: 'dynamic_fields.obligation_data.eligibility.totalIncome' },
-                        { value: lead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                         { value: lead.dynamic_fields?.financial_details?.monthly_income, field: 'dynamic_fields.financial_details.monthly_income' },
+                        { value: lead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
+                        { value: lead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
+                        { value: lead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                         { value: lead.financial_details?.monthly_income, field: 'financial_details.monthly_income' },
+                        { value: lead.totalIncome, field: 'totalIncome' },
                         { value: lead.salary, field: 'salary' },
                         { value: lead.monthly_income, field: 'monthly_income' },
                         // Legacy fields as fallbacks
@@ -3510,7 +3539,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     
                     // Find the first valid income source (same logic as column display)
                     const validSource = incomeSources.find(source => 
-                        source.value !== undefined && source.value !== null && source.value !== ''
+                        source.value !== undefined && source.value !== null && source.value !== '' && source.value !== 0 && source.value !== '0'
                     );
                     
                     if (validSource) {
@@ -3618,16 +3647,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     let totalIncome = 0;
                     let foundField = null;
                     
-                    // Use the SAME extraction logic as the column display
+                    // Priority: dynamic_fields (actual obligation data) > root-level (legacy/stale)
                     const incomeSources = [
-                        { value: lead.totalIncome, field: 'totalIncome' },
-                        { value: lead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
-                        { value: lead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
                         { value: lead.dynamic_fields?.eligibility_details?.totalIncome, field: 'dynamic_fields.eligibility_details.totalIncome' },
                         { value: lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome, field: 'dynamic_fields.obligation_data.eligibility.totalIncome' },
-                        { value: lead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                         { value: lead.dynamic_fields?.financial_details?.monthly_income, field: 'dynamic_fields.financial_details.monthly_income' },
+                        { value: lead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
+                        { value: lead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
+                        { value: lead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                         { value: lead.financial_details?.monthly_income, field: 'financial_details.monthly_income' },
+                        { value: lead.totalIncome, field: 'totalIncome' },
                         { value: lead.salary, field: 'salary' },
                         { value: lead.monthly_income, field: 'monthly_income' },
                         // Legacy fields as fallbacks
@@ -3641,7 +3670,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     
                     // Find the first valid income source (same logic as column display)
                     const validSource = incomeSources.find(source => 
-                        source.value !== undefined && source.value !== null && source.value !== ''
+                        source.value !== undefined && source.value !== null && source.value !== '' && source.value !== 0 && source.value !== '0'
                     );
                     
                     if (validSource) {
@@ -3694,15 +3723,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             filtered.slice(0, 5).forEach((lead, index) => {
                 // Re-extract income for display using the same logic
                 const extractTotalIncomeForDisplay = (lead) => {
+                    // Priority: dynamic_fields (actual obligation data) > root-level (legacy/stale)
                     const incomeSources = [
-                        lead.totalIncome,
-                        lead.eligibility_details?.totalIncome,
-                        lead.eligibility?.totalIncome,
                         lead.dynamic_fields?.eligibility_details?.totalIncome,
                         lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome,
-                        lead.obligation_data?.eligibility?.totalIncome,
                         lead.dynamic_fields?.financial_details?.monthly_income,
+                        lead.eligibility_details?.totalIncome,
+                        lead.eligibility?.totalIncome,
+                        lead.obligation_data?.eligibility?.totalIncome,
                         lead.financial_details?.monthly_income,
+                        lead.totalIncome,
                         lead.salary,
                         lead.monthly_income,
                         // Legacy fields as fallbacks
@@ -3714,7 +3744,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     ];
                     
                     let totalIncome = incomeSources.find(income => 
-                        income !== undefined && income !== null && income !== ''
+                        income !== undefined && income !== null && income !== '' && income !== 0 && income !== '0'
                     );
                     
                     // Handle object income values
@@ -3769,20 +3799,20 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // Test income extraction on the sample lead
             const testIncome = (() => {
                 const incomeSources = [
-                    { value: sampleLead.totalIncome, field: 'totalIncome' },
-                    { value: sampleLead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
-                    { value: sampleLead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
                     { value: sampleLead.dynamic_fields?.eligibility_details?.totalIncome, field: 'dynamic_fields.eligibility_details.totalIncome' },
                     { value: sampleLead.dynamic_fields?.obligation_data?.eligibility?.totalIncome, field: 'dynamic_fields.obligation_data.eligibility.totalIncome' },
-                    { value: sampleLead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                     { value: sampleLead.dynamic_fields?.financial_details?.monthly_income, field: 'dynamic_fields.financial_details.monthly_income' },
+                    { value: sampleLead.eligibility_details?.totalIncome, field: 'eligibility_details.totalIncome' },
+                    { value: sampleLead.eligibility?.totalIncome, field: 'eligibility.totalIncome' },
+                    { value: sampleLead.obligation_data?.eligibility?.totalIncome, field: 'obligation_data.eligibility.totalIncome' },
                     { value: sampleLead.financial_details?.monthly_income, field: 'financial_details.monthly_income' },
+                    { value: sampleLead.totalIncome, field: 'totalIncome' },
                     { value: sampleLead.salary, field: 'salary' },
                     { value: sampleLead.monthly_income, field: 'monthly_income' }
                 ];
                 
                 const validSource = incomeSources.find(source => 
-                    source.value !== undefined && source.value !== null && source.value !== ''
+                    source.value !== undefined && source.value !== null && source.value !== '' && source.value !== 0 && source.value !== '0'
                 );
                 
                 return validSource ? { value: validSource.value, field: validSource.field } : { value: null, field: 'none' };
@@ -4257,10 +4287,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     }, [isFullscreen]);
 
     // Function to handle viewing a lead by ID - used by direct navigation from query parameters
-    const handleViewLead = async (leadId) => {
+    const handleViewLead = async (leadId, options = {}) => {
         if (!leadId) {
             return;
         }
+        
+        const targetTab = options.targetTab ?? 0;
+        const targetSections = options.targetSections ?? [0];
         
         try {
             const userId = localStorage.getItem('userId');
@@ -4305,11 +4338,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // Set the selected lead to show details view
             setSelectedLead(processedLead);
             
-            // Open the About section by default
-            setOpenSections([0]);
+            // Open the target section(s)
+            setOpenSections(targetSections);
             
-            // Set to Lead Details tab
-            setActiveTab(0);
+            // Set to target tab
+            setActiveTab(targetTab);
             
             // Make sure the lead data is also added to the filtered leads array
             // to ensure it's available in the component's state
@@ -4343,8 +4376,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // to ensure React has time to process other state changes
             setTimeout(() => {
                 setSelectedLead(processedLead);
-                setOpenSections([0]); // Auto-open the About section
-                setActiveTab(0);      // Set to Lead Details tab
+                setOpenSections(targetSections);
+                setActiveTab(targetTab);
                 setIsLoading(false);  // Prevent loading indicator
             }, 100);
             
@@ -6078,6 +6111,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         
         // If no unsaved changes, proceed with normal navigation
         setHasUnsavedObligationChanges(false);
+        sessionStorage.removeItem('leadcrm_restore');
         setSelectedLead(null);
     };
 
@@ -6457,12 +6491,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 statusLower,
                                 subStatusLower,
                                 isFileComplete,
-                                validated: selectedLead?.important_questions_validated,
-                                shouldShow: isFileComplete && selectedLead?.important_questions_validated
+                                shouldShow: isFileComplete
                             });
                             
-                            // Show button if file is complete AND important questions are validated
-                            return isFileComplete && selectedLead?.important_questions_validated ? (
+                            // Show button if file is complete
+                            return isFileComplete ? (
                                 <button
                                     onClick={() => setShowCopyLeadModal(true)}
                                     className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
@@ -6488,12 +6521,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     statusLower,
                                     subStatusLower,
                                     isFileComplete,
-                                    validated: selectedLead?.important_questions_validated,
-                                    shouldShow: isFileComplete && selectedLead?.important_questions_validated
+                                    shouldShow: isFileComplete
                                 });
                                 
-                                // Show button if file is complete AND important questions are validated
-                                return isFileComplete && selectedLead?.important_questions_validated ? (
+                                // Show button if file is complete
+                                return isFileComplete ? (
                                     <button
                                         onClick={() => setShowFileSentToLoginModal(true)}
                                         className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base"
@@ -7691,21 +7723,22 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                     <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                         {(() => {
                                                             // Helper function to extract total income from multiple sources
+                                                            // Priority: dynamic_fields (actual obligation data) > root-level (legacy/stale)
                                                             const extractTotalIncome = (lead) => {
                                                                 const incomeSources = [
-                                                                    lead.totalIncome,
-                                                                    lead.eligibility_details?.totalIncome,
-                                                                    lead.eligibility?.totalIncome,
                                                                     lead.dynamic_fields?.eligibility_details?.totalIncome,
                                                                     lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome,
-                                                                    lead.obligation_data?.eligibility?.totalIncome,
                                                                     lead.dynamic_fields?.financial_details?.monthly_income,
+                                                                    lead.eligibility_details?.totalIncome,
+                                                                    lead.eligibility?.totalIncome,
+                                                                    lead.obligation_data?.eligibility?.totalIncome,
                                                                     lead.financial_details?.monthly_income,
+                                                                    lead.totalIncome,
                                                                     lead.salary,
                                                                     lead.monthly_income
                                                                 ];
                                                                 
-                                                                return incomeSources.find(income => income !== undefined && income !== null && income !== '');
+                                                                return incomeSources.find(income => income !== undefined && income !== null && income !== '' && income !== 0 && income !== '0');
                                                             };
                                                             
                                                             let income = extractTotalIncome(lead);
@@ -7780,11 +7813,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                     lead.dynamic_fields?.eligibility?.foir_eligibility,
                                                                 ];
                                                                 
-                                                                // First, look for ELIGIBILITY calculations (including 0 which means "Not Eligible")
+                                                                // Look for ELIGIBILITY calculations, skip stale '0' values from incomplete saves
                                                                 const eligibilityResult = foirSources.find(eligibility => 
                                                                     eligibility !== undefined && 
                                                                     eligibility !== null && 
-                                                                    eligibility !== ''
+                                                                    eligibility !== '' &&
+                                                                    eligibility !== '0' &&
+                                                                    eligibility !== 0
                                                                 );
                                                                 
                                                                 // If we found an eligibility calculation (even if it's 0), return it
@@ -7913,7 +7948,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                     lead.totalBalanceTransfer
                                                                 ];
                                                                 
-                                                                return btPosSources.find(btPos => btPos !== undefined && btPos !== null && btPos !== '');
+                                                                return btPosSources.find(btPos => btPos !== undefined && btPos !== null && btPos !== '' && btPos !== '0' && btPos !== 0);
                                                             };
                                                             
                                                             let btPos = extractTotalBtPos(lead);
@@ -8220,20 +8255,23 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             {/* Total Income column - exact copy from normal table */}
                                                             <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                                 {(() => {
-                                                                    // Extract total income from multiple possible paths - exact copy from normal table
+                                                                    // Extract total income from multiple possible paths
+                                                                    // Priority: dynamic_fields (actual obligation data) > root-level (legacy/stale)
                                                                     const extractTotalIncome = (lead) => {
                                                                         const incomeSources = [
                                                                             lead.dynamic_fields?.eligibility_details?.totalIncome,
-                                                                            lead.eligibility_details?.totalIncome,
                                                                             lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome,
-                                                                            lead.obligation_data?.eligibility?.totalIncome,
                                                                             lead.dynamic_fields?.financial_details?.monthly_income,
+                                                                            lead.eligibility_details?.totalIncome,
+                                                                            lead.eligibility?.totalIncome,
+                                                                            lead.obligation_data?.eligibility?.totalIncome,
                                                                             lead.financial_details?.monthly_income,
+                                                                            lead.totalIncome,
                                                                             lead.salary,
                                                                             lead.monthly_income
                                                                         ];
                                                                         
-                                                                        return incomeSources.find(income => income !== undefined && income !== null && income !== '');
+                                                                        return incomeSources.find(income => income !== undefined && income !== null && income !== '' && income !== 0 && income !== '0');
                                                                     };
                                                                     
                                                                     let income = extractTotalIncome(lead);
@@ -8309,7 +8347,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                             lead.dynamic_fields?.eligibility?.foir_eligibility,
                                                                         ];
                                                                         
-                                                                        return foirSources.find(eligibility => eligibility !== undefined && eligibility !== null && eligibility !== '');
+                                                                        return foirSources.find(eligibility => eligibility !== undefined && eligibility !== null && eligibility !== '' && eligibility !== '0' && eligibility !== 0);
                                                                     };
                                                                     
                                                                     let foirEligibilityValue = extractFoirEligibility(lead);
@@ -8367,7 +8405,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                             lead.totalBalanceTransfer
                                                                         ];
                                                                         
-                                                                        return btPosSources.find(btPos => btPos !== undefined && btPos !== null && btPos !== '');
+                                                                        return btPosSources.find(btPos => btPos !== undefined && btPos !== null && btPos !== '' && btPos !== '0' && btPos !== 0);
                                                                     };
                                                                     
                                                                     let btPos = extractTotalBtPos(lead);

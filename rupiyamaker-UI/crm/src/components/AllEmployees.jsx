@@ -11,6 +11,8 @@ import StatusModal from '../components/hrms/StatusModal';
 import PasswordManagementModal from '../components/hrms/PasswordManagementModal';
 import EmployeeDetails from './EmployeeDetails';
 import { formatDate, formatDateTime, getISTTimestamp } from '../utils/dateUtils';
+import useTabWithHistory from '../hooks/useTabWithHistory';
+import useModalHistory from '../hooks/useModalHistory';
 
 // Import both old and new permission systems for compatibility
 import { hasPermission, getUserPermissions } from '../utils/permissions';
@@ -211,7 +213,7 @@ if (typeof document !== 'undefined') {
 }
 
 const AllEmployees = () => {
-    const [activeTab, setActiveTab] = useState('active');
+    const [activeTab, setActiveTab] = useTabWithHistory('status', 'active', { localStorageKey: 'allEmployeesTab' });
     const [employees, setEmployees] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -239,6 +241,10 @@ const AllEmployees = () => {
     const [formLoading, setFormLoading] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [selectedEmployeeForDetails, setSelectedEmployeeForDetails] = useState(null);
+    
+    // Browser back button closes employee detail view
+    useModalHistory(!!selectedEmployeeForDetails, () => setSelectedEmployeeForDetails(null));
+
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [onboardingModalVisible, setOnboardingModalVisible] = useState(false);
     const [statusModalLoading, setStatusModalLoading] = useState(false);

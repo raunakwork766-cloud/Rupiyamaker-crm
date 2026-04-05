@@ -225,6 +225,21 @@ try:
 except ImportError as e:
     logging.warning(f"⚠ Performance middleware not available: {e}")
 
+# Log full validation errors (422) to backend log for debugging
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logging.error(f"🔴 422 VALIDATION ERROR on {request.method} {request.url.path}")
+    logging.error(f"🔴 Validation errors: {exc.errors()}")
+    try:
+        body = await request.body()
+        logging.error(f"🔴 Request body: {body.decode('utf-8', errors='replace')[:2000]}")
+    except Exception:
+        pass
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
 # Add async Motor performance monitoring endpoint
 @app.get("/performance/stats", tags=["Performance"])
 async def get_performance_stats():

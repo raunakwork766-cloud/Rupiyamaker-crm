@@ -149,6 +149,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 }
             });
 
+            // Fix: convert empty email string to null to avoid backend EmailStr validation error (422)
+            if (sanitizedPayload.email === '') {
+                sanitizedPayload.email = null;
+            }
+
             // Defensive merge: if child component sent partial dynamic_fields, merge with current leadData.dynamic_fields
             // This prevents accidental loss of keys (like obligation_data) when components send only a subset
             if (sanitizedPayload.dynamic_fields && leadData?.dynamic_fields) {
@@ -785,23 +790,26 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         }}
                                         onDataUpdate={async () => {
                                             // Refresh lead data after obligation update
-                                            if (onLeadUpdate) {
-                                                const userId = localStorage.getItem('userId') || '';
-                                                const token = localStorage.getItem('token') || '';
+                                            const userId = localStorage.getItem('userId') || '';
+                                            const token = localStorage.getItem('token') || '';
                                             try {
-                                                const response = await fetch(buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`), {
+                                                // Use correct endpoint based on lead type
+                                                const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+                                                const refreshUrl = isLoginLead
+                                                    ? buildApiUrl(`lead-login/login-leads/${leadData._id}?user_id=${userId}`)
+                                                    : buildApiUrl(`leads/${leadData._id}?user_id=${userId}`);
+                                                const response = await fetch(refreshUrl, {
                                                     headers: { 'Authorization': `Bearer ${token}` }
                                                 });
                                                 if (response.ok) {
                                                     const freshData = await response.json();
                                                     setLeadData(freshData);
-                                                    onLeadUpdate(freshData);
+                                                    if (onLeadUpdate) onLeadUpdate(freshData);
                                                 }
                                             } catch (error) {
                                                 console.error('Error refreshing lead:', error);
                                             }
-                                        }
-                                    }}
+                                        }}
                                 />
                                 </Suspense>
                             </div>

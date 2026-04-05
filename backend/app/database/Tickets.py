@@ -3,7 +3,7 @@ from app.config import Config
 from app.utils.permission_helpers import is_super_admin_permission
 from typing import List, Dict, Optional, Any
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.utils.timezone import get_ist_now
 
 class TicketsDB:
@@ -408,6 +408,58 @@ class TicketsDB:
             result["total"] += count
             
         return result
+
+    async def get_unacknowledged_tickets(self, user_id: str) -> List[dict]:
+        """
+        Get tickets assigned to a user that are not yet acknowledged by that user.
+        Excludes tickets created by the user themselves.
+        Only returns tickets from the last 30 days to avoid flooding old data.
+        Returns tickets sorted by created_at descending (newest first).
+        """
+        try:
+            # Only fetch tickets from the last 30 days to avoid flooding old data
+            cutoff_date = datetime.utcnow() - timedelta(days=30)
+            tickets = []
+            async for doc in self.collection.find({
+                "assigned_users": user_id,
+                "created_by": {"$ne": user_id},
+                "status": {"$nin": ["closed"]},
+                "created_at": {"$gte": cutoff_date},
+                "$or": [
+                    {"acknowledged_by": {"$exists": False}},
+                    {f"acknowledged_by.{user_id}": {"$exists": False}}
+                ]
+            }).sort("created_at", -1):
+                if '_id' in doc:
+                    doc['id'] = str(doc['_id'])
+                    doc['_id'] = str(doc['_id'])
+                tickets.append(doc)
+            return tickets
+        except Exception as e:
+            print(f"Error getting unacknowledged tickets: {e}")
+            return []
+
+    async def acknowledge_ticket(self, ticket_id: str, user_id: str, employee_remark: str = None) -> bool:
+        """
+        Mark a ticket as acknowledged by a specific user.
+        Stores per-user acknowledgement with timestamp and remark.
+        """
+        try:
+            if not ObjectId.is_valid(ticket_id):
+                return False
+            now = get_ist_now()
+            ack_data = {
+                "acknowledged_at": now,
+                "remark": employee_remark.strip() if employee_remark else ""
+            }
+            result = await self.collection.update_one(
+                {"_id": ObjectId(ticket_id), "assigned_users": user_id},
+                {"$set": {f"acknowledged_by.{user_id}": ack_data, "updated_at": now}}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            print(f"Error acknowledging ticket: {e}")
+            return False
 
 # Global instance will be created in routes when needed
 # Legacy support - tickets_db is now initialized in __init__.py

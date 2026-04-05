@@ -1877,6 +1877,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       if (cibilScoreRaw && typeof cibilScoreRaw === 'object') {
         cibilScoreRaw = cibilScoreRaw.score || cibilScoreRaw.value || cibilScoreRaw.cibil_score || Object.values(cibilScoreRaw).find(v => typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v))) || '';
       }
+      // Also guard against "[object Object]" or "object object" strings that may have been persisted
+      if (typeof cibilScoreRaw === 'string' && /^\[?object\b/i.test(cibilScoreRaw.trim())) {
+        cibilScoreRaw = '';
+      }
       const cibilScoreValue = cibilScoreRaw ? String(cibilScoreRaw) : (shouldAlwaysUpdate ? '' : cibilScore);
       if (shouldAlwaysUpdate || cibilScoreValue !== cibilScore) setCibilScore(cibilScoreValue);
       
@@ -2321,7 +2325,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
       });
     }, 100);
-  }, [leadData?._id, JSON.stringify(leadData?.dynamic_fields?.obligations), bankListLoaded]); // Stringify to detect content changes
+  }, [leadData?._id, (() => { try { return JSON.stringify(leadData?.dynamic_fields?.obligations); } catch { return ''; } })(), bankListLoaded]); // Stringify to detect content changes
   
   // Sync obligations when leadData.dynamic_fields.obligations changes (e.g., after parent refetch)
   useEffect(() => {
@@ -2329,8 +2333,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     
     // Only sync if we have leadData obligations and they're different from current state
     if (leadObligations && Array.isArray(leadObligations) && leadObligations.length > 0) {
-      const leadObligationsJson = JSON.stringify(leadObligations);
-      const currentObligationsJson = JSON.stringify(obligations);
+      const leadObligationsJson = (() => { try { return JSON.stringify(leadObligations); } catch { return '___noserialize___'; } })();
+      const currentObligationsJson = (() => { try { return JSON.stringify(obligations); } catch { return '___noserialize2___'; } })();
       
       if (leadObligationsJson !== currentObligationsJson && !hasUnsavedChanges) {
         console.log('🔄 [SYNC] Obligation sync triggered from leadData:', {
@@ -2815,7 +2819,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
     } catch (error) {
       console.error('Error saving obligations:', error);
-      alert("Failed to save changes. Please try again.");
+      setAutoSaveStatus('error');
+      setIsSaving(false);
+      setTimeout(() => setAutoSaveStatus(''), 4000);
     }
   };
 
@@ -6674,6 +6680,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     <div ref={obligationSectionRef} key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div className="obligation-no-scrollbar flex-1 overflow-y-auto" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
 
+        {!canEdit && (
+          <div className="mx-5 mt-3 mb-1 px-4 py-2 bg-amber-900/40 border border-amber-500/50 rounded-lg flex items-center gap-2">
+            <span className="text-amber-400 text-sm">⚠️</span>
+            <span className="text-amber-300 text-xs font-semibold">Lead is locked for reassignment. Obligation data is read-only.</span>
+          </div>
+        )}
+
         <div className="mb-8 form-section">
           {/* Customer Details Section */}
           <div className="p-5 pb-4">
@@ -6921,11 +6934,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   <span className="text-[9px] font-bold text-white uppercase tracking-wider block mb-1.5">CIBIL Score</span>
                   <input
                     type="text"
-                    className="w-full bg-white text-black font-black text-xl rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
+                    className={`w-full bg-white text-black font-black text-xl rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400 ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
                     value={cibilScore}
+                    disabled={!canEdit}
                     onChange={(e) => {
+                      if (!canEdit) return;
                       const value = e.target.value;
                       setCibilScore(value);
+                      // Mark unsaved changes and trigger autosave
+                      setHasUnsavedChanges(true);
+                      setHasUserInteraction(true);
                       // Notify parent component of changes immediately for unsaved changes detection
                       if (handleChangeFunc) {
                         handleChangeFunc('cibil_score', value);

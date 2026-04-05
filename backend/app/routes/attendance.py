@@ -670,8 +670,8 @@ async def get_attendance_calendar(
                     if chk_in and not chk_out and status not in [-2.0, -2]:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
-                            # Past date: no checkout = Absent
-                            status = -1.0
+                            # Past date: no checkout = Absconding (checked in but did not check out)
+                            status = -2.0
                         elif _day_date_obj == get_ist_now().date():
                             # Today: checked in, not yet checked out = Working/IN
                             status = 2.0

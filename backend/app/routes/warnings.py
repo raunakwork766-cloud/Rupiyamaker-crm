@@ -785,6 +785,7 @@ async def get_pending_acknowledgment_warnings(
     """Get all warnings issued to user that are pending acknowledgment"""
     try:
         warnings = await warnings_db.get_unacknowledged_warnings(user_id)
+        total_warnings = await warnings_db.get_total_warning_count(user_id)
 
         result = []
         for w in warnings:
@@ -795,6 +796,8 @@ async def get_pending_acknowledgment_warnings(
                 last = issuer.get("last_name", "")
                 issuer_name = f"{first} {last}".strip() or issuer.get("username", "Unknown")
 
+            warning_number = await warnings_db.get_warning_serial_number(w["id"], user_id)
+
             result.append({
                 "id": w["id"],
                 "warning_type": w.get("warning_type", ""),
@@ -802,7 +805,9 @@ async def get_pending_acknowledgment_warnings(
                 "penalty_amount": w.get("penalty_amount", 0),
                 "issued_by_name": issuer_name,
                 "issued_date": str(w.get("issued_date", "")),
-                "created_at": str(w.get("created_at", ""))
+                "created_at": str(w.get("created_at", "")),
+                "warning_number": warning_number,
+                "total_warnings": total_warnings
             })
 
         return {"success": True, "warnings": result}

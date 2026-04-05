@@ -6,6 +6,8 @@ import API from "../services/api";
 import { toast } from "react-toastify";
 import { formatDateTime } from '../utils/dateUtils';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
+import useTabWithHistory from '../hooks/useTabWithHistory';
+import useModalHistory from '../hooks/useModalHistory';
 
 // API base URL - Always use API proxy
 const API_BASE_URL = '/api';
@@ -91,10 +93,18 @@ export default function TicketPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState("open");
+  const [activeFilter, setActiveFilter] = useTabWithHistory('status', 'open', { localStorageKey: 'ticketActiveFilter' });
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
+  
+  // Browser back button closes ticket edit modal
+  useModalHistory(!!selectedTicket, () => {
+    setSelectedTicket(null);
+    setModalLoading(false);
+    setPreventDuplicateModal(false);
+    setLastClickedTicketId(null);
+  });
   
   // Modal loading and duplicate prevention states
   const [modalLoading, setModalLoading] = useState(false);

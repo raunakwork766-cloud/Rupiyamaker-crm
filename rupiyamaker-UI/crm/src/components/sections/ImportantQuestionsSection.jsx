@@ -220,9 +220,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
         return (
             userDepartment === 'sales' &&
             leadData?.sub_status === 'FILE COMPLETED' &&
-            !leadData?.file_sent_to_login &&
-            questions.length > 0 &&
-            areAllMandatoryQuestionsAnswered()
+            !leadData?.file_sent_to_login
         );
     };
 

@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { ALL_AGENTS, proc, toSec, hms, hmShort, fmtDate, MAX_WU_SEC, MAX_BRK_SEC } from '../data';
 import { fetchWithAuth } from '../utils/auth';
 import { getCurrentUser } from '../utils/auth';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ALL_DATES = [...new Set(ALL_AGENTS.map(a => a.date))].sort();
@@ -2272,7 +2273,7 @@ function AgentMappingModal({ show, onClose, agentMappings, uploadedAgents, onSav
     const [newDesig, setNewDesig] = useState('');
     const [newTeam, setNewTeam] = useState('');
     const [search, setSearch] = useState('');
-    const [activeTab, setActiveTab] = useState('unmapped');
+    const [activeTab, setActiveTab] = useTabWithHistory('tab', 'unmapped', { localStorageKey: 'dialerActiveTab' });
     
     // For inline assignment popover
     const [assigningExt, setAssigningExt] = useState(null); // {ext, dialer_name}

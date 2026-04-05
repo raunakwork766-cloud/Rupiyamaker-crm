@@ -221,7 +221,8 @@ export default function FAQPage({ user }) {
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCat, setActiveCat] = useState(null);   // null = All
+  const [activeCat, setActiveCat] = useState(() => localStorage.getItem('faqActiveCat') || null);
+  useEffect(() => { if (activeCat) localStorage.setItem('faqActiveCat', activeCat); else localStorage.removeItem('faqActiveCat'); }, [activeCat]);
   const [search, setSearch] = useState('');
   const [openItems, setOpenItems] = useState({});
 

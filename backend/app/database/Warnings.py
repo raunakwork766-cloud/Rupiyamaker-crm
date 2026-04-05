@@ -653,6 +653,31 @@ class WarningDB:
             logger.error(f"Error fetching unacknowledged warnings: {e}")
             return []
 
+    async def get_total_warning_count(self, user_id: str) -> int:
+        """Get total number of warnings ever issued to a user"""
+        try:
+            count = await self.collection.count_documents({"issued_to": ObjectId(user_id)})
+            return count
+        except Exception as e:
+            logger.error(f"Error getting total warning count: {e}")
+            return 0
+
+    async def get_warning_serial_number(self, warning_id: str, user_id: str) -> int:
+        """Get the serial number (nth warning) for a specific warning issued to a user"""
+        try:
+            cursor = self.collection.find(
+                {"issued_to": ObjectId(user_id)},
+                {"_id": 1}
+            ).sort("created_at", ASCENDING)
+            warnings = await cursor.to_list(None)
+            for idx, w in enumerate(warnings):
+                if str(w["_id"]) == warning_id:
+                    return idx + 1
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting warning serial number: {e}")
+            return 0
+
     async def acknowledge_warning(self, warning_id: str, user_id: str, employee_remark: str = None) -> bool:
         """Mark a warning as acknowledged by the recipient"""
         try:

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form, Body, Request
 from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 from datetime import datetime, timedelta
@@ -1375,6 +1376,69 @@ async def create_task_for_lead(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create task for lead"
         )
+
+
+# ─── Task Acknowledgment Endpoints ──────────────────────────────────────────
+
+@router.get("/pending-acknowledgment")
+async def get_pending_acknowledgment_tasks(
+    user_id: str = Query(..., description="User ID to fetch pending tasks for"),
+    tasks_db: TasksDB = Depends(get_tasks_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get all tasks assigned to user that are pending acknowledgment"""
+    try:
+        tasks = await tasks_db.get_unacknowledged_tasks(user_id)
+        result = []
+        for t in tasks:
+            # Get creator name
+            creator_name = "Unknown"
+            if t.get("created_by"):
+                creator = await users_db.get_user(str(t["created_by"]))
+                if creator:
+                    first = creator.get("first_name", "")
+                    last = creator.get("last_name", "")
+                    creator_name = f"{first} {last}".strip() or creator.get("username", "Unknown")
+
+            result.append({
+                "id": t.get("id") or str(t.get("_id", "")),
+                "type": "task",
+                "subject": t.get("subject", ""),
+                "details": t.get("details", ""),
+                "task_type": t.get("task_type", ""),
+                "priority": t.get("priority", "Medium"),
+                "status": t.get("status", ""),
+                "due_date": str(t.get("due_date", "")) if t.get("due_date") else None,
+                "created_by_name": creator_name,
+                "created_at": str(t.get("created_at", "")),
+            })
+
+        return {"success": True, "items": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pending tasks: {str(e)}")
+
+
+class TaskAcknowledgeRequest(BaseModel):
+    employee_remark: str = ""
+
+@router.post("/{task_id}/acknowledge")
+async def acknowledge_task(
+    task_id: str,
+    user_id: str = Query(..., description="User ID acknowledging the task"),
+    body: TaskAcknowledgeRequest = TaskAcknowledgeRequest(),
+    tasks_db: TasksDB = Depends(get_tasks_db)
+):
+    """Mark a task as acknowledged by the assigned user"""
+    try:
+        success = await tasks_db.acknowledge_task(task_id, user_id, employee_remark=body.employee_remark)
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found or already acknowledged")
+        return {"success": True, "message": "Task acknowledged successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to acknowledge task: {str(e)}")
+
 
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(

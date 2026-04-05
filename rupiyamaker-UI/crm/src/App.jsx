@@ -13,6 +13,7 @@ import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
 import PopNotificationModal from './components/PopNotificationModal'
 import PopWarningModal from './components/PopWarningModal'
+import PopTaskTicketModal from './components/PopTaskTicketModal'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor'
@@ -109,6 +110,8 @@ function App() {
   
   // Ref to prevent useEffect loops when programmatically setting selectedLabel
   const skipNextRouteEffect = useRef(false)
+  // Ref to skip mobile-redirect on the very first render (page load/refresh)
+  const isInitialMobileCheck = useRef(true)
   
   // Initialize selectedLabel based on current URL on first load
   useEffect(() => {
@@ -226,17 +229,20 @@ function App() {
       
       // If switching from desktop to mobile, navigate to feed if not already there
       // BUT exclude public routes (they should work on mobile)
+      // Also skip on the very first mount (page refresh) — only redirect on live viewport resize
       const isPublicRoute = location.pathname.includes('/public/') || location.pathname.includes('/login-form/');
       
-      if (!wasMobile && isMobile && location.pathname !== '/feed' && location.pathname !== '/' && !isPublicRoute) {
+      if (!isInitialMobileCheck.current && !wasMobile && isMobile && location.pathname !== '/feed' && location.pathname !== '/' && !isPublicRoute) {
         // User switched from desktop to mobile view
         navigate('/feed', { replace: true });
         setSelectedLabel('Feed');
       }
     };
 
-    // Initial check
+    // Initial check — mark as initial so the redirect is suppressed
+    isInitialMobileCheck.current = true;
     checkMobileView();
+    isInitialMobileCheck.current = false;
 
     // Add resize listener for dynamic updates
     window.addEventListener('resize', checkMobileView);
@@ -491,10 +497,14 @@ function App() {
     setUser(userData)
     setIsAuthenticated(true)
     
+    // Always open Feed page on login
+    setSelectedLabel('Feed')
+    localStorage.setItem('selectedLabel', 'Feed')
+    navigate('/', { replace: true })
+    
     // Start session monitoring when user logs in
-    // console.log('User logged in - starting session monitoring')
     sessionMonitor.start()
-  }, [])
+  }, [navigate])
 
   const handleLogout = () => {
     // Stop session monitoring before clearing data
@@ -1064,6 +1074,9 @@ function App() {
 
         {/* GLOBAL WARNING MODAL - Blocks screen until user acknowledges warning */}
         <PopWarningModal />
+
+        {/* GLOBAL TASK/TICKET MODAL - Blocks screen until user acknowledges assigned task/ticket */}
+        <PopTaskTicketModal />
 
         {/* GLOBAL ANNOUNCEMENT MODAL - Shows on ALL pages */}
         {showGlobalAnnouncement && globalAnnouncementData && (

@@ -17,6 +17,7 @@ Permission Rules:
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Request
 from fastapi.security import HTTPBearer
+from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 import uuid
@@ -454,6 +455,68 @@ async def list_tickets(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list tickets: {str(e)}"
         )
+
+
+# ─── Ticket Acknowledgment Endpoints ────────────────────────────────────────
+
+@router.get("/pending-acknowledgment")
+async def get_pending_acknowledgment_tickets(
+    user_id: str = Query(..., description="User ID to fetch pending tickets for"),
+    tickets_db: TicketsDB = Depends(get_tickets_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get all tickets assigned to user that are pending acknowledgment"""
+    try:
+        tickets = await tickets_db.get_unacknowledged_tickets(user_id)
+        result = []
+        for t in tickets:
+            # Get creator name
+            creator_name = t.get("created_by_name", "Unknown")
+            if not creator_name or creator_name == "Unknown":
+                if t.get("created_by"):
+                    creator = await users_db.get_user(str(t["created_by"]))
+                    if creator:
+                        first = creator.get("first_name", "")
+                        last = creator.get("last_name", "")
+                        creator_name = f"{first} {last}".strip() or creator.get("username", "Unknown")
+
+            result.append({
+                "id": t.get("id") or str(t.get("_id", "")),
+                "type": "ticket",
+                "subject": t.get("subject", ""),
+                "details": t.get("details", t.get("description", "")),
+                "priority": t.get("priority", "Medium"),
+                "status": t.get("status", "open"),
+                "created_by_name": creator_name,
+                "created_at": str(t.get("created_at", "")),
+            })
+
+        return {"success": True, "items": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pending tickets: {str(e)}")
+
+
+class TicketAcknowledgeRequest(BaseModel):
+    employee_remark: str = ""
+
+@router.post("/{ticket_id}/acknowledge")
+async def acknowledge_ticket(
+    ticket_id: str,
+    user_id: str = Query(..., description="User ID acknowledging the ticket"),
+    body: TicketAcknowledgeRequest = TicketAcknowledgeRequest(),
+    tickets_db: TicketsDB = Depends(get_tickets_db)
+):
+    """Mark a ticket as acknowledged by the assigned user"""
+    try:
+        success = await tickets_db.acknowledge_ticket(ticket_id, user_id, employee_remark=body.employee_remark)
+        if not success:
+            raise HTTPException(status_code=404, detail="Ticket not found or already acknowledged")
+        return {"success": True, "message": "Ticket acknowledged successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to acknowledge ticket: {str(e)}")
+
 
 @router.get("/{ticket_id}", response_model=TicketResponseSchema)
 async def get_ticket(

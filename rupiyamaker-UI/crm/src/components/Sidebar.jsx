@@ -174,7 +174,7 @@ const MenuItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect }) =
         "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all text-sm sm:text-[15px] font-semibold animate-pop min-h-[44px] border border-transparent",
         isSelected
           ? "bg-[#ffeb00] text-black"
-          : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:border-white/[0.12]"
+          : "text-[#00d2ff] hover:border-white/[0.12]"
       )}
       style={activeStyle}
       onClick={handleClick}
@@ -345,7 +345,7 @@ const DropdownHeader = React.memo(({
           "flex items-center w-full p-2 sm:p-3 mb-1 rounded-xl transition-all font-semibold text-sm sm:text-[15px] animate-pop min-h-[44px] border border-transparent",
           hasActiveSubItem
             ? "bg-[#ffeb00] text-black"
-            : "bg-white/[0.07] hover:bg-white/[0.16] text-[#00d2ff] hover:border-white/[0.12]"
+            : "text-[#00d2ff] hover:border-white/[0.12]"
         )}
         style={hasActiveSubItem ? {
           boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
@@ -1681,7 +1681,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   return (
     <div
       className={cn(
-        "h-screen relative transition-all duration-300 z-10 bg-black/90 backdrop-blur-xl border-r border-white/[0.08] shadow-2xl",
+        "h-screen relative transition-all duration-300 z-10 bg-black border-r border-white/[0.08] shadow-2xl",
         // Desktop width behavior
         isOpen
           ? "w-[260px]"

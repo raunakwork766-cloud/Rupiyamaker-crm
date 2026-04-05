@@ -1296,7 +1296,62 @@ async def get_tasks_due_on_date(self, user_id: str, date_str: str) -> List[Dict[
         print(f"Error getting tasks due on date: {str(e)}")
         return []
 
+async def get_unacknowledged_tasks(self, user_id: str) -> List[Dict[str, Any]]:
+    """
+    Get tasks assigned to a user that are not yet acknowledged by that user.
+    Excludes tasks created by the user themselves.
+    Only returns tasks from the last 30 days to avoid flooding old data.
+    Returns tasks sorted by created_at descending (newest first).
+    """
+    try:
+        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+        # Only fetch tasks from the last 30 days to avoid flooding old data
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
+        tasks = []
+        async for doc in self.collection.find({
+            "assigned_to": user_oid,
+            "created_by": {"$ne": user_oid},
+            "status": {"$nin": ["Completed", "Cancelled"]},
+            "created_at": {"$gte": cutoff_date},
+            "$or": [
+                {"acknowledged_by": {"$exists": False}},
+                {f"acknowledged_by.{user_id}": {"$exists": False}}
+            ]
+        }).sort("created_at", -1):
+            if '_id' in doc:
+                doc['id'] = str(doc['_id'])
+                doc['_id'] = str(doc['_id'])
+            tasks.append(doc)
+        return tasks
+    except Exception as e:
+        print(f"Error getting unacknowledged tasks: {e}")
+        return []
+
+async def acknowledge_task(self, task_id: str, user_id: str, employee_remark: str = None) -> bool:
+    """
+    Mark a task as acknowledged by a specific user.
+    Stores per-user acknowledgement with timestamp and remark.
+    """
+    try:
+        if not ObjectId.is_valid(task_id):
+            return False
+        now = get_ist_now()
+        ack_data = {
+            "acknowledged_at": now,
+            "remark": employee_remark.strip() if employee_remark else ""
+        }
+        result = await self.collection.update_one(
+            {"_id": ObjectId(task_id), "assigned_to": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id},
+            {"$set": {f"acknowledged_by.{user_id}": ack_data, "updated_at": now}}
+        )
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"Error acknowledging task: {e}")
+        return False
+
 # Global instance
 TasksDB.get_overdue_tasks_for_user = get_overdue_tasks_for_user
 TasksDB.get_tasks_due_on_date = get_tasks_due_on_date
+TasksDB.get_unacknowledged_tasks = get_unacknowledged_tasks
+TasksDB.acknowledge_task = acknowledge_task
 tasks_db = TasksDB()

@@ -6,6 +6,7 @@ import axios from "axios"
 import { formatDateTime, getISTToday } from '../utils/dateUtils';
 import hrmsService from '../services/hrmsService';
 import PaidLeaveManagement from './attendance/PaidLeaveManagement';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
 
@@ -2374,7 +2375,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
 export default function MonthlyAttendanceTable() {
   const _ist = getISTToday()
 
-  const [pageTab, setPageTab] = useState('attendance') // 'attendance' | 'leave'
+  const [pageTab, setPageTab] = useTabWithHistory('view', 'attendance', { localStorageKey: 'attendancePageTab' })
   const [selectedYear, setSelectedYear] = useState(_ist.year)
   const [selectedMonth, setSelectedMonth] = useState(_ist.month)
   const [attendanceData, setAttendanceData] = useState([])
@@ -2479,6 +2480,8 @@ export default function MonthlyAttendanceTable() {
       setUser(parsedUser)
     }
   }, [])
+
+  // pageTab is now auto-persisted via useTabWithHistory hook
 
   // Load holidays when user is available
   useEffect(() => {

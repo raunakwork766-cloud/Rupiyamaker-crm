@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 
 const API_BASE_URL = '/api';
 const A4_PX_W = 794;
@@ -242,7 +243,7 @@ function InlineToolbar() {
 
 // Main component
 const OfferLetterGenerator = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useTabWithHistory('tab', 'details');
   const [letterType, setLetterType] = useState('consultant');
   const [candidateName, setCandidateName] = useState('');
   const [monthlySalary, setMonthlySalary] = useState('');

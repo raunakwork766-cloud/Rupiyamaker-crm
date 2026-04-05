@@ -77,7 +77,8 @@ const NotificationManagementPage = () => {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'general', 'logout'
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('notifMgmtTab') || 'all');
+  useEffect(() => { localStorage.setItem('notifMgmtTab', activeTab); }, [activeTab]);
 
   // Form state
   const [formData, setFormData] = useState({

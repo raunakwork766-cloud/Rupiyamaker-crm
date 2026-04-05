@@ -5,6 +5,8 @@ import {
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
 import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp, getISTToday } from '../utils/dateUtils';
+import useTabWithHistory from '../hooks/useTabWithHistory';
+import useModalHistory from '../hooks/useModalHistory';
 
 // Lazy load heavy components for faster initial loading
 const CreateTask = lazy(() => import("./CreateTask"));
@@ -331,7 +333,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [loading, setLoading] = useState(!cachedData); // Show loading only if no cache
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState("due_today");
+  const [activeFilter, setActiveFilter] = useTabWithHistory('filter', 'due_today', { localStorageKey: 'taskActiveFilter' });
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [editTask, setEditTask] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -343,6 +345,14 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [modalLoading, setModalLoading] = useState(false); // Track modal loading state
   const [preventDuplicateModal, setPreventDuplicateModal] = useState(false); // Prevent duplicate modals
   const [lastClickedTaskId, setLastClickedTaskId] = useState(null); // Track last clicked task
+  
+  // Browser back button closes task edit modal
+  useModalHistory(!!editTask, () => {
+    setEditTask(null);
+    setModalLoading(false);
+    setPreventDuplicateModal(false);
+    setLastClickedTaskId(null);
+  });
   const [clickTimeout, setClickTimeout] = useState(null); // Debounce click handling
   // Scroll to top functionality
   const [showScrollTop, setShowScrollTop] = useState(false);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 import { 
   Box, 
   Typography, 
@@ -330,7 +331,7 @@ const ChartPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   
-  const [tabValue, setTabValue] = useState(2); // Start with Organization Structure
+  const [tabValue, setTabValue] = useTabWithHistory('tab', 2, { localStorageKey: 'chartPageTab', isNumeric: true });
   const [loading, setLoading] = useState(true);
   const [departmentData, setDepartmentData] = useState([]);
   const [roleData, setRoleData] = useState([]);

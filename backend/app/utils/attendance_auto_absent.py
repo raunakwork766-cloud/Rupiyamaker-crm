@@ -92,8 +92,9 @@ async def _get_active_users() -> list:
 async def run_missing_checkout_job():
     """
     For every user who has a check_in_time but no check_out_time today,
-    set status = -1 (absent) and mark auto_absent_no_checkout = True.
-    Only processes records not already marked absent (-1).
+    For every user who has a check_in_time but no check_out_time today,
+    set status = -2 (absconding) and mark auto_absent_no_checkout = True.
+    Only processes records not already marked absent (-1) or absconding (-2).
     """
     try:
         from app.database.Attendance import AttendanceDB
@@ -106,7 +107,7 @@ async def run_missing_checkout_job():
         db = get_database_instances()
         attendance_db: AttendanceDB = db["attendance"]
 
-        # Find all records for today with check_in but no check_out and not already absent
+        # Find all records for today with check_in but no check_out and not already absent/absconding
         cursor = attendance_db.collection.find({
             "date": today,
             "check_in_time": {"$exists": True, "$ne": None, "$ne": ""},
@@ -115,7 +116,7 @@ async def run_missing_checkout_job():
                 {"check_out_time": None},
                 {"check_out_time": ""},
             ],
-            "status": {"$ne": -1},   # skip already-absent records
+            "status": {"$nin": [-1, -2]},   # skip already-absent or absconding records
             "auto_absent_no_checkout": {"$ne": True},  # skip already processed
         })
 
@@ -124,15 +125,17 @@ async def run_missing_checkout_job():
             await attendance_db.collection.update_one(
                 {"_id": record["_id"]},
                 {"$set": {
-                    "status": -1,
+                    "status": -2,
                     "auto_absent_no_checkout": True,
-                    "comments": "Auto-absent: checked in but did not check out before working hours ended",
+                    "auto_absconding": True,
+                    "auto_absconding_reason": "Auto-absconding: checked in but did not check out before working hours ended",
+                    "comments": "Auto-absconding: checked in but did not check out before working hours ended",
                     "updated_at": datetime.now(IST),
                 }}
             )
             updated += 1
 
-        logger.info(f"[AutoAbsent] Missing-checkout job done: {updated} record(s) marked absent.")
+        logger.info(f"[AutoAbsent] Missing-checkout job done: {updated} record(s) marked absconding.")
     except Exception as e:
         logger.error(f"[AutoAbsent] Error in missing-checkout job: {e}", exc_info=True)
 

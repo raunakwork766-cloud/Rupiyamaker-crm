@@ -75,7 +75,41 @@ class FinancialDetailsSchema(BaseModel):
     account_number: Optional[str] = None
     ifsc_code: Optional[str] = None
     cibil_score: Optional[str] = None
-    
+
+    @validator('monthly_income', 'annual_income', 'partner_salary', 'yearly_bonus', pre=True)
+    def parse_float_fields(cls, v):
+        """Parse empty strings and formatted numbers (e.g. '1,66,720') to float or None"""
+        if v is None or v == '' or v == 'None':
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            cleaned = v.replace(',', '').strip()
+            if not cleaned:
+                return None
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+        return v
+
+    @validator('bonus_division', 'foir_percent', pre=True)
+    def parse_int_fields(cls, v):
+        """Parse empty strings and formatted numbers for int fields"""
+        if v is None or v == '' or v == 'None':
+            return None
+        if isinstance(v, (int, float)):
+            return int(v)
+        if isinstance(v, str):
+            cleaned = v.replace(',', '').strip()
+            if not cleaned:
+                return None
+            try:
+                return int(float(cleaned))
+            except ValueError:
+                return None
+        return v
+
     @validator('cibil_score', pre=True)
     def convert_cibil_score_to_string(cls, v):
         """Convert cibil_score to string if it's a number"""
@@ -229,6 +263,13 @@ class LeadBase(BaseModel):
     # Form sharing control
     form_share: Optional[bool] = True  # Controls if form can be accessed via share links
 
+    @validator('email', pre=True)
+    def clean_email(cls, v):
+        """Convert empty email string to None to avoid EmailStr validation error"""
+        if v is None or v == '' or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
 # ========= Public Form Schema =========
 
 class PublicLeadFormUpdate(BaseModel):
@@ -323,6 +364,30 @@ class LeadUpdate(BaseModel):
     
     class Config:
         extra = 'ignore'  # Ignore extra fields that aren't defined
+
+    @validator('loan_amount', pre=True)
+    def clean_loan_amount(cls, v):
+        """Convert empty string or formatted number to float or None"""
+        if v is None or v == '' or v == 'None':
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            cleaned = v.replace(',', '').strip()
+            if not cleaned:
+                return None
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+        return v
+
+    @validator('email', pre=True)
+    def clean_email(cls, v):
+        """Convert empty email string to None to avoid EmailStr validation error"""
+        if v is None or v == '' or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
     
     @validator('assigned_to')
     def clean_assigned_to(cls, v):

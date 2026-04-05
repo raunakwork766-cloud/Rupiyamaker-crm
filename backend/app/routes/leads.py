@@ -4850,7 +4850,12 @@ async def get_lead_obligations(
             "companyName": dynamic_fields.get("companyName", personal_details.get("company_name", "")),
             "companyType": dynamic_fields.get("companyType", personal_details.get("company_type", [])),
             "companyCategory": dynamic_fields.get("companyCategory", personal_details.get("company_category", [])),
-            "cibilScore": dynamic_fields.get("cibilScore", financial_details.get("cibil_score", "")),
+            "cibilScore": (lambda raw: (
+                str(raw.get("score") or raw.get("value") or raw.get("cibil_score") or "").strip()
+                if isinstance(raw, dict) else
+                (None if (isinstance(raw, str) and (raw.strip() in ("[object Object]", "object object", "") or "object" in raw.lower())) else
+                 (str(raw).strip() if raw is not None else ""))
+            ))(dynamic_fields.get("cibilScore") if dynamic_fields.get("cibilScore") not in (None, "") else financial_details.get("cibil_score", "")),
             
             # Get obligations from either flat or nested structure
             "obligations": dynamic_fields.get("obligations", []),

@@ -21,6 +21,7 @@ import {
 } from '@mui/icons-material';
 
 import { getISTDateYMD } from '../utils/dateUtils';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 
 // Import simplified permission system
 import { 
@@ -107,7 +108,7 @@ const LeavesPage = () => {
     // State management
     const [leaves, setLeaves] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [selectedTab, setSelectedTab] = useState(0);
+    const [selectedTab, setSelectedTab] = useTabWithHistory('tab', 0, { localStorageKey: 'leavesPageTab', isNumeric: true });
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [openViewDialog, setOpenViewDialog] = useState(false);
     const [selectedLeave, setSelectedLeave] = useState(null);

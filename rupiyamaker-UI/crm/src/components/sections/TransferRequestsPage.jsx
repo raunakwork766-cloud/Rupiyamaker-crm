@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Clock, CheckCircle, XCircle, RefreshCw, X, Phone, ArrowRight, User, Calendar, Building2, AlertCircle } from 'lucide-react';
 import { canApproveLeadReassignment } from '../../utils/permissions';
+import useTabWithHistory from '../../hooks/useTabWithHistory';
 const LeadDetails = lazy(() => import('../LeadDetails'));
 
 const API_BASE_URL = '/api';
 
 const TransferRequestsPage = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('pending');
+  const [activeTab, setActiveTab] = useTabWithHistory('status', 'pending');
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

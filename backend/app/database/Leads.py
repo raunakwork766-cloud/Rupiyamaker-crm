@@ -430,6 +430,12 @@ class LeadsDB:
                 "dynamic_fields.personal_details": 1,      # ⚡ ADDED: Company name/type/category from obligation
                 "dynamic_fields.check_eligibility": 1,     # ⚡ ADDED: CE section (FOIR, tenure, ROI, multiplier etc)
                 "dynamic_fields.obligation_data": 1,
+                "dynamic_fields.salary": 1,                # ⚡ ADDED: Salary field used as totalIncome fallback
+                "dynamic_fields.eligibility": 1,           # ⚡ ADDED: Eligibility object (flat key)
+                "dynamic_fields.totalBtPos": 1,            # ⚡ ADDED: Total BT POS flat key
+                "dynamic_fields.totalObligation": 1,       # ⚡ ADDED: Total obligation flat key  
+                "dynamic_fields.cibilScore": 1,            # ⚡ ADDED: CIBIL score flat key
+                "dynamic_fields.companyName": 1,           # ⚡ ADDED: Company name flat key
                 "dynamic_fields.obligations": 1,           # ⚡ ADDED: Obligation table rows for export
                 "dynamic_fields.process": 1,               # ⚡ ADDED: How to Process section
                 "dynamic_fields.applicant_form": 1,        # ⚡ ADDED: Applicant Form section for export
@@ -858,8 +864,8 @@ class LeadsDB:
             
         # Track reporting assignment changes
         if "assign_report_to" in update_data:
-            current_reporters = set(current_lead.get("assign_report_to", []))
-            new_reporters = set(update_data["assign_report_to"])
+            current_reporters = set(current_lead.get("assign_report_to") or [])
+            new_reporters = set(update_data["assign_report_to"] or [])
             
             added_reporters = new_reporters - current_reporters
             removed_reporters = current_reporters - new_reporters

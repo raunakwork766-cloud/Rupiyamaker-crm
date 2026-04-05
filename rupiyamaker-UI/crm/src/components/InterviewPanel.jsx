@@ -4,6 +4,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import useTabWithHistory from '../hooks/useTabWithHistory';
+import useModalHistory from '../hooks/useModalHistory';
 import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter } from 'lucide-react';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
@@ -126,14 +128,17 @@ const InterviewPanel = () => {
   const [interviews, setInterviews] = useState([]);
   const [filteredInterviews, setFilteredInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('interview');
-  const [activeSubTab, setActiveSubTab] = useState('today');
+  const [activeTab, setActiveTab] = useTabWithHistory('stage', 'interview', { localStorageKey: 'interviewPanelTab' });
+  const [activeSubTab, setActiveSubTab] = useTabWithHistory('sub', 'today', { localStorageKey: 'interviewPanelSubTab' });
   const [searchTerm, setSearchTerm] = useState('');
   const [isGlobalSearch, setIsGlobalSearch] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [statusCounts, setStatusCounts] = useState([]);
   const [tabCounts, setTabCounts] = useState(TABS);
   const [selectedInterview, setSelectedInterview] = useState(null);
+
+  // Browser back button closes interview edit modal
+  useModalHistory(!!selectedInterview, () => setSelectedInterview(null));
 
   // Table scroll state
   const tableScrollRef = useRef(null);
@@ -291,6 +296,8 @@ const InterviewPanel = () => {
       }
     }).catch(() => {});
   }, []);
+
+  // Tab persistence is now handled by useTabWithHistory hook
 
   // Load permissions on mount (like Tickets/Warnings)
   useEffect(() => {

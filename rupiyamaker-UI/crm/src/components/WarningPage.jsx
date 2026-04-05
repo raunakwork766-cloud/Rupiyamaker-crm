@@ -1,5 +1,6 @@
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { toISTDateYMD } from '../utils/dateUtils';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 import { 
   Plus, 
   Edit, 
@@ -102,7 +103,7 @@ const WarningPage = memo(() => {
   
   // UI state
   const [loading, setLoading] = useState(false);
-  const [selectedTab, setSelectedTab] = useState(0);
+  const [selectedTab, setSelectedTab] = useTabWithHistory('tab', 0, { localStorageKey: 'warningPageTab', isNumeric: true });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalWarnings, setTotalWarnings] = useState(0);
@@ -447,6 +448,8 @@ const WarningPage = memo(() => {
     console.log('⚠️ Warning Permissions:', permissions);
     return permissions;
   };
+
+  // Tab persistence is now handled by useTabWithHistory hook
 
   // Load initial data
   useEffect(() => {

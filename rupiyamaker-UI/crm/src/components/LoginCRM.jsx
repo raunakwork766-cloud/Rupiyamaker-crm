@@ -152,6 +152,7 @@ import {
 import { formatDate, getISTTimestamp } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 import { leadsService } from '../services/leadsService';
+import useModalHistory from '../hooks/useModalHistory';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -677,6 +678,21 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const [activeTab, setActiveTab] = useState(0);
     const [openSection, setOpenSection] = useState(0);
 
+    // Browser back button closes lead detail view
+    useModalHistory(showLeadDetails, () => {
+        setShowLeadDetails(false);
+        setSelectedLead(null);
+        setActiveTab(0);
+        sessionStorage.removeItem('logincrm_restore');
+    });
+
+    // Persist open lead + tab to sessionStorage so page refresh restores it
+    useEffect(() => {
+        if (selectedLead?._id && showLeadDetails) {
+            sessionStorage.setItem('logincrm_restore', JSON.stringify({ id: selectedLead._id, tab: activeTab }));
+        }
+    }, [selectedLead?._id, activeTab, showLeadDetails]);
+
     // Lock body scroll when OBLIGATION tab is active (prevents page-level scrollbar)
     useEffect(() => {
         if (selectedLead && activeTab === 1) {
@@ -825,6 +841,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         if (!leadExists) {
             console.error('Lead validation failed - lead does not exist:', selectedLead._id);
             message.warning('⚠️ This lead no longer exists. Refreshing the list...');
+            sessionStorage.removeItem('logincrm_restore');
             setSelectedLead(null);
             setShowLeadDetails(false);
             fetchLoginDepartmentLeads();
@@ -2030,6 +2047,25 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 }
             } catch (error) {
                 console.error('LoginCRM: Failed to open direct lead view:', error);
+            }
+        } else {
+            // Check for refresh-restore (page reload with open lead)
+            const savedRestore = sessionStorage.getItem('logincrm_restore');
+            if (savedRestore && !selectedLead) {
+                try {
+                    const parsed = JSON.parse(savedRestore);
+                    if (parsed.id) {
+                        try {
+                            const leadData = await handleViewLead(parsed.id);
+                            if (leadData) {
+                                setActiveTab(parsed.tab || 0);
+                            }
+                        } catch (e) {
+                            // Lead no longer accessible — clear the restore state
+                            sessionStorage.removeItem('logincrm_restore');
+                        }
+                    }
+                } catch (e) { /* ignore parse errors */ }
             }
         }
         
@@ -4882,6 +4918,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] border-b-4 border-cyan-400/70 shadow-lg">
                     <button
                         onClick={() => {
+                            sessionStorage.removeItem('logincrm_restore');
                             setShowLeadDetails(false);
                             setSelectedLead(null);
                             fetchLoginDepartmentLeads(); // Refresh leads after viewing details

@@ -350,7 +350,9 @@ async def create_reassignment_request(
             "reassignment_approved_by_name": f"{requesting_user.get('first_name', '')} {requesting_user.get('last_name', '')}",
             "reassignment_approved_at": get_ist_now().isoformat(),
             "assigned_to": target_user_id,
-            "reassignment_reason": reason
+            "reassignment_reason": reason,
+            # Clear TL/supervisor assignment — new owner must set their own
+            "assign_report_to": [],
         }
         
         # Update data_code and campaign_name if provided

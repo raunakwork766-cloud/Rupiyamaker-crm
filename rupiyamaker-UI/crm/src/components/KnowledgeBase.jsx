@@ -593,7 +593,8 @@ export default function KnowledgeBase() {
   const [adminMode,   setAdminMode]   = useState(true);
   const [gSearch,     setGSearch]     = useState('');
   const [sSearch,     setSSearch]     = useState('');
-  const [folder,      setFolder]      = useState('recent');
+  const [folder,      setFolder]      = useState(() => localStorage.getItem('kbFolder') || 'recent');
+  useEffect(() => { localStorage.setItem('kbFolder', folder); }, [folder]);
   const [expanded,    setExpanded]    = useState(['c1', 'c1a', 'c2']);
   const [viewed,      setViewed]      = useState([5, 9]);
   const [cats,        setCats]        = useState(CATS);

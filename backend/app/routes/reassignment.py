@@ -788,7 +788,10 @@ async def create_reassignment_request(
             # Set status directly without lookup
             "status": "ACTIVE LEADS",
             "sub_status": "NEW LEAD",
-            "file_sent_to_login": False
+            "file_sent_to_login": False,
+            # Clear TL/supervisor assignment — new owner must set their own
+            "assign_report_to": [],
+
         }
         
         # Get requesting user's name for created_by_name
@@ -1089,6 +1092,8 @@ async def approve_reassignment(
         "file_sent_to_login": False,
         # Save manager's approval remark for history display
         "reassignment_approval_remark": remark or "",
+        # Clear TL/supervisor assignment — new owner must set their own
+        "assign_report_to": [],
     }
 
     logging.info(f"🔄 Setting assigned_to + created_by to requesting user: {requesting_user_id} ({requesting_user_name})")

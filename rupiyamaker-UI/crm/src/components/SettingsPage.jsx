@@ -1,5 +1,6 @@
 // Fix for Status Management Tab issue
 import React, { useState, useEffect, useRef } from 'react';
+import useTabWithHistory from '../hooks/useTabWithHistory';
 import {
     Settings,
     Plus,
@@ -295,7 +296,7 @@ const OtherManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
 
 const SettingsPage = () => {
     // State management
-    const [activeTab, setActiveTab] = useState('campaigns');
+    const [activeTab, setActiveTab] = useTabWithHistory('section', 'campaigns', { localStorageKey: 'settingsPageTab' });
     const [loading, setLoading] = useState(false);
     const [user_id] = useState(localStorage.getItem('userId') || '');
     const [userPermissions, setUserPermissions] = useState({});
