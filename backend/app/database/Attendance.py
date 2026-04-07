@@ -78,6 +78,10 @@ class AttendanceDB:
                     "photo_path": attendance_data.get("photo_path"),
                     "updated_at": get_ist_now()
                 }
+                # Preserve edited_by/edited_at if set (admin manual override)
+                if attendance_data.get("edited_by"):
+                    update_data["edited_by"] = attendance_data["edited_by"]
+                    update_data["edited_at"] = attendance_data.get("edited_at", get_ist_now())
                 
                 await self.collection.update_one(
                     {"_id": existing["_id"]},
@@ -103,6 +107,10 @@ class AttendanceDB:
                     "created_at": get_ist_now(),
                     "updated_at": get_ist_now()
                 }
+                # Preserve edited_by/edited_at if set (admin manual override)
+                if attendance_data.get("edited_by"):
+                    attendance_doc["edited_by"] = attendance_data["edited_by"]
+                    attendance_doc["edited_at"] = attendance_data.get("edited_at", get_ist_now())
                 
                 result = await self.collection.insert_one(attendance_doc)
                 return str(result.inserted_id)

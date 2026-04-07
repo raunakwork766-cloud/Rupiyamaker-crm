@@ -27,7 +27,8 @@ import {
     GripVertical,
     Menu,
     Mail,
-    HelpCircle
+    HelpCircle,
+    Bell
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -53,6 +54,7 @@ import DesignationManagement from './DesignationManagement';
 import DepartmentSettings from './settings/DepartmentSettings';
 import RoleSettings from './settings/RoleSettings';
 import DesignationSettings from './settings/DesignationSettings';
+import PopupModalSettings from './settings/PopupModalSettings';
 import { hrmsService } from '../services/hrmsService';
 
 // Tab Management Dropdown Component
@@ -230,11 +232,11 @@ const OtherManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
     
     // Filter to show only the other management tabs: attachmentTypes, excelUpload, attendance
     const otherManageTabs = tabs.filter(tab => 
-        ['attachmentTypes', 'excelUpload', 'attendance'].includes(tab.id)
+        ['attachmentTypes', 'excelUpload', 'attendance', 'popupModals'].includes(tab.id)
     );
     
     const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isOtherManageTabActive = ['attachmentTypes', 'excelUpload', 'attendance'].includes(activeTab);
+    const isOtherManageTabActive = ['attachmentTypes', 'excelUpload', 'attendance', 'popupModals'].includes(activeTab);
     
     return (
         <div className="relative">
@@ -613,6 +615,7 @@ const SettingsPage = () => {
         { id: 'adminEmails', label: 'Admin Emails', icon: Shield, color: 'red' },
         { id: 'statuses', label: 'Status Management', icon: CheckCircle, color: 'teal' },
         { id: 'attendance', label: 'Attendance Settings', icon: Clock, color: 'emerald' },
+        { id: 'popupModals', label: 'Popup Modal Alerts', icon: Bell, color: 'violet' },
         { id: 'importantQuestions', label: 'Important Questions', icon: HelpCircle, color: 'violet' }
     ];
 
@@ -3000,6 +3003,8 @@ const updateStatus = async (statusId, statusData) => {
                 );
             case 'attendance':
                 return <AttendanceSettingsTab userId={user_id} />;
+            case 'popupModals':
+                return <PopupModalSettings userId={user_id} />;
             case 'importantQuestions':
                 return renderImportantQuestionsTable();
             default:

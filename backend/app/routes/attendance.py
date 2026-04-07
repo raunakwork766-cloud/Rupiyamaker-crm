@@ -86,6 +86,7 @@ async def get_hierarchical_permissions(user_id: str, module: str = "attendance")
         # Check for module-specific permissions
         has_all = False
         has_junior = False
+        has_update = False
         
         for perm in permissions:
             if perm.get("page") == module:
@@ -97,14 +98,17 @@ async def get_hierarchical_permissions(user_id: str, module: str = "attendance")
                     has_all = True
                 elif "junior" in actions:
                     has_junior = True
+                
+                if "update" in actions:
+                    has_update = True
         
         # Determine permission level
         if has_all:
-            return {"permission_level": "all", "is_super_admin": False}
+            return {"permission_level": "all", "is_super_admin": False, "has_update": True}
         elif has_junior:
-            return {"permission_level": "junior", "is_super_admin": False}
+            return {"permission_level": "junior", "is_super_admin": False, "has_update": has_update}
         else:
-            return {"permission_level": "own", "is_super_admin": False}
+            return {"permission_level": "own", "is_super_admin": False, "has_update": has_update}
             
     except Exception as e:
         # Error getting hierarchical permissions
@@ -244,6 +248,7 @@ async def get_user_permissions(user_id: str, users_db: UsersDB, roles_db: RolesD
         # Use centralized hierarchical permission system
         permissions = await get_hierarchical_permissions(user_id, "attendance")
         permission_level = permissions["permission_level"]
+        has_update = permissions.get("has_update", False)
         
         # Convert to legacy boolean format for backward compatibility
         if permission_level == "all":
@@ -263,7 +268,7 @@ async def get_user_permissions(user_id: str, users_db: UsersDB, roles_db: RolesD
                 "can_view_all": False,
                 "can_view_junior": True,  # Enable viewing subordinate attendance
                 "can_mark_own": True,
-                "can_mark_all": False,
+                "can_mark_all": has_update,  # Can mark for others if update permission given
                 "can_edit": True,
                 "can_delete": False,
                 "can_export": True
@@ -274,8 +279,8 @@ async def get_user_permissions(user_id: str, users_db: UsersDB, roles_db: RolesD
                 "can_view_all": False,
                 "can_view_junior": False,  # Own permission cannot view subordinates
                 "can_mark_own": True,
-                "can_mark_all": False,
-                "can_edit": False,
+                "can_mark_all": has_update,  # Can mark for others if explicit update permission
+                "can_edit": has_update,       # Can edit if explicit update permission
                 "can_delete": False,
                 "can_export": False
             }
@@ -667,7 +672,8 @@ async def get_attendance_calendar(
                     # ── Rule: Check-in without check-out ──
                     chk_in = attendance_record.get("check_in_time")
                     chk_out = attendance_record.get("check_out_time")
-                    if chk_in and not chk_out and status not in [-2.0, -2]:
+                    was_manually_edited = attendance_record.get("edited_by") is not None
+                    if chk_in and not chk_out and status not in [-2.0, -2] and not was_manually_edited:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
                             # Past date: no checkout = Absconding (checked in but did not check out)
@@ -724,6 +730,7 @@ async def get_attendance_calendar(
                     "is_holiday": is_holiday,
                     "status": status,
                     "status_text": status_text,
+                    "is_manually_edited": attendance_record.get("edited_by") is not None or attendance_record.get("marked_by") is not None if attendance_record else False,
                     "check_in_time": attendance_record.get("check_in_time") if attendance_record else None,
                     "check_out_time": attendance_record.get("check_out_time") if attendance_record else None,
                     "comments": comments,
@@ -748,7 +755,11 @@ async def get_attendance_calendar(
                     d_s = check_date.isoformat()
                     # In-month days: use updated status from days list
                     if d_s in _days_by_date:
-                        s = _days_by_date[d_s].get("status")
+                        d = _days_by_date[d_s]
+                        s = d.get("status")
+                        # If admin manually edited this day, respect their override — never treat as absent for sandwich rule
+                        if d.get("is_manually_edited", False):
+                            return False
                         # Present statuses: full day (1/1.0), holiday (1.5), approved leave (0/0.0), working/IN (2/2.0)
                         return s not in [1, 1.0, 1.5, 0, 0.0, 2, 2.0, 0.5]
                     # Out-of-month days: use raw attendance lookup
@@ -826,6 +837,7 @@ async def get_attendance_calendar(
             # ── Adjacent Absconding Rule: Saturday/Monday absent that caused Sunday absence → Absconding ──
             # If a working day (Saturday or Monday) was absent and that triggered the Sunday sandwich rule,
             # that working-day absence is upgraded to Absconding status.
+            # EXCEPTION: If the day was manually edited/marked by an admin, do NOT override it.
             if enable_adjacent_absconding_rule:
                 _days_by_date_abs = {d["date"]: d for d in days}
                 for day_data in days:
@@ -839,16 +851,18 @@ async def get_attendance_calendar(
                     monday   = d_sun + timedelta(days=1)
                     sat_data = _days_by_date_abs.get(saturday.isoformat())
                     mon_data = _days_by_date_abs.get(monday.isoformat())
-                    # Saturday absent (working day) → Absconding
+                    # Saturday absent (working day) → Absconding (only if not manually edited)
                     if (sat_data and sat_data.get("status") in [-1, -1.0]
-                            and saturday.weekday() not in weekend_days):
+                            and saturday.weekday() not in weekend_days
+                            and not sat_data.get("is_manually_edited", False)):
                         sat_data["status"] = -2.0
                         sat_data["status_text"] = "Absconding"
                         absent_days -= 1
                         absconding_days += 1
-                    # Monday absent (working day) → Absconding
+                    # Monday absent (working day) → Absconding (only if not manually edited)
                     if (mon_data and mon_data.get("status") in [-1, -1.0]
-                            and monday.weekday() not in weekend_days):
+                            and monday.weekday() not in weekend_days
+                            and not mon_data.get("is_manually_edited", False)):
                         mon_data["status"] = -2.0
                         mon_data["status_text"] = "Absconding"
                         absent_days -= 1
@@ -1182,6 +1196,12 @@ async def mark_attendance(
             "updated_at": get_ist_now()
         }
         
+        # If admin is marking for another employee (manual override), flag as manually edited
+        # so the adjacent-absconding rule does not override it during calendar generation
+        if target_user_id != user_id:
+            attendance_record["edited_by"] = user_id
+            attendance_record["edited_at"] = get_ist_now()
+        
         # Add department info if available
         if employee.get("department_id"):
             attendance_record["department_id"] = employee.get("department_id")
@@ -1206,6 +1226,13 @@ async def mark_attendance(
             reason=attendance_data.reason
         )
         
+        # Invalidate calendar cache so the UI gets fresh data on next fetch
+        try:
+            invalidate_cache_pattern("get_calendar_attendance")
+            invalidate_cache_pattern("get_attendance_calendar")
+        except Exception:
+            pass
+
         return {
             "success": True,
             "message": "Attendance marked successfully",
@@ -2520,7 +2547,7 @@ async def edit_attendance(
     try:
         # Check admin permissions
         from app.utils.permissions import check_permission
-        await check_permission(admin_id, "attendance", "edit", users_db, roles_db)
+        await check_permission(admin_id, "attendance", "update", users_db, roles_db)
         
         # Validate attendance ID
         if not ObjectId.is_valid(attendance_id):
@@ -2561,10 +2588,10 @@ async def edit_attendance(
                 )
         
         # Validate status if provided
-        if edit_data.status is not None and edit_data.status not in [1.0, 0.5, 0.0, -1.0]:
+        if edit_data.status is not None and edit_data.status not in [1.0, 0.5, 0.0, -1.0, -2.0]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid status. Must be 1.0 (Full Day), 0.5 (Half Day), 0.0 (Leave), or -1.0 (Absent)"
+                detail="Invalid status. Must be 1.0 (Full Day), 0.5 (Half Day), 0.0 (Leave), -1.0 (Absent), or -2.0 (Absconding)"
             )
         
         # Edit attendance
@@ -2607,6 +2634,13 @@ async def edit_attendance(
                 details=history_details,
                 reason=update_reason
             )
+
+        # Invalidate calendar cache so the UI gets fresh data on next fetch
+        try:
+            invalidate_cache_pattern("get_calendar_attendance")
+            invalidate_cache_pattern("get_attendance_calendar")
+        except Exception:
+            pass
 
         return {
             "success": True,

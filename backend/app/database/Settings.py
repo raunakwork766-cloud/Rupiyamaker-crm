@@ -43,6 +43,7 @@ class SettingsDB:
         self.attachment_types_collection = self.db["attachment_types"]
         self.attendance_settings_collection = self.db["attendance_settings"]
         self.channel_names_collection = self.db["channel_names"]
+        self.popup_modal_settings_collection = self.db["popup_modal_settings"]
         
     async def init_indexes(self):
         """Initialize database indexes asynchronously"""
@@ -943,6 +944,85 @@ class SettingsDB:
         settings_data = {k: v for k, v in settings_data.items() if v is not None}
         
         result = await self.attendance_settings_collection.update_one(
+            {"type": "default"},
+            {"$set": settings_data},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None
+    
+    # ============= Popup Modal Settings =============
+    
+    async def _init_default_popup_modal_settings(self):
+        """Initialize default popup modal settings if not exists"""
+        existing = await self.popup_modal_settings_collection.find_one({"type": "default"})
+        if not existing:
+            default_settings = {
+                "type": "default",
+                "modals": {
+                    "announcement": {
+                        "label": "Announcements",
+                        "description": "Company-wide alerts",
+                        "icon": "📢",
+                        "force_accept": True,
+                        "max_cut_limit": 0,
+                        "reappear_time": 0,
+                        "reappear_unit": "seconds",
+                        "enabled": True
+                    },
+                    "warning": {
+                        "label": "Warnings",
+                        "description": "Violation or urgent alerts",
+                        "icon": "⚠️",
+                        "force_accept": False,
+                        "max_cut_limit": 1,
+                        "reappear_time": 1,
+                        "reappear_unit": "hours",
+                        "enabled": True
+                    },
+                    "task": {
+                        "label": "Tasks Prompt",
+                        "description": "Pending callbacks & logs",
+                        "icon": "📋",
+                        "force_accept": False,
+                        "max_cut_limit": 2,
+                        "reappear_time": 2,
+                        "reappear_unit": "hours",
+                        "enabled": True
+                    },
+                    "ticket": {
+                        "label": "Ticket Updates",
+                        "description": "Updates on open tickets",
+                        "icon": "🎫",
+                        "force_accept": False,
+                        "max_cut_limit": 3,
+                        "reappear_time": 4,
+                        "reappear_unit": "hours",
+                        "enabled": True
+                    }
+                },
+                "created_at": get_ist_now(),
+                "updated_at": get_ist_now()
+            }
+            await self.popup_modal_settings_collection.insert_one(default_settings)
+    
+    async def get_popup_modal_settings(self) -> dict:
+        """Get popup modal settings"""
+        settings = await self.popup_modal_settings_collection.find_one({"type": "default"})
+        if settings:
+            settings["_id"] = str(settings["_id"])
+        else:
+            await self._init_default_popup_modal_settings()
+            settings = await self.popup_modal_settings_collection.find_one({"type": "default"})
+            if settings:
+                settings["_id"] = str(settings["_id"])
+        return settings
+    
+    async def update_popup_modal_settings(self, settings_data: dict) -> bool:
+        """Update popup modal settings"""
+        settings_data["updated_at"] = get_ist_now()
+        settings_data = {k: v for k, v in settings_data.items() if v is not None}
+        
+        result = await self.popup_modal_settings_collection.update_one(
             {"type": "default"},
             {"$set": settings_data},
             upsert=True

@@ -21,9 +21,11 @@ const RoleSettings = () => {
     
     // Initialize all permission modules as collapsed by default
     const [collapsedPermissions, setCollapsedPermissions] = useState(new Set([
-        'SuperAdmin', 'feeds', 'leads', 'login', 'tasks', 'ickets', 'hrms', 
-        'leaves', 'attendance', 'warnings', 'users', 'charts', 'apps', 
-        'settings', 'interview', 'reports'
+        'SuperAdmin', 'feeds', 'login', 'tasks', 'tickets', 'hrms', 
+        'leaves', 'attendance', 'warnings', 'apps', 
+        'settings', 'interview', 'reports',
+        'dialer_report', 'offer_letter', 'leave_management',
+        'notification', 'knowledge_base', 'employees'
     ]));
 
     // Role Field Config Modal states

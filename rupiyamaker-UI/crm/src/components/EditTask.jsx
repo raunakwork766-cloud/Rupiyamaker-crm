@@ -540,12 +540,18 @@ export default function EditTask({
   const [showAssignPopup, setShowAssignPopup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(true);
   const [historyData, setHistoryData] = useState([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [activityFilter, setActivityFilter] = useState('all'); // Filter for history activities
+
+  // Remark modal state (for Complete / Failed / Reopen actions)
+  const [remarkModalOpen, setRemarkModalOpen] = useState(false);
+  const [remarkType, setRemarkType] = useState(''); // 'complete' | 'fail' | 'reopen'
+  const [remarkText, setRemarkText] = useState('');
+  const [remarkError, setRemarkError] = useState(false);
 
   // State for API data (similar to CreateTask)
   const [users, setUsers] = useState([]);
@@ -555,6 +561,14 @@ export default function EditTask({
   const [loadingLoanTypes, setLoadingLoanTypes] = useState(false);
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [showAssociatePopup, setShowAssociatePopup] = useState(false);
+
+  // Inline lead search dropdown state
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+  const [leadSearchTerm, setLeadSearchTerm] = useState('');
+  const [leadSearchResults, setLeadSearchResults] = useState([]);
+  const [loadingLeadSearch, setLoadingLeadSearch] = useState(false);
+  const leadDropdownRef = useRef(null);
+  const leadSearchTimerRef = useRef(null);
 
   // Date picker related state (similar to CreateTask)
   const [showCalendar, setShowCalendar] = useState(false);
@@ -583,10 +597,13 @@ export default function EditTask({
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
   }, []);
 
   const messageRef = useRef(null);
+  const lastSavedRef = useRef(null); // Track last saved state for auto-save change detection
+  const autoSaveTimerRef = useRef(null);
   
   // Calculate calendar position when it's shown
   useEffect(() => {
@@ -892,33 +909,48 @@ export default function EditTask({
 
       // Update history data with enhanced processing for new response format
       setHistoryData(historyArray.map(item => {
-        console.log("Processing history item:", item);
-        
-        // Use the action field as the main display text
-        let changes = item.action || "Activity recorded";
-        
-        // Clean up status values by removing "TaskStatus." prefix
-        changes = changes.replace(/TaskStatus\./g, '');
-        
-        // Format different action types for better readability
-        if (item.action_type === 'created') {
-          changes = `TASK CREATED - ${item.details?.task_title || 'New Task'}`;
-        } else if (item.action_type === 'status_changed') {
-          const oldStatus = item.details?.old_status?.replace('TaskStatus.', '') || 'Unknown';
-          const newStatus = item.details?.new_status?.replace('TaskStatus.', '') || 'Unknown';
-          changes = `STATUS CHANGED: ${oldStatus.toUpperCase()} → ${newStatus.toUpperCase()}`;
-        } else if (item.action_type === 'comment_added') {
-          const commentPreview = item.details?.comment_preview || 'Comment';
-          changes = `COMMENT ADDED: "${commentPreview}"`;
-        } else if (item.action_type === 'assignment_changed') {
-          const oldAssignees = item.details?.old_assignees?.join(', ') || 'None';
-          const newAssignees = item.details?.new_assignees?.join(', ') || 'None';
-          changes = `ASSIGNMENT CHANGED: ${oldAssignees} → ${newAssignees}`;
-        } else if (item.action_type === 'updated') {
-          // For general updates, use the change summary if available
-          changes = item.details?.change_summary?.replace(/TaskStatus\./g, '').toUpperCase() || changes.toUpperCase();
+        // Determine a display status for the pill badge
+        let displayStatus = 'activity';
+        if (item.action_type === 'created') displayStatus = 'created';
+        else if (item.action_type === 'status_changed') {
+          const ns = (item.details?.new_status || '').replace('TaskStatus.', '').toLowerCase();
+          if (ns === 'completed') displayStatus = 'completed';
+          else if (ns === 'failed') displayStatus = 'failed';
+          else if (ns === 'pending' || ns === 'reopened') displayStatus = 'reopened';
+          else displayStatus = 'status';
         }
-        
+        else if (item.action_type === 'comment_added') displayStatus = 'comment';
+        else if (item.action_type === 'assignment_changed') displayStatus = 'assignment';
+        else if (item.action_type === 'updated') displayStatus = 'updated';
+
+        // Build task-note (the original detail/title of the task at that point)
+        let taskNote = '';
+        if (item.action_type === 'created') {
+          taskNote = item.details?.task_title || '';
+        } else if (item.action_type === 'status_changed') {
+          taskNote = item.details?.task_note || '';
+        }
+
+        // Build remark text
+        let remark = '';
+        if (item.action_type === 'status_changed') {
+          const oldS = (item.details?.old_status || '').replace('TaskStatus.', '');
+          const newS = (item.details?.new_status || '').replace('TaskStatus.', '');
+          remark = item.details?.remark || item.details?.note || `${oldS} → ${newS}`;
+        } else if (item.action_type === 'comment_added') {
+          remark = item.details?.comment_preview || item.details?.comment || '';
+        } else if (item.action_type === 'assignment_changed') {
+          const oldA = item.details?.old_assignees?.join(', ') || 'None';
+          const newA = item.details?.new_assignees?.join(', ') || 'None';
+          remark = `${oldA} → ${newA}`;
+        } else if (item.action_type === 'updated') {
+          remark = item.details?.change_summary?.replace(/TaskStatus\./g, '') || item.action || '';
+        } else if (item.action_type === 'created') {
+          // no remark for created
+        } else {
+          remark = (item.action || '').replace(/TaskStatus\./g, '');
+        }
+
         return {
           id: item.id,
           date: item.created_at ? new Date(item.created_at).toLocaleDateString("en-IN", {
@@ -934,7 +966,9 @@ export default function EditTask({
             hour12: true
           }).toUpperCase() : "",
           createdBy: (item.created_by_name || "Unknown").toUpperCase(),
-          changes: changes.toUpperCase(),
+          displayStatus,
+          taskNote,
+          remark,
           actionType: item.action_type || 'unknown'
         };
       }));
@@ -950,13 +984,13 @@ export default function EditTask({
         toast.error("Failed to load history. Using fallback data.");
       }
       
-      // Use fallback dummy data if API fails - based on the example image
+      // Use fallback dummy data if API fails
       setHistoryData([
-        { id: 1, date: "24 JUN 2025", createdBy: "ADMIN", changes: "REOPEN" },
-        { id: 2, date: "24 JUN 2025", createdBy: "ADMIN", changes: "TASK CLOSED" },
-        { id: 3, date: "11 JUN 2025", createdBy: "ADMIN", changes: "REOPEN" },
-        { id: 4, date: "11 JUN 2025", createdBy: "ADMIN", changes: "TASK CLOSED" },
-        { id: 5, date: "11 JUN 2025", createdBy: "ADMIN", changes: "OPEN TASK" },
+        { id: 1, date: "24 JUN 2025", createdBy: "ADMIN", displayStatus: 'reopened', taskNote: '', remark: 'Task reopened', actionType: 'status_changed' },
+        { id: 2, date: "24 JUN 2025", createdBy: "ADMIN", displayStatus: 'completed', taskNote: '', remark: 'Task closed', actionType: 'status_changed' },
+        { id: 3, date: "11 JUN 2025", createdBy: "ADMIN", displayStatus: 'reopened', taskNote: '', remark: 'Task reopened', actionType: 'status_changed' },
+        { id: 4, date: "11 JUN 2025", createdBy: "ADMIN", displayStatus: 'completed', taskNote: '', remark: 'Task closed', actionType: 'status_changed' },
+        { id: 5, date: "11 JUN 2025", createdBy: "ADMIN", displayStatus: 'created', taskNote: 'New Task', remark: '', actionType: 'created' },
       ]);
     } finally {
       setIsLoadingHistory(false);
@@ -1016,19 +1050,88 @@ export default function EditTask({
   // Handle associate with records selection (similar to CreateTask)
   const handleAssociateSelect = (selectedRecords) => {
     console.log('Selected records in EditTask:', selectedRecords);
-    setTask(prev => ({
-      ...prev,
-      associateWithRecords: selectedRecords
-    }));
+    setTask(prev => {
+      const updated = { ...prev, associateWithRecords: selectedRecords };
+      debouncedAutoSave(updated);
+      return updated;
+    });
     setShowAssociatePopup(false);
   };
 
+  // ── Inline lead search ──
+  const searchLeadsAPI = async (searchVal) => {
+    const userId = currentUserId || localStorage.getItem('userId');
+    if (!userId) return;
+    setLoadingLeadSearch(true);
+    try {
+      const res = await fetch(`${BASE_URL}/tasks/search-leads?user_id=${userId}&search=${encodeURIComponent(searchVal)}&limit=20`);
+      const data = await res.json();
+      setLeadSearchResults(data.leads || []);
+    } catch (err) {
+      console.error("Lead search error:", err);
+      setLeadSearchResults([]);
+    } finally {
+      setLoadingLeadSearch(false);
+    }
+  };
+
+  const handleLeadSearchChange = (val) => {
+    setLeadSearchTerm(val);
+    if (leadSearchTimerRef.current) clearTimeout(leadSearchTimerRef.current);
+    leadSearchTimerRef.current = setTimeout(() => searchLeadsAPI(val), 300);
+  };
+
+  const handleSelectLead = (lead) => {
+    const selected = [{
+      id: lead.id || lead.lead_id,
+      lead_id: lead.id || lead.lead_id,
+      name: lead.customer_name || lead.name,
+      customer_name: lead.customer_name || lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      loan_type: lead.loan_type,
+      lead_login: lead.lead_login || 'Lead',
+      lead_number: lead.lead_number || '',
+    }];
+    setTask(prev => {
+      const updated = { ...prev, associateWithRecords: selected };
+      debouncedAutoSave(updated);
+      return updated;
+    });
+    setShowLeadDropdown(false);
+    setLeadSearchTerm('');
+    setLeadSearchResults([]);
+  };
+
+  const clearSelectedRecord = (e) => {
+    e.stopPropagation();
+    setTask(prev => {
+      const updated = { ...prev, associateWithRecords: [] };
+      debouncedAutoSave(updated);
+      return updated;
+    });
+  };
+
+  // Close lead dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (leadDropdownRef.current && !leadDropdownRef.current.contains(e.target)) {
+        setShowLeadDropdown(false);
+      }
+    };
+    if (showLeadDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showLeadDropdown]);
+
   // Handle time selection from ClockTimePicker
   const handleTimeSelect = (time) => {
-    setTask(prev => ({
-      ...prev,
-      dueTime: time
-    }));
+    setTask(prev => {
+      const updated = { ...prev, dueTime: time };
+      debouncedAutoSave(updated);
+      return updated;
+    });
     setShowClockTimePicker(false);
   };
 
@@ -1169,41 +1272,64 @@ export default function EditTask({
           }));
         }
 
-        toast.success("Task updated successfully");
       }
 
-      // Exit edit mode after successful update
-      setIsEditing(false);
+      // Auto-save completed
     } catch (err) {
       console.error("Error updating task:", err);
       
-      // Provide specific error messages based on error type
+      // Show error inside modal only (no popup toast)
       if (err.response?.status === 500) {
         setError("Server error occurred. Please try again later.");
-        toast.error("Server error: Unable to update task. Please try again later.");
       } else if (err.response?.status === 404) {
         setError("Task not found. It may have been deleted.");
-        toast.error("Task not found. It may have been deleted by another user.");
       } else if (err.response?.status === 403) {
         setError("You don't have permission to update this task.");
-        toast.error("Permission denied: You cannot update this task.");
       } else if (err.response?.status === 400) {
         setError("Invalid task data. Please check your inputs.");
-        toast.error("Invalid data: Please check all required fields.");
       } else if (!navigator.onLine) {
         setError("No internet connection. Please check your network.");
-        toast.error("Network error: Please check your internet connection.");
       } else {
         setError("Failed to update task. Please try again.");
-        toast.error("Failed to update task. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ── Remark modal helpers ──
+  const openRemarkModal = (type) => {
+    setRemarkType(type);
+    setRemarkText('');
+    setRemarkError(false);
+    setRemarkModalOpen(true);
+  };
+
+  const closeRemarkModal = () => {
+    setRemarkModalOpen(false);
+    setRemarkType('');
+    setRemarkText('');
+    setRemarkError(false);
+  };
+
+  const confirmRemark = () => {
+    if (!remarkText.trim()) {
+      setRemarkError(true);
+      return;
+    }
+    // Close modal and dispatch the right action
+    setRemarkModalOpen(false);
+    if (remarkType === 'complete') {
+      handleCompleteReopenTask(remarkText.trim());
+    } else if (remarkType === 'fail') {
+      handleFailedTask(remarkText.trim());
+    } else if (remarkType === 'reopen') {
+      handleCompleteReopenTask(remarkText.trim()); // reopen also uses handleCompleteReopenTask
+    }
+  };
+
   // Function to handle completing/reopening task
-  const handleCompleteReopenTask = async () => {
+  const handleCompleteReopenTask = async (remark = '') => {
     setIsLoading(true);
     setError(null);
 
@@ -1308,6 +1434,8 @@ export default function EditTask({
           typeTask: task.taskType || task.typeTask,
           // Flag to keep modal open for status-only changes
           keepModalOpen: true,
+          // Remark for history tracking
+          remark: remark || "",
         };
         
         console.log(`🚀 Triggering immediate parent update for status change`);
@@ -1315,8 +1443,6 @@ export default function EditTask({
         
         // Call onSave immediately to trigger parent's immediate update logic
         await onSave(updatePayload);
-        
-        toast.success(`Task ${backendStatus.toLowerCase()} successfully`);
       }
     } catch (err) {
       console.error("Error updating task status:", err);
@@ -1327,29 +1453,24 @@ export default function EditTask({
         status: task.status // Revert to original status
       }));
       
-      // Provide specific error messages for status update
+      // Show error inside modal only (no popup toast)
       if (err.response?.status === 500) {
         setError("Server error while updating status. Please try again later.");
-        toast.error("Server error: Unable to update task status. Please try again later.");
       } else if (err.response?.status === 404) {
         setError("Task not found. It may have been deleted.");
-        toast.error("Task not found. It may have been deleted by another user.");
       } else if (err.response?.status === 403) {
         setError("You don't have permission to update this task status.");
-        toast.error("Permission denied: You cannot update this task status.");
       } else if (!navigator.onLine) {
         setError("No internet connection. Please check your network.");
-        toast.error("Network error: Please check your internet connection.");
       } else {
         setError("Failed to update task status. Please try again.");
-        toast.error("Failed to update task status. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFailedTask = async () => {
+  const handleFailedTask = async (remark = '') => {
     setIsLoading(true);
     setError(null);
 
@@ -1441,6 +1562,8 @@ export default function EditTask({
           isFailedTask: newStatus === "FAILED",  // Flag for backend
           // Flag to keep modal open for status-only changes
           keepModalOpen: true,
+          // Remark for history tracking
+          remark: remark || "",
         };
         
         console.log(`🚀 Triggering immediate parent update for status change: ${previousStatus} → ${backendStatus} (UI: ${newStatus})`);
@@ -1448,8 +1571,6 @@ export default function EditTask({
         
         // Call onSave immediately to trigger parent's immediate update logic
         await onSave(updatePayload);
-        
-        toast.success(`Task ${backendStatus.toLowerCase()} successfully`);
       }
     } catch (err) {
       console.error("Error updating task status:", err);
@@ -1460,22 +1581,17 @@ export default function EditTask({
         status: task.status // Revert to original status
       }));
       
-      // Provide specific error messages for status update
+      // Show error inside modal only (no popup toast)
       if (err.response?.status === 500) {
         setError("Server error while updating status. Please try again later.");
-        toast.error("Server error: Unable to update task status. Please try again later.");
       } else if (err.response?.status === 404) {
         setError("Task not found. It may have been deleted.");
-        toast.error("Task not found. It may have been deleted by another user.");
       } else if (err.response?.status === 403) {
         setError("You don't have permission to update this task status.");
-        toast.error("Permission denied: You cannot update this task status.");
       } else if (!navigator.onLine) {
         setError("No internet connection. Please check your network.");
-        toast.error("Network error: Please check your internet connection.");
       } else {
         setError("Failed to update task status. Please try again.");
-        toast.error("Failed to update task status. Please try again.");
       }
     } finally {
       setIsLoading(false);
@@ -1553,13 +1669,105 @@ export default function EditTask({
     setTask((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Handle blur - apply uppercase when user leaves the field
+  // Change a field and immediately auto-save (for dropdowns, selects, pickers)
+  const handleChangeAndSave = (field, value) => {
+    setTask((prev) => {
+      const updated = { ...prev, [field]: value };
+      debouncedAutoSave(updated);
+      return updated;
+    });
+  };
+
+  // ── Auto-save helper ──
+  // Builds the update payload from current task state and calls onSave
+  const triggerAutoSave = async (updatedTask) => {
+    if (!onSave || !updatedTask?.id) return;
+
+    // Build a save-key fingerprint of the fields we care about
+    const saveKey = JSON.stringify({
+      title: updatedTask.title,
+      description: updatedTask.description,
+      priority: updatedTask.priority,
+      dueDate: updatedTask.dueDate,
+      dueTime: updatedTask.dueTime,
+      dueDateOption: updatedTask.dueDateOption,
+      repeatOption: updatedTask.repeatOption,
+      repeatCustomDays: updatedTask.repeatCustomDays,
+      assigned_users: updatedTask.assigned_users,
+    });
+
+    // Skip if nothing changed since last save
+    if (lastSavedRef.current === saveKey) return;
+    lastSavedRef.current = saveKey;
+
+    const statusMapping = {
+      "PENDING": "Pending",
+      "IN_PROGRESS": "In Progress",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled"
+    };
+
+    const taskData = {
+      subject: updatedTask.title,
+      task_details: updatedTask.description,
+      priority: updatedTask.priority || "medium",
+      status: statusMapping[updatedTask.status] || "Pending",
+      assigned_to: updatedTask.assigned_users || [],
+      due_date: updatedTask.dueDate || null,
+      due_time: updatedTask.dueTime || "08:00 AM",
+      repeat_option: updatedTask.repeatOption || "none",
+      repeat_custom_days: updatedTask.repeatCustomDays || [],
+    };
+
+    // Handle associated records
+    if (updatedTask.associateWithRecords?.length > 0) {
+      const firstRecord = updatedTask.associateWithRecords[0];
+      if (firstRecord.id || firstRecord.lead_id) {
+        taskData.lead_id = firstRecord.id || firstRecord.lead_id;
+        taskData.lead_name = firstRecord.name || firstRecord.customer_name;
+        taskData.loan_type = firstRecord.loan_type || firstRecord.loanType;
+      }
+    }
+
+    if (!taskData.subject?.trim() || !taskData.task_details?.trim()) return;
+
+    try {
+      const updatePayload = {
+        ...taskData,
+        _id: updatedTask.id,
+        id: updatedTask.id,
+        subject: updatedTask.title,
+        message: updatedTask.description,
+        title: updatedTask.title,
+        description: updatedTask.description,
+        keepModalOpen: true, // Don't close modal on auto-save
+      };
+      await onSave(updatePayload);
+    } catch (err) {
+      console.error("Auto-save failed:", err);
+    }
+  };
+
+  // Debounced version for text field blurs
+  const debouncedAutoSave = (taskState) => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      triggerAutoSave(taskState);
+    }, 300);
+  };
+
+  // Handle blur - apply uppercase when user leaves the field, then auto-save
   const handleBlur = (field) => {
     const excludeFromUppercase = ['id', 'assignTo', 'priority', 'status', 'type', 'dueDate', 'dueTime'];
-    if (excludeFromUppercase.includes(field) || typeof task[field] !== 'string') {
-      return;
-    }
-    setTask((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
+    setTask((prev) => {
+      const updated = { ...prev };
+      if (!excludeFromUppercase.includes(field) && typeof updated[field] === 'string') {
+        updated[field] = updated[field].toUpperCase();
+      }
+      // Trigger auto-save with the latest state
+      debouncedAutoSave(updated);
+      return updated;
+    });
   };
 
   const handleCommentSubmit = async (e) => {
@@ -1713,12 +1921,14 @@ export default function EditTask({
         typeof a === 'string' ? a : a.name
       );
 
-      return {
+      const updated = {
         ...prevTask,
         assignedTo: updatedAssignedTo,
         assign: assigneeNames.join(", "),
         assigned_users: updatedAssignedUserIds
       };
+      debouncedAutoSave(updated);
+      return updated;
     });
   };
 
@@ -1750,12 +1960,14 @@ export default function EditTask({
           typeof a === 'string' ? a : a.name
         );
 
-        return {
+        const updated = {
           ...prevTask,
           assignedTo: updatedAssignedTo,
           assign: assigneeNames.join(", "),
           assigned_users: updatedAssignedUserIds
         };
+        debouncedAutoSave(updated);
+        return updated;
       }
       return prevTask;
     });
@@ -1821,151 +2033,233 @@ export default function EditTask({
     );
   }
 
+  // Determine task type label and color for the pill badge
+  const getTaskTypePill = () => {
+    const typeKey = (task.typeTask || task.taskType || 'todo').toLowerCase();
+    if (typeKey.includes('call') || typeKey.includes('callback')) return { label: '📞 Callback', cls: 'callback' };
+    if (typeKey.includes('pend')) return { label: '⏳ Pendency', cls: 'pendency' };
+    return { label: '📝 To-Do', cls: 'todo' };
+  };
+  const typePill = getTaskTypePill();
+  const pillColors = {
+    callback: { bg: 'rgba(46,204,113,0.12)', color: '#16a34a', border: '1px solid rgba(46,204,113,0.3)' },
+    pendency: { bg: 'rgba(243,156,18,0.12)', color: '#b45309', border: '1px solid rgba(243,156,18,0.3)' },
+    todo: { bg: 'rgba(0,170,255,0.12)', color: '#0077bb', border: '1px solid rgba(0,170,255,0.3)' },
+  };
+  const pc = pillColors[typePill.cls] || pillColors.todo;
+
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
-      <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-5xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
+    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', justifyContent:'center', alignItems:'center', background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)' }}>
+      <div style={{ background:'#fff', width:'100%', maxWidth:700, maxHeight:'96vh', borderRadius:12, position:'relative', boxShadow:'0 15px 50px rgba(0,0,0,0.6)', display:'flex', flexDirection:'column', border:'1px solid rgba(0,0,0,0.1)', overflow:'hidden' }}>
+        {/* Close button */}
         <button
-          className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
           onClick={handleClose}
-          aria-label="Close"
           type="button"
-        >
-          ×
-        </button>
-        <h2 className="text-xl font-bold text-green-600 mb-4">EDIT TASK</h2>
+          style={{ position:'absolute', top:20, right:20, background:'#f1f5f9', width:28, height:28, borderRadius:'50%', border:'none', fontSize:16, color:'#64748b', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}
+        >×</button>
+
+        {/* Scrollable body */}
+        <div style={{ flex:1, minHeight:0, overflowY:'auto', padding:'14px 18px 14px' }}>
+          {/* Title row with type pill */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
+            <span style={{ fontSize:18, fontWeight:800, color:'#333' }}>View / Edit Task</span>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 12px', borderRadius:20, fontSize:12, fontWeight:700, background:pc.bg, color:pc.color, border:pc.border }}>{typePill.label}</span>
+          </div>
 
         {/* Network Status Indicator */}
         {!isOnline && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 18.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <span>No internet connection. Some features may not work properly.</span>
+          <div style={{ background:'#fef2f2', border:'1px solid #fca5a5', color:'#b91c1c', padding:'8px 12px', borderRadius:6, marginBottom:8, fontSize:12, fontWeight:600 }}>
+            No internet connection. Some features may not work properly.
           </div>
         )}
 
-        {/* Show error message if any */}
+        {/* Error message */}
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 18.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <span>{error}</span>
+          <div style={{ background:'#fef2f2', border:'1px solid #fca5a5', color:'#b91c1c', padding:'8px 12px', borderRadius:6, marginBottom:8, fontSize:12, fontWeight:600 }}>
+            {error}
           </div>
         )}
 
         <form onSubmit={handleEditSubmit}>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <label className="block font-bold text-gray-700 mb-1">
-                Date & Time
-              </label>
+          {/* Created Meta Row */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>Created Date & Time</label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #cbd5e1', borderRadius:6, fontSize:13, color:'#64748b', fontWeight:600, background:'#f1f5f9', cursor:'not-allowed', outline:'none' }}
                 value={currentDateTime}
                 readOnly
+                disabled
               />
             </div>
-            <div className="flex-1">
-              <label className="block font-bold text-gray-700 mb-1" htmlFor="createdBy">
-                Created By
-              </label>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>Created By</label>
               <input
-                id="createdBy"
                 type="text"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #cbd5e1', borderRadius:6, fontSize:13, color:'#64748b', fontWeight:600, background:'#f1f5f9', cursor:'not-allowed', outline:'none' }}
                 value={task.createdBy}
-                onChange={(e) => handleChange("createdBy", e.target.value)}
-                required
                 readOnly
+                disabled
               />
             </div>
           </div>
 
-          <div className="mt-4">
-            <label
-              className="block font-bold text-gray-700 mb-1"
-              htmlFor="title"
-            >
-              Title
+          {/* Title */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+              {typePill.cls === 'callback' ? 'Quick Note / Subject' : typePill.cls === 'pendency' ? "What's Pending?" : 'Task Subject'}
             </label>
             <input
-              id="title"
               type="text"
-              className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!isEditing ? 'bg-gray-100' : ''}`}
+              style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'text' }}
               value={task.title}
               onChange={(e) => handleChange("title", e.target.value)}
+              onBlur={() => handleBlur("title")}
               placeholder="Enter task title"
               required
-              readOnly={!isEditing}
             />
           </div>
 
-          <div className="mt-4">
-            <label
-              className="block font-bold text-gray-700 mb-1"
-              htmlFor="description"
-            >
-              Task Description
+          {/* Description */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+              {typePill.cls === 'todo' ? 'Description' : 'Details'}
             </label>
             <textarea
               ref={messageRef}
-              id="description"
-              className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden ${!isEditing ? 'bg-gray-100' : ''}`}
+              style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:500, outline:'none', resize:'vertical', minHeight:70, background:'#fff', cursor:'text', fontFamily:'inherit' }}
               rows={3}
               value={task.description}
               onChange={(e) => handleChange("description", e.target.value)}
+              onBlur={() => handleBlur("description")}
               placeholder="Enter task description..."
               required
-              readOnly={!isEditing}
-              style={{
-                minHeight: "3rem",
-                maxHeight: "400px",
-                transition: "height 0.2s",
-              }}
             />
           </div>
 
-          {/* Associate with Records Field */}
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Associate with records
+          {/* Associate with Records Field - Inline Lead Dropdown */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+              {typePill.cls === 'callback' ? 'Who to call? (Target Record)' : 'Associate with Record'}
             </label>
-            <div
-              className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold min-h-[42px] flex items-center ${!isEditing ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}
-              onClick={() => {
-                if (isEditing) {
-                  // Fetch data when popup is opened
-                  fetchUsers();
-                  fetchLoanTypes();
-                  setShowAssociatePopup(true);
-                }
-              }}
-            >
-              {task.associateWithRecords && task.associateWithRecords.length > 0
-                ? task.associateWithRecords.length === 1 
-                  ? `${task.associateWithRecords[0].name || task.associateWithRecords[0].customer_name || 'Selected Lead'}`
-                  : `${task.associateWithRecords.length} record(s) selected`
-                : "Associated with 0 records"}
+            <div ref={leadDropdownRef} style={{ position:'relative' }}>
+              {/* Selected or placeholder button */}
+              <div
+                style={{
+                  width:'100%', padding:'10px 14px',
+                  border: task.associateWithRecords?.length > 0 ? '1.5px solid #94a3b8' : '1.5px dashed #00aaff',
+                  borderRadius:8, fontSize:13, fontWeight:600,
+                  background: task.associateWithRecords?.length > 0 ? 'linear-gradient(180deg,#ffffff,#f8fbff)' : 'linear-gradient(180deg,#fbfdff,#f3f9ff)',
+                  cursor:'pointer', minHeight:44, display:'flex', alignItems:'center', justifyContent:'space-between',
+                  color: task.associateWithRecords?.length > 0 ? '#0f172a' : '#00aaff',
+                }}
+                onClick={() => {
+                  setShowLeadDropdown(prev => !prev);
+                  if (!showLeadDropdown) searchLeadsAPI(leadSearchTerm || '');
+                }}
+              >
+                {task.associateWithRecords && task.associateWithRecords.length > 0 ? (
+                  <span style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
+                    <span style={{
+                      padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.3px',
+                      background: (task.associateWithRecords[0].lead_login || '').toLowerCase() === 'login' ? 'rgba(255,152,0,0.13)' : 'rgba(0,170,255,0.1)',
+                      color: (task.associateWithRecords[0].lead_login || '').toLowerCase() === 'login' ? '#e65100' : '#00aaff',
+                    }}>
+                      {(task.associateWithRecords[0].lead_login || 'Lead')}
+                    </span>
+                    <strong style={{ fontWeight:700, color:'#0f172a' }}>{task.associateWithRecords[0].name || task.associateWithRecords[0].customer_name || 'Selected'}</strong>
+                    {task.associateWithRecords[0].phone && (
+                      <span style={{ fontSize:12, color:'#94a3b8', fontWeight:500 }}>{task.associateWithRecords[0].phone}</span>
+                    )}
+                    <span onClick={clearSelectedRecord} style={{ marginLeft:'auto', cursor:'pointer', color:'#94a3b8', fontWeight:700, fontSize:16, lineHeight:1 }} title="Clear">×</span>
+                  </span>
+                ) : (
+                  <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <svg width="14" height="14" fill="none" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" stroke="#00aaff" strokeWidth="2"/><path d="M10 6v8M6 10h8" stroke="#00aaff" strokeWidth="2" strokeLinecap="round"/></svg>
+                    Click to select Lead / Record...
+                  </span>
+                )}
+                <svg width="12" height="12" fill="none" viewBox="0 0 12 12" style={{ flexShrink:0, marginLeft:6, transform: showLeadDropdown ? 'rotate(180deg)' : 'rotate(0)', transition:'transform 0.2s' }}>
+                  <path d="M2 4l4 4 4-4" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+
+              {/* Dropdown */}
+              {showLeadDropdown && (
+                <div style={{
+                  position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:1000,
+                  background:'#fff', border:'1px solid #e2e8f0', borderRadius:10,
+                  boxShadow:'0 8px 32px rgba(0,0,0,0.13)', overflow:'hidden',
+                }}>
+                  {/* Search input */}
+                  <div style={{ padding:'10px 12px', borderBottom:'1px solid #f1f5f9' }}>
+                    <input
+                      type="text"
+                      placeholder="Search by name or number..."
+                      autoFocus
+                      style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #e2e8f0', borderRadius:6, fontSize:13, outline:'none', background:'#f8fafc' }}
+                      value={leadSearchTerm}
+                      onChange={e => handleLeadSearchChange(e.target.value)}
+                    />
+                  </div>
+                  {/* Lead list */}
+                  <div style={{ maxHeight:220, overflowY:'auto' }}>
+                    {loadingLeadSearch ? (
+                      <div style={{ padding:'18px 0', textAlign:'center', color:'#94a3b8', fontSize:13 }}>Searching...</div>
+                    ) : leadSearchResults.length === 0 ? (
+                      <div style={{ padding:'18px 0', textAlign:'center', color:'#94a3b8', fontSize:13 }}>No leads found</div>
+                    ) : (
+                      <ul style={{ listStyle:'none', margin:0, padding:0 }}>
+                        {leadSearchResults.map((lead, idx) => {
+                          const isLogin = (lead.lead_login || '').toLowerCase() === 'login';
+                          return (
+                            <li
+                              key={lead.id || lead.lead_id || idx}
+                              style={{
+                                padding:'10px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:10,
+                                borderBottom: idx < leadSearchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                transition:'background 0.15s',
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background='#f0f9ff'}
+                              onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                              onClick={() => handleSelectLead(lead)}
+                            >
+                              <span style={{
+                                padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.3px', flexShrink:0,
+                                background: isLogin ? 'rgba(255,152,0,0.13)' : 'rgba(0,170,255,0.1)',
+                                color: isLogin ? '#e65100' : '#00aaff',
+                              }}>
+                                {isLogin ? 'Login' : 'Lead'}
+                              </span>
+                              <strong style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{lead.customer_name || lead.name}</strong>
+                              {lead.phone && <span style={{ fontSize:12, color:'#94a3b8', fontWeight:500, marginLeft:'auto' }}>{lead.phone}</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-col items-start mt-4">
-            <label className="block font-bold text-gray-700 mb-2">
-              Attachment
-            </label>
-            <label className={`inline-flex items-center px-4 py-2 bg-cyan-500 text-white font-bold rounded-lg shadow cursor-pointer hover:bg-cyan-600 transition ${!isEditing ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              Photo/PDF
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={handleAttachmentChange}
-                multiple
-                disabled={!isEditing}
-              />
-            </label>
+          {/* Attachment Section */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>📎 Attachments</label>
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0' }}>
+              <label style={{ display:'inline-flex', alignItems:'center', padding:'6px 14px', background:'#00aaff', color:'#fff', borderRadius:6, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                ＋ Add File
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  style={{ display:'none' }}
+                  onChange={handleAttachmentChange}
+                  multiple
+                />
+              </label>
+            </div>
 
             {/* Display existing attachments with a clear heading */}
             <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
@@ -2033,16 +2327,14 @@ export default function EditTask({
                           )}
                         </div>
                       </div>
-                      {isEditing && (
-                        <button
-                          type="button"
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                          onClick={() => handleRemoveBackendAttachment(attachment)}
-                          title="Remove attachment"
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        onClick={() => handleRemoveBackendAttachment(attachment)}
+                        title="Remove attachment"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
               </div>
@@ -2095,16 +2387,14 @@ export default function EditTask({
                           </span>
                         </div>
                       </div>
-                      {isEditing && (
-                        <button
-                          type="button"
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                          onClick={() => handleRemoveNewAttachment(attachment)}
-                          title="Remove attachment"
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        onClick={() => handleRemoveNewAttachment(attachment)}
+                        title="Remove attachment"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
               </div>
@@ -2118,12 +2408,10 @@ export default function EditTask({
             )}
           </div>
 
-          {/* Modified Assignee Section for multiple assignees */}
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Assignee
-            </label>
-            <div className="flex flex-wrap items-center gap-2 border border-cyan-400 rounded-md bg-white p-1 pr-2 min-h-[42px]">
+          {/* Assignee Section */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>Assigned To</label>
+            <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:8, border:'1.5px solid #94a3b8', borderRadius:6, background:'#fff', padding:'6px 8px', minHeight:42 }}>
               {/* Display all assigned names as pills */}
               {task.assignedTo && task.assignedTo.map((assignee, index) => {
                 // Get user details based on whether assignee is a string or object
@@ -2139,74 +2427,61 @@ export default function EditTask({
 
                 return (
                   <div
-                    key={index} // Using index as key since we might have duplicate names
-                    className="bg-green-100 text-green-800 py-2 px-3 rounded-md flex items-center"
+                    key={index}
+                    style={{ display:'flex', alignItems:'center', background:'#e0f2fe', padding:'4px 10px', borderRadius:20, gap:6 }}
                   >
-                    {/* Profile icon with initials */}
-                    <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 text-xs flex-shrink-0 font-medium">
+                    <div style={{ width:24, height:24, borderRadius:'50%', background:'#00aaff', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
                       {displayName.split(' ')
                         .map(part => part[0])
                         .slice(0, 2)
                         .join('')
                         .toUpperCase()}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{displayName}</span>
-                      {designation && (
-                        <span className="text-xs text-green-600 opacity-80">{designation}</span>
-                      )}
-                    </div>
-                    {isEditing && (
-                      <button
-                        type="button"
-                        className="ml-3 text-green-500 hover:text-green-700 font-bold text-lg"
-                        onClick={() => handleRemoveAssignee(displayName)}
-                      >
-                        ×
-                      </button>
-                    )}
+                    <span style={{ fontWeight:600, fontSize:12, color:'#0f172a' }}>{displayName}</span>
+                    <button
+                      type="button"
+                      style={{ background:'none', border:'none', color:'#64748b', cursor:'pointer', fontWeight:700, fontSize:14, padding:0, marginLeft:2 }}
+                      onClick={() => handleRemoveAssignee(displayName)}
+                    >×</button>
                   </div>
                 );
               })}
-              {isEditing && (
-                <button
-                  type="button"
-                  className="text-green-600 font-medium hover:text-green-800 ml-auto" // Pushed to the right
-                  onClick={() => setShowAssignPopup(true)}
-                >
-                  + Add more
-                </button>
-              )}
+              <button
+                type="button"
+                style={{ background:'none', border:'none', color:'#00aaff', fontSize:12, fontWeight:700, cursor:'pointer', marginLeft:'auto' }}
+                onClick={() => setShowAssignPopup(true)}
+              >
+                + Add more
+              </button>
             </div>
           </div>
-          {/* End of Modified Assignee Section */}
 
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Due date {task.dueDateOption === "custom" && task.dueDate && (
-                <span className="text-sm font-normal text-gray-600">
-                  (Selected: {task.dueDate})
-                </span>
-              )}
+          {/* Schedule Section */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+              📅 Schedule Date & ⏰ Time
             </label>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <div style={{ position:'relative' }}>
                 <select
                   ref={dueDateSelectRef}
-                  className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!isEditing ? 'bg-gray-100' : 'bg-gray-100'}`}
+                  style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'pointer', appearance:'none', paddingRight:30, backgroundImage:"url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%2300aaff\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>')", backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}
                   value={task.dueDateOption || "today"}
                   onChange={(e) => {
-                    if (!isEditing) return;
                     const value = e.target.value;
                     if (value === "today") {
-                      handleChange("dueDateOption", "today");
-                      handleChange("dueDate", getTodayDate());
-                      handleChange("customDate", null);
+                      setTask(prev => {
+                        const updated = { ...prev, dueDateOption: "today", dueDate: getTodayDate(), customDate: null };
+                        debouncedAutoSave(updated);
+                        return updated;
+                      });
                       setShowCalendar(false);
                     } else if (value === "tomorrow") {
-                      handleChange("dueDateOption", "tomorrow");
-                      handleChange("dueDate", getTomorrowDate());
-                      handleChange("customDate", null);
+                      setTask(prev => {
+                        const updated = { ...prev, dueDateOption: "tomorrow", dueDate: getTomorrowDate(), customDate: null };
+                        debouncedAutoSave(updated);
+                        return updated;
+                      });
                       setShowCalendar(false);
                     } else if (value === "custom") {
                       handleChange("dueDateOption", "custom");
@@ -2218,12 +2493,10 @@ export default function EditTask({
                     }
                   }}
                   onFocus={(e) => {
-                    // When dropdown opens and custom is already selected, show calendar
-                    if (isEditing && task.dueDateOption === "custom") {
+                    if (task.dueDateOption === "custom") {
                       setShowCalendar(true);
                     }
                   }}
-                  disabled={!isEditing}
                   required
                 >
                   <option value="today">Today ({getTodayDate()})</option>
@@ -2233,7 +2506,7 @@ export default function EditTask({
                   </option>
                 </select>
 
-                {task.dueDateOption === "custom" && showCalendar && isEditing && (
+                {task.dueDateOption === "custom" && showCalendar && (
                   <div 
                     className={`absolute bg-white border border-cyan-400 rounded shadow-lg z-[9999] ${
                       calendarPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
@@ -2242,8 +2515,11 @@ export default function EditTask({
                     <DatePicker
                       selected={task.customDate || new Date()}
                       onChange={(date) => {
-                        handleChange("customDate", date);
-                        handleChange("dueDate", formatDateToDDMonYYYY(date));
+                        setTask(prev => {
+                          const updated = { ...prev, customDate: date, dueDate: formatDateToDDMonYYYY(date) };
+                          debouncedAutoSave(updated);
+                          return updated;
+                        });
                         setShowCalendar(false);
                       }}
                       inline
@@ -2257,13 +2533,13 @@ export default function EditTask({
                 )}
               </div>
 
-              <div className="flex-1 relative">
+              <div style={{ position:'relative' }}>
                 <input
                   type="text"
-                  className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500 ${!isEditing ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-100 cursor-pointer'}`}
+                  style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'pointer' }}
                   value={task.dueTime || "08:00 AM"}
                   readOnly
-                  onClick={() => isEditing && setShowClockTimePicker(true)}
+                  onClick={() => setShowClockTimePicker(true)}
                   placeholder="HH:MM AM/PM"
                   required
                 />
@@ -2271,25 +2547,27 @@ export default function EditTask({
             </div>
           </div>
 
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Repeat Task
-            </label>
-            <div className="relative">
+          {/* Repeat Section - only for Todo */}
+          {typePill.cls === 'todo' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>Repeat Task</label>
+            <div style={{ position:'relative' }}>
               <select
-                className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!isEditing ? 'bg-gray-100' : 'bg-gray-100'}`}
+                style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'pointer', appearance:'none', paddingRight:30, backgroundImage:"url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%2300aaff\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>')", backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}
                 value={task.repeatOption || "none"}
                 onChange={(e) => {
-                  if (!isEditing) return;
                   const value = e.target.value;
-                  handleChange("repeatOption", value);
+                  setTask(prev => {
+                    const updated = { ...prev, repeatOption: value };
+                    if (value !== "custom") debouncedAutoSave(updated);
+                    return updated;
+                  });
                   if (value === "custom") {
                     setShowDaysSelector(true);
                   } else {
                     setShowDaysSelector(false);
                   }
                 }}
-                disabled={!isEditing}
               >
                 <option value="none">Don't repeat</option>
                 <option value="daily">Daily</option>
@@ -2298,41 +2576,35 @@ export default function EditTask({
                 <option value="custom">Custom Repeat</option>
               </select>
 
-              {task.repeatOption === "custom" && showDaysSelector && isEditing && (
-                <div className="mt-2 p-4 border border-cyan-400 rounded bg-white">
-                  <div className="mb-2 font-medium text-gray-700">
-                    Select days:
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+              {task.repeatOption === "custom" && showDaysSelector && (
+                <div style={{ marginTop:8, padding:'10px 12px', border:'1.5px solid #e2e8f0', borderRadius:6, background:'#fff' }}>
+                  <div style={{ marginBottom:6, fontWeight:600, color:'#475569', fontSize:12 }}>Select days:</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                       (day) => (
-                        <label key={day} className="flex items-center">
+                        <label key={day} style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer', fontSize:12 }}>
                           <input
                             type="checkbox"
-                            className="mr-1 w-4 h-4 text-cyan-600 focus:ring-cyan-500"
                             checked={task.repeatCustomDays?.includes(day) || false}
                             onChange={(e) => {
                               const isChecked = e.target.checked;
                               setTask((prev) => {
                                 const currentDays = prev.repeatCustomDays || [];
+                                let updated;
                                 if (isChecked && !currentDays.includes(day)) {
-                                  return {
-                                    ...prev,
-                                    repeatCustomDays: [...currentDays, day],
-                                  };
+                                  updated = { ...prev, repeatCustomDays: [...currentDays, day] };
                                 } else if (!isChecked && currentDays.includes(day)) {
-                                  return {
-                                    ...prev,
-                                    repeatCustomDays: currentDays.filter(
-                                      (d) => d !== day
-                                    ),
-                                  };
+                                  updated = { ...prev, repeatCustomDays: currentDays.filter((d) => d !== day) };
+                                } else {
+                                  return prev;
                                 }
-                                return prev;
+                                debouncedAutoSave(updated);
+                                return updated;
                               });
                             }}
+                            style={{ accentColor:'#00aaff' }}
                           />
-                          <span className="text-sm text-black">{day}</span>
+                          <span style={{ color:'#333' }}>{day}</span>
                         </label>
                       )
                     )}
@@ -2341,367 +2613,234 @@ export default function EditTask({
               )}
             </div>
           </div>
+          )}
 
-          <div className="flex gap-4 mt-6">
-            {/* Show Reopen button for Completed or Failed tasks */}
-            {console.log('🔍 Button rendering - task.status:', task.status, 'Type:', typeof task.status)}
+          {/* Action Buttons — matching HTML design */}
+          <div style={{ marginTop:16 }}>
             {(task.status === "COMPLETED" || task.status === "FAILED") ? (
-              <>
-                {console.log('✅ Showing Reopen + Edit buttons (Completed/Failed state)')}
+              /* Completed/Failed → Reopen button */
+              <div style={{ display:'flex', gap:12 }}>
                 <button
                   type="button"
-                  className="flex-1 px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition text-lg"
-                  onClick={handleCompleteReopenTask}
+                  onClick={() => openRemarkModal('reopen')}
                   disabled={isLoading}
+                  style={{ flex:1, background:'linear-gradient(135deg, #f59e0b, #d97706)', color:'#fff', border:'none', padding:13, borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 12px rgba(245,158,11,0.25)' }}
                 >
-                  {isLoading ? "Updating..." : "Reopen Task"}
+                  {isLoading ? "Updating..." : "🔄 Reopen Task"}
                 </button>
-
-                {!isEditing && (
-                  <button
-                    type="button"
-                    className="flex-1 px-6 py-3 bg-orange-600 text-white font-bold rounded-lg shadow hover:bg-orange-700 transition text-lg"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    Edit Task
-                  </button>
-                )}
-              </>
+              </div>
             ) : (
+              /* Active task → Complete + Schedule Next (callback/pendency) or Complete + Failed (todo) */
               <>
-                {console.log('✅ Showing Complete + Failed + Edit buttons (Active task state)')}
-                {/* Show Complete, Failed, and Edit buttons for active tasks */}
-                <button
-                  type="button"
-                  className="flex-1 px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition text-lg"
-                  onClick={handleCompleteReopenTask}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Updating..." : "Complete Task"}
-                </button>
-
-                <button
-                  type="button"
-                  className="flex-1 px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow hover:bg-red-700 transition text-lg"
-                  onClick={handleFailedTask}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Updating..." : "Failed Task"}
-                </button>
-
-                {!isEditing && (
-                  <button
-                    type="button"
-                    className="flex-1 px-6 py-3 bg-orange-600 text-white font-bold rounded-lg shadow hover:bg-orange-700 transition text-lg"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    Edit Task
-                  </button>
+                {typePill.cls !== 'todo' ? (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                    <button
+                      type="button"
+                      onClick={() => openRemarkModal('complete')}
+                      disabled={isLoading}
+                      style={{ background:'#2ecc71', color:'#fff', border:'none', padding:14, borderRadius:8, fontSize:15, fontWeight:700, cursor:'pointer' }}
+                    >
+                      {isLoading ? "Updating..." : "Mark Complete ✔"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openRemarkModal('fail')}
+                      disabled={isLoading}
+                      style={{ background:'#3498db', color:'#fff', border:'none', padding:14, borderRadius:8, fontSize:15, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 10px rgba(52,152,219,0.3)' }}
+                    >
+                      {isLoading ? "Updating..." : "Schedule Next ➡️"}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                    <button
+                      type="button"
+                      onClick={() => openRemarkModal('complete')}
+                      disabled={isLoading}
+                      style={{ background:'#2ecc71', color:'#fff', border:'none', padding:14, borderRadius:8, fontSize:15, fontWeight:700, cursor:'pointer' }}
+                    >
+                      {isLoading ? "Updating..." : "Mark Complete ✔"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openRemarkModal('fail')}
+                      disabled={isLoading}
+                      style={{ background:'#fff', color:'#ff4757', border:'2px solid #ff4757', padding:14, borderRadius:8, fontSize:15, fontWeight:700, cursor:'pointer' }}
+                    >
+                      {isLoading ? "Updating..." : "Mark as Failed ❌"}
+                    </button>
+                  </div>
                 )}
               </>
-            )}
-
-            {/* Update Button - Only show when in edit mode */}
-            {isEditing && (
-              <button
-                type="submit"
-                className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
-                disabled={isLoading}
-              >
-                {isLoading ? "Updating..." : "Update Task"}
-              </button>
             )}
           </div>
         </form>
 
         {/* Comments and History Section - OUTSIDE the main form */}
-        <div className="mt-6 border-t pt-4">
-          <div className="flex space-x-2">
+        <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, marginTop:24, overflow:'hidden' }}>
+          {/* Tab Header */}
+          <div style={{ display:'flex', gap:0, background:'#fff', borderBottom:'1px solid #e2e8f0', borderRadius:'10px 10px 0 0' }}>
             <button
               type="button"
-              className={`px-4 py-2 font-semibold rounded-lg shadow ${showComments ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
-              onClick={toggleComments}
+              onClick={toggleHistory}
+              style={{ padding:'11px 18px', background:'none', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, color: showHistory ? '#00aaff' : '#94a3b8', borderBottom: showHistory ? '3px solid #00aaff' : '3px solid transparent', marginBottom:-1, display:'flex', alignItems:'center', gap:6 }}
             >
-              ➕ Comments
+              � History
+              {historyData.length > 0 && <span style={{ background:'#e2e8f0', color:'#64748b', padding:'1px 7px', borderRadius:20, fontSize:11, marginLeft:4 }}>{historyData.filter(h => h.displayStatus !== 'comment').length}</span>}
             </button>
             <button
               type="button"
-              className={`px-4 py-2 font-semibold rounded-lg shadow ${showHistory ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
-              onClick={toggleHistory}
+              onClick={toggleComments}
+              style={{ padding:'11px 18px', background:'none', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, color: showComments ? '#00aaff' : '#94a3b8', borderBottom: showComments ? '3px solid #00aaff' : '3px solid transparent', marginBottom:-1, display:'flex', alignItems:'center', gap:6 }}
             >
-              📜 History
+              💬 Comments
+              {task.comments && task.comments.length > 0 && <span style={{ background:'#e2e8f0', color:'#64748b', padding:'1px 7px', borderRadius:20, fontSize:11, marginLeft:4 }}>{task.comments.length}</span>}
             </button>
           </div>
 
-          {/* Comments Section */}
           {showComments && (
             <>
-              <form onSubmit={handleCommentSubmit} className="mt-4">
-                <div className="bg-white border-2 border-green-200 rounded-lg p-3 shadow-sm">
-                  <label className="block text-sm font-bold text-gray-700 mb-2">💬 ADD COMMENT</label>
+              <form onSubmit={handleCommentSubmit} style={{ padding:14 }}>
+                <div style={{ background:'#fff', border:'1px solid #e2e8f0', borderRadius:8, padding:12, marginBottom:12 }}>
+                  <label style={{ fontSize:11, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:0.5, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>💬 Add Comment</label>
                   <textarea
                     value={task.newComment}
                     onChange={(e) => handleChange("newComment", e.target.value)}
                     onBlur={() => handleBlur("newComment")}
-                    placeholder="Type your comment here... (Press Enter for new line, Ctrl+Enter to submit)"
-                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-black font-semibold focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+                    placeholder="Type your comment here..."
                     disabled={isLoading}
                     rows={3}
-                    style={{ minHeight: '80px' }}
+                    style={{ width:'100%', border:'1.5px solid #94a3b8', borderRadius:6, padding:'8px 12px', fontSize:13, color:'#334155', fontFamily:'inherit', resize:'none', minHeight:60, outline:'none', boxSizing:'border-box' }}
                     onKeyDown={(e) => {
-                      // Submit on Ctrl+Enter
                       if (e.ctrlKey && e.key === 'Enter') {
                         e.preventDefault();
                         handleCommentSubmit(e);
                       }
                     }}
                   />
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-xs text-gray-500">Press <kbd className="px-1 py-0.5 bg-gray-200 rounded">Ctrl+Enter</kbd> to submit</span>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:8 }}>
+                    <span style={{ fontSize:11, color:'#94a3b8', display:'flex', alignItems:'center', gap:4 }}>Press <kbd style={{ background:'#f1f5f9', border:'1px solid #cbd5e1', borderRadius:3, padding:'1px 5px', fontSize:10, fontFamily:'monospace' }}>Ctrl+Enter</kbd> to submit</span>
                     <button
                       type="submit"
                       disabled={!task.newComment.trim() || isLoading}
-                      className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                        !task.newComment.trim() || isLoading
-                          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                          : "bg-green-600 text-white hover:bg-green-700 hover:shadow-md"
-                      }`}
+                      style={{ background: (!task.newComment.trim() || isLoading) ? '#cbd5e1' : '#334155', color:'#fff', border:'none', padding:'7px 16px', borderRadius:6, fontSize:12, fontWeight:700, cursor: (!task.newComment.trim() || isLoading) ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', gap:5 }}
                     >
-                      {isLoading ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                          <span>ADDING...</span>
-                        </div>
-                      ) : (
-                        "➤ ADD COMMENT"
-                      )}
+                      {isLoading ? "Adding..." : "➤ Add Comment"}
                     </button>
                   </div>
                 </div>
               </form>
 
-              {/* Comments Display - Modern Chat Style */}
-              <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto pr-2">
+              {/* Comments List */}
+              <div style={{ padding:'0 14px 14px', display:'flex', flexDirection:'column', gap:10, maxHeight:400, overflowY:'auto' }}>
                 {isLoadingComments ? (
-                  <div className="text-center py-8 bg-white rounded-lg border-2 border-gray-200">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
-                    <p className="text-gray-500 mt-2 font-bold">LOADING COMMENTS...</p>
-                  </div>
+                  <div style={{ textAlign:'center', padding:24, color:'#94a3b8', fontSize:13 }}>Loading comments...</div>
                 ) : task.comments && task.comments.length > 0 ? (
-                  <>
-                    <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
-                      💬 {task.comments.length} {task.comments.length === 1 ? 'Comment' : 'Comments'}
-                    </div>
-                    {task.comments.map((comment, idx) => (
-                      <div key={comment.id || idx} className="bg-gradient-to-r from-white to-green-50 border-2 border-green-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200">
-                        {/* Comment Header */}
-                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-green-200">
-                          <div className="flex items-center gap-2">
-                            {/* User Avatar */}
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">
-                              {(comment.user || 'U').charAt(0).toUpperCase()}
-                            </div>
-                            {/* User Name */}
-                            <span className="font-bold text-gray-800 text-sm">
-                              {(comment.user || 'UNKNOWN USER').toUpperCase()}
-                            </span>
-                            {/* Comment Number Badge */}
-                            <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                              #{idx + 1}
-                            </span>
-                          </div>
-                          {/* Timestamp */}
-                          <div className="flex items-center gap-1 text-xs text-gray-600">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/>
-                            </svg>
-                            <span className="font-semibold">{comment.time}</span>
-                          </div>
-                        </div>
-                        
-                        {/* Comment Content */}
-                        <div className="text-sm font-semibold text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
-                          {comment.text}
-                        </div>
+                  task.comments.map((comment, idx) => (
+                    <div key={comment.id || idx} style={{ background:'#fff', border:'1px solid #e2e8f0', borderLeft:'3px solid #00aaff', borderRadius:6, padding:'10px 14px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5 }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:'#334155', display:'flex', alignItems:'center', gap:6 }}>
+                          <span style={{ background:'#00aaff', color:'#fff', width:22, height:22, borderRadius:'50%', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>{(comment.user || 'U').charAt(0).toUpperCase()}</span>
+                          {(comment.user || 'Unknown').toUpperCase()}
+                        </span>
+                        <span style={{ fontSize:11, color:'#94a3b8' }}>{comment.time}</span>
                       </div>
-                    ))}
-                  </>
+                      <div style={{ fontSize:13, color:'#475569', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{comment.text}</div>
+                    </div>
+                  ))
                 ) : (
-                  <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-green-50 rounded-lg border-2 border-dashed border-green-300">
-                    <div className="text-5xl mb-3">💬</div>
-                    <p className="text-gray-600 font-bold text-lg">NO COMMENTS YET</p>
-                    <p className="text-sm text-gray-500 mt-1">Be the first to share your thoughts!</p>
-                  </div>
+                  <div style={{ textAlign:'center', padding:30, color:'#94a3b8', fontSize:13 }}>No comments yet</div>
                 )}
               </div>
             </>
           )}
 
-          {/* History Section - Modern Table Design */}
+          {/* History Section — matching HTML reference exactly */}
           {showHistory && (
-            <div className="mt-4">
+            <div style={{ padding:14 }}>
               {isLoadingHistory ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-500 mx-auto"></div>
-                  <p className="text-gray-500 mt-3 font-medium">Loading history...</p>
-                </div>
+                <div style={{ textAlign:'center', padding:30, color:'#94a3b8', fontSize:13 }}>Loading history...</div>
               ) : historyData && historyData.length > 0 ? (
-                <>
-                  {/* Filter Section */}
-                  <div className="mb-4 flex items-center justify-between bg-white p-4 rounded-lg border-2 border-gray-200 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-gray-700">📊 FILTER:</span>
-                      <select
-                        value={activityFilter}
-                        onChange={(e) => setActivityFilter(e.target.value)}
-                        className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm font-semibold text-gray-700 bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
-                      >
-                        <option value="all">ALL ACTIVITIES ({historyData.length})</option>
-                        <option value="created">📝 CREATED ({historyData.filter(item => item.actionType === 'created').length})</option>
-                        <option value="status">🔄 STATUS ({historyData.filter(item => item.actionType === 'status_changed').length})</option>
-                        <option value="comment">💬 COMMENTS ({historyData.filter(item => item.actionType === 'comment_added').length})</option>
-                        <option value="assignment">👤 ASSIGNMENTS ({historyData.filter(item => item.actionType === 'assignment_changed').length})</option>
-                        <option value="updated">✏️ UPDATES ({historyData.filter(item => item.actionType === 'updated').length})</option>
-                      </select>
-                    </div>
-                    <div className="text-sm font-bold text-gray-600">
-                      SHOWING: <span className="text-blue-600">{(() => {
-                        const filtered = historyData.filter(item => {
-                          if (activityFilter === 'all') return true;
-                          if (activityFilter === 'created') return item.actionType === 'created';
-                          if (activityFilter === 'status') return item.actionType === 'status_changed';
-                          if (activityFilter === 'comment') return item.actionType === 'comment_added';
-                          if (activityFilter === 'assignment') return item.actionType === 'assignment_changed';
-                          if (activityFilter === 'updated') return item.actionType === 'updated';
-                          return false;
-                        });
-                        return filtered.length;
-                      })()}</span> OF <span className="text-blue-600">{historyData.length}</span>
-                    </div>
-                  </div>
+                <div style={{ borderRadius:12, border:'1px solid #dbeafe', overflow:'hidden', background:'#fff' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'auto' }}>
+                    <thead>
+                      <tr style={{ background:'linear-gradient(135deg, #e8f4fd, #dbeafe)' }}>
+                        <th style={{ padding:'12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#1e40af', textTransform:'uppercase', letterSpacing:0.4, borderBottom:'2px solid #bfdbfe', whiteSpace:'nowrap', width:32 }}>#</th>
+                        <th style={{ padding:'12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#1e40af', textTransform:'uppercase', letterSpacing:0.4, borderBottom:'2px solid #bfdbfe', whiteSpace:'nowrap', width:96 }}>Status</th>
+                        <th style={{ padding:'12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#1e40af', textTransform:'uppercase', letterSpacing:0.4, borderBottom:'2px solid #bfdbfe' }}>Details &amp; Remark</th>
+                        <th style={{ padding:'12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#1e40af', textTransform:'uppercase', letterSpacing:0.4, borderBottom:'2px solid #bfdbfe', whiteSpace:'nowrap', width:128 }}>User</th>
+                        <th style={{ padding:'12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#1e40af', textTransform:'uppercase', letterSpacing:0.4, borderBottom:'2px solid #bfdbfe', whiteSpace:'nowrap', width:116 }}>Date &amp; Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyData.filter(item => item.displayStatus !== 'comment').slice().reverse().map((item, index) => {
+                        // Status pill colors matching HTML
+                        const statusStyles = {
+                          created:    { bg:'#dbeafe', color:'#2563eb', label:'Created' },
+                          completed:  { bg:'#dcfce7', color:'#16a34a', label:'Completed' },
+                          failed:     { bg:'#fee2e2', color:'#dc2626', label:'Failed' },
+                          reopened:   { bg:'#fef3c7', color:'#d97706', label:'Reopened' },
+                          comment:    { bg:'#f3e8ff', color:'#7c3aed', label:'Comment' },
+                          assignment: { bg:'#fef3c7', color:'#d97706', label:'Assignment' },
+                          updated:    { bg:'#f3e8ff', color:'#7c3aed', label:'Updated' },
+                          status:     { bg:'#dcfce7', color:'#16a34a', label:'Status' },
+                        };
+                        const st = statusStyles[item.displayStatus] || { bg:'#f1f5f9', color:'#64748b', label: item.displayStatus || 'Activity' };
 
-                  {/* Modern Table */}
-                  <div className="bg-white rounded-lg border-2 border-gray-200 shadow-sm overflow-hidden">
-                    <div className="max-h-[500px] overflow-y-auto">
-                      <table className="w-full">
-                        {/* Table Header - Sticky */}
-                        <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">#</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">TYPE</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">DETAILS</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-blue-500">USER</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">DATE & TIME</th>
+                        return (
+                          <tr key={item.id || index} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                            {/* # */}
+                            <td style={{ padding:12, textAlign:'center', color:'#94a3b8', fontWeight:700, fontSize:12, width:32, verticalAlign:'top' }}>{index + 1}</td>
+                            {/* Status pill */}
+                            <td style={{ padding:12, verticalAlign:'top' }}>
+                              <span style={{ display:'inline-block', background:st.bg, color:st.color, padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:800, textTransform:'uppercase' }}>{st.label}</span>
+                            </td>
+                            {/* Details & Remark */}
+                            <td style={{ padding:12, color:'#0f172a', lineHeight:1.7, fontWeight:500, overflowWrap:'anywhere', minWidth:0, verticalAlign:'top' }}>
+                              {item.taskNote ? (
+                                <div style={{ fontSize:13, color:'#334155', marginBottom:8, fontWeight:600, lineHeight:1.65, background:'#f8fafc', borderLeft:'3px solid #cbd5e1', padding:'8px 12px', borderRadius:4, boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+                                  <span style={{ display:'inline-flex', marginRight:8, background:'#e2e8f0', color:'#475569', padding:'2px 6px', borderRadius:4, fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:0.5 }}>Details</span>
+                                  {item.taskNote}
+                                </div>
+                              ) : null}
+                              {item.remark ? (
+                                <div style={{ display:'inline-flex', flexDirection:'column', gap:4, background:'linear-gradient(135deg, #f0fdf4, #dcfce7)', border:'1px solid #bbf7d0', borderLeft:'3px solid #22c55e', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#166534', fontWeight:700, lineHeight:1.5, boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+                                  <span style={{ color:'#15803d', background:'#bbf7d0', padding:'2px 6px', borderRadius:4, textTransform:'uppercase', fontSize:10, fontWeight:800, letterSpacing:0.4, flexShrink:0, alignSelf:'flex-start', marginBottom:4 }}>Remark</span>
+                                  <span>{item.remark}</span>
+                                </div>
+                              ) : null}
+                              {!item.taskNote && !item.remark && (
+                                <span style={{ color:'#cbd5e1' }}>—</span>
+                              )}
+                            </td>
+                            {/* User */}
+                            <td style={{ padding:12, verticalAlign:'top' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>
+                                <span style={{ background:'#00aaff', color:'#fff', width:24, height:24, borderRadius:'50%', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>{(item.createdBy || 'S').charAt(0)}</span>
+                                <span style={{ fontSize:12, fontWeight:600, color:'#334155' }}>{item.createdBy || 'System'}</span>
+                              </div>
+                            </td>
+                            {/* Date & Time */}
+                            <td style={{ padding:12, fontSize:11, color:'#64748b', whiteSpace:'nowrap', verticalAlign:'top' }}>
+                              <div>{item.date}</div>
+                              {item.time && <div>{item.time}</div>}
+                            </td>
                           </tr>
-                        </thead>
-                        
-                        {/* Table Body */}
-                        <tbody className="divide-y divide-gray-200">
-                          {(() => {
-                            const filtered = historyData.filter(item => {
-                              if (activityFilter === 'all') return true;
-                              if (activityFilter === 'created') return item.actionType === 'created';
-                              if (activityFilter === 'status') return item.actionType === 'status_changed';
-                              if (activityFilter === 'comment') return item.actionType === 'comment_added';
-                              if (activityFilter === 'assignment') return item.actionType === 'assignment_changed';
-                              if (activityFilter === 'updated') return item.actionType === 'updated';
-                              return false;
-                            });
-
-                            if (filtered.length === 0) {
-                              return (
-                                <tr>
-                                  <td colSpan="5" className="px-4 py-12 text-center">
-                                    <div className="text-4xl mb-3">🔍</div>
-                                    <p className="text-gray-500 font-bold">NO ACTIVITIES FOUND</p>
-                                    <p className="text-sm text-gray-400 mt-1">Try selecting a different filter</p>
-                                  </td>
-                                </tr>
-                              );
-                            }
-
-                            return filtered.map((item, index) => {
-                              const rowBg = index % 2 === 0 ? 'bg-gray-50' : 'bg-white';
-                              
-                              // Determine activity type and styling
-                              let activityIcon = '📌';
-                              let activityLabel = 'ACTIVITY';
-                              let badgeColor = 'bg-gray-100 text-gray-800';
-
-                              if (item.actionType === 'created') {
-                                activityIcon = '📝';
-                                activityLabel = 'CREATED';
-                                badgeColor = 'bg-blue-100 text-blue-800';
-                              } else if (item.actionType === 'status_changed') {
-                                activityIcon = '🔄';
-                                activityLabel = 'STATUS';
-                                badgeColor = 'bg-green-100 text-green-800';
-                              } else if (item.actionType === 'comment_added') {
-                                activityIcon = '💬';
-                                activityLabel = 'COMMENT';
-                                badgeColor = 'bg-purple-100 text-purple-800';
-                              } else if (item.actionType === 'assignment_changed') {
-                                activityIcon = '👤';
-                                activityLabel = 'ASSIGNMENT';
-                                badgeColor = 'bg-orange-100 text-orange-800';
-                              } else if (item.actionType === 'updated') {
-                                activityIcon = '✏️';
-                                activityLabel = 'UPDATED';
-                                badgeColor = 'bg-yellow-100 text-yellow-800';
-                              }
-
-                              return (
-                                <tr key={item.id || index} className={`${rowBg} hover:bg-blue-50 transition-colors`}>
-                                  {/* Serial Number */}
-                                  <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
-                                    {index + 1}
-                                  </td>
-                                  
-                                  {/* Activity Type Badge */}
-                                  <td className="px-4 py-3 border-r border-gray-200">
-                                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeColor}`}>
-                                      {activityIcon} {activityLabel}
-                                    </span>
-                                  </td>
-                                  
-                                  {/* Details */}
-                                  <td className="px-4 py-3 text-sm font-semibold text-gray-800 border-r border-gray-200">
-                                    {item.changes}
-                                  </td>
-                                  
-                                  {/* User */}
-                                  <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
-                                        {(item.createdBy || 'U').charAt(0).toUpperCase()}
-                                      </div>
-                                      {(item.createdBy || 'UNKNOWN').toUpperCase()}
-                                    </div>
-                                  </td>
-                                  
-                                  {/* Date & Time */}
-                                  <td className="px-4 py-3 text-sm">
-                                    <div className="font-bold text-gray-700">{item.date}</div>
-                                    <div className="font-semibold text-gray-500 text-xs">{item.time}</div>
-                                  </td>
-                                </tr>
-                              );
-                            });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-12 bg-white rounded-lg border-2 border-gray-200 shadow-sm">
-                  <div className="text-5xl mb-3">📋</div>
-                  <p className="text-gray-600 font-bold text-lg">NO HISTORY AVAILABLE</p>
-                  <p className="text-sm text-gray-400 mt-2">Activity will appear here as actions are performed</p>
+                        );
+                      })}
+                      {historyData.filter(item => item.displayStatus !== 'comment').length === 0 && (
+                        <tr><td colSpan="5" style={{ textAlign:'center', padding:30, color:'#94a3b8', fontSize:13 }}>📭 No history yet for this task.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+              ) : (
+                <div style={{ textAlign:'center', padding:30, color:'#94a3b8', fontSize:13 }}>📭 No history yet for this task.</div>
               )}
             </div>
           )}
+        </div>
+        {/* end scrollable body */}
         </div>
       </div>
 
@@ -2725,17 +2864,93 @@ export default function EditTask({
         />
       )}
 
-      {/* Associate Popup */}
-      {showAssociatePopup && (
-        <AssociatePopupEditTask
-          onClose={() => setShowAssociatePopup(false)}
-          onSelect={handleAssociateSelect}
-          loanTypes={loanTypes}
-          leads={leads}
-          loadingLoanTypes={loadingLoanTypes}
-          loadingLeads={loadingLeads}
-          onFetchLeads={fetchLeads}
-        />
+      {/* Remark Modal */}
+      {remarkModalOpen && (
+        <div
+          onClick={closeRemarkModal}
+          style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.6)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background:'#fff', borderRadius:14, padding:'30px 32px', width:'100%', maxWidth:520, boxShadow:'0 20px 50px rgba(0,0,0,0.4)' }}
+          >
+            {/* Icon */}
+            <div style={{
+              width:52, height:52, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:22, margin:'0 auto 16px',
+              background: remarkType === 'complete' ? '#dcfce7' : remarkType === 'fail' ? '#fee2e2' : '#fef3c7'
+            }}>
+              {remarkType === 'complete' ? '✅' : remarkType === 'fail' ? '❌' : '🔄'}
+            </div>
+
+            {/* Title */}
+            <div style={{ textAlign:'center', fontSize:17, fontWeight:800, color:'#1e293b', marginBottom:5 }}>
+              {remarkType === 'complete' ? 'Mark as Complete' : remarkType === 'fail' ? 'Mark as Failed' : 'Reopen Task'}
+            </div>
+
+            {/* Subtitle */}
+            <div style={{ textAlign:'center', fontSize:12, color:'#64748b', marginBottom:16 }}>
+              {remarkType === 'complete'
+                ? 'Please add a remark before marking this complete.'
+                : remarkType === 'fail'
+                ? 'Please add a reason before marking this as failed.'
+                : 'Please add a reason for reopening this task.'}
+            </div>
+
+            {/* Textarea */}
+            <textarea
+              value={remarkText}
+              onChange={e => { setRemarkText(e.target.value); if (remarkError) setRemarkError(false); }}
+              placeholder={
+                remarkType === 'complete'
+                  ? 'What was done? Add completion note... (required)'
+                  : remarkType === 'fail'
+                  ? 'Why did this task fail? Add reason... (required)'
+                  : 'Why are you reopening this task? (required)'
+              }
+              style={{
+                width:'100%', padding:'10px 12px', border: remarkError ? '1.5px solid #ef4444' : '1.5px solid #94a3b8',
+                borderRadius:6, fontSize:13, color:'#334155', resize:'none', minHeight:80, outline:'none',
+                fontFamily:'inherit', boxSizing:'border-box',
+                boxShadow: remarkError ? '0 0 0 3px rgba(239,68,68,0.1)' : 'none'
+              }}
+              onFocus={e => { if (!remarkError) { e.target.style.borderColor = '#00aaff'; e.target.style.boxShadow = '0 0 0 3px rgba(0,170,255,0.1)'; } }}
+              onBlur={e => { if (!remarkError) { e.target.style.borderColor = '#94a3b8'; e.target.style.boxShadow = 'none'; } }}
+            />
+
+            {/* Error message */}
+            {remarkError && (
+              <div style={{ color:'#ef4444', fontSize:11, fontWeight:600, marginTop:5 }}>
+                ⚠️ Remark is mandatory. Please enter a comment.
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:20 }}>
+              <button
+                type="button"
+                onClick={closeRemarkModal}
+                style={{ background:'#f1f5f9', color:'#64748b', border:'none', padding:12, borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemark}
+                style={{
+                  border:'none', padding:12, borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer', color:'#fff',
+                  background: remarkType === 'complete'
+                    ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                    : remarkType === 'fail'
+                    ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                    : 'linear-gradient(135deg, #f59e0b, #d97706)'
+                }}
+              >
+                {remarkType === 'complete' ? 'Mark Complete ✔' : remarkType === 'fail' ? 'Mark as Failed ❌' : 'Reopen Task 🔄'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

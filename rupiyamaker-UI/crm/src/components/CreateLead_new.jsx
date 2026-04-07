@@ -2102,17 +2102,13 @@ const handleMobileNumberChange = (e) => {
             })));
           }
           
-          // Populate assignee (TL/supervisor) from assign_report_to only.
-          // assigned_to is the ownership field — it must NOT be mapped to the ASSIGNED LEAD form field.
-          // After a transfer, assign_report_to is cleared on the backend, so this will correctly be empty.
-          if (existingLeadData.assign_report_to) {
-            if (Array.isArray(existingLeadData.assign_report_to)) {
-              setAssignedTo(existingLeadData.assign_report_to);
+          // Populate assignee information
+          if (existingLeadData.assigned_to) {
+            if (Array.isArray(existingLeadData.assigned_to)) {
+              setAssignedTo(existingLeadData.assigned_to);
             } else {
-              setAssignedTo([existingLeadData.assign_report_to]);
+              setAssignedTo([existingLeadData.assigned_to]);
             }
-          } else {
-            setAssignedTo([]);
           }
           
           // Save the populated data to temporary storage for form continuity

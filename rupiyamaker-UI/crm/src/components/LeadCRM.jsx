@@ -96,6 +96,16 @@ import { canApproveLeadReassignment } from '../utils/permissions';
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
+// Module-level variables to persist across full-page re-renders.
+// Using module scope guarantees survival through React re-renders.
+let _savedLeadTableScrollTop = null;
+let _lastClickedRowIdx = null;
+// Store the lead _id so we can find the row even if indices shift
+let _lastClickedLeadId = null;
+
+// Disable browser auto scroll restoration so our code is sole controller.
+try { if (window.history.scrollRestoration) window.history.scrollRestoration = 'manual'; } catch (e) {}
+
 // Custom CSS for sticky table header
 const stickyHeaderStyles = `
   .sticky-table-container {
@@ -1125,11 +1135,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [activeTab, setActiveTab] = useState(0);
     const [openSections, setOpenSections] = useState([]); // Changed to array to allow multiple sections open
 
-    // Persist open lead + tab to sessionStorage so page refresh restores it
+    // Persist open lead + tab to sessionStorage so page refresh restores it.
+    // On unmount (navigate away via sidebar), clear restore so coming back shows the list.
     useEffect(() => {
         if (selectedLead?._id) {
             sessionStorage.setItem('leadcrm_restore', JSON.stringify({ id: selectedLead._id, tab: activeTab }));
         }
+        return () => {
+            sessionStorage.removeItem('leadcrm_restore');
+        };
     }, [selectedLead?._id, activeTab]);
 
     // Push browser history when lead detail is opened, handle back button to close detail
@@ -1139,6 +1153,62 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         setOpenSections([]);
         sessionStorage.removeItem('leadcrm_restore');
     });
+
+    // Restore scroll position after table remounts (when lead detail is closed).
+    // Strategy: find the exact TR by data-leadid, compute its offsetTop relative to
+    // the scroll container, and set scrollTop directly — no scrollIntoView ambiguity.
+    useEffect(() => {
+        if (selectedLead) return; // only act when closing lead
+        if (_lastClickedLeadId === null && _savedLeadTableScrollTop === null) return;
+
+        const leadId = _lastClickedLeadId;
+        const fallbackScrollTop = _savedLeadTableScrollTop !== null
+            ? _savedLeadTableScrollTop
+            : parseFloat(sessionStorage.getItem('leadcrm_scroll_top') || '0');
+
+        // Clear immediately so next open doesn't re-trigger
+        _lastClickedLeadId = null;
+        _lastClickedRowIdx = null;
+        _savedLeadTableScrollTop = null;
+
+        const doScroll = (attemptsLeft) => {
+            const container = tableScrollRef.current;
+            if (!container) {
+                if (attemptsLeft > 0) setTimeout(() => doScroll(attemptsLeft - 1), 30);
+                return;
+            }
+
+            // Try to find the exact TR by data-leadid
+            let targetRow = leadId
+                ? container.querySelector(`tr[data-leadid="${leadId}"]`)
+                : null;
+
+            if (targetRow) {
+                // Compute offsetTop of the row relative to the scroll container
+                let offsetTop = 0;
+                let el = targetRow;
+                while (el && el !== container) {
+                    offsetTop += el.offsetTop;
+                    el = el.offsetParent;
+                }
+                // Center the row in the container
+                const scrollTarget = offsetTop - (container.clientHeight / 2) + (targetRow.offsetHeight / 2);
+                container.scrollTop = Math.max(0, scrollTarget);
+            } else if (fallbackScrollTop > 0) {
+                // Fallback: restore raw scrollTop if container is tall enough
+                if (container.scrollHeight > fallbackScrollTop) {
+                    container.scrollTop = fallbackScrollTop;
+                } else if (attemptsLeft > 0) {
+                    // Content not rendered yet — retry
+                    setTimeout(() => doScroll(attemptsLeft - 1), 30);
+                }
+            }
+        };
+
+        // Wait 50ms for history.back() popstate + React Router to settle, then scroll
+        setTimeout(() => doScroll(10), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedLead]);
 
     // Lock body scroll when OBLIGATION tab is active (prevents page-level scrollbar)
     useEffect(() => {
@@ -1243,6 +1313,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     
     // Table scroll functionality
     const tableScrollRef = useRef(null);
+    const savedScrollPositionRef = useRef(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
     
@@ -3932,11 +4003,40 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     }, [memoizedStatusCounts, leads.length]); // Only depend on statusCounts, not filteredLeadsData!
 
     // Column-sorted leads: apply sortConfig on top of filteredLeadsData
-    const LEAD_NUMERIC_KEYS = ['totalIncome', 'eligibility_details.foir', 'financial_details.total_bt_pos', 'financial_details.cibil_score'];
+    const LEAD_NUMERIC_KEYS = ['totalIncome', 'finalEligibility', 'financial_details.total_bt_pos', 'financial_details.cibil_score'];
     const columnSortedLeads = useMemo(() => {
         if (!filteredLeadsData || !sortConfig.key) return filteredLeadsData;
         const getValue = (lead, key) => {
-            // Handle nested keys like "eligibility_details.foir"
+            // Special handling for fields stored in dynamic_fields with fallbacks
+            if (key === 'totalIncome') {
+                return lead.dynamic_fields?.eligibility_details?.totalIncome
+                    || lead.dynamic_fields?.obligation_data?.eligibility?.totalIncome
+                    || lead.eligibility_details?.totalIncome
+                    || lead.totalIncome
+                    || '';
+            }
+            if (key === 'finalEligibility') {
+                return lead.dynamic_fields?.eligibility_details?.finalEligibility
+                    ?? lead.eligibility_details?.finalEligibility
+                    ?? lead.dynamic_fields?.eligibility_details?.final_eligibility
+                    ?? lead.eligibility_details?.final_eligibility
+                    ?? '';
+            }
+            if (key === 'financial_details.total_bt_pos') {
+                return lead.dynamic_fields?.eligibility_details?.totalBtPos
+                    || lead.dynamic_fields?.eligibility_details?.total_bt_pos
+                    || lead.financial_details?.total_bt_pos
+                    || lead.dynamic_fields?.financial_details?.total_bt_pos
+                    || lead.total_bt_pos
+                    || '';
+            }
+            if (key === 'financial_details.cibil_score') {
+                return lead.financial_details?.cibil_score
+                    || lead.dynamic_fields?.financial_details?.cibil_score
+                    || lead.cibil_score
+                    || '';
+            }
+            // Handle nested keys like "department_name"
             const parts = key.split('.');
             let val = lead;
             for (const part of parts) val = val?.[part];
@@ -6060,6 +6160,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     }, [checkedRows.length, getFilteredLeadsCount]);
 
     const handleRowClick = async (rowIdx) => {
+        // Save scroll state BEFORE table unmounts (while tableScrollRef is still valid)
+        if (tableScrollRef.current) {
+            _savedLeadTableScrollTop = tableScrollRef.current.scrollTop;
+            sessionStorage.setItem('leadcrm_scroll_top', String(_savedLeadTableScrollTop));
+        }
+        _lastClickedRowIdx = rowIdx;
+        // Also save the lead _id for robust matching even if indices shift
+        const clickedLead = getFilteredLeadByIndex(rowIdx);
+        _lastClickedLeadId = clickedLead?._id || null;
         // Reset obligation changes state when selecting a new lead
         setHasUnsavedObligationChanges(false);
         const selectedLeadData = getFilteredLeadByIndex(rowIdx);
@@ -6124,7 +6233,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         { key: "name", label: "CUSTOMER NAME", className: "text-left whitespace-nowrap" },
         { key: "status", label: "STATUS", className: "text-left whitespace-nowrap" },
         { key: "totalIncome", label: "TOTAL INCOME", className: "text-left whitespace-nowrap" },
-        { key: "eligibility_details.foir", label: "FOIR ELIGIBILITY", className: "text-left whitespace-nowrap" },
+        { key: "finalEligibility", label: "FOIR ELIGIBILITY", className: "text-left whitespace-nowrap" },
         { key: "financial_details.total_bt_pos", label: "TOTAL BT POS", className: "text-left whitespace-nowrap" },
         { key: "financial_details.cibil_score", label: "CIBIL SCORE", className: "text-left whitespace-nowrap" },
         { key: "company_name", label: "COMPANY NAME", className: "text-left whitespace-nowrap" },
@@ -6437,23 +6546,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         return (
             <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-base flex flex-col' : 'min-h-screen bg-black text-white text-base'} style={activeTab === 1 ? {fontSize:'90%'} : {}}>
                 {/* Header */}
-                <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-0.5 bg-black border-b-2 border-cyan-400/70 shadow-lg w-full">
-                    <button
-                        onClick={handleBackToTable}
-                        className="text-cyan-300 mr-1 px-1.5 py-0.5 text-base font-bold rounded hover:bg-cyan-900/20 transition"
-                        aria-label="Back"
-                    >
-                        {"←"}
-                    </button>
-                    <User className="text-cyan-300 w-5 h-4 drop-shadow" />
+                <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-0.5 bg-black shadow-lg w-full">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                        <h1 className="text-xs font-bold text-cyan-300 tracking-wide">
-                            {`${selectedLead.first_name || ''} ${selectedLead.last_name || ''}`.trim() || 
-                             selectedLead.customer_name || 
-                             selectedLead.name || 
-                             'Lead Details'}
-                        </h1>
-                        
                         {selectedLead?.file_sent_to_login && (
                             <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center">
                                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -7397,6 +7491,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
                                                     <tr
                                                         ref={el => (rowRefs.current[rowIdx] = el)}
+                                                        data-leadid={lead._id}
                                                         className={`
                                                         border-b border-gray-800 hover:bg-gray-900/50 transition
                                                         ${lead.file_sent_to_login ? 'bg-gray-900/30' : 'bg-black'}
@@ -7767,158 +7862,25 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                     </td>
                                                     <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                         {(() => {
-                                                            // Extract FOIR eligibility from multiple possible paths
-                                                            const extractFoirEligibility = (lead) => {
-                                                                
-                                                                const foirSources = [
-                                                                    // Primary path - FOIR eligibility (final calculated result) from ObligationSection
-                                                                    lead.dynamic_fields?.eligibility_details?.finalEligibility,
-                                                                    lead.eligibility_details?.finalEligibility,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.finalEligibility,
-                                                                    
-                                                                    // Alternative FOIR eligibility paths
-                                                                    lead.dynamic_fields?.eligibility_details?.foir_eligibility,
-                                                                    lead.eligibility_details?.foir_eligibility,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.foir_eligibility,
-                                                                    
-                                                                    // Check in check_eligibility section for calculated eligibility
-                                                                    lead.dynamic_fields?.check_eligibility?.foir_eligibility,
-                                                                    lead.dynamic_fields?.check_eligibility?.final_eligibility,
-                                                                    lead.dynamic_fields?.check_eligibility?.loan_eligibility,
-                                                                    
-                                                                    // Alternative naming for final eligibility
-                                                                    lead.dynamic_fields?.eligibility_details?.final_eligibility,
-                                                                    lead.eligibility_details?.final_eligibility,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.final_eligibility,
-                                                                    
-                                                                    // Loan eligibility amount (calculated result)
-                                                                    lead.dynamic_fields?.eligibility_details?.loanEligibility,
-                                                                    lead.eligibility_details?.loanEligibility,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.loanEligibility,
-                                                                    
-                                                                    // Alternative loan eligibility naming
-                                                                    lead.dynamic_fields?.eligibility_details?.loan_eligibility,
-                                                                    lead.eligibility_details?.loan_eligibility,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.loan_eligibility,
-                                                                    
-                                                                    // Calculated eligibility alternatives
-                                                                    lead.dynamic_fields?.obligation_data?.calculatedEligibility,
-                                                                    lead.dynamic_fields?.eligibility_details?.calculatedEligibility,
-                                                                    lead.calculated_eligibility,
-                                                                    
-                                                                    // Alternative paths for eligibility object
-                                                                    lead.eligibility?.finalEligibility,
-                                                                    lead.dynamic_fields?.eligibility?.finalEligibility,
-                                                                    lead.eligibility?.foir_eligibility,
-                                                                    lead.dynamic_fields?.eligibility?.foir_eligibility,
-                                                                ];
-                                                                
-                                                                // Look for ELIGIBILITY calculations, skip stale '0' values from incomplete saves
-                                                                const eligibilityResult = foirSources.find(eligibility => 
-                                                                    eligibility !== undefined && 
-                                                                    eligibility !== null && 
-                                                                    eligibility !== '' &&
-                                                                    eligibility !== '0' &&
-                                                                    eligibility !== 0
-                                                                );
-                                                                
-                                                                // If we found an eligibility calculation (even if it's 0), return it
-                                                                if (eligibilityResult !== undefined) {
-                                                                    return eligibilityResult;
-                                                                }
-                                                                
-                                                                // Only if no eligibility calculation exists, fall back to FOIR amount sources
-                                                                const foirAmountSources = [
-                                                                    lead.dynamic_fields?.eligibility_details?.foirAmount,
-                                                                    lead.eligibility_details?.foirAmount,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.foirAmount,
-                                                                    
-                                                                    // Direct FOIR field paths (legacy)
-                                                                    lead.eligibility_details?.foir,
-                                                                    lead.dynamic_fields?.eligibility_details?.foir,
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility_details?.foir,
-                                                                    lead.obligation_data?.eligibility_details?.foir,
-                                                                    
-                                                                    // Alternative FOIR paths (legacy)
-                                                                    lead.dynamic_fields?.obligation_data?.foir,
-                                                                    lead.obligation_data?.foir,
-                                                                    lead.dynamic_fields?.foir,
-                                                                    lead.foir,
-                                                                    
-                                                                    // Check in financial details
-                                                                    lead.financial_details?.foir,
-                                                                    lead.dynamic_fields?.financial_details?.foir,
-                                                                    lead.obligation_data?.financial_details?.foir,
-                                                                    
-                                                                    // Check within eligibility objects for FOIR
-                                                                    lead.eligibility?.foir,
-                                                                    lead.dynamic_fields?.eligibility?.foir,
-                                                                    lead.obligation_data?.eligibility?.foir,
-                                                                    
-                                                                    // Alternative naming conventions
-                                                                    lead.eligibility_details?.foir_eligibility,
-                                                                    lead.dynamic_fields?.eligibility_details?.foir_eligibility,
-                                                                    lead.obligation_data?.eligibility_details?.foir_eligibility,
-                                                                    
-                                                                    // Alternative eligibility amount naming in obligation data
-                                                                    lead.dynamic_fields?.obligation_data?.eligibility?.foir_eligibility,
-                                                                    lead.obligation_data?.eligibility?.foir_eligibility
-                                                                ];
-                                                                
-                                                                // For FOIR amounts, exclude 0 values (no meaningful FOIR amount)
-                                                                return foirAmountSources.find(amount => 
-                                                                    amount !== undefined && 
-                                                                    amount !== null && 
-                                                                    amount !== '' && 
-                                                                    amount !== '0' && 
-                                                                    amount !== 0
-                                                                );
-                                                            };
-                                                            
-                                                            let foirEligibilityValue = extractFoirEligibility(lead);
-                                                            
-                                                            // Handle object FOIR eligibility values
-                                                            if (foirEligibilityValue && typeof foirEligibilityValue === 'object') {
-                                                                if (foirEligibilityValue.finalEligibility !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.finalEligibility;
-                                                                } else if (foirEligibilityValue.foir_eligibility !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.foir_eligibility;
-                                                                } else if (foirEligibilityValue.loan_eligibility !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.loan_eligibility;
-                                                                } else if (foirEligibilityValue.foirAmount !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.foirAmount;
-                                                                } else if (foirEligibilityValue.foir !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.foir;
-                                                                } else if (foirEligibilityValue.amount !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.amount;
-                                                                } else if (foirEligibilityValue.value !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.value;
-                                                                } else if (foirEligibilityValue.eligibility !== undefined) {
-                                                                    foirEligibilityValue = foirEligibilityValue.eligibility;
-                                                                } else {
-                                                                    foirEligibilityValue = null; // Unable to extract valid FOIR eligibility
-                                                                }
+                                                            // FOIR Eligibility = finalEligibility saved by ObligationSection ONLY
+                                                            const ed = lead.dynamic_fields?.eligibility_details ?? lead.eligibility_details ?? null;
+
+                                                            // No eligibility_details object at all → obligation section never saved
+                                                            if (!ed || typeof ed !== 'object') return '-';
+
+                                                            const fe = ed.finalEligibility ?? ed.final_eligibility ?? null;
+
+                                                            // finalEligibility field was never written
+                                                            if (fe === null || fe === undefined || fe === '') return '-';
+
+                                                            // Saved as 0 (obligations exceed FOIR, or ROI/tenure not yet filled)
+                                                            if (fe === '0' || fe === 0) return '₹ 0';
+
+                                                            // Already formatted Indian number (e.g. "11,34,593")
+                                                            if (typeof fe === 'string' && (fe.includes(',') || fe.includes('₹'))) {
+                                                                return fe;
                                                             }
-                                                            
-                                                            // Format and return the FOIR eligibility
-                                                            // Note: We include 0 as a valid eligibility (means "Not Eligible")
-                                                            if (foirEligibilityValue !== null && foirEligibilityValue !== undefined && foirEligibilityValue !== '') {
-                                                                // Handle 0 eligibility (Not Eligible case)
-                                                                if (foirEligibilityValue === 0 || foirEligibilityValue === '0') {
-                                                                    return '₹ 0 (Not Eligible)';
-                                                                }
-                                                                // If already formatted string with currency, return as is
-                                                                if (typeof foirEligibilityValue === 'string' && (foirEligibilityValue.includes('₹') || foirEligibilityValue.includes(',') || foirEligibilityValue.includes('Rs'))) {
-                                                                    return foirEligibilityValue;
-                                                                }
-                                                                // If it's a number or numeric string, format it
-                                                                if (!isNaN(foirEligibilityValue) && foirEligibilityValue !== '') {
-                                                                    return formatCurrency(foirEligibilityValue);
-                                                                }
-                                                                // If it's already a formatted string, return as is
-                                                                return foirEligibilityValue;
-                                                            }
-                                                            return "-";
+                                                            return formatCurrency(fe);
                                                         })()}
                                                     </td>
                                                     <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">

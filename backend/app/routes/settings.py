@@ -1549,6 +1549,85 @@ async def reset_attendance_settings(
             detail=f"Error resetting attendance settings: {str(e)}"
         )
 
+# ============= Popup Modal Alert Settings Routes =============
+
+@router.get("/popup-modal-settings", response_model=Dict[str, Any])
+async def get_popup_modal_settings(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Get popup modal alert settings"""
+    try:
+        settings = await settings_db.get_popup_modal_settings()
+        return {
+            "success": True,
+            "data": settings
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching popup modal settings: {str(e)}"
+        )
+
+@router.put("/popup-modal-settings", response_model=Dict[str, str])
+async def update_popup_modal_settings(
+    settings_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Update popup modal alert settings"""
+    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    
+    try:
+        modals = settings_data.get("modals", {})
+        valid_units = ["seconds", "minutes", "hours", "days"]
+        
+        for modal_key, modal_config in modals.items():
+            if not isinstance(modal_config, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid configuration for modal: {modal_key}"
+                )
+            max_cut = modal_config.get("max_cut_limit", 0)
+            if not isinstance(max_cut, int) or max_cut < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"max_cut_limit must be a non-negative integer for {modal_key}"
+                )
+            reappear_time = modal_config.get("reappear_time", 0)
+            if not isinstance(reappear_time, (int, float)) or reappear_time < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"reappear_time must be a non-negative number for {modal_key}"
+                )
+            reappear_unit = modal_config.get("reappear_unit", "seconds")
+            if reappear_unit not in valid_units:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"reappear_unit must be one of {valid_units} for {modal_key}"
+                )
+        
+        success = await settings_db.update_popup_modal_settings({"modals": modals})
+        
+        if success:
+            return {"message": "Popup modal settings updated successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update popup modal settings"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating popup modal settings: {str(e)}"
+        )
+
 # ============= Permission Management Routes =============
 
 @router.get("/permissions/structure")

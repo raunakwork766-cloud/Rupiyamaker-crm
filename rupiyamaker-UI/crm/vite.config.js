@@ -189,8 +189,8 @@ export default defineConfig({
     // Output directory
     outDir: 'dist',
     
-    // Clear output directory before build
-    emptyOutDir: true
+    // Don't clear output directory - old chunks must survive for cached users
+    emptyOutDir: false
   },
   
   // Optimize dependencies

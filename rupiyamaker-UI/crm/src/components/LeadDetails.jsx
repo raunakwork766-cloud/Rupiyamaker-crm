@@ -439,16 +439,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 <div className={activeTab === 'obligations' ? 'py-1 px-1 mb-0' : ' rounded-lg p-6 mb-6'}>
                     <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                        <button
-                            onClick={onBack}
-                            className="mr-4 p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                        </button>
                         <div>
-                            <h1 className={`${activeTab === 'obligations' ? 'text-sm font-semibold' : 'text-2xl font-bold'} text-white`}>
-                                {leadData.first_name} {leadData.last_name}
-                            </h1>
                             {activeTab !== 'obligations' && (
                             <p className="text-gray-400">
                                 Lead ID: {leadData.custom_lead_id || leadData._id?.slice(-8)} | {leadData.phone} | {leadData.email}
@@ -583,6 +574,30 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         </div>
                         <span className="ml-auto px-2.5 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg text-xs font-bold uppercase tracking-wider animate-pulse">
                             LOCKED
+                        </span>
+                    </div>
+                )}
+
+                {/* Direct Transfer Banner */}
+                {(leadData?.reassignment_status === 'direct' ||
+                  (leadData?.reassignment_status === 'approved' &&
+                   leadData?.reassignment_requested_by &&
+                   leadData?.reassignment_approved_by &&
+                   leadData.reassignment_requested_by === leadData.reassignment_approved_by)) && (
+                    <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-[#03B0F5]/10 border border-[#03B0F5]/40 rounded-xl">
+                        <svg className="w-5 h-5 text-[#03B0F5] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" />
+                        </svg>
+                        <div>
+                            <p className="text-[#03B0F5] font-semibold text-sm">Direct Transfer</p>
+                            <p className="text-[#03B0F5]/60 text-xs mt-0.5">
+                                This lead was directly transferred
+                                {leadData?.reassignment_approved_at ? ` on ${new Date(leadData.reassignment_approved_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}` : ''}
+                                {leadData?.reassignment_reason ? `. Reason: ${leadData.reassignment_reason}` : ''}.
+                            </p>
+                        </div>
+                        <span className="ml-auto px-2.5 py-1 bg-[#03B0F5]/20 text-[#03B0F5] border border-[#03B0F5]/30 rounded-lg text-xs font-bold uppercase tracking-wider">
+                            DIRECT TRANSFER
                         </span>
                     </div>
                 )}

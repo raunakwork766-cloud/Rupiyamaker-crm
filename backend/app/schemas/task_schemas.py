@@ -129,6 +129,7 @@ class TaskUpdate(BaseModel):
     lead_id: Optional[str] = None
     loan_type: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=1000)
+    remark: Optional[str] = Field(None, max_length=2000, description="Remark for status change (complete/fail/reopen)")
     is_urgent: Optional[bool] = None
     is_recurring: Optional[bool] = None
     recurring_config: Optional[RecurringConfig] = None

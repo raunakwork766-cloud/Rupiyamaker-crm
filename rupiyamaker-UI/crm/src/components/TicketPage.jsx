@@ -878,9 +878,6 @@ export default function TicketPage() {
           setIsUpdatingTicketStatus(false); // Release the flag
         }, 300);
         
-        // Success message
-        toast.success("Ticket closed successfully! Switched to Closed Tickets tab.");
-        
         // Dispatch custom event
         const customEvent = new CustomEvent('ticketStatusChanged', {
           detail: {
@@ -959,9 +956,6 @@ export default function TicketPage() {
           console.log('✅ Open tickets refreshed - releasing flag');
           setIsUpdatingTicketStatus(false); // Release the flag
         }, 300);
-        
-        // Success message
-        toast.success("Ticket reopened successfully! Switched to Open Tickets tab.");
         
         // Dispatch custom event
         const customEvent = new CustomEvent('ticketStatusChanged', {
@@ -1082,12 +1076,9 @@ export default function TicketPage() {
         try {
           // Use the new API function to upload attachments
           const attachmentResult = await API.tickets.uploadAttachments(createdTicket._id, newTicket.files);
-          toast.success(`Ticket created with ${newTicket.files.length} attachment(s)`);
         } catch (attachmentError) {
-          toast.warning("Ticket created but attachments could not be uploaded");
+          // attachment upload failed silently
         }
-      } else {
-        toast.success("Ticket created successfully");
       }
       
       // Refresh tickets list to show the new ticket with attachments

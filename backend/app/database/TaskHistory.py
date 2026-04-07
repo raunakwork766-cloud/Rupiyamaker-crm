@@ -195,15 +195,20 @@ class TaskHistoryDB:
         )
     
     async def add_status_changed(self, task_id: str, updated_by: str, updated_by_name: str, 
-                          old_status: str, new_status: str):
+                          old_status: str, new_status: str, remark: str = "", task_note: str = ""):
         """Add history entry for status change"""
+        details = {"old_status": old_status, "new_status": new_status}
+        if remark:
+            details["remark"] = remark
+        if task_note:
+            details["task_note"] = task_note
         return await self.add_history_entry(
             task_id=task_id,
             action_type="status_changed",
             action_description=f"Status Changed - {old_status} → {new_status}",
             created_by=updated_by,
             created_by_name=updated_by_name,
-            details={"old_status": old_status, "new_status": new_status}
+            details=details
         )
     
     async def add_comment_added(self, task_id: str, commented_by: str, commented_by_name: str, comment_text: str):

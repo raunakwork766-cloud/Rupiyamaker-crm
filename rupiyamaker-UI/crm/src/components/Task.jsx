@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense, useMemo, useCallback, useRef } from "react";
 import {
-  CheckSquare, Plus, Search, ChevronUp, ChevronLeft, ChevronRight
+  CheckSquare, Plus, ChevronUp
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
@@ -257,30 +257,116 @@ const initialTaskForm = {
 };
 
 export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
-  // CSS styles for sticky headers
-  const stickyHeaderStyles = `
-    .sticky-table-container {
-      max-height: 600px;
-      overflow-y: auto;
-      overflow-x: auto;
-      border-radius: 12px;
-    }
-    
-    .sticky-header {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sticky-th {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      border-bottom: 2px solid #e5e7eb;
-    }
+  // CSS styles matching task_creation.html design
+  const taskPageStyles = `
+    .task-page-container { padding: 20px 30px; max-width: 1600px; margin: 0 auto; }
+    .task-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+    .task-btn-create { background-color: #00aaff; color: white; border: none; padding: 10px 24px; border-radius: 30px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(0, 170, 255, 0.3); transition: transform 0.2s, background-color 0.2s; }
+    .task-btn-create:hover { transform: translateY(-1px); background-color: #0088cc; }
+    .task-btn-select { background-color: #0077bb; color: white; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    .task-btn-select:hover { opacity: 0.9; }
+
+    .task-view-toggle-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .task-view-toggle-info { display: flex; align-items: center; gap: 8px; }
+    .task-view-toggle-role { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: #1e293b; border-radius: 20px; }
+    .task-view-toggle-role-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; }
+    .task-view-toggle-role-name { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
+    .task-view-toggle-group { display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 3px; gap: 2px; }
+    .task-view-toggle-btn { padding: 6px 16px; border: none; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; background: transparent; color: #666; transition: all 0.2s; }
+    .task-view-toggle-btn.active { background: #00aaff; color: #fff; box-shadow: 0 2px 8px rgba(0,170,255,0.3); }
+    .task-view-toggle-btn:hover:not(.active) { color: #aaa; }
+
+    .task-filters-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+    .task-status-pills { display: flex; gap: 12px; flex-wrap: wrap; }
+    .task-pill { background-color: #ffffff; color: #00aaff; border-radius: 30px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: none; transition: all 0.2s; }
+    .task-pill .task-pill-count { background-color: #ececec; color: #555555; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 11px; font-weight: bold; transition: all 0.2s; }
+    .task-pill.active { background-color: #00aaff; color: white; box-shadow: 0 3px 8px rgba(0, 170, 255, 0.3); }
+    .task-pill.active .task-pill-count { background-color: white; color: #00aaff; }
+    .task-search-area { display: flex; align-items: center; gap: 12px; }
+    .task-filter-dropdown { padding: 8px 16px; border-radius: 20px; border: none; background-color: white; color: #00aaff; font-size: 13px; font-weight: 600; appearance: none; padding-right: 30px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%2300aaff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; outline: none; }
+    .task-search-box { position: relative; }
+    .task-search-box input { background-color: transparent; border: 1px solid #444; border-radius: 20px; padding: 8px 16px 8px 36px; color: white; font-size: 13px; width: 280px; outline: none; transition: border-color 0.2s; }
+    .task-search-box input:focus { border-color: #00aaff; }
+    .task-search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #666; }
+
+    .task-data-table-header { background-color: #ffffff; border-radius: 4px; display: flex; padding: 12px 15px; align-items: center; margin-bottom: 10px; }
+    .task-th { color: #00aaff; font-weight: 800; font-size: 13px; text-transform: uppercase; text-align: left; flex: 1; }
+    .task-th.number { flex: 0 0 40px; }
+    .task-th.type { flex: 0 0 110px; }
+    .task-th.created { flex: 1.2; }
+    .task-th.subject { flex: 2; }
+    .task-th.record { flex: 1.5; }
+    .task-th.assigned { flex: 1.5; }
+    .task-th.status { flex: 0 0 90px; }
+    .task-th.date { flex: 1.2; }
+
+    .task-data-table-body { display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
+    .task-row { background-color: #1a1a1a; border: 1px solid #333; border-radius: 6px; display: flex; padding: 12px 15px; align-items: center; transition: background-color 0.2s, border-color 0.2s; animation: taskSlideIn 0.3s ease-out; cursor: pointer; }
+    .task-row:hover { background-color: #222; border-color: #444; }
+    .task-td { font-size: 13px; color: #ececec; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }
+    .task-td.number { flex: 0 0 40px; color: #888; font-weight: bold; }
+    .task-td.type { flex: 0 0 110px; }
+    .task-td.created { flex: 1.2; }
+    .task-td.subject { flex: 2; font-weight: 600; color: #fff; }
+    .task-td.record { flex: 1.5; font-weight: 600; }
+    .task-td.assigned { flex: 1.5; }
+    .task-td.status { flex: 0 0 90px; }
+    .task-td.date { flex: 1.2; }
+
+    .task-type-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-callback { background-color: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+    .badge-pendency { background-color: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243, 156, 18, 0.3); }
+    .badge-todo { background-color: rgba(0, 170, 255, 0.15); color: #00aaff; border: 1px solid rgba(0, 170, 255, 0.3); }
+
+    .task-status-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
+    .task-sts-pending { background-color: #555; }
+    .task-sts-complete { background-color: #2ecc71; }
+    .task-sts-failed { background-color: #ff4757; }
+    .task-sts-inprogress { background-color: #f39c12; }
+    .task-sts-cancelled { background-color: #e74c3c; }
+
+    .task-created-meta-col, .task-due-meta-col { display: flex; flex-direction: column; gap: 2px; }
+    .task-created-meta-name { font-weight: 600; color: #00aaff; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .task-created-meta-date { font-size: 11px; color: #888; }
+    .task-due-meta-date { font-weight: 700; color: #fff; font-size: 12px; }
+    .task-due-meta-time { font-size: 11px; color: #aaa; }
+    .task-due-overdue { color: #ff6b81; }
+
+    .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+    .task-empty-state p { color: #00aaff; font-size: 18px; font-weight: 700; margin-bottom: 5px; }
+
+    .task-tag-lead { background: rgba(0, 170, 255, 0.1); color: #00aaff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
+    .task-tag-login { background: rgba(243, 156, 18, 0.1); color: #f39c12; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
+
+    .task-record-name { color: #00aaff; font-weight: 700; cursor: pointer; }
+    .task-record-name:hover { color: #0077bb; text-decoration: underline; }
+    .task-record-number { color: #94a3b8; font-size: 11px; margin-left: 6px; }
+
+    @keyframes taskSlideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+    .task-modal-container { background-color: #ffffff; width: 100%; max-width: 700px; max-height: 96vh; border-radius: 12px; position: relative; box-shadow: 0 15px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; border: 1px solid rgba(0,0,0,0.1); overflow: hidden; transform: scale(1); animation: taskModalIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    @keyframes taskModalIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+    .task-select-controls { display: flex; align-items: center; gap: 10px; background: #111; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; }
+    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #00aaff; font-weight: 700; font-size: 13px; gap: 6px; }
+    .task-select-controls span { color: #fff; font-weight: 600; font-size: 12px; }
+    .task-select-btn-del { padding: 4px 12px; background: #dc2626; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; }
+    .task-select-btn-del:hover { background: #b91c1c; }
+    .task-select-btn-cancel { padding: 4px 12px; background: #4b5563; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; }
+    .task-select-btn-cancel:hover { background: #374151; }
+
+    .task-show-more-btn { background: linear-gradient(135deg, #00aaff, #0088cc); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0, 170, 255, 0.2); }
+    .task-show-more-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0, 170, 255, 0.3); }
+
+    .task-scroll-top-btn { position: fixed; bottom: 24px; right: 24px; background: #00aaff; color: white; border: none; padding: 12px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,170,255,0.3); transition: all 0.2s; z-index: 50; }
+    .task-scroll-top-btn:hover { background: #0088cc; transform: translateY(-2px); }
+
+    .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
+    .task-loading-spinner .spinner { width: 40px; height: 40px; border: 3px solid transparent; border-top-color: #00aaff; border-radius: 50%; animation: taskSpin 0.8s linear infinite; margin-bottom: 12px; }
+    @keyframes taskSpin { to { transform: rotate(360deg); } }
+
+    .task-error-banner { margin-bottom: 20px; padding: 16px; background: #1a0000; border: 1px solid #ff4757; border-radius: 8px; }
   `;
 
   // PERFORMANCE: Cache keys for localStorage
@@ -335,6 +421,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useTabWithHistory('filter', 'due_today', { localStorageKey: 'taskActiveFilter' });
   const [assignmentFilter, setAssignmentFilter] = useState("all");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("all");
   const [editTask, setEditTask] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [taskForm, setTaskForm] = useState(initialTaskForm);
@@ -827,23 +914,38 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     today.setHours(0, 0, 0, 0);
     const todayTime = today.getTime();
 
-    // First, apply assignment filter to get the base set of tasks to work with
+    // First, apply view filter (me/others/all) to get the base set of tasks
     let baseTasks = tasks;
     if (assignmentFilter !== 'all') {
       const currentUserLower = currentUser.toLowerCase().trim();
       
       baseTasks = tasks.filter((task) => {
+        const assignedToColumn = (task.assign || '').toLowerCase();
+        const createdByColumn = (task.createdBy || '').toLowerCase().trim();
+        const isMyTask = assignedToColumn.includes(currentUserLower) || createdByColumn === currentUserLower;
+        
+        if (assignmentFilter === 'me') return isMyTask;
+        if (assignmentFilter === 'others') return !isMyTask;
+        // Legacy support
         if (assignmentFilter === 'assigned_to_me') {
-          const assignedToColumn = task.assign || '';
-          if (!assignedToColumn.trim() || assignedToColumn === 'Unassigned') return false;
-          return assignedToColumn.toLowerCase().includes(currentUserLower);
+          if (!assignedToColumn.trim() || assignedToColumn === 'unassigned') return false;
+          return assignedToColumn.includes(currentUserLower);
         } else if (assignmentFilter === 'assigned_by_me') {
-          const createdByColumn = task.createdBy || '';
-          const assignedToColumn = task.assign || '';
-          return createdByColumn.toLowerCase().trim() === currentUserLower && 
-                 assignedToColumn !== 'Unassigned' && 
+          return createdByColumn === currentUserLower && 
+                 assignedToColumn !== 'unassigned' && 
                  assignedToColumn.trim() !== '';
         }
+        return true;
+      });
+    }
+
+    // Apply task type filter
+    if (taskTypeFilter !== 'all') {
+      baseTasks = baseTasks.filter(task => {
+        const type = (task.typeTask || '').toLowerCase();
+        if (taskTypeFilter === 'callback') return type === 'call' || type === 'callback';
+        if (taskTypeFilter === 'pendency') return type === 'pendency';
+        if (taskTypeFilter === 'todo') return type === 'to-do' || type === 'todo';
         return true;
       });
     }
@@ -910,10 +1012,10 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     const filteredTasks = baseTasks.filter((task) => {
       // Search filter - early exit for better performance
       if (search) {
-        const searchValid = task.customerName.toLowerCase().includes(searchLower) ||
-                          task.subject.toLowerCase().includes(searchLower) ||
-                          task.status.toLowerCase().includes(searchLower) ||
-                          task.createdBy.toLowerCase().includes(searchLower);
+        const searchValid = (task.customerName || '').toLowerCase().includes(searchLower) ||
+                          (task.subject || '').toLowerCase().includes(searchLower) ||
+                          (task.status || '').toLowerCase().includes(searchLower) ||
+                          (task.createdBy || '').toLowerCase().includes(searchLower);
         if (!searchValid) return false;
       }
 
@@ -940,7 +1042,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     });
 
     return { realTimeCounts, safeCounts, filteredTasks };
-  }, [tasks, taskStats, search, activeFilter, assignmentFilter, currentUser]);
+  }, [tasks, taskStats, search, activeFilter, assignmentFilter, taskTypeFilter, currentUser]);
 
   // Memoized filters
   const FILTERS = useMemo(() => [
@@ -949,7 +1051,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     { key: "overdue", label: "Overdue", count: safeCounts.overdue },
     { key: "completed", label: "Complete", count: safeCounts.completed },
     { key: "failed", label: "Failed", count: safeCounts.failed || 0 },
-    { key: "all", label: "All", count: safeCounts.all, active: true },
+    { key: "all", label: "All Tasks", count: safeCounts.all, active: true },
   ], [safeCounts]);
 
   // Memoized "Show More" calculation - slice tasks based on displayedTasksCount
@@ -967,7 +1069,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   // Reset displayed count when filters change
   useEffect(() => {
     setDisplayedTasksCount(50);
-  }, [activeFilter, assignmentFilter, search]);
+  }, [activeFilter, assignmentFilter, taskTypeFilter, search]);
 
   // Function to load more tasks
   const handleShowMore = () => {
@@ -1279,19 +1381,11 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     // If a task was completed, immediately switch to Complete tab
     if (statusChangeInfo.shouldSwitchToCompleteTab && statusChangeInfo.immediate) {
       setActiveFilter('completed');
-      toast.success('Task completed! Switched to Complete tab.', {
-        position: 'top-right',
-        autoClose: 2000,
-      });
     }
     
     // If a task was failed, immediately switch to Failed tab
     if (statusChangeInfo.shouldSwitchToFailedTab && statusChangeInfo.immediate) {
       setActiveFilter('failed');
-      toast.error('Task marked as failed! Switched to Failed tab.', {
-        position: 'top-right',
-        autoClose: 2000,
-      });
     }
   };
 
@@ -1470,7 +1564,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         status_changed: statusChanged,
         old_status: oldStatus,
         // Include comment if provided
-        new_comment: updatedTask.newComment || ''
+        new_comment: updatedTask.newComment || '',
+        // Include remark for status change history
+        remark: updatedTask.remark || ''
       };
 
       // Update local task list IMMEDIATELY for instant UI feedback
@@ -1510,49 +1606,6 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
       }
       
       const updateUrl = `${API_BASE_URL}/tasks/${currentTaskId}?user_id=${currentUserId}`;
-      
-      // First, verify the task exists by trying to fetch it
-      try {
-        
-        const verifyResponse = await fetchWithAuth(`${API_BASE_URL}/tasks/${currentTaskId}?user_id=${currentUserId}`);
-        const existingTask = await verifyResponse.json();
-      } catch (verifyError) {
-        
-        // If task doesn't exist (404), try to refresh the task list and check again
-        if (verifyError.message.includes('404')) {
-          
-          try {
-            // Force refresh the task list to get latest data
-            await fetchTasks();
-            
-            // Check if the task still exists in the refreshed list
-            const refreshedTask = tasks.find(t => t.id === currentTaskId);
-            if (!refreshedTask) {
-              const errorMsg = `Task ${currentTaskId} no longer exists. It may have been deleted by another user.\n\nThe task list has been refreshed. Please try again with a different task.`;
-              alert(errorMsg);
-              setEditTask(null); // Close the edit modal
-              return;
-            }
-            
-            // If task still exists in list but can't be accessed individually,
-            // this indicates a data synchronization issue
-            const errorMsg = `Data synchronization issue detected!\n\nTask "${updatedTask.subject}" exists in the list but cannot be accessed individually. This could be due to:\n\n1. Database inconsistency\n2. Permission changes\n3. Concurrent modifications\n\nPlease try:\n1. Refreshing the entire page\n2. Logging out and back in\n3. Contacting system administrator if issue persists\n\nThe task list has been refreshed to show current data.`;
-            alert(errorMsg);
-            setEditTask(null); // Close the edit modal
-            return;
-            
-          } catch (refreshError) {
-            const errorMsg = `Cannot verify task status: ${verifyError.message}\n\nAdditionally, failed to refresh data: ${refreshError.message}\n\nPlease refresh the page manually and try again.`;
-            alert(errorMsg);
-            return;
-          }
-        } else if (verifyError.message.includes('403')) {
-          alert(`Access denied: You don't have permission to edit this task.`);
-        } else {
-          alert(`Error accessing task: ${verifyError.message}`);
-        }
-        return; // Stop the update process
-      }
       
       // Update the main task data
       const response = await fetchWithAuth(updateUrl, {
@@ -1997,456 +2050,395 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     }, 100); // Small delay to ensure clean state
   }, [editTask]);
 
+  // Helpers for task type badge and status badge
+  const getTaskTypeBadge = (typeTask) => {
+    const type = (typeTask || '').toLowerCase();
+    if (type === 'call' || type === 'callback') return { cls: 'task-type-badge badge-callback', label: '📞 Callback' };
+    if (type === 'pendency') return { cls: 'task-type-badge badge-pendency', label: '⏳ Pendency' };
+    if (type === 'to-do' || type === 'todo') return { cls: 'task-type-badge badge-todo', label: '📝 To-Do' };
+    if (type === 'processing') return { cls: 'task-type-badge badge-pendency', label: '⚙️ Processing' };
+    return { cls: 'task-type-badge badge-todo', label: typeTask || 'Task' };
+  };
+
+  const getStatusBadgeCls = (status) => {
+    switch(status) {
+      case 'Completed': return 'task-sts-complete';
+      case 'Failed': case 'FAILED': return 'task-sts-failed';
+      case 'In Progress': return 'task-sts-inprogress';
+      case 'Cancelled': return 'task-sts-cancelled';
+      default: return 'task-sts-pending';
+    }
+  };
+
+  const formatDueDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const _ist = getISTToday();
+      const todayDate = new Date(_ist.year, _ist.month - 1, _ist.day);
+      todayDate.setHours(0,0,0,0);
+      const taskDate = new Date(d);
+      taskDate.setHours(0,0,0,0);
+      if (taskDate.getTime() === todayDate.getTime()) return 'Today';
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    } catch { return dateStr; }
+  };
+
+  const formatCreatedShort = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch { return dateStr; }
+  };
+
+  const isTaskOverdue = (task) => {
+    if (task.status === 'Completed' || task.status === 'Cancelled' || task.status === 'Failed' || task.status === 'FAILED') return false;
+    try {
+      const _ist = getISTToday();
+      const todayDate = new Date(_ist.year, _ist.month - 1, _ist.day);
+      todayDate.setHours(0,0,0,0);
+      const taskDate = new Date(task.date);
+      taskDate.setHours(0,0,0,0);
+      return taskDate.getTime() < todayDate.getTime();
+    } catch { return false; }
+  };
+
+  // Get user role from localStorage
+  const userRole = useMemo(() => {
+    try {
+      const ud = JSON.parse(localStorage.getItem('userData') || '{}');
+      const role = ud.role_name || (typeof ud.role === 'string' ? ud.role : ud.role?.name) || 'Agent';
+      return role;
+    } catch { return 'Agent'; }
+  }, []);
+
+  const isAllFilter = activeFilter === 'all';
+
   // Immediate UI render - show main component immediately while data loads
   const renderMainComponent = () => {
     return (
       <>
-        <style>{stickyHeaderStyles}</style>
-        <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="max-w-none mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
+        <style>{taskPageStyles}</style>
+        <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh' }}>
+        <div className="task-page-container">
+
+          {/* Top Bar */}
+          <div className="task-top-bar" style={{ justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               {/* Select Button Controls */}
               {(permissions.delete || isSuperAdmin(getUserPermissions())) && (
-                <div className="flex items-center gap-3">
+                <>
                   {!showCheckboxes ? (
-                    <button
-                      className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                      onClick={handleShowCheckboxes}
-                    >
-                      {selectedRows.length > 0 ? `Select (${selectedRows.length})` : "Select"}
+                    <button className="task-btn-select" onClick={handleShowCheckboxes}>
+                      Select
                     </button>
                   ) : (
-                    <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                      <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
+                    <div className="task-select-controls">
+                      <label>
                         <input
                           type="checkbox"
-                          className="accent-blue-500 mr-2"
                           checked={selectAll}
                           onChange={(e) => handleSelectAll(e.target.checked)}
-                          style={{ width: 18, height: 18 }}
+                          style={{ width: 16, height: 16, accentColor: '#00aaff' }}
                         />
                         Select All
                       </label>
-                      <span className="text-white font-semibold">
-                        {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                      </span>
-                      <button
-                        className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                        onClick={handleDeleteSelected}
-                        disabled={selectedRows.length === 0}
-                      >
+                      <span>{selectedRows.length} row{selectedRows.length !== 1 ? 's' : ''} selected</span>
+                      <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>
                         Delete ({selectedRows.length})
                       </button>
-                      <button
-                        className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                        onClick={handleCancelSelection}
-                      >
+                      <button className="task-select-btn-cancel" onClick={handleCancelSelection}>
                         Cancel
                       </button>
                     </div>
                   )}
-                </div>
+                </>
+              )}
+
+              {(permissions.show || isSuperAdmin(getUserPermissions())) && (
+                <button className="task-btn-create" onClick={openCreateModal}>
+                  <Plus size={18} />
+                  Create Task
+                </button>
               )}
             </div>
-            {/* Create Task Button - Positioned on the right side */}
-            {(permissions.show || isSuperAdmin(getUserPermissions())) && (
-              <button
-                className="bg-[#03B0F5] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
-                onClick={openCreateModal}
-              >
-                <Plus size={24} />
-                Create Task
-              </button>
-            )}
+          </div>
+
+          {/* View Toggle Bar */}
+          <div className="task-view-toggle-bar">
+            <div className="task-view-toggle-group">
+              {[
+                { key: 'me', label: '👤 My' },
+                { key: 'others', label: '👥 Others' },
+                { key: 'all', label: '📋 All' }
+              ].map(v => (
+                <button
+                  key={v.key}
+                  className={`task-view-toggle-btn${assignmentFilter === v.key ? ' active' : ''}`}
+                  onClick={() => handleAssignmentFilterChange(v.key)}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Error Banner */}
           {error && (
-            <div className="mb-6 p-4 bg-red-900 border border-red-600 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-red-200 mb-2">{error}</p>
-                  {error.includes('404') && (
-                    <p className="text-red-300 text-sm">
-                      💡 <strong>Tip:</strong> If you're seeing 404 errors on existing tasks, try the "Force Refresh" button to reload all data from the server.
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 ml-4">
-                  <button
-                    onClick={() => {
-                      setError(null);
-                      fetchTasks();
-                      fetchTaskStats();
-                    }}
-                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                  >
-                    Retry
-                  </button>
-                  <button
-                    onClick={() => {
-                      setError(null);
-                      setTasks([]); // Clear current data
-                      setPagination(prev => ({ ...prev, page: 1 })); // Reset pagination
-                      fetchTasks();
-                      fetchTaskStats();
-                    }}
-                    className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-sm"
-                    title="Clear cache and reload all data from server"
-                  >
-                    Force Refresh
-                  </button>
-                  <button
-                    onClick={() => setError(null)}
-                    className="text-red-300 hover:text-red-100 text-xl font-bold"
-                  >
-                    ×
-                  </button>
+            <div className="task-error-banner">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p style={{ color: '#ff6b6b', flex: 1 }}>{error}</p>
+                <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
+                  <button onClick={() => { setError(null); fetchTasks(); }} style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+                  <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>×</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Filters — ALL items in one flat flex row, no nesting that can wrap */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'row',
-            flexWrap: 'nowrap',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: '24px',
-            overflowX: 'auto',
-            backgroundColor: '#000',
-          }}>
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => handleFilterChange(f.key)}
-                style={{ flexShrink: 0 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm shadow transition-all duration-200 whitespace-nowrap ${
-                  activeFilter === f.key
-                    ? "bg-[#03B0F5] text-white shadow-lg"
-                    : "bg-white text-[#03B0F5] hover:bg-blue-50"
-                }`}
+          {/* Filters Section */}
+          <div className="task-filters-section">
+            <div className="task-status-pills">
+              {FILTERS.map(f => (
+                <button
+                  key={f.key}
+                  className={`task-pill${activeFilter === f.key ? ' active' : ''}`}
+                  onClick={() => handleFilterChange(f.key)}
+                >
+                  {f.label} <span className="task-pill-count">{f.count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="task-search-area">
+              <select
+                className="task-filter-dropdown"
+                value={taskTypeFilter}
+                onChange={(e) => setTaskTypeFilter(e.target.value)}
               >
-                <span>{f.label}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                  f.count > 0 ? "bg-[#222] text-white" : "bg-[#eee] text-[#03B0F5]"
-                }`}>
-                  {f.count}
-                </span>
-              </button>
-            ))}
-
-            {/* Spacer pushes dropdown+search to the right */}
-            <div style={{ flex: '1 1 auto', minWidth: '16px' }} />
-
-            <select
-              value={assignmentFilter}
-              onChange={(e) => handleAssignmentFilterChange(e.target.value)}
-              style={{ flexShrink: 0 }}
-              className="px-4 py-2 rounded-full bg-white text-[#03B0F5] border border-[#03B0F5] font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-[#03B0F5] whitespace-nowrap"
-            >
-              <option value="all">All Tasks</option>
-              <option value="assigned_to_me">Assigned To Me</option>
-              <option value="assigned_by_me">Assigned By Me</option>
-            </select>
-
-            <div style={{ flexShrink: 0 }} className="flex items-center gap-2 bg-[#181e29] border border-[#03B0F5] rounded-full px-4 py-2">
-              <Search className="text-[#03B0F5] shrink-0" size={18} />
-              <input
-                className="bg-transparent text-[#e4eaf5] font-medium focus:outline-none w-48 placeholder-gray-400 text-sm"
-                placeholder="Search by name, subject, status..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+                <option value="all">All Task Types</option>
+                <option value="callback">Callback</option>
+                <option value="pendency">Pendency</option>
+                <option value="todo">To-Do</option>
+              </select>
+              <div className="task-search-box">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Loading state overlay for when data is being fetched */}
+          {/* Loading state */}
           {loading && tasks.length === 0 && (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
-                <p className="text-lg text-[#03B0F5]">Loading tasks...</p>
-              </div>
+            <div className="task-loading-spinner">
+              <div className="spinner" />
+              <p style={{ color: '#00aaff', fontSize: 16, fontWeight: 700 }}>Loading tasks...</p>
             </div>
           )}
 
-          {/* Table Section - Show immediately, populate with data when available */}
+          {/* Data Table */}
           {(!loading || tasks.length > 0) && (
-            <div className="relative">
-              {/* Horizontal scroll buttons - exactly from LeadCRM.jsx */}
-              {canScrollLeft && (
-                <button
-                  onClick={() => scrollTable('left')}
-                  className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                  aria-label="Scroll left"
-                >
-                  <ChevronLeft className="w-9 h-9" />
-                </button>
-              )}
-              
-              {canScrollRight && (
-                <button
-                  onClick={() => scrollTable('right')}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                  aria-label="Scroll right"
-                >
-                  <ChevronRight className="w-9 h-9" />
-                </button>
-              )}
-              
-              <div 
-                ref={tableScrollRef}
-                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto"
-                onScroll={updateScrollButtons}
-              >
-                {/* Table with sticky header - matching LeadCRM.jsx */}
-                <table className="min-w-[1600px] w-full bg-black relative">
-                <thead 
-                  className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200"
-                >
-                  <tr>
-                    {/* Checkbox column header - only show when in selection mode */}
-                    {(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes && (
-                      <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '60px' }}>
-                        <input
-                          type="checkbox"
-                          className="accent-blue-500"
-                          checked={selectAll}
-                          onChange={(e) => handleSelectAll(e.target.checked)}
-                          style={{ width: 18, height: 18 }}
-                        />
-                      </th>
-                    )}
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '60px' }}>
-                      #
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '200px' }}>
-                      CREATED DATE & TIME
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '150px' }}>
-                      CREATED BY
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '200px' }}>
-                      SUBJECT
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '120px' }}>
-                      STATUS
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '150px' }}>
-                      ASSIGNED TO
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '250px' }}>
-                      ASSOCIATED WITH RECORDS
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th" style={{ minWidth: '180px' }}>
-                      DUE DATE AND TIME
-                    </th>
-                    <th className="py-1 px-4 text-lg font-extrabold text-[#03B0F5] text-left whitespace-nowrap sticky-th">
-                      REPEAT TASK
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedTasks.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes ? 10 : 9}
-                        className="bg-[#000] rounded-xl shadow p-8 text-center text-lg font-bold text-[#03B0F5]"
-                      >
-                        {loading ? 'Loading tasks...' : 'No Tasks Found'}
-                      </td>
-                    </tr>
-                  ) : (
-                    displayedTasks.map((task, idx) => (
-                      <tr
+            <div style={{ position: 'relative' }}>
+              {/* Table Header */}
+              <div className="task-data-table-header">
+                {showCheckboxes && (
+                  <div className="task-th" style={{ flex: '0 0 36px' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      style={{ width: 16, height: 16, accentColor: '#00aaff' }}
+                    />
+                  </div>
+                )}
+                <div className="task-th number">#</div>
+                <div className="task-th type">TYPE</div>
+                <div className="task-th created">CREATED INFO</div>
+                <div className="task-th subject">OBJECTIVE / SUBJECT</div>
+                <div className="task-th record">RECORD/LEAD</div>
+                <div className="task-th assigned">ASSIGNED TO</div>
+                {isAllFilter && <div className="task-th status">STATUS</div>}
+                <div className="task-th date">DUE DATE & TIME</div>
+              </div>
+
+              {/* Table Body */}
+              <div className="task-data-table-body">
+                {displayedTasks.length === 0 ? (
+                  <div className="task-empty-state">
+                    <p>{loading ? 'Loading tasks...' : 'No Tasks Found'}</p>
+                  </div>
+                ) : (
+                  displayedTasks.map((task, idx) => {
+                    const badge = getTaskTypeBadge(task.typeTask);
+                    const overdue = isTaskOverdue(task);
+                    const recordDisplay = (task.leadLogin && task.leadLogin !== 'N/A')
+                      ? task.customerName || task.leadLogin
+                      : '-';
+
+                    return (
+                      <div
                         key={`${task.id}-${task.renderKey || task.updated_at || 'static'}`}
-                        className="border-b border-gray-800 bg-[#000] hover:bg-gray-800 transition cursor-pointer"
+                        className="task-row"
                         onClick={() => {
-                          // DUPLICATE PREVENTION - Only block during active loading
-                          if (preventDuplicateModal || modalLoading) {
-                            return;
-                          }
-                          
-                          // If a modal is already open, close it first
-                          if (editTask) {
-                            setEditTask(null);
-                          }
-
-                          // Clear any existing timeout
-                          if (clickTimeout) {
-                            clearTimeout(clickTimeout);
-                          }
-
-                          // Add safety check before calling handleRowClick
+                          if (preventDuplicateModal || modalLoading) return;
+                          if (editTask) setEditTask(null);
+                          if (clickTimeout) clearTimeout(clickTimeout);
                           if (!task.id || typeof task.id !== 'string' || task.id.length < 12) {
                             alert('This task has an invalid ID and cannot be opened. Please refresh the page.');
                             return;
                           }
-                          
-                          // Set a short timeout to debounce rapid clicks
-                          const timeout = setTimeout(() => {
-                            handleRowClick(task);
-                            setClickTimeout(null);
-                          }, 50); // 50ms debounce
-                          
+                          const timeout = setTimeout(() => { handleRowClick(task); setClickTimeout(null); }, 50);
                           setClickTimeout(timeout);
                         }}
                       >
-                        {/* Checkbox column - only show when in selection mode */}
-                        {(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes && (
-                          <td className="py-3 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {/* Checkbox */}
+                        {showCheckboxes && (
+                          <div className="task-td" style={{ flex: '0 0 36px' }} onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
-                              className="accent-blue-500"
                               checked={selectedRows.includes(task.id)}
                               onChange={(e) => handleRowSelect(task.id, e.target.checked)}
-                              style={{ width: 18, height: 18 }}
+                              style={{ width: 16, height: 16, accentColor: '#00aaff' }}
                             />
-                          </td>
+                          </div>
                         )}
-                        <td className="text-md text-bold py-3 px-4 whitespace-nowrap text-left">
-                          {idx + 1}
-                        </td>
-                        <td className="text-md py-3 px-4 whitespace-nowrap font-bold">
-                          {task.createdTime}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {task.createdBy}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {task.subject}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {statusPill(task.status)}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {task.assign}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap">
-                          {task.leadLogin} - {task.customerName}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {formatDateTime(`${task.date}T${task.time}`)}
-                        </td>
-                        <td className="text-md font-semibold py-3 px-4 whitespace-nowrap text-left">
-                          {task.repeat_type || 'No'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
 
-            {/* Show More Button - Replaces Pagination */}
-            {hasMoreTasks && (
-              <div className="flex flex-col items-center justify-center mt-6 px-4 gap-3">
-                <div className="text-sm text-gray-400">
-                  Showing {displayedTasksCount} of {filteredTasks.length} tasks
-                </div>
-                <button
-                  onClick={handleShowMore}
-                  className="px-6 py-3 bg-gradient-to-r from-[#03B0F5] to-[#0693C7] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#03B0F5]/50 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Show More ({Math.min(tasksPerLoad, filteredTasks.length - displayedTasksCount)} more)
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+                        {/* # */}
+                        <div className="task-td number">{idx + 1}</div>
+
+                        {/* TYPE */}
+                        <div className="task-td type">
+                          <span className={badge.cls}>{badge.label}</span>
+                        </div>
+
+                        {/* CREATED INFO */}
+                        <div className="task-td created">
+                          <div className="task-created-meta-col">
+                            <span className="task-created-meta-name">{task.createdBy}</span>
+                            <span className="task-created-meta-date">{formatCreatedShort(task.created_at)}</span>
+                          </div>
+                        </div>
+
+                        {/* SUBJECT */}
+                        <div className="task-td subject">{task.subject}</div>
+
+                        {/* RECORD/LEAD */}
+                        <div className="task-td record">
+                          {recordDisplay !== '-' ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                              <span className="task-tag-lead">Lead</span>
+                              <span className="task-record-name">{task.customerName || 'Unknown'}</span>
+                              {task.leadLogin && task.leadLogin !== 'N/A' && (
+                                <span className="task-record-number">{task.leadLogin}</span>
+                              )}
+                            </span>
+                          ) : '-'}
+                        </div>
+
+                        {/* ASSIGNED TO */}
+                        <div className="task-td assigned" style={{ whiteSpace: 'normal', lineHeight: 1.6 }}>
+                          {(task.assign || 'Unassigned').split(',').map((name, i) => (
+                            <span key={i} style={{ display: 'block', fontSize: 11 }}>👤 {name.trim()}</span>
+                          ))}
+                        </div>
+
+                        {/* STATUS (only on All filter) */}
+                        {isAllFilter && (
+                          <div className="task-td status">
+                            <span className={`task-status-badge ${getStatusBadgeCls(task.status)}`}>
+                              {task.status === 'FAILED' ? 'Failed' : task.status}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* DUE DATE & TIME */}
+                        <div className="task-td date">
+                          <div className="task-due-meta-col">
+                            <span className={`task-due-meta-date${overdue ? ' task-due-overdue' : ''}`}>
+                              {formatDueDisplay(task.date)}
+                            </span>
+                            <span className="task-due-meta-time">{formatTime(task.time)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            )}
+
+              {/* Show More Button */}
+              {hasMoreTasks && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 24, gap: 8 }}>
+                  <span style={{ fontSize: 12, color: '#888' }}>
+                    Showing {displayedTasksCount} of {filteredTasks.length} tasks
+                  </span>
+                  <button className="task-show-more-btn" onClick={handleShowMore}>
+                    ▼ Show More ({Math.min(tasksPerLoad, filteredTasks.length - displayedTasksCount)} more) ▼
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Render EditTask in a modal popup when a task is selected - IMMEDIATE LOADING */}
+          {/* Render EditTask in a modal popup */}
           {editTask && (
-            <div 
-              className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent bg-opacity-50 p-4" 
-              style={{ 
-                backdropFilter: "blur(3px)",
-                opacity: 1,
-                transform: "scale(1)",
-                transition: "none" // Remove transition for instant appearance
-              }}
-            >
-              <Suspense fallback={
-                <div className="bg-white rounded-lg p-8 text-center min-w-[400px] shadow-2xl animate-pulse">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#03B0F5] mx-auto mb-2"></div>
-                  <p className="text-sm text-[#03B0F5]">Loading editor...</p>
+            <Suspense fallback={
+              <div className="task-modal-overlay">
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <div className="task-loading-spinner"><div className="spinner" /></div>
+                  <p style={{ color: '#00aaff', fontSize: 13 }}>Loading editor...</p>
                 </div>
-              }>
-                <EditTask
-                  key={`edit-task-${editTask.id}`} // Stable key based on task ID
-                  taskData={editTask}
-                  onClose={handleCancelEdit}
-                  onSave={handleSaveTask}
-                  onStatusChange={handleTaskStatusChange} // New callback for immediate status changes
-                  currentUserId={currentUserId}
-                  apiBaseUrl={API_BASE_URL}
-                  // Pass lead info if available
-                  preselectedLead={editTask.leadInfo || null}
-                  // Pass associated records if available
-                  associateWithRecords={editTask.associateWithRecords || []}
-                  // Include history and comments
-                  history={editTask.history || []}
-                  comments={editTask.comments || []}
-                  // Pass loading state to EditTask
-                  isLoading={editTask.isLoading}
-                  loadingError={editTask.loadingError}
-                />
-              </Suspense>
-            </div>
+              </div>
+            }>
+              <EditTask
+                key={`edit-task-${editTask.id}`}
+                taskData={editTask}
+                onClose={handleCancelEdit}
+                onSave={handleSaveTask}
+                onStatusChange={handleTaskStatusChange}
+                currentUserId={currentUserId}
+                apiBaseUrl={API_BASE_URL}
+                preselectedLead={editTask.leadInfo || null}
+                associateWithRecords={editTask.associateWithRecords || []}
+                history={editTask.history || []}
+                comments={editTask.comments || []}
+                isLoading={editTask.isLoading}
+                loadingError={editTask.loadingError}
+              />
+            </Suspense>
           )}
 
-          {/* Modal Popup for Create Task - IMMEDIATE LOADING */}
+          {/* Modal Popup for Create Task */}
           {showCreateModal && (
-            <div 
-              className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent bg-opacity-50" 
-              style={{ 
-                backdropFilter: "blur(3px)",
-                opacity: 1,
-                transform: "scale(1)",
-                transition: "none" // Remove transition for instant appearance
-              }}
-            >
-              <div className="w-full max-w-2xl mx-auto">
-                <Suspense fallback={
-                  <div className="bg-white rounded-lg p-8 text-center min-w-[400px] shadow-2xl animate-pulse">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#03B0F5] mx-auto mb-2"></div>
-                    <p className="text-sm text-[#03B0F5]">Loading creator...</p>
-                  </div>
-                }>
-                  <CreateTask
-                    onClose={closeCreateModal}
-                    onSave={handleCreateTaskSave}
-                  />
-                </Suspense>
+            <Suspense fallback={
+              <div className="task-modal-overlay">
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <div className="task-loading-spinner"><div className="spinner" /></div>
+                  <p style={{ color: '#00aaff', fontSize: 13 }}>Loading creator...</p>
+                </div>
               </div>
-            </div>
+            }>
+              <CreateTask
+                onClose={closeCreateModal}
+                onSave={handleCreateTaskSave}
+              />
+            </Suspense>
           )}
+
         </div>
 
         {/* Scroll to Top Button */}
         {showScrollTop && (
           <button
-            onClick={() => {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className="fixed bottom-6 right-6 bg-[#03B0F5] hover:bg-[#12d8fa] text-white p-3 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 z-50"
+            className="task-scroll-top-btn"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             title="Scroll to top"
           >
             <ChevronUp size={24} />
@@ -2460,14 +2452,11 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   // Early return for non-initialized state - show basic error/loading state
   if (!isInitialized) {
     return (
-      <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="w-full">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
-              <p className="text-lg text-[#03B0F5]">Initializing...</p>
-            </div>
-          </div>
+      <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <style>{taskPageStyles}</style>
+          <div className="task-loading-spinner"><div className="spinner" /></div>
+          <p style={{ color: '#00aaff', fontSize: 16, fontWeight: 700 }}>Initializing...</p>
         </div>
       </div>
     );
@@ -2476,24 +2465,19 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   // Show error state if critical error prevents rendering
   if (error && !isInitialized) {
     return (
-      <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-        <div className="w-full">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <p className="text-lg text-red-400 mb-4">{error}</p>
-              <button
-                onClick={() => {
-                  setError(null);
-                  setIsInitialized(false);
-                  // Re-trigger initialization
-                  window.location.reload();
-                }}
-                className="bg-[#03B0F5] hover:bg-[#12d8fa] text-white px-4 py-2 rounded-lg"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
+      <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ color: '#ff6b81', fontSize: 16, marginBottom: 16 }}>{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              setIsInitialized(false);
+              window.location.reload();
+            }}
+            style={{ background: '#00aaff', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: 30, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

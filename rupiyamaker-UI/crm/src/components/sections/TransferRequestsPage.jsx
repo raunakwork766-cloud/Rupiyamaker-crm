@@ -729,6 +729,66 @@ const TransferRequestsPage = ({ user }) => {
 
                 {/* ── SCROLLABLE TIMELINE ── */}
                 <div className="flex-1 overflow-y-auto px-4 py-4">
+                  {/* ── OWNERSHIP HISTORY (activity-style flat view) ── */}
+                  {!historyLoading && history.length > 0 && (() => {
+                    // Build ownership change list from all history entries
+                    const ownerRows = history
+                      .filter(h => {
+                        const t = (h.assignment_type || '').toLowerCase();
+                        // Only show confirmed ownership changes (approved/direct), skip pending-request entries
+                        // to avoid showing the same transfer twice (once as request, once as approval)
+                        return t === 'approved' || t === 'direct_transfer' || t === 'approved_direct';
+                      })
+                      .sort((a, b) => new Date(a.assigned_date || 0) - new Date(b.assigned_date || 0));
+                    if (!ownerRows.length) return null;
+                    return (
+                      <div className="mb-4 rounded-xl overflow-hidden border border-blue-100">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border-b border-blue-100">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">👤 Owner History</span>
+                          <span className="ml-auto text-[9px] font-bold bg-white border border-blue-200 text-blue-500 rounded-full px-1.5 py-0.5">{ownerRows.length}</span>
+                        </div>
+                        <div className="divide-y divide-gray-100 bg-white">
+                          {ownerRows.map((entry, i) => {
+                            const t = (entry.assignment_type || '').toLowerCase();
+                            const isPending = t.includes('request');
+                            const isDirect = t.includes('direct');
+                            const isRejected = t.includes('reject');
+                            const fromName = entry.from_user || 'Unassigned';
+                            // Normalized entries store to_user inside assigned_to_names array (not as to_user)
+                            const toName = (entry.assigned_to_names && entry.assigned_to_names[0]) || entry.to_user || '—';
+                            const byName = entry.assigned_by_name || '';
+                            const dateStr = (() => {
+                              if (!entry.assigned_date) return '';
+                              try { return new Date(entry.assigned_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }); }
+                              catch { return entry.assigned_date; }
+                            })();
+                            const dotColor = isPending ? '#f59e0b' : isDirect ? '#8b5cf6' : isRejected ? '#ef4444' : '#10b981';
+                            return (
+                              <div key={i} className="px-3 py-2 flex items-start gap-2">
+                                <div className="shrink-0 mt-1 w-2 h-2 rounded-full" style={{ background: dotColor }} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] font-semibold text-red-600">{fromName}</span>
+                                    <span className="text-gray-400 text-[10px] font-black">→</span>
+                                    <span className="text-[10px] font-semibold text-green-700">{toName}</span>
+                                    {isPending && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200 uppercase">Pending</span>}
+                                    {isDirect && !isPending && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-100 text-purple-600 border border-purple-200 uppercase">Direct</span>}
+                                    {isRejected && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 uppercase">Rejected</span>}
+                                  </div>
+                                  <p className="text-[9px] text-gray-400 mt-0.5">
+                                    {byName ? `by ${byName}` : ''}
+                                    {byName && dateStr ? ' · ' : ''}
+                                    {dateStr}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {historyLoading ? (
                     <div className="flex items-center justify-center py-12 text-gray-400">
                       <RefreshCw size={16} className="animate-spin mr-2" /> Loading history…
@@ -777,17 +837,25 @@ const TransferRequestsPage = ({ user }) => {
                           const currentUserName = localStorage.getItem('userName') || localStorage.getItem('user_name') || '';
                           const isOwnReq = isPendingDecision && (currentLead?.is_own_request || (currentUserName && reqNameRaw.toLowerCase() === currentUserName.toLowerCase()));
                           const reqName = isOwnReq ? `${reqNameRaw} (You)` : reqNameRaw;
+
                           // fromUser = who HAD the lead before the transfer (previous owner)
-                          const fromUser = req.from_user
-                            // For approved/direct: the decision entry itself carries from_user resolved from assigned_to field_change
-                            || decision?.from_user
-                            // For pending card: current owner hasn't changed yet
+                          // For APPROVED transfers: decision.from_user is resolved from field_history old_value
+                          // and is the authoritative source. req.from_user for 'requested' entries can
+                          // incorrectly fall back to lead_current_owner (= new owner post-transfer).
+                          const _decisionTypeEarly = (decision?.assignment_type || decision?.action || '').toLowerCase();
+                          const _isApprovedEarly = decision && (_decisionTypeEarly.includes('approv') || _decisionTypeEarly === 'direct_transfer');
+                          const fromUser = (_isApprovedEarly && decision?.from_user ? decision.from_user : '')
+                            // Fallback to the request entry's from_user (reliable for pending/rejected)
+                            || req.from_user
+                            // For pending card: current owner hasn't changed yet, use lead's current assignee
                             || (isPendingDecision ? (currentLead.assigned_user_name || currentLead.assigned_to_name || '') : '')
                             || '';
 
                           // toUser = who GETS the lead after transfer
-                          const toUser = (req.assigned_to_names && req.assigned_to_names[0]) || req.to_user
-                            // For approved/direct: decision entry carries to_user resolved from assigned_to field_change
+                          // For approved transfers prefer decision.to_user (correctly resolved) first
+                          const toUser = (_isApprovedEarly && decision?.to_user ? decision.to_user : '')
+                            || (req.assigned_to_names && req.assigned_to_names[0])
+                            || req.to_user
                             || decision?.to_user
                             || reqNameRaw
                             || '';
@@ -852,11 +920,19 @@ const TransferRequestsPage = ({ user }) => {
                                       <div className="min-w-0">
                                         <div className="flex items-center gap-1 flex-wrap">
                                           <span className="text-xs font-black text-gray-900">{reqName}</span>
-                                          <span className="text-[11px] text-gray-400">requested transfer</span>
-                                          {toUser && (
+                                          <span className="text-[11px] text-gray-400">
+                                            {req.assignment_type === 'direct_transfer' ? 'direct transfer' : 'requested transfer'}
+                                          </span>
+                                          {toUser && toUser !== reqNameRaw && (
                                             <>
                                               <span className="text-xs text-gray-400">→</span>
                                               <span className="text-sm font-bold text-blue-600">{toUser}</span>
+                                            </>
+                                          )}
+                                          {fromUser && fromUser !== reqNameRaw && fromUser !== toUser && (
+                                            <>
+                                              <span className="text-[10px] text-gray-400">from</span>
+                                              <span className="text-[11px] font-semibold text-gray-600">{fromUser}</span>
                                             </>
                                           )}
                                         </div>
@@ -984,20 +1060,26 @@ const TransferRequestsPage = ({ user }) => {
                                         </span>
                                       </div>
 
-                                      {/* Owner row — always shown */}
-                                      {(fromUser || toUser) && (
+                                      {/* Owner row — always shown when there is a new owner (toUser) */}
+                                      {(toUser && toUser !== '—') && (
                                         <div className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f3f4f6' }}>
                                           {/* Label */}
                                           <div className="w-24 shrink-0 px-3 py-2 flex items-center" style={{ background: '#f9fafb' }}>
                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">👤 Owner</span>
                                           </div>
-                                          {/* Old value */}
+                                          {/* Old value — show 'Unassigned' when previous owner was empty, else show name */}
+                                          {(() => {
+                                            // Show the actual previous owner; don't hide when from === to (e.g. self-assignment)
+                                            const displayFrom = fromUser || 'Unassigned';
+                                            return (
                                           <div className="flex-1 px-3 py-2 flex items-center min-w-0 border-l" style={{ background: '#fff1f2', borderColor: '#fecdd3' }}>
                                             <div className="w-4 h-4 rounded-full bg-red-100 border border-red-200 text-[8px] font-black text-red-700 flex items-center justify-center shrink-0 mr-1.5">
-                                              {(fromUser || '?').charAt(0).toUpperCase()}
+                                              {displayFrom !== 'Unassigned' ? displayFrom.charAt(0).toUpperCase() : '—'}
                                             </div>
-                                            <span className="text-red-700 font-bold truncate text-[10px]">{fromUser || '—'}</span>
+                                            <span className="text-red-700 font-bold truncate text-[10px]">{displayFrom}</span>
                                           </div>
+                                            );
+                                          })()}
                                           {/* Arrow */}
                                           <div className="w-7 shrink-0 flex items-center justify-center border-l border-r" style={{ background: accentColor, borderColor: accentColor }}>
                                             <span className="text-white font-black text-sm">→</span>

@@ -242,8 +242,9 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
   }, [label, onSelect, isLoanType, loanTypeId]);
 
   const subActiveStyle = isSelected ? {
-    boxShadow: '0 2px 8px rgba(234,179,8,0.35)',
-    border: '1px solid rgba(234,179,8,0.5)'
+    boxShadow: '0 0 15px rgba(255,235,0,0.25), inset 0 0 8px rgba(255,235,0,0.07)',
+    border: '1px solid rgba(255,235,0,0.45)',
+    transform: 'translateY(-1px)'
   } : {};
 
   return (
@@ -251,8 +252,8 @@ const SubItem = React.memo(({ label, icon, isOpen, selectedLabel, onSelect, isLo
       className={cn(
         "flex items-center w-full p-2 text-left mb-0.5 rounded-lg transition-all duration-200 text-xs sm:text-[13px] font-medium animate-pop min-h-[38px] border border-transparent",
         isSelected
-          ? "bg-yellow-400 text-gray-900 font-bold translate-x-1.5"
-          : "bg-transparent hover:bg-blue-50 text-gray-700 hover:text-[#1a56db] hover:translate-x-1.5 hover:border-blue-200"
+          ? "bg-[#ffeb00] text-black font-bold translate-x-1.5"
+          : "bg-transparent hover:bg-blue-50 text-[#00d2ff] hover:text-[#1a56db] hover:translate-x-1.5 hover:border-blue-200"
       )}
       style={subActiveStyle}
       onClick={handleClick}

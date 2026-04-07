@@ -3142,18 +3142,19 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         },
         eligibility_details: {
           // Send both camelCase and snake_case for maximum compatibility
-          totalIncome: eligibility?.totalIncome || '',
-          total_income: eligibility?.totalIncome || '',
-          foirAmount: eligibility?.foirAmount || '',
-          foir_amount: eligibility?.foirAmount || '',
-          totalObligations: eligibility?.totalObligations || '',
-          total_obligations: eligibility?.totalObligations || '',
-          totalBtPos: eligibility?.totalBtPos || '',
-          total_bt_pos: eligibility?.totalBtPos || '',
-          finalEligibility: eligibility?.finalEligibility || '',
-          final_eligibility: eligibility?.finalEligibility || '', // Backend expects snake_case
-          multiplierEligibility: eligibility?.multiplierEligibility || '',
-          multiplier_eligibility: eligibility?.multiplierEligibility || ''
+          // Use ?? instead of || to preserve 0 values (0 is valid for "Not Eligible")
+          totalIncome: eligibility?.totalIncome ?? '',
+          total_income: eligibility?.totalIncome ?? '',
+          foirAmount: eligibility?.foirAmount ?? '',
+          foir_amount: eligibility?.foirAmount ?? '',
+          totalObligations: eligibility?.totalObligations ?? '',
+          total_obligations: eligibility?.totalObligations ?? '',
+          totalBtPos: eligibility?.totalBtPos ?? '',
+          total_bt_pos: eligibility?.totalBtPos ?? '',
+          finalEligibility: eligibility?.finalEligibility ?? '',
+          final_eligibility: eligibility?.finalEligibility ?? '', // Backend expects snake_case
+          multiplierEligibility: eligibility?.multiplierEligibility ?? '',
+          multiplier_eligibility: eligibility?.multiplierEligibility ?? ''
         },
         obligations: obligations.map((obl, index) => {
           // Make sure bank name is properly captured from the row
@@ -3217,18 +3218,19 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         },
         eligibility_details: {
           // Send both camelCase and snake_case for maximum compatibility
-          totalIncome: eligibility?.totalIncome || '',
-          total_income: eligibility?.totalIncome || '',
-          foirAmount: eligibility?.foirAmount || '',
-          foir_amount: eligibility?.foirAmount || '',
-          totalObligations: eligibility?.totalObligations || '',
-          total_obligations: eligibility?.totalObligations || '',
-          totalBtPos: eligibility?.totalBtPos || '',
-          total_bt_pos: eligibility?.totalBtPos || '',
-          finalEligibility: eligibility?.finalEligibility || '',
-          final_eligibility: eligibility?.finalEligibility || '', // Backend expects snake_case
-          multiplierEligibility: eligibility?.multiplierEligibility || '',
-          multiplier_eligibility: eligibility?.multiplierEligibility || ''
+          // Use ?? instead of || to preserve 0 values (0 is valid for "Not Eligible")
+          totalIncome: eligibility?.totalIncome ?? '',
+          total_income: eligibility?.totalIncome ?? '',
+          foirAmount: eligibility?.foirAmount ?? '',
+          foir_amount: eligibility?.foirAmount ?? '',
+          totalObligations: eligibility?.totalObligations ?? '',
+          total_obligations: eligibility?.totalObligations ?? '',
+          totalBtPos: eligibility?.totalBtPos ?? '',
+          total_bt_pos: eligibility?.totalBtPos ?? '',
+          finalEligibility: eligibility?.finalEligibility ?? '',
+          final_eligibility: eligibility?.finalEligibility ?? '', // Backend expects snake_case
+          multiplierEligibility: eligibility?.multiplierEligibility ?? '',
+          multiplier_eligibility: eligibility?.multiplierEligibility ?? ''
         }
       }
     };

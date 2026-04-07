@@ -4915,24 +4915,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         return (
             <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-sm sm:text-base w-full flex flex-col' : 'min-h-screen bg-black text-white text-sm sm:text-base w-full'}>
                 {/* Header */}
-                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] border-b-4 border-cyan-400/70 shadow-lg">
-                    <button
-                        onClick={() => {
-                            sessionStorage.removeItem('logincrm_restore');
-                            setShowLeadDetails(false);
-                            setSelectedLead(null);
-                            fetchLoginDepartmentLeads(); // Refresh leads after viewing details
-                        }}
-                        className="text-cyan-300 mr-2 px-2 py-1 text-xl font-bold rounded hover:bg-cyan-900/20 transition"
-                        aria-label="Back"
-                    >
-                        {"←"}
-                    </button>
-                    <UserOutlined className="text-cyan-300 w-8 sm:w-12 h-6 sm:h-10 drop-shadow" />
+                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] shadow-lg">
                     <div className="flex items-center gap-2">
-                        <h1 className="text-lg sm:text-2xl font-extrabold text-cyan-300 tracking-wide drop-shadow truncate">
-                            {getLeadField(selectedLead, 'customer_name') || 'Lead Details'}
-                        </h1>
                         {/* Auto-save indicator */}
                         {isSaving && (
                             <div className="flex items-center gap-2 px-3 py-1 bg-yellow-600/20 rounded-full border border-yellow-500/50">

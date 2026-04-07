@@ -176,8 +176,25 @@ async def list_reassignment_requests(
             # Include both manual rejections and system auto-rejections
             filter_dict["pending_reassignment"] = False
             filter_dict["reassignment_status"] = {"$in": ["rejected", "auto_rejected"]}
+        elif status_filter.lower() == "direct":
+            # Direct transfers: new records have status="direct", old records have status="approved"
+            # with the same user as both requester and approver (self-approved = direct transfer).
+            filter_dict["pending_reassignment"] = False
+            filter_dict["$or"] = [
+                {"reassignment_status": "direct"},
+                {
+                    "reassignment_status": "approved",
+                    "$expr": {"$eq": ["$reassignment_requested_by", "$reassignment_approved_by"]}
+                }
+            ]
+        elif status_filter.lower() == "approved":
+            # Manager-approved transfers: status="approved" where a DIFFERENT user approved
+            # (excludes old self-approved/direct transfers for cleaner separation)
+            filter_dict["pending_reassignment"] = False
+            filter_dict["reassignment_status"] = "approved"
+            filter_dict["$expr"] = {"$ne": ["$reassignment_requested_by", "$reassignment_approved_by"]}
         else:
-            # For approved (and anything else), filter by exact status
+            # For any other filters, filter by exact status
             filter_dict["pending_reassignment"] = False
             filter_dict["reassignment_status"] = status_filter.lower()
     else:
@@ -307,7 +324,17 @@ async def list_reassignment_requests(
         if lead.get("pending_reassignment"):
             lead_dict["status"] = "pending"
         elif lead.get("reassignment_status") == "approved":
-            lead_dict["status"] = "approved"
+            # Check if this is actually a self-approved direct transfer (backward compat)
+            req_by = str(lead.get("reassignment_requested_by") or "")
+            appr_by = str(lead.get("reassignment_approved_by") or "")
+            if req_by and appr_by and req_by == appr_by:
+                lead_dict["status"] = "direct"
+                lead_dict["is_direct_transfer"] = True
+            else:
+                lead_dict["status"] = "approved"
+        elif lead.get("reassignment_status") == "direct":
+            lead_dict["status"] = "direct"
+            lead_dict["is_direct_transfer"] = True
         elif lead.get("reassignment_status") in ("rejected", "auto_rejected"):
             lead_dict["status"] = "rejected"
             if lead.get("reassignment_status") == "auto_rejected":
@@ -520,12 +547,36 @@ async def list_reassignment_requests(
                                 None
                             )
                             if match:
+                                # Found in field_history — use old_value (may be "" = was unassigned before)
                                 from_user_id = _plain_uid(match.get("old_value", ""))
-                        # If still empty, use lead's current owner (works for still-pending requests)
-                        if not from_user_id:
-                            from_user_id = lead_current_owner.get(lid, "")
+                            else:
+                                # No field_history entry — fallback to current owner
+                                # (useful for still-pending requests where transfer hasn't occurred yet)
+                                from_user_id = lead_current_owner.get(lid, "")
 
-                resolved_per_rec.append((rec, to_user_id, from_user_id))
+                resolved_per_rec.append([rec, to_user_id, from_user_id])
+
+            # ── Pass 3: propagate from_user from 'requested' → paired 'approved' ──
+            # When an 'approved' entry has empty from_user but the paired 'requested' entry
+            # (same lead, same to_user, earlier timestamp) has a from_user, copy it over.
+            req_from_by_lead: dict = {}  # lead_id -> [(to_user_id, from_user_id, created_at)]
+            for entry in resolved_per_rec:
+                r, t_uid, f_uid = entry
+                if r.get("action") == "requested" and f_uid:
+                    l = str(r.get("lead_id", ""))
+                    req_from_by_lead.setdefault(l, []).append((t_uid, f_uid, r.get("created_at")))
+
+            for entry in resolved_per_rec:
+                r, t_uid, f_uid = entry
+                if r.get("action") in ("approved", "approved_direct") and not f_uid:
+                    l = str(r.get("lead_id", ""))
+                    appr_time = r.get("created_at")
+                    candidates = req_from_by_lead.get(l, [])
+                    for (r_to, r_from, r_time) in candidates:
+                        if (not r_to or r_to == t_uid):  # same target user
+                            if appr_time is None or r_time is None or r_time <= appr_time:
+                                entry[2] = r_from  # propagate from_user
+                                break
 
             # ── Pre-resolve all user IDs into names ──
             all_uids: set = set()
@@ -773,7 +824,7 @@ async def create_reassignment_request(
         update_data = {
             "assigned_to": user_id,  # Assign to requesting user, not target user
             "pending_reassignment": False,
-            "reassignment_status": "approved",
+            "reassignment_status": "direct",
             "reassignment_approved_by": user_id,
             "reassignment_approved_at": get_ist_now(),
             "reassignment_requested_by": user_id,
@@ -919,7 +970,7 @@ async def create_reassignment_request(
                         "reason": reason,
                         "data_code_changed": data_code if data_code else None,
                         "campaign_name_changed": campaign_name if campaign_name else None,
-                        "reassignment_status": "approved",
+                        "reassignment_status": "direct",
                         "timestamp": get_ist_now().isoformat()
                     }
                 }
@@ -931,7 +982,7 @@ async def create_reassignment_request(
         return {
             "message": "Direct reassignment completed successfully",
             "lead_id": lead_id,
-            "status": "approved",
+            "status": "direct",
             "assigned_to": target_user_id
         }
     

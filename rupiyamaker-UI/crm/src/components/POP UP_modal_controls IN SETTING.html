@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Screen Popups</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #050505;
+            --bg-card: #121212;
+            --bg-card-hover: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #f0f0f0;
+            --text-muted: #888;
+            --primary: #4e54c8;
+            --primary-glow: rgba(78, 84, 200, 0.4);
+            --accent: #8f94fb;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1.5rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            background: linear-gradient(to right, #ffffff, #a0a0a0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        /* Card Container */
+        .settings-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .modal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .modal-card:hover {
+            background: var(--bg-card-hover);
+            border-color: #3a3a3a;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .modal-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .modal-card:hover::before {
+            opacity: 1;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .modal-card.warning::before { background: #ffa502; }
+        .modal-card.announcement::before { background: var(--danger); }
+        .modal-card.ticket::before { background: var(--success); }
+        .modal-card.task::before { background: var(--primary); }
+
+        /* Left Side: Info */
+        .card-info {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            width: 25%;
+        }
+
+        .icon-box {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info-titles h3 {
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+
+        .info-titles p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        /* Right Side: Controls */
+        .card-controls {
+            display: flex;
+            align-items: center;
+            gap: 2.5rem;
+            flex-grow: 1;
+            justify-content: flex-end;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        /* Custom Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+        
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Number Input & Selects */
+        .form-input, .form-select {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            border-color: var(--primary);
+        }
+
+        .form-input {
+            width: 90px;
+            text-align: center;
+        }
+
+        /* Hide Number Input Arrows */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield; 
+        }
+
+        .time-input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .form-input:disabled, .form-select:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background: #111;
+        }
+
+        /* Save Button */
+        .btn-save {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px var(--primary-glow);
+            margin-top: 2rem;
+            float: right;
+        }
+
+        .btn-save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--primary-glow);
+        }
+
+        .btn-save:active {
+            transform: translateY(0);
+        }
+
+        /* Sticky Footer Bar */
+        .action-bar {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .status-text {
+            color: var(--success);
+            font-size: 0.9rem;
+            margin-right: 1.5rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .status-text.show {
+            opacity: 1;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="header">
+            <h1>Agent Screen Popups</h1>
+            <p>Configure interaction rules, limits, and reappear logic for agent screen models.</p>
+        </div>
+
+        <div class="settings-grid">
+            
+            <!-- Announcement Modal -->
+            <div class="modal-card announcement">
+                <div class="card-info">
+                    <div class="icon-box" style="color: var(--danger);">📢</div>
+                    <div class="info-titles">
+                        <h3>Announcements</h3>
+                        <p>Company-wide alerts</p>
+                    </div>
+                </div>
+                
+                <div class="card-controls">
+                    <div class="control-group">
+                        <span class="control-label">Force Accept</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="announce-force" checked onchange="toggleLimit('announce')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Max Cut Limit</span>
+                        <input type="number" id="announce-limit" class="form-input" value="0" min="0" disabled title="Disabled when Force Accept is ON">
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Reappear After</span>
+                        <div class="time-input-group">
+                            <input type="number" id="announce-time-val" class="form-input" style="width: 60px;" value="0" min="0" disabled>
+                            <select class="form-select" id="announce-time-unit" disabled>
+                                <option value="seconds" selected>Sec</option>
+                                <option value="minutes">Min</option>
+                                <option value="hours">Hrs</option>
+                                <option value="days">Days</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Warning Modal -->
+            <div class="modal-card warning">
+                <div class="card-info">
+                    <div class="icon-box" style="color: #ffa502;">⚠️</div>
+                    <div class="info-titles">
+                        <h3>Warnings</h3>
+                        <p>Violation or urgent alerts</p>
+                    </div>
+                </div>
+                
+                <div class="card-controls">
+                    <div class="control-group">
+                        <span class="control-label">Force Accept</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="warn-force" onchange="toggleLimit('warn')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Max Cut Limit</span>
+                        <input type="number" id="warn-limit" class="form-input" value="1" min="0">
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Reappear After</span>
+                        <div class="time-input-group">
+                            <input type="number" id="warn-time-val" class="form-input" style="width: 60px;" value="1" min="0">
+                            <select class="form-select" id="warn-time-unit">
+                                <option value="seconds">Sec</option>
+                                <option value="minutes">Min</option>
+                                <option value="hours" selected>Hrs</option>
+                                <option value="days">Days</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Modal -->
+            <div class="modal-card task">
+                <div class="card-info">
+                    <div class="icon-box" style="color: var(--primary);">📋</div>
+                    <div class="info-titles">
+                        <h3>Tasks Prompt</h3>
+                        <p>Pending callbacks & logs</p>
+                    </div>
+                </div>
+                
+                <div class="card-controls">
+                    <div class="control-group">
+                        <span class="control-label">Force Accept</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="task-force" onchange="toggleLimit('task')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Max Cut Limit</span>
+                        <input type="number" id="task-limit" class="form-input" value="2" min="0">
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Reappear After</span>
+                        <div class="time-input-group">
+                            <input type="number" id="task-time-val" class="form-input" style="width: 60px;" value="2" min="0">
+                            <select class="form-select" id="task-time-unit">
+                                <option value="seconds">Sec</option>
+                                <option value="minutes">Min</option>
+                                <option value="hours" selected>Hrs</option>
+                                <option value="days">Days</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ticket Modal -->
+            <div class="modal-card ticket">
+                <div class="card-info">
+                    <div class="icon-box" style="color: var(--success);">🎫</div>
+                    <div class="info-titles">
+                        <h3>Ticket Updates</h3>
+                        <p>Updates on open tickets</p>
+                    </div>
+                </div>
+                
+                <div class="card-controls">
+                    <div class="control-group">
+                        <span class="control-label">Force Accept</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="ticket-force" onchange="toggleLimit('ticket')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Max Cut Limit</span>
+                        <input type="number" id="ticket-limit" class="form-input" value="3" min="0">
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Reappear After</span>
+                        <div class="time-input-group">
+                            <input type="number" id="ticket-time-val" class="form-input" style="width: 60px;" value="4" min="0">
+                            <select class="form-select" id="ticket-time-unit">
+                                <option value="seconds">Sec</option>
+                                <option value="minutes">Min</option>
+                                <option value="hours" selected>Hrs</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="action-bar">
+            <span class="status-text" id="statusMsg">✓ Configuration saved successfully</span>
+            <button class="btn-save" onclick="saveSettings()">Save Configurations</button>
+        </div>
+    </div>
+
+    <script>
+        // JS logic to disable inputs if "Force Accept" is turned ON.
+        function toggleLimit(type) {
+            const isForced = document.getElementById(type + '-force').checked;
+            const limitInput = document.getElementById(type + '-limit');
+            const timeVal = document.getElementById(type + '-time-val');
+            const timeUnit = document.getElementById(type + '-time-unit');
+            
+            if(isForced) {
+                limitInput.disabled = true;
+                timeVal.disabled = true;
+                timeUnit.disabled = true;
+                limitInput.value = '0'; // Can't cut it, so limit is technically 0
+                timeVal.value = '0';
+                timeUnit.value = 'seconds'; // 0 Sec = Immediate
+            } else {
+                limitInput.disabled = false;
+                timeVal.disabled = false;
+                timeUnit.disabled = false;
+            }
+        }
+
+        // Dummy Save logic to simulate saving data for backend developer
+        function saveSettings() {
+            const models = ['announce', 'warn', 'task', 'ticket'];
+            const configData = {};
+
+            models.forEach(type => {
+                configData[type] = {
+                    isForced: document.getElementById(type + '-force').checked,
+                    maxCutLimit: parseInt(document.getElementById(type + '-limit').value) || 0,
+                    reappearTime: parseInt(document.getElementById(type + '-time-val').value) || 0,
+                    reappearUnit: document.getElementById(type + '-time-unit').value
+                };
+            });
+
+            console.log("Settings that should be saved to DB:", configData);
+            
+            // Show Success Msg
+            const msg = document.getElementById('statusMsg');
+            msg.classList.add('show');
+            setTimeout(() => {
+                msg.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

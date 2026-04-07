@@ -1,0 +1,2462 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Management Professional CRM</title>
+    <style>
+        /* Base Reset & Variables */
+        :root {
+            --bg-dark: #000000; --brand-blue: #00aaff; --brand-blue-hover: #0088cc;
+            --text-light: #ffffff; --text-dark: #333333; --pill-bg: #ffffff;
+            --pill-count-bg: #ececec; --pill-count-text: #555555;
+            --header-bg: #ffffff; --modal-bg: #ffffff;
+            --input-border: #e0e0e0; --input-bg: #f9fbfd; --disabled-bg: #f1f5f9;
+            --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --success-green: #2ecc71; --danger-red: #ff4757; --next-blue: #3498db;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: var(--font-family); }
+        body { background-color: var(--bg-dark); color: var(--text-light); min-height: 100vh; }
+
+        /* ----- Main Layout ----- */
+        .container { padding: 20px 30px; max-width: 1600px; margin: 0 auto; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .btn-select { background-color: #0077bb; color: white; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        .btn-select:hover { opacity: 0.9; }
+
+        .btn-create-task { background-color: var(--brand-blue); color: white; border: none; padding: 10px 24px; border-radius: 30px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(0, 170, 255, 0.3); transition: transform 0.2s, background-color 0.2s; }
+        .btn-create-task:hover { transform: translateY(-1px); background-color: var(--brand-blue-hover); }
+
+        /* Filters */
+        .filters-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .status-pills { display: flex; gap: 12px; flex-wrap: wrap; }
+        .pill { background-color: var(--pill-bg); color: var(--brand-blue); border-radius: 30px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: none; transition: all 0.2s; }
+        .pill .count { background-color: var(--pill-count-bg); color: var(--pill-count-text); border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 11px; font-weight: bold; transition: all 0.2s; }
+        .pill.active { background-color: var(--brand-blue); color: white; box-shadow: 0 3px 8px rgba(0, 170, 255, 0.3); }
+        .pill.active .count { background-color: white; color: var(--brand-blue); }
+
+        .search-area { display: flex; align-items: center; gap: 12px; }
+        .filter-dropdown { padding: 8px 16px; border-radius: 20px; border: none; background-color: white; color: var(--brand-blue); font-size: 13px; font-weight: 600; appearance: none; padding-right: 30px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%2300aaff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; outline: none; }
+        .search-box { position: relative; }
+        .search-box input { background-color: transparent; border: 1px solid #444; border-radius: 20px; padding: 8px 16px 8px 36px; color: white; font-size: 13px; width: 280px; outline: none; transition: border-color 0.2s; }
+        .search-box input:focus { border-color: var(--brand-blue); }
+        .search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #666; }
+
+        /* Table */
+        .data-table-wrapper { position: relative; background: transparent; }
+        .data-table-header { background-color: var(--header-bg); border-radius: 4px; display: flex; padding: 12px 15px; align-items: center; margin-bottom: 10px; }
+        .th { color: var(--brand-blue); font-weight: 800; font-size: 13px; text-transform: uppercase; text-align: left; flex: 1; }
+        .th.number { flex: 0 0 40px; }
+        .th.type { flex: 0 0 110px; }
+        .th.created { flex: 1.2; }
+        .th.subject { flex: 2; }
+        .th.record { flex: 1.5; }
+        .th.assigned { flex: 1.5; }
+        .th.status { flex: 0 0 90px; }
+        .th.date { flex: 1.2; }
+
+        .data-table-body { display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
+        .task-row { background-color: #1a1a1a; border: 1px solid #333; border-radius: 6px; display: flex; padding: 12px 15px; align-items: center; transition: background-color 0.2s, border-color 0.2s; animation: slideIn 0.3s ease-out; cursor: pointer; }
+        .task-row:hover { background-color: #222; border-color: #444; }
+        .td { font-size: 13px; color: #ececec; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }
+        .td.number { flex: 0 0 40px; color: #888; font-weight: bold; }
+        .td.type { flex: 0 0 110px; }
+        .td.created { flex: 1.2; }
+        .td.subject { flex: 2; font-weight: 600; color: #fff; }
+        .td.record { flex: 1.5; font-weight: 600;}
+        .td.assigned { flex: 1.5; }
+        .td.status { flex: 0 0 90px; }
+        .td.date { flex: 1.2; }
+
+        .task-type-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+        .badge-callback { background-color: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+        .badge-pendency { background-color: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243, 156, 18, 0.3); }
+        .badge-todo { background-color: rgba(0, 170, 255, 0.15); color: var(--brand-blue); border: 1px solid rgba(0, 170, 255, 0.3); }
+
+        .status-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
+        .sts-pending { background-color: #555; }
+        .sts-complete { background-color: var(--success-green); }
+        .sts-failed { background-color: var(--danger-red); }
+
+        .created-meta-col, .due-meta-col { display: flex; flex-direction: column; gap: 2px; }
+        .created-meta-name { font-weight: 600; color: #00aaff; font-size: 12px; white-space: nowrap; text-overflow:ellipsis; overflow:hidden;}
+        .created-meta-date { font-size: 11px; color: #888; }
+        .due-meta-date { font-weight: 700; color: #fff; font-size: 12px; }
+        .due-meta-time { font-size: 11px; color: #aaa; }
+        .due-overdue { color: #ff6b81; }
+
+        .empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+        .empty-state p { color: var(--brand-blue); font-size: 18px; font-weight: 700; margin-bottom: 5px; }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: all 0.3s ease; backdrop-filter: blur(4px); }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+            .modal-container { background-color: var(--modal-bg); width: 100%; max-width: 700px; max-height: 96vh; border-radius: 12px; position: relative; box-shadow: 0 15px 50px rgba(0,0,0,0.6); transform: scale(0.95) translateY(10px); transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; border: 1px solid rgba(0,0,0,0.1); overflow: hidden; }
+        .modal-overlay.active .modal-container { transform: scale(1) translateY(0); }
+        
+        .modal-body-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px 14px; }
+        .modal-body-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
+        .modal-body-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        .modal-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .modal-title { font-size: 18px; font-weight: 800; color: var(--text-dark); }
+        
+        .task-tabs { display: flex; background-color: #f1f5f9; border-radius: 8px; padding: 3px; gap: 3px; margin-top: 8px; margin-bottom: 12px; }
+        .tab-btn { flex: 1; padding: 8px 0; text-align: center; background: transparent; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; color: #64748b; cursor: pointer; transition: all 0.2s; }
+        .tab-btn.active { background-color: white; color: var(--brand-blue); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .modal-close { position: absolute; top: 20px; right: 20px; background: #f1f5f9; width: 28px; height: 28px; border-radius: 50%; border: none; font-size: 16px; color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; }
+
+        /* Forms */
+        .fieldset { display: none; animation: fadeIn 0.3s; }
+        .fieldset.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .form-row { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 10px; }
+        .form-row.two-col { grid-template-columns: 1fr 1fr;}
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-label { font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .form-control { width: 100%; padding: 8px 12px; border: 1.5px solid #94a3b8; border-radius: 6px; font-size: 13px; color: var(--text-dark); outline: none; background: #fff; font-weight: 600; transition: border-color 0.2s; }
+        .form-control:focus:not(:disabled) { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(0, 170, 255, 0.1); }
+        .form-control:disabled { background-color: var(--disabled-bg); color: #64748b; cursor: not-allowed; border-color: #cbd5e1; font-weight: 600; }
+        textarea.form-control { resize: vertical; min-height: 70px; font-weight: 500;}
+        select.form-control { appearance: none; background-color: #fff; padding-right: 30px; cursor: pointer; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%2300aaff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 10px center; }
+
+        /* Custom Dropdown UI for Records */
+        .custom-dropdown-container { position: relative;}
+        .record-selector-btn { width: 100%; padding: 10px 12px; border: 1.5px dashed #94a3b8; background: linear-gradient(180deg, #fbfdff, #f3f9ff); border-radius: 8px; text-align: left; cursor: pointer; color: var(--brand-blue); font-weight: 600; font-size: 13px; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7); }
+        .record-selector-btn span, .record-selector-btn strong { color: inherit; }
+        .record-selector-btn.selected { border: 1.5px solid #94a3b8; background: linear-gradient(180deg, #ffffff, #f8fbff); color: var(--text-dark); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05); border-style: solid; }
+        .record-clear-btn { display: none; background: #e2e8f0; color: #475569; width: 22px; height: 22px; border-radius: 50%; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+        .record-selector-btn.selected .record-clear-btn { display: inline-flex; }
+        .record-clear-btn:hover { background: #cbd5e1; color: #0f172a; }
+        
+        .dropdown-menu { position: absolute; top: calc(100% + 6px); left: 0; width: 100%; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 10px; box-shadow: 0 15px 30px rgba(15,23,42,0.12); z-index: 50; display: none; overflow: hidden; flex-direction: column;}
+        .dropdown-menu.active { display: flex; }
+        .dropdown-search { border: none; border-bottom: 1.5px solid #e2e8f0; border-radius: 0; padding: 12px 14px; font-size: 13px;}
+        .dropdown-list { max-height: 180px; overflow-y: auto; list-style: none; }
+        .dropdown-list li { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s; color: #0f172a; flex-wrap: wrap; }
+        .dropdown-list li:hover { background: #f8fafc; }
+        .dropdown-list li:last-child { border-bottom: none; }
+        .dropdown-list li strong { color: #0f172a; font-size: 13px;}
+        .dropdown-list li div { color: #475569; font-size: 11px; }
+
+        .tag-lead { background: rgba(0, 170, 255, 0.1); color: #00aaff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .tag-login { background: rgba(243, 156, 18, 0.1); color: #f39c12; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+
+        .assignees-container { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px; border: 1.5px solid #94a3b8; border-radius: 8px; background: #fff; min-height: 42px; align-items:center; }
+        .user-tag { background-color: #eef2f6; border: 1px solid #d1d9e6; color: #334155; padding: 4px 10px 4px 6px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+        .user-tag .avatar { background-color: var(--brand-blue); color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 10px; font-weight: 800; }
+
+        .schedule-line-grid { display: grid; gap: 12px; grid-template-columns: 1.2fr 1fr; align-items: start; }
+        .schedule-line-grid.has-repeat { grid-template-columns: 1.2fr 1fr 0.9fr; }
+        .schedule-field { position: relative; min-width: 0; }
+        .schedule-select-btn { width: 100%; border: 1.5px solid #94a3b8; background: #fff; color: #0f172a; min-height: 42px; border-radius: 8px; padding: 0 12px; font-size: 13px; font-weight: 700; text-align: left; cursor: pointer; transition: border-color 0.2s;}
+        .schedule-select-btn:hover, .schedule-select-btn:focus { border-color: var(--brand-blue); }
+        .schedule-date-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px;}
+        .schedule-date-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #fff; border: 1px solid #dbeafe; border-radius: 12px; box-shadow: 0 15px 30px rgba(15, 23, 42, 0.12); padding: 8px; z-index: 62; display: none; }
+        .schedule-date-menu.active { display: block; }
+        .schedule-date-option { width: 100%; border: none; background: transparent; border-radius: 8px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; text-align: left; }
+        .schedule-date-option:hover, .schedule-date-option.active { background: #eff6ff; }
+        .schedule-date-option-title { font-size: 12px; font-weight: 800; color: #0f172a; }
+        .schedule-date-option-meta { font-size: 10px; color: #64748b; }
+        .schedule-search-shell { position: relative; }
+        .schedule-search-input { min-height: 42px !important; border: 1.5px solid #94a3b8; padding-right: 30px; font-weight: 700 !important;}
+        .schedule-search-input:focus { border-color: var(--brand-blue) !important; }
+        .schedule-input-chevron { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: #eff6ff; color: #0284c7; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+        .schedule-repeat-select { min-height: 42px !important; border: 1.5px solid #94a3b8 !important; padding: 8px 12px !important; font-weight: 700 !important;}
+        .calendar-popover { position: absolute; left: 0; right: 0; background: #fff; border: 1px solid #dbeafe; border-radius: 10px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14); padding: 8px; z-index: 60; display: none; width: 220px; }
+        .calendar-popover.active { display: block; }
+        .calendar-popover.opens-up { bottom: calc(100% + 6px); top: auto; }
+        .calendar-popover:not(.opens-up) { top: calc(100% + 6px); }
+        .time-dropdown { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #fff; border: 1px solid #dbeafe; border-radius: 12px; box-shadow: 0 15px 30px rgba(15, 23, 42, 0.12); padding: 12px; z-index: 60; display: none; }
+        .time-dropdown.active { display: block; }
+        .calendar-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .calendar-nav-btn { width: 22px; height: 22px; border-radius: 50%; border: none; background: #eff6ff; color: #0284c7; font-size: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .calendar-month-label { font-size: 12px; font-weight: 800; color: #0f172a; }
+        .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .calendar-weekdays span { text-align: center; font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; padding-bottom: 2px; }
+        .calendar-day, .calendar-empty { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 11px; }
+        .calendar-day { border: none; background: #f8fafc; color: #334155; cursor: pointer; font-weight: 700; }
+        .calendar-day:hover { background: #e0f2fe; color: #0369a1; }
+        .calendar-day.active { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; box-shadow: 0 2px 6px rgba(2,132,199,0.22); }
+        .calendar-day.today { outline: 1.5px solid #7dd3fc; outline-offset: -1.5px; }
+        .time-dropdown { max-height: 200px; overflow-y: auto; padding: 6px; }
+        .time-option { width: 100%; border: none; background: transparent; padding: 8px 10px; border-radius: 6px; text-align: left; font-size: 12px; font-weight: 700; color: #334155; cursor: pointer; }
+        .time-option:hover, .time-option.active { background: #e0f2fe; color: #0369a1; }
+        .time-empty { padding: 10px; font-size: 11px; color: #94a3b8; }
+        /* Schedule section headers */
+        .schedule-section-header { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
+        .schedule-section-header::before { content: ''; display: inline-block; width: 3px; height: 10px; background: var(--brand-blue); border-radius: 2px; }
+
+        /* Action Buttons Area */
+        .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; margin-bottom: 10px;}
+        .action-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+        .btn-create-submit { background-color: var(--brand-blue); color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0, 170, 255, 0.2); }
+        .btn-create-submit:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0, 170, 255, 0.3); background-color: #0099e6; }
+        
+        .btn-schedule-next { background-color: var(--next-blue); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3); }
+        .btn-schedule-next:hover { background-color: #2980b9; transform: translateY(-1px); }
+
+        .btn-complete { background-color: var(--success-green); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+        .btn-complete:hover { background-color: #27ae60; transform: translateY(-1px); }
+
+        .btn-fail { background-color: #fff; color: var(--danger-red); border: 2px solid var(--danger-red); padding: 14px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s;}
+        .btn-fail:hover { background-color: rgba(255, 71, 87, 0.05); transform: translateY(-1px);}
+
+        /* Lower History Section */
+        .modal-history-bottom { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 25px 35px; border-radius: 0 0 12px 12px; display: none; }
+        .mh-header { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; color: #64748b; font-size: 12px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+        .mh-timeline { list-style: none; display: flex; flex-direction: column; gap: 15px; border-left: 2px solid #cbd5e1; margin-left: 6px; padding-left: 15px; max-height: 200px; overflow-y: auto;}
+        .mh-item { position: relative; }
+        .mh-item::before { content: ''; position: absolute; left: -21px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand-blue); border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; }
+        .mh-item-date { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 2px; }
+        .mh-item-text { font-size: 13px; color: #334155; font-style: italic;}
+        .mh-item-type { font-size: 10px; background: #e2e8f0; color: #64748b; padding: 1px 4px; border-radius: 4px; font-weight: 700; margin-left: 5px; }
+
+        /* ============ COMMENTS + HISTORY TABS (Bottom Section) ============ */
+        .task-bottom-tabs-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin-top: 24px; overflow: hidden; }
+        .bottom-tab-header { display: flex; gap: 0; background: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 10px 10px 0 0; }
+        .bottom-tab-btn { padding: 11px 18px; background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 700; color: #94a3b8; border-bottom: 3px solid transparent; margin-bottom: -1px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+        .bottom-tab-btn.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); background: #fff; }
+        .bottom-tab-btn:hover:not(.active) { color: #475569; }
+        .bottom-tab-content { padding: 14px; }
+
+        /* History Table */
+        .history-table-wrap { border-radius: 12px; border: 1px solid #dbeafe; overflow: hidden; background: #fff; }
+        .history-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+        .history-table thead tr { background: linear-gradient(135deg, #e8f4fd, #dbeafe); }
+        .history-table th { padding: 12px 12px; text-align: left; font-size: 11px; font-weight: 800; color: #1e40af; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 2px solid #bfdbfe; white-space: nowrap; }
+        .history-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+        .history-table tbody tr:hover { background: #f0f9ff; }
+        .history-table tbody tr:last-child { border-bottom: none; }
+        .history-table td { padding: 12px; color: #334155; vertical-align: top; word-break: break-word; }
+        .ht-status-created { display: inline-block; background: #dbeafe; color: #2563eb; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .ht-status-completed { display: inline-block; background: #dcfce7; color: #16a34a; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .ht-status-reopened { display: inline-block; background: #fef3c7; color: #d97706; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .ht-status-failed { display: inline-block; background: #fee2e2; color: #dc2626; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .ht-status-comment { display: inline-block; background: #f3e8ff; color: #7c3aed; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .ht-user-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .ht-avatar { background: var(--brand-blue); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0; }
+        .ht-date-cell { font-size: 11px; color: #64748b; white-space: nowrap; }
+        .ht-note-cell { color: #0f172a; line-height: 1.7; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+        .ht-task-note { font-size: 13px; color: #334155; margin-bottom: 8px; font-weight: 600; line-height: 1.65; background: #f8fafc; border-left: 3px solid #cbd5e1; padding: 8px 12px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .ht-note-label { display: inline-flex; margin-right: 8px; background: #e2e8f0; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        .ht-remark-text { display: inline-flex; flex-direction: column; gap: 4px; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #bbf7d0; border-left: 3px solid #22c55e; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #166534; font-weight: 700; line-height: 1.5; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .ht-remark-label { color: #15803d; background: #bbf7d0; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; flex-shrink: 0; align-self: flex-start; margin-bottom: 4px; }
+        .record-hyperlink { color: var(--brand-blue); text-decoration: underline; cursor: pointer; font-weight: 700; }
+        .record-hyperlink:hover { color: #0077bb; }
+        .task-type-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700; margin-left:10px; vertical-align:middle; }
+        .task-type-pill-callback { background:rgba(46,204,113,0.12); color:#16a34a; border:1px solid rgba(46,204,113,0.3); }
+        .task-type-pill-pendency { background:rgba(243,156,18,0.12); color:#b45309; border:1px solid rgba(243,156,18,0.3); }
+        .task-type-pill-todo { background:rgba(0,170,255,0.12); color:#0077bb; border:1px solid rgba(0,170,255,0.3); }
+        .ht-empty { text-align: center; padding: 30px; color: #94a3b8; font-size: 13px; }
+        .history-group-row td { padding: 10px 12px; background: #f8fafc; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; border-top: 2px solid #e2e8f0; }
+
+        /* Comments Section */
+        .comment-add-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .comment-add-label { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .comment-textarea { width: 100%; border: 1.5px solid #94a3b8; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #334155; font-family: var(--font-family); resize: none; min-height: 60px; outline: none; transition: border-color 0.2s; }
+        .comment-textarea:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(0,170,255,0.08); }
+        .comment-submit-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .comment-hint { font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+        .comment-hint kbd { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-family: monospace; }
+        .btn-add-comment { background: #334155; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
+        .btn-add-comment:hover { background: #1e293b; }
+        .comments-list { display: flex; flex-direction: column; gap: 10px; }
+        .comment-item { background: #fff; border: 1px solid #e2e8f0; border-left: 3px solid var(--brand-blue); border-radius: 6px; padding: 10px 14px; }
+        .comment-item-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .comment-author { font-size: 12px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px; }
+        .comment-time { font-size: 11px; color: #94a3b8; }
+        .comment-text { font-size: 13px; color: #475569; line-height: 1.5; }
+
+        /* Reopen Button */
+        .btn-reopen { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; border: none; padding: 13px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(245,158,11,0.25); }
+        .btn-reopen:hover { background: linear-gradient(135deg, #d97706, #b45309); transform: translateY(-1px); }
+
+        /* Remark / Reopen popup modal */
+        .remark-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.25s; backdrop-filter: blur(4px); }
+        .remark-modal-overlay.active { opacity: 1; visibility: visible; }
+        .remark-modal-box { background: #fff; border-radius: 14px; padding: 30px 32px; width: 100%; max-width: 520px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); transform: scale(0.93); transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .remark-modal-overlay.active .remark-modal-box { transform: scale(1); }
+        .remark-modal-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 16px; }
+        .remark-modal-icon.complete-icon { background: #dcfce7; }
+        .remark-modal-icon.fail-icon { background: #fee2e2; }
+        .remark-modal-icon.reopen-icon { background: #fef3c7; }
+        .remark-modal-title { text-align: center; font-size: 17px; font-weight: 800; color: #1e293b; margin-bottom: 5px; }
+        .remark-modal-sub { text-align: center; font-size: 12px; color: #64748b; margin-bottom: 16px; }
+        .remark-textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #94a3b8; border-radius: 6px; font-size: 13px; color: #334155; font-family: var(--font-family); resize: none; min-height: 80px; outline: none; transition: border-color 0.2s; }
+        .remark-textarea:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(0,170,255,0.1); }
+        .remark-textarea.error { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+        .remark-error-msg { color: #ef4444; font-size: 11px; font-weight: 600; margin-top: 5px; display: none; }
+        .remark-reopen-schedule { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+        .remark-schedule-field { display: flex; flex-direction: column; gap: 6px; }
+        .remark-reopen-schedule select { min-height: 42px; padding: 8px 12px; border: 1.5px solid #94a3b8; border-radius: 8px; font-size: 13px; color: #0f172a; font-family: var(--font-family); outline: none; cursor: pointer; background-color: #fff; transition: border-color 0.2s; font-weight: 600;}
+        .remark-reopen-schedule select:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(0,170,255,0.08); }
+        .remark-reopen-schedule select.error { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.08); }
+        .remark-schedule-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; display: block; }
+        .remark-schedule-required { color: #ef4444; }
+        .remark-modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+        .btn-remark-cancel { background: #f1f5f9; color: #64748b; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .btn-remark-cancel:hover { background: #e2e8f0; }
+        .btn-remark-confirm { border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; color: #fff; transition: all 0.2s; }
+        .btn-remark-confirm.complete { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .btn-remark-confirm.fail { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .btn-remark-confirm.reopen { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .btn-remark-confirm:hover { transform: translateY(-1px); opacity: 0.92; }
+
+        /* ===== DEVELOPER NOTES MODAL ===== */
+        .devnotes-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); display: flex; justify-content: center; align-items: center; z-index: 1800; opacity: 0; visibility: hidden; transition: all 0.25s; backdrop-filter: blur(4px); }
+        .devnotes-modal-overlay.active { opacity: 1; visibility: visible; }
+        .devnotes-modal-box { background: #0f172a; color: #e2e8f0; border-radius: 14px; padding: 28px 30px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); transform: scale(0.93); transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 1px solid #1e293b; }
+        .devnotes-modal-overlay.active .devnotes-modal-box { transform: scale(1); }
+        .devnotes-modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .devnotes-modal-title { font-size: 17px; font-weight: 800; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
+        .devnotes-modal-sub { font-size: 12px; color: #64748b; margin-top: 3px; }
+        .devnotes-close { background: #1e293b; border: none; color: #94a3b8; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .devnotes-close:hover { background: #334155; color: #fff; }
+        .devnotes-rule { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+        .devnotes-rule-num { display: inline-flex; align-items: center; justify-content: center; background: var(--brand-blue); color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 10px; font-weight: 800; margin-right: 8px; flex-shrink: 0; }
+        .devnotes-rule-title { font-size: 13px; font-weight: 800; color: #7dd3fc; display: flex; align-items: center; margin-bottom: 6px; }
+        .devnotes-rule-body { font-size: 12px; color: #94a3b8; line-height: 1.7; padding-left: 28px; }
+        .devnotes-rule-body strong { color: #e2e8f0; }
+        .btn-dev-notes { background: #1e293b; color: #7dd3fc; border: 1px solid #334155; padding: 9px 18px; border-radius: 30px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+        .btn-dev-notes:hover { background: #334155; color: #e0f2fe; transform: translateY(-1px); }
+
+        /* ===== PREVIEW / REFERENCE MODAL ===== */
+        .preview-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 1500; opacity: 0; visibility: hidden; transition: all 0.3s; backdrop-filter: blur(4px); }
+        .preview-modal-overlay.active { opacity: 1; visibility: visible; }
+        .preview-modal-container { background: #fff; width: 100%; max-width: 820px; max-height: 94vh; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+        .preview-modal-overlay.active .preview-modal-container { transform: scale(1); }
+        .preview-modal-header { padding: 20px 28px 0; background: linear-gradient(135deg, #1e293b, #334155); color: #fff; }
+        .preview-modal-header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .preview-modal-title { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+        .preview-modal-subtitle { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .preview-modal-close { background: rgba(255,255,255,0.1); border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .preview-type-tabs { display: flex; gap: 0; }
+        .preview-type-tab { padding: 10px 20px; background: transparent; border: none; color: #94a3b8; font-size: 13px; font-weight: 700; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .preview-type-tab.active { color: #fff; border-bottom-color: var(--brand-blue); }
+        .preview-modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px 28px; }
+        .preview-section-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; margin-top: 20px; }
+        .preview-section-label:first-child { margin-top: 0; }
+        .preview-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .preview-field { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+        .preview-field-name { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+        .preview-field-value { font-size: 13px; font-weight: 600; color: #334155; }
+        .preview-field.full { grid-column: 1 / -1; }
+        .preview-note-box { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #92400e; font-weight: 600; margin-bottom: 10px; display: flex; gap: 6px; align-items: flex-start; }
+
+        /* === View Toggle (Me / Others / All) === */
+        .view-toggle-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .view-toggle-info { display: flex; align-items: center; gap: 8px; }
+        .view-toggle-role { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: #1e293b; border-radius: 20px; }
+        .view-toggle-role-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; }
+        .view-toggle-role-name { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
+        .view-toggle-group { display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 3px; gap: 2px; }
+        .view-toggle-btn { padding: 6px 16px; border: none; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; background: transparent; color: #666; transition: all 0.2s; }
+        .view-toggle-btn.active { background: var(--brand-blue); color: #fff; box-shadow: 0 2px 8px rgba(0,170,255,0.3); }
+        .view-toggle-btn:hover:not(.active) { color: #aaa; }
+        .view-toggle-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+
+        /* === Attachment Zone === */
+        .attach-zone { border: 1.5px dashed #bfdbfe; border-radius: 8px; padding: 7px 10px; background: linear-gradient(180deg, #fbfdff, #f4f9ff); }
+        .attach-zone-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .attach-zone-text { flex: 1; display: flex; flex-direction: column; }
+        .attach-zone-label { font-size: 12px; font-weight: 800; color: #334155; }
+        .attach-btn-add { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; border: none; padding: 5px 11px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+        .attach-btn-add:hover { background: var(--brand-blue-hover); }
+        .attach-file-input { display: none; }
+        .attach-files-list { display: flex; flex-direction: column; gap: 4px; }
+        .attach-empty { display: none; }
+        .attach-file-item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; width: 100%; overflow: hidden; }
+        .attach-file-preview { display: none; }
+        .attach-file-thumb { display: none; }
+        .attach-file-icon { display: none; }
+        .attach-file-meta { display: flex; flex-direction: row; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+        .attach-file-format { align-self: center; background: #eff6ff; color: #0284c7; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .attach-file-name { font-size: 12px; color: #334155; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+        .attach-file-size { font-size: 10px; color: #94a3b8; margin-left: auto; margin-right: 6px;}
+        .attach-file-actions { display: flex; gap: 6px; align-items: center; margin-left: auto;}
+        .attach-file-action { border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 800; cursor: pointer; min-width: auto; }
+        .attach-file-action:hover { background: #e2e8f0; }
+        .attach-file-remove { width: 22px; height: 22px; background: #ef4444; color: #fff; border: none; border-radius: 50%; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: 800; line-height: 1; }
+
+        @media (max-width: 768px) {
+            .schedule-line-grid, .schedule-line-grid.has-repeat { grid-template-columns: 1fr; }
+            .attach-file-item { grid-template-columns: 48px 1fr; }
+            .attach-file-actions { grid-column: 2 / 3; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="top-bar" style="justify-content:flex-end;">
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button class="btn-dev-notes" onclick="openDevNotesModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Developer Notes
+                </button>
+                <button class="btn-create-task" onclick="openModalNew()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Create Task
+                </button>
+            </div>
+        </div>
+
+        <!-- View Toggle Bar -->
+        <div class="view-toggle-bar">
+            <div class="view-toggle-info">
+                <div class="view-toggle-role">
+                    <div class="view-toggle-role-dot"></div>
+                    <span class="view-toggle-role-name" id="role-label">Manager</span>
+                </div>
+                <span style="font-size:12px;color:#555;">Logged in as <strong style="color:#00aaff;">SONU SHARMA</strong></span>
+            </div>
+            <div class="view-toggle-group" id="view-toggle-group">
+                <button class="view-toggle-btn active" onclick="switchViewFilter('me', this)">👤 My</button>
+                <button class="view-toggle-btn" onclick="switchViewFilter('others', this)">👥 Others</button>
+                <button class="view-toggle-btn" onclick="switchViewFilter('all', this)">📋 All</button>
+            </div>
+        </div>
+
+        <div class="filters-section">
+            <div class="status-pills">
+                <button class="pill active" onclick="setFilter('today', this)">Due Today <span class="count" id="count-today">0</span></button>
+                <button class="pill" onclick="setFilter('upcoming', this)">Upcoming <span class="count" id="count-upcoming">0</span></button>
+                <button class="pill" onclick="setFilter('overdue', this)">Overdue <span class="count" id="count-overdue" style="background:#555;color:white;">0</span></button>
+                <button class="pill" onclick="setFilter('complete', this)">Complete <span class="count" id="count-complete">0</span></button>
+                <button class="pill" onclick="setFilter('failed', this)">Failed <span class="count" id="count-failed">0</span></button>
+                <button class="pill" onclick="setFilter('all', this)">All Tasks <span class="count" id="count-all">0</span></button>
+            </div>
+            <div class="search-area">
+                <select class="filter-dropdown" id="task-type-filter" onchange="setTaskTypeFilter(this.value)">
+                    <option value="all">All Task Types</option>
+                    <option value="callback">Callback</option>
+                    <option value="pendency">Pendency</option>
+                    <option value="todo">To-Do</option>
+                </select>
+                <div class="search-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" placeholder="Search tasks...">
+                </div>
+            </div>
+        </div>
+
+        <div class="data-table-wrapper">
+            <div class="data-table-header">
+                <div class="th number">#</div>
+                <div class="th type">TYPE</div>
+                <div class="th created">CREATED INFO</div>
+                <div class="th subject">OBJECTIVE / SUBJECT</div>
+                <div class="th record">RECORD/LEAD</div>
+                <div class="th assigned">ASSIGNED TO</div>
+                <div class="th status" id="th-status" style="display:none;">STATUS</div>
+                <div class="th date">DUE DATE & TIME</div>
+            </div>
+            <div class="data-table-body" id="task-list"></div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Task Modal -->
+    <div class="modal-overlay" id="taskModal">
+        <div class="modal-container">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            
+            <div class="modal-body-scroll">
+                <div class="modal-title-row">
+                    <div class="modal-title" id="modal-main-title">Create New Task</div>
+                </div>
+
+                <div class="task-tabs" id="modal-tabs">
+                    <button class="tab-btn active" id="tab-callback" type="button" onclick="switchTheme('callback', this)">📞 Callback</button>
+                    <button class="tab-btn" id="tab-pendency" type="button" onclick="switchTheme('pendency', this)">⏳ Pendency</button>
+                    <button class="tab-btn" id="tab-todo" type="button" onclick="switchTheme('todo', this)">📝 To-Do</button>
+                </div>
+
+                <form id="task-form" onsubmit="event.preventDefault(); submitTask();">
+                    
+                    <!-- INPUT FORMAT: Created Meta -->
+                    <div class="form-row two-col">
+                        <div class="form-group">
+                            <label class="form-label">Created Date & Time</label>
+                            <input type="text" class="form-control" id="meta-date" disabled value="">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Created By</label>
+                            <input type="text" class="form-control" id="meta-by" disabled value="SONU SHARMA">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" id="record-label">Who to call? (Target Record)</label>
+                            <div class="custom-dropdown-container">
+                                <button type="button" class="record-selector-btn" id="recordBtn" onclick="toggleDropdown()">
+                                    <span id="recordBtnText" style="display:flex; align-items:center; gap: 8px; flex:1;">Click to select Lead/Record...</span>
+                                    <span class="record-clear-btn" id="recordClearBtn" onclick="clearSelectedRecord(event)">×</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                                <input type="hidden" id="targetRecordValue" value="">
+                                <input type="hidden" id="targetRecordType" value="">
+                                <input type="hidden" id="targetRecordNumber" value="">
+                                
+                                <div class="dropdown-menu" id="recordDropdown">
+                                    <input type="text" class="form-control dropdown-search" id="recordSearchInput" placeholder="Search by name or number..." oninput="filterRecordDropdown(this.value)">
+                                    <ul class="dropdown-list" id="recordDropdownList">
+                                        <li data-name="KRISHNENDU MISHRA" data-number="9876543210" onclick="selectRecord('KRISHNENDU MISHRA', 'Lead', '9876543210')"><span class="tag-lead">Lead</span> <span style="font-weight:700;color:#0f172a;">KRISHNENDU MISHRA</span> <span style="color:#64748b;font-size:12px;margin-left:6px;">9876543210</span></li>
+                                        <li data-name="Rohan Sharma" data-number="9812345678" onclick="selectRecord('Rohan Sharma', 'Login', '9812345678')"><span class="tag-login">Login</span> <span style="font-weight:700;color:#0f172a;">Rohan Sharma</span> <span style="color:#64748b;font-size:12px;margin-left:6px;">9812345678</span></li>
+                                        <li data-name="Priya Singh" data-number="9901122334" onclick="selectRecord('Priya Singh', 'Lead', '9901122334')"><span class="tag-lead">Lead</span> <span style="font-weight:700;color:#0f172a;">Priya Singh</span> <span style="color:#64748b;font-size:12px;margin-left:6px;">9901122334</span></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fields-callback" class="fieldset active">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Quick Note</label>
+                                <textarea class="form-control" id="cb-note" placeholder="Enter notes or callback details..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fields-pendency" class="fieldset">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">What is Pending? (Document/Details)</label>
+                                <textarea class="form-control" id="pd-subject" placeholder="Describe the pending items..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fields-todo" class="fieldset">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Task Subject</label>
+                                <input type="text" class="form-control" id="td-subject" placeholder="Enter task title">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control" id="td-desc" placeholder="Details about the task..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attachments Section — Pendency aur To-Do ke liye -->
+                    <div id="attach-section" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">📎 Attachments</label>
+                                <div class="attach-zone" id="attach-zone">
+                                    <div class="attach-zone-top">
+                                        <div class="attach-zone-text">
+                                            <div class="attach-zone-label">Attach files</div>
+                                        </div>
+                                        <button type="button" class="attach-btn-add" onclick="document.getElementById('attach-file-input').click()">＋ Add</button>
+                                        <input type="file" id="attach-file-input" class="attach-file-input" multiple onchange="handleAttachInput(this)">
+                                    </div>
+                                    <div class="attach-files-list" id="attach-files-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <div class="schedule-line-grid" id="schedule-ui-box">
+                                <div class="schedule-field">
+                                    <div class="schedule-section-header">📅 Schedule Date</div>
+                                    <input type="hidden" id="task-date" value="">
+                                    <button type="button" class="schedule-select-btn" id="task-date-display" onclick="toggleDateMenu()"><span class="schedule-date-value"><span id="task-date-display-text">Select date</span><span>▾</span></span></button>
+                                    <div class="schedule-date-menu" id="task-date-menu">
+                                        <button type="button" class="schedule-date-option" data-date-mode="today" onclick="setQuickDate('today', event)">
+                                            <span>
+                                                <div class="schedule-date-option-title">Today</div>
+                                                <div class="schedule-date-option-meta" id="task-date-today-meta"></div>
+                                            </span>
+                                            <span>•</span>
+                                        </button>
+                                        <button type="button" class="schedule-date-option" data-date-mode="tomorrow" onclick="setQuickDate('tomorrow', event)">
+                                            <span>
+                                                <div class="schedule-date-option-title">Tomorrow</div>
+                                                <div class="schedule-date-option-meta" id="task-date-tomorrow-meta"></div>
+                                            </span>
+                                            <span>•</span>
+                                        </button>
+                                        <button type="button" class="schedule-date-option" data-date-mode="custom" onclick="setQuickDate('custom', event)">
+                                            <span>
+                                                <div class="schedule-date-option-title">Custom</div>
+                                                <div class="schedule-date-option-meta">Open calendar</div>
+                                            </span>
+                                            <span>›</span>
+                                        </button>
+                                    </div>
+                                    <div class="calendar-popover" id="task-date-picker">
+                                        <div class="calendar-toolbar">
+                                            <button type="button" class="calendar-nav-btn" onclick="changeCalendarMonth(-1)">‹</button>
+                                            <div class="calendar-month-label" id="calendar-month-label">Month</div>
+                                            <button type="button" class="calendar-nav-btn" onclick="changeCalendarMonth(1)">›</button>
+                                        </div>
+                                        <div class="calendar-weekdays">
+                                            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                                        </div>
+                                        <div class="calendar-grid" id="calendar-grid"></div>
+                                    </div>
+                                </div>
+                                <div class="schedule-field">
+                                    <div class="schedule-section-header">⏰ Schedule Time</div>
+                                    <div class="schedule-search-shell">
+                                        <input type="text" class="form-control schedule-search-input" id="task-time" placeholder="Select time" autocomplete="off" onfocus="openTimeDropdown()" oninput="filterTimeDropdown(this.value)">
+                                        <button type="button" class="schedule-input-chevron" onclick="toggleTimeDropdown(event)">▾</button>
+                                    </div>
+                                    <div class="time-dropdown" id="task-time-dropdown"></div>
+                                </div>
+                                <div class="schedule-field" id="repeat-field-wrap" style="display:none;">
+                                    <select class="form-control schedule-repeat-select" id="td-repeat">
+                                        <option>Don't repeat</option>
+                                        <option>Daily</option>
+                                        <option>Weekly</option>
+                                        <option>Monthly</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Assigned To</label>
+                            <div class="assignees-container" id="assignee-list-ui">
+                                <!-- JS driven -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="currentTaskType" value="callback">
+                    <input type="hidden" id="editingTaskId" value="">
+
+                    <div class="modal-actions">
+                        <button type="submit" class="btn-create-submit" id="btn-submit">Create Task</button>
+                        
+                        <div id="action-grid-edit" style="display:none;">
+                            <!-- callback/pendency: Complete + Schedule Next side by side -->
+                            <div id="btn-row-next" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                <button type="button" class="btn-complete" id="btn-complete" onclick="openRemarkModal('complete')">Mark Complete ✔</button>
+                                <button type="button" class="btn-schedule-next" id="btn-schedule-next" onclick="markNextFlow()">Schedule Next ➡️</button>
+                            </div>
+                            <!-- todo: Complete + Failed side by side -->
+                            <div id="btn-row-todo" style="display:none; grid-template-columns:1fr 1fr; gap:12px;">
+                                <button type="button" class="btn-complete" onclick="openRemarkModal('complete')">Mark Complete ✔</button>
+                                <button type="button" class="btn-fail" onclick="openRemarkModal('fail')">Mark as Failed ❌</button>
+                            </div>
+                        </div>
+                        
+                        <div id="action-grid-reopen" style="display:none;">
+                            <button type="button" class="btn-reopen" onclick="openRemarkModal('reopen')">🔄 Reopen Task</button>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Tabs: Comments + History (for ToDo) OR just History (for Callback/Pendency) -->
+                    <div class="task-bottom-tabs-section" id="task-bottom-tabs-section" style="display:none;">
+                        <div class="bottom-tab-header" id="bottom-tab-header">
+                            <!-- Tabs injected by JS -->
+                        </div>
+                        <div class="bottom-tab-content" id="bottom-tab-content">
+                            <!-- Content injected by JS -->
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Developer Notes Modal -->
+    <div class="devnotes-modal-overlay" id="devNotesModal">
+        <div class="devnotes-modal-box">
+            <div class="devnotes-modal-header">
+                <div>
+                    <div class="devnotes-modal-title">🛠️ Developer Notes</div>
+                    <div class="devnotes-modal-sub">Core CRM logical rules &amp; behaviour reference</div>
+                </div>
+                <button class="devnotes-close" onclick="closeDevNotesModal()">×</button>
+            </div>
+            <div class="devnotes-rule">
+                <div class="devnotes-rule-title"><span class="devnotes-rule-num">1</span>Time Input Logic</div>
+                <div class="devnotes-rule-body">Typing <strong>'1'</strong> in the time field restricts the dropdown to exactly <strong>1:00 AM / 1:00 PM</strong> and will <strong>not</strong> jump to 11:00. The filter uses an exact hour-part match — <code>parseInt(query) === parseInt(hourPart)</code>. This prevents amiguous disambiguation when typing single digits.</div>
+            </div>
+            <div class="devnotes-rule">
+                <div class="devnotes-rule-title"><span class="devnotes-rule-num">2</span>Record Search (Naming / Number Lookup)</div>
+                <div class="devnotes-rule-body">The record selector dropdown supports <strong>native inline search</strong> — type any part of the customer name <em>or</em> mobile number and the list filters in real-time. There is no dependency on a separate search endpoint; all filtering happens client-side via <code>data-name</code> and <code>data-number</code> attributes on each list item.</div>
+            </div>
+            <div class="devnotes-rule">
+                <div class="devnotes-rule-title"><span class="devnotes-rule-num">3</span>Remark History Structure</div>
+                <div class="devnotes-rule-body">Every action (Created, Completed, Failed, Reopened) mandatorily stores a remark before proceeding. <strong>To-Do tasks</strong> use a full Description field instead of a short subject — the Description acts as the primary detail node in history. Callback &amp; Pendency use a short subject/note. Each history entry contains: <code>status</code>, <code>note</code> (remark), <code>taskNote</code> (original task detail), <code>user</code>, and <code>dateTime</code>.</div>
+            </div>
+            <div class="devnotes-rule">
+                <div class="devnotes-rule-title"><span class="devnotes-rule-num">4</span>Schedule Next — Queue Behaviour</div>
+                <div class="devnotes-rule-body">Clicking <strong>"Schedule Next ➡️"</strong> on a Callback or Pendency task automatically marks the current task as <strong>Completed</strong> (with note "Next phase scheduled"), then opens a fresh Create form. The new task <strong>inherits the full history</strong> of the parent so the complete lifecycle is preserved in one chain. The <code>_prevTaskIdForNext</code> flag tracks the chain reference.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PREVIEW / DEVELOPER REFERENCE MODAL ===== -->
+    <div class="preview-modal-overlay" id="previewModal">
+        <div class="preview-modal-container">
+            <div class="preview-modal-header">
+                <div class="preview-modal-header-top">
+                    <div>
+                        <div class="preview-modal-title">📖 Developer Reference Guide</div>
+                        <div class="preview-modal-subtitle">Har task type ki complete lifecycle — developer ke liye</div>
+                    </div>
+                    <button class="preview-modal-close" onclick="closePreviewModal()">×</button>
+                </div>
+                <div class="preview-type-tabs" id="preview-type-tabs">
+                    <button class="preview-type-tab active" onclick="switchPreviewTab('callback', this)">📞 Callback</button>
+                    <button class="preview-type-tab" onclick="switchPreviewTab('pendency', this)">⏳ Pendency</button>
+                    <button class="preview-type-tab" onclick="switchPreviewTab('todo', this)">📝 To-Do</button>
+                </div>
+            </div>
+            <div class="preview-modal-body" id="preview-modal-body">
+                <!-- JS will inject content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Remark/Reopen Popup Modal -->
+    <div class="remark-modal-overlay" id="remarkModal">
+        <div class="remark-modal-box">
+            <div class="remark-modal-icon" id="remark-icon">✔️</div>
+            <div class="remark-modal-title" id="remark-title">Mark as Complete</div>
+            <div class="remark-modal-sub" id="remark-sub">Please add a remark before proceeding</div>
+            <textarea class="remark-textarea" id="remark-textarea" placeholder="Type your remark here... (required)"></textarea>
+            <div class="remark-error-msg" id="remark-error">⚠️ Remark is mandatory. Please enter a comment.</div>
+            <div class="remark-reopen-schedule schedule-line-grid" id="remark-reopen-schedule" style="display:none; margin-top:16px;">
+                <div class="schedule-field">
+                    <div class="schedule-section-header" style="color:#475569;">📅 Schedule Date</div>
+                    <input type="hidden" id="remark-reopen-date" value="">
+                    <button type="button" class="schedule-select-btn" id="remark-date-display" onclick="toggleRemarkDateMenu()"><span class="schedule-date-value"><span id="remark-date-display-text">Select date</span><span>▾</span></span></button>
+                    <div class="schedule-date-menu" id="remark-date-menu">
+                        <button type="button" class="schedule-date-option" data-date-mode="today" onclick="setRemarkQuickDate('today', event)">
+                            <span>
+                                <div class="schedule-date-option-title">Today</div>
+                                <div class="schedule-date-option-meta" id="remark-date-today-meta"></div>
+                            </span>
+                            <span>•</span>
+                        </button>
+                        <button type="button" class="schedule-date-option" data-date-mode="tomorrow" onclick="setRemarkQuickDate('tomorrow', event)">
+                            <span>
+                                <div class="schedule-date-option-title">Tomorrow</div>
+                                <div class="schedule-date-option-meta" id="remark-date-tomorrow-meta"></div>
+                            </span>
+                            <span>•</span>
+                        </button>
+                        <button type="button" class="schedule-date-option" data-date-mode="custom" onclick="setRemarkQuickDate('custom', event)">
+                            <span>
+                                <div class="schedule-date-option-title">Custom</div>
+                                <div class="schedule-date-option-meta">Open calendar</div>
+                            </span>
+                            <span>›</span>
+                        </button>
+                    </div>
+                    <div class="calendar-popover" id="remark-date-picker">
+                        <div class="calendar-toolbar">
+                            <button type="button" class="calendar-nav-btn" onclick="changeRemarkCalendarMonth(-1)">‹</button>
+                            <div class="calendar-month-label" id="remark-calendar-month-label">Month</div>
+                            <button type="button" class="calendar-nav-btn" onclick="changeRemarkCalendarMonth(1)">›</button>
+                        </div>
+                        <div class="calendar-weekdays">
+                            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                        </div>
+                        <div class="calendar-grid" id="remark-calendar-grid"></div>
+                    </div>
+                </div>
+                <div class="schedule-field">
+                    <div class="schedule-section-header" style="color:#475569;">⏰ Schedule Time <span style="color:#ef4444;">*</span></div>
+                    <div class="schedule-search-shell">
+                        <input type="text" class="form-control schedule-search-input" id="remark-reopen-time" placeholder="Select time" autocomplete="off" onfocus="openRemarkTimeDropdown()" oninput="filterRemarkTimeDropdown(this.value)">
+                        <button type="button" class="schedule-input-chevron" onclick="toggleRemarkTimeDropdown(event)">▾</button>
+                    </div>
+                    <div class="time-dropdown" id="remark-time-dropdown"></div>
+                </div>
+            </div>
+            <div class="remark-error-msg" id="remark-schedule-error">⚠️ Reschedule time is mandatory. Please select a time.</div>
+            <div class="remark-modal-actions">
+                <button class="btn-remark-cancel" onclick="closeRemarkModal()">Cancel</button>
+                <button class="btn-remark-confirm" id="remark-confirm-btn" onclick="confirmRemark()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentFilter = 'today';
+        let currentViewFilter = 'me';   // 'me' | 'others' | 'all'
+        let currentTaskTypeFilter = 'all';
+        let currentUserRole = 'Manager'; // 'Agent' | 'Manager'
+        let currentUser = 'SONU SHARMA';
+        let remarkCallback = null;
+        let currentRemarkType = '';
+        let activeBottomTab = 'history';
+        window._pendingAttachments = [];
+        
+        const fmtDate = (d) => d.toLocaleDateString("en-US", { day: '2-digit', month: 'short', year: 'numeric' });
+        const fmtShort = (d) => d.toLocaleDateString("en-US", { day: '2-digit', month: 'short' });
+        const fmtDateTime = (d) => d.toLocaleDateString("en-US", { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString("en-US", {hour:'2-digit', minute:'2-digit'});
+        
+        const now = new Date();
+        const strTodayFull = fmtDate(now);
+        const strYdayFull = fmtDate(new Date(new Date().setDate(new Date().getDate() - 1)));
+        const str2daysFull = fmtDate(new Date(new Date().setDate(new Date().getDate() - 2)));
+        const dnow = new Date();
+        const strTmrwFull = fmtDate(new Date(dnow.setDate(dnow.getDate() + 1)));
+
+        let calendarViewDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        const TIME_SLOTS = buildTimeSlots();
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function buildTimeSlots() {
+            let slots = [];
+            for (let hour = 8; hour <= 22; hour++) {
+                for (let minute = 0; minute < 60; minute += 30) {
+                    if (hour === 22 && minute > 0) break;
+                    let slotDate = new Date(2026, 0, 1, hour, minute, 0, 0);
+                    slots.push(slotDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+                }
+            }
+            return slots;
+        }
+
+        function getNearestTimeSlot(baseDate) {
+            let probe = new Date(baseDate.getTime());
+            probe.setSeconds(0, 0);
+            if (probe.getHours() < 8) return '08:00 AM';
+            if (probe.getHours() > 22 || (probe.getHours() === 22 && probe.getMinutes() > 0)) return '10:00 PM';
+            let roundedMinutes = probe.getMinutes() <= 30 ? 30 : 60;
+            if (roundedMinutes === 60) {
+                probe.setHours(probe.getHours() + 1, 0, 0, 0);
+            } else {
+                probe.setMinutes(30, 0, 0);
+            }
+            let candidate = probe.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            return TIME_SLOTS.indexOf(candidate) !== -1 ? candidate : '08:00 AM';
+        }
+
+        function formatScheduleDateLabel(dateStr) {
+            let parsed = new Date(dateStr);
+            if (isNaN(parsed.getTime())) return dateStr;
+            return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function detectDateMode(dateStr) {
+            if (dateStr === strTodayFull) return 'today';
+            if (dateStr === strTmrwFull) return 'tomorrow';
+            return 'custom';
+        }
+
+        function setScheduleQuickButtons(mode) {
+            document.querySelectorAll('.schedule-date-option').forEach(function(btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-date-mode') === mode);
+            });
+        }
+
+        function syncDateOptionMeta() {
+            let todayMeta = document.getElementById('task-date-today-meta');
+            let tomorrowMeta = document.getElementById('task-date-tomorrow-meta');
+            if (todayMeta) todayMeta.textContent = formatScheduleDateLabel(strTodayFull);
+            if (tomorrowMeta) tomorrowMeta.textContent = formatScheduleDateLabel(strTmrwFull);
+        }
+
+        function renderDatePicker() {
+            let monthLabel = document.getElementById('calendar-month-label');
+            let grid = document.getElementById('calendar-grid');
+            if (!monthLabel || !grid) return;
+
+            let year = calendarViewDate.getFullYear();
+            let month = calendarViewDate.getMonth();
+            let firstDay = new Date(year, month, 1);
+            let startDay = firstDay.getDay();
+            let daysInMonth = new Date(year, month + 1, 0).getDate();
+            let selected = document.getElementById('task-date').value;
+            let todayStr = fmtDate(new Date());
+
+            monthLabel.textContent = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+            let html = '';
+            for (let i = 0; i < startDay; i++) {
+                html += '<span class="calendar-empty"></span>';
+            }
+            for (let day = 1; day <= daysInMonth; day++) {
+                let dateObj = new Date(year, month, day);
+                let dateStr = fmtDate(dateObj);
+                let classes = ['calendar-day'];
+                if (dateStr === selected) classes.push('active');
+                if (dateStr === todayStr) classes.push('today');
+                html += '<button type="button" class="' + classes.join(' ') + '" onclick="selectCalendarDate(\'' + dateStr + '\')">' + day + '</button>';
+            }
+            grid.innerHTML = html;
+        }
+
+        function openDatePicker() {
+            let pop = document.getElementById('task-date-picker');
+            if (!pop) return;
+            closeDateMenu();
+            pop.classList.add('active');
+            // Smart positioning: open upwards if near bottom of viewport
+            let trigger = document.getElementById('task-date-display');
+            if (trigger) {
+                let rect = trigger.getBoundingClientRect();
+                let spaceBelow = window.innerHeight - rect.bottom;
+                if (spaceBelow < 260) {
+                    pop.classList.add('opens-up');
+                } else {
+                    pop.classList.remove('opens-up');
+                }
+            }
+            renderDatePicker();
+        }
+
+        function closeDatePicker() {
+            let pop = document.getElementById('task-date-picker');
+            if (pop) pop.classList.remove('active');
+        }
+
+        function toggleDatePicker() {
+            let pop = document.getElementById('task-date-picker');
+            if (!pop) return;
+            if (pop.classList.contains('active')) {
+                closeDatePicker();
+            } else {
+                openDatePicker();
+            }
+        }
+
+        function changeCalendarMonth(offset) {
+            calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + offset, 1);
+            renderDatePicker();
+        }
+
+        function openDateMenu() {
+            let menu = document.getElementById('task-date-menu');
+            if (!menu) return;
+            syncDateOptionMeta();
+            menu.classList.add('active');
+        }
+
+        function closeDateMenu() {
+            let menu = document.getElementById('task-date-menu');
+            if (menu) menu.classList.remove('active');
+        }
+
+        function toggleDateMenu() {
+            let menu = document.getElementById('task-date-menu');
+            if (!menu) return;
+            if (menu.classList.contains('active')) {
+                closeDateMenu();
+            } else {
+                closeDatePicker();
+                openDateMenu();
+            }
+        }
+
+        function setScheduleDate(dateStr, mode) {
+            document.getElementById('task-date').value = dateStr;
+            document.getElementById('task-date-display-text').textContent = formatScheduleDateLabel(dateStr);
+            setScheduleQuickButtons(mode || detectDateMode(dateStr));
+            let parsed = new Date(dateStr);
+            if (!isNaN(parsed.getTime())) {
+                calendarViewDate = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+            }
+            renderDatePicker();
+        }
+
+        function selectCalendarDate(dateStr) {
+            setScheduleDate(dateStr, 'custom');
+            closeDatePicker();
+            closeDateMenu();
+        }
+
+        function setQuickDate(mode, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            if (mode === 'today') {
+                setScheduleDate(strTodayFull, 'today');
+                closeDatePicker();
+                closeDateMenu();
+            } else if (mode === 'tomorrow') {
+                setScheduleDate(strTmrwFull, 'tomorrow');
+                closeDatePicker();
+                closeDateMenu();
+            } else {
+                setScheduleQuickButtons('custom');
+                closeDateMenu();
+                openDatePicker();
+            }
+        }
+
+        function getHourMatch(slot, rawQuery) {
+            let query = (rawQuery || '').trim().toLowerCase();
+            if (!query) return true;
+            let normalized = slot.toLowerCase();
+            if (/^\d{1,2}$/.test(query)) {
+                let hourPart = normalized.split(':')[0];
+                hourPart = String(parseInt(hourPart, 10));
+                return hourPart === String(parseInt(query, 10));
+            }
+            return normalized.indexOf(query) !== -1;
+        }
+
+        function renderTimeDropdown(filter) {
+            let dropdown = document.getElementById('task-time-dropdown');
+            if (!dropdown) return;
+            let query = (filter || '').trim().toLowerCase();
+            let current = document.getElementById('task-time').value;
+            let matches = TIME_SLOTS.filter(function(slot) { return getHourMatch(slot, query); });
+            if (matches.length === 0) {
+                dropdown.innerHTML = '<div class="time-empty">No matching time slot</div>';
+                return;
+            }
+            dropdown.innerHTML = matches.map(function(slot) {
+                let active = slot === current ? ' active' : '';
+                return '<button type="button" class="time-option' + active + '" onclick="setTaskTime(\'' + slot + '\')">' + slot + '</button>';
+            }).join('');
+        }
+
+        function openTimeDropdown() {
+            let dropdown = document.getElementById('task-time-dropdown');
+            if (!dropdown) return;
+            dropdown.classList.add('active');
+            renderTimeDropdown(document.getElementById('task-time').value);
+        }
+
+        function closeTimeDropdown() {
+            let dropdown = document.getElementById('task-time-dropdown');
+            if (dropdown) dropdown.classList.remove('active');
+        }
+
+        function toggleTimeDropdown(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            let dropdown = document.getElementById('task-time-dropdown');
+            if (!dropdown) return;
+            if (dropdown.classList.contains('active')) {
+                closeTimeDropdown();
+            } else {
+                document.getElementById('task-time').focus();
+                openTimeDropdown();
+            }
+        }
+
+        function filterTimeDropdown(value) {
+            openTimeDropdown();
+            renderTimeDropdown(value);
+        }
+
+        function setTaskTime(timeValue) {
+            document.getElementById('task-time').value = timeValue;
+            closeTimeDropdown();
+        }
+
+        function resetScheduleDefaults(useEmptyTime) {
+            setScheduleDate(strTodayFull, 'today');
+            setTaskTime(useEmptyTime ? '' : getNearestTimeSlot(new Date()));
+            document.getElementById('td-repeat').value = "Don't repeat";
+            closeDatePicker();
+            closeDateMenu();
+            closeTimeDropdown();
+        }
+
+        function populateRemarkScheduleControls() {
+            // Unused since we moved to custom UI
+        }
+
+        /* ===== REMARK SCHEDULE DROPDOWNS ===== */
+        let remarkCalendarViewDate = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        function openRemarkDateMenu() {
+            let menu = document.getElementById('remark-date-menu');
+            if (!menu) return;
+            let todayMeta = document.getElementById('remark-date-today-meta');
+            let tomorrowMeta = document.getElementById('remark-date-tomorrow-meta');
+            if (todayMeta) todayMeta.textContent = formatScheduleDateLabel(strTodayFull);
+            if (tomorrowMeta) tomorrowMeta.textContent = formatScheduleDateLabel(strTmrwFull);
+            menu.classList.add('active');
+        }
+        function closeRemarkDateMenu() { let menu = document.getElementById('remark-date-menu'); if (menu) menu.classList.remove('active'); }
+        function toggleRemarkDateMenu() {
+            let menu = document.getElementById('remark-date-menu');
+            if(menu && menu.classList.contains('active')) closeRemarkDateMenu(); else { closeRemarkDatePicker(); openRemarkDateMenu(); }
+        }
+        function setRemarkScheduleDate(dateStr, mode) {
+            document.getElementById('remark-reopen-date').value = dateStr;
+            document.getElementById('remark-date-display-text').textContent = formatScheduleDateLabel(dateStr);
+            document.querySelectorAll('#remark-date-menu .schedule-date-option').forEach(function(btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-date-mode') === (mode || detectDateMode(dateStr)));
+            });
+            let parsed = new Date(dateStr);
+            if (!isNaN(parsed.getTime())) remarkCalendarViewDate = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+            renderRemarkDatePicker();
+            clearRemarkScheduleError();
+        }
+        function setRemarkQuickDate(mode, event) {
+            if(event) { event.preventDefault(); event.stopPropagation(); }
+            if (mode === 'today') { setRemarkScheduleDate(strTodayFull, 'today'); closeRemarkDatePicker(); closeRemarkDateMenu(); }
+            else if (mode === 'tomorrow') { setRemarkScheduleDate(strTmrwFull, 'tomorrow'); closeRemarkDatePicker(); closeRemarkDateMenu(); }
+            else {
+                document.querySelectorAll('#remark-date-menu .schedule-date-option').forEach(function(btn) {
+                    btn.classList.toggle('active', btn.getAttribute('data-date-mode') === 'custom');
+                });
+                closeRemarkDateMenu(); openRemarkDatePicker();
+            }
+        }
+        function renderRemarkDatePicker() {
+            let monthLabel = document.getElementById('remark-calendar-month-label');
+            let grid = document.getElementById('remark-calendar-grid');
+            if (!monthLabel || !grid) return;
+            let year = remarkCalendarViewDate.getFullYear(); let month = remarkCalendarViewDate.getMonth();
+            let firstDay = new Date(year, month, 1); let startDay = firstDay.getDay();
+            let daysInMonth = new Date(year, month + 1, 0).getDate();
+            let selected = document.getElementById('remark-reopen-date').value;
+            let todayStr = fmtDate(new Date());
+            monthLabel.textContent = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            let html = '';
+            for (let i = 0; i < startDay; i++) html += '<span class="calendar-empty"></span>';
+            for (let day = 1; day <= daysInMonth; day++) {
+                let dateStr = fmtDate(new Date(year, month, day));
+                let classes = ['calendar-day'];
+                if (dateStr === selected) classes.push('active');
+                if (dateStr === todayStr) classes.push('today');
+                html += '<button type="button" class="' + classes.join(' ') + '" onclick="selectRemarkCalendarDate(\'' + dateStr + '\')">' + day + '</button>';
+            }
+            grid.innerHTML = html;
+        }
+        function openRemarkDatePicker() {
+            let pop = document.getElementById('remark-date-picker');
+            if (pop) {
+                closeRemarkDateMenu();
+                pop.classList.add('active');
+                let trigger = document.getElementById('remark-date-display');
+                if (trigger) {
+                    let rect = trigger.getBoundingClientRect();
+                    let spaceBelow = window.innerHeight - rect.bottom;
+                    if (spaceBelow < 260) { pop.classList.add('opens-up'); }
+                    else { pop.classList.remove('opens-up'); }
+                }
+                renderRemarkDatePicker();
+            }
+        }
+        function closeRemarkDatePicker() { let pop = document.getElementById('remark-date-picker'); if(pop) pop.classList.remove('active'); }
+        function changeRemarkCalendarMonth(offset) { remarkCalendarViewDate = new Date(remarkCalendarViewDate.getFullYear(), remarkCalendarViewDate.getMonth() + offset, 1); renderRemarkDatePicker(); }
+        function selectRemarkCalendarDate(dateStr) { setRemarkScheduleDate(dateStr, 'custom'); closeRemarkDatePicker(); closeRemarkDateMenu(); }
+
+        function renderRemarkTimeDropdown(filter) {
+            let dropdown = document.getElementById('remark-time-dropdown');
+            if (!dropdown) return;
+            let query = (filter || '').trim().toLowerCase();
+            let current = document.getElementById('remark-reopen-time').value;
+            let matches = TIME_SLOTS.filter(function(slot) { return getHourMatch(slot, query); });
+            if (matches.length === 0) { dropdown.innerHTML = '<div class="time-empty">No matching time slot</div>'; return; }
+            dropdown.innerHTML = matches.map(function(slot) {
+                let active = slot === current ? ' active' : '';
+                return '<button type="button" class="time-option' + active + '" onclick="setRemarkTaskTime(\'' + slot + '\')">' + slot + '</button>';
+            }).join('');
+        }
+        function openRemarkTimeDropdown() { let dp = document.getElementById('remark-time-dropdown'); if(!dp) return; dp.classList.add('active'); renderRemarkTimeDropdown(document.getElementById('remark-reopen-time').value); }
+        function closeRemarkTimeDropdown() { let dp = document.getElementById('remark-time-dropdown'); if(dp) dp.classList.remove('active'); }
+        function toggleRemarkTimeDropdown(event) { if(event){event.preventDefault(); event.stopPropagation();} let dp = document.getElementById('remark-time-dropdown'); if(dp && dp.classList.contains('active')) closeRemarkTimeDropdown(); else { document.getElementById('remark-reopen-time').focus(); openRemarkTimeDropdown(); } }
+        function filterRemarkTimeDropdown(value) { openRemarkTimeDropdown(); renderRemarkTimeDropdown(value); }
+        function setRemarkTaskTime(timeValue) { document.getElementById('remark-reopen-time').value = timeValue; closeRemarkTimeDropdown(); clearRemarkScheduleError(); }
+
+        function createDemoAttachment(name, type, label) {
+            let safeLabel = encodeURIComponent(label || name);
+            let imageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+            if (imageTypes.indexOf(type) !== -1) {
+                let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="100%" height="100%" rx="18" fill="#e0f2fe"/><text x="24" y="72" font-family="Segoe UI" font-size="22" font-weight="700" fill="#0369a1">' + (label || 'Preview') + '</text><text x="24" y="112" font-family="Segoe UI" font-size="14" fill="#475569">Demo attachment preview</text></svg>';
+                return { name: name, type: type, size: 61440, dataUrl: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) };
+            }
+            return { name: name, type: type, size: 245760, dataUrl: 'data:text/plain;charset=utf-8,' + safeLabel + '%20demo%20file' };
+        }
+
+        function buildRecordSelectionHtml(name, tag, number) {
+            let safeName = escapeHtml(name);
+            let safeTag = escapeHtml(tag);
+            let safeNumber = escapeHtml(number || '');
+            let escapedName = String(name || '').replace(/'/g, "\\'");
+            let escapedTag = String(tag || '').replace(/'/g, "\\'");
+            let escapedNumber = String(number || '').replace(/'/g, "\\'");
+            return '<span class="tag-' + safeTag.toLowerCase() + '" style="flex-shrink:0;">' + safeTag + '</span>'
+                + '<span class="record-hyperlink" onclick="openLinkedRecord(event, \'' + escapedName + '\', \'' + escapedTag + '\', \'' + escapedNumber + '\')">' + safeName + '</span>'
+                + (safeNumber ? '<span style="color:#64748b;font-size:12px;font-weight:600;margin-left:4px;">' + safeNumber + '</span>' : '');
+        }
+
+        function openLinkedRecord(event, name, tag, number) {
+            if (event) event.stopPropagation();
+            let popup = window.open('', '_blank', 'noopener,noreferrer,width=540,height=520');
+            if (!popup) return;
+            let safeName = escapeHtml(name);
+            let safeTag = escapeHtml(tag);
+            let safeNumber = escapeHtml(number || 'Not available');
+            popup.document.title = safeName;
+            popup.document.head.innerHTML = '<style>body{font-family:Segoe UI,sans-serif;background:#f4f9ff;margin:0;padding:32px;color:#0f172a}.card{max-width:420px;margin:0 auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 18px 40px rgba(15,23,42,.12)}.tag{display:inline-flex;padding:4px 10px;border-radius:999px;background:#e0f2fe;color:#0284c7;font-size:12px;font-weight:800;margin-bottom:14px}.name{font-size:28px;font-weight:800;margin-bottom:6px}.num{font-size:18px;color:#475569;margin-bottom:18px}.meta{font-size:13px;color:#64748b;line-height:1.6}</style>';
+            popup.document.body.innerHTML = '<div class="card"><div class="tag">' + safeTag + '</div><div class="name">' + safeName + '</div><div class="num">' + safeNumber + '</div><div class="meta">Standalone demo record preview. Yahan se actual CRM record page open ho sakta hai.</div></div>';
+        }
+
+        function buildHistory(status, note, user, dateTime, extra) {
+            return Object.assign({ status: status, note: note, user: user, dateTime: dateTime }, extra || {});
+        }
+
+        function buildDemoTask(config) {
+            let recordName = typeof config.record === 'object' ? config.record.name : (config.record || '-');
+            let recordTag = typeof config.record === 'object' ? config.record.tag : (config.recordTag || '');
+            let recordNumber = typeof config.record === 'object' ? (config.record.number || '') : (config.recordNumber || '');
+
+            return {
+                id: config.id,
+                type: config.type,
+                status: config.status,
+                subject: config.subject,
+                detail: config.detail || '',
+                repeat: config.repeat || "Don't repeat",
+                record: recordName,
+                recordTag: recordTag,
+                recordNumber: recordNumber,
+                assignees: config.assignees || ["SONU SHARMA"],
+                dueDate: config.dueDate,
+                dueTime: config.dueTime,
+                createdDate: config.createdDate,
+                createdTime: config.createdTime,
+                createdBy: config.createdBy || 'SONU SHARMA',
+                comments: config.comments || [],
+                history: (config.history || []).map(function(entry) {
+                    return Object.assign({ taskNote: entry.taskNote || config.subject || config.detail || '' }, entry);
+                }),
+                attachments: config.attachments || []
+            };
+        }
+
+        function getInitialData() {
+            tasks = [];
+
+            let records = {
+                krishnendu: { name: "KRISHNENDU MISHRA", tag: "Lead", number: "9876543210" },
+                rohan: { name: "Rohan Sharma", tag: "Login", number: "9812345678" },
+                priya: { name: "Priya Singh", tag: "Lead", number: "9901122334" },
+                naveen: { name: "Naveen Gupta", tag: "Login", number: "9822001144" },
+                aditi: { name: "Aditi Verma", tag: "Lead", number: "9898982211" }
+            };
+
+            // ── 3 Due Today ──────────────────────────────────────────────────────
+            // Task 1: Callback — extensive history (Created → Completed → Reopened → Failed → Completed)
+            tasks.push(buildDemoTask({
+                id: 1001, type: 'callback', status: 'Pending',
+                subject: 'Final close call — confirm premium package.',
+                record: records.krishnendu,
+                assignees: ["SONU SHARMA", "RAHUL D."],
+                dueDate: strTodayFull, dueTime: '03:00 PM',
+                createdDate: str2daysFull, createdTime: '08:00 AM', createdBy: 'SONU SHARMA',
+                attachments: [
+                    createDemoAttachment('policy-summary.pdf', 'application/pdf', 'Policy Summary'),
+                    createDemoAttachment('client-call.mp3', 'audio/mpeg', 'Client Call Recording'),
+                    createDemoAttachment('premium-comparison.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Premium Comparison')
+                ],
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 08:00 AM'),
+                    buildHistory('completed', 'Initial pitch done. Client asked for a family-discussion time period.', 'SONU SHARMA', str2daysFull + ', 03:15 PM'),
+                    buildHistory('reopened', 'Client called back. Spouse has doubts on EMI plan — re-opening for clarification.', 'RAHUL D.', strYdayFull + ', 10:00 AM'),
+                    buildHistory('failed', 'Call not answered. Client unreachable for 3 consecutive attempts.', 'SONU SHARMA', strYdayFull + ', 04:00 PM'),
+                    buildHistory('reopened', 'Client messaged on WhatsApp — wants to reconsider. Reopened with final close slot.', 'SONU SHARMA', strTodayFull + ', 08:30 AM')
+                ]
+            }));
+
+            // Task 2: Pendency — diverse attachments, Created→Completed→Reopened
+            tasks.push(buildDemoTask({
+                id: 1002, type: 'pendency', status: 'Pending',
+                subject: 'Aadhaar + PAN linkage verification pending.',
+                record: records.rohan,
+                assignees: ["RAHUL D.", "SNEHA"],
+                dueDate: strTodayFull, dueTime: '11:00 AM',
+                createdDate: str2daysFull, createdTime: '04:00 PM', createdBy: 'SONU SHARMA',
+                attachments: [
+                    createDemoAttachment('aadhaar-front.png', 'image/png', 'Aadhaar Front'),
+                    createDemoAttachment('kyc-verification.mp4', 'video/mp4', 'KYC Video Clip'),
+                    createDemoAttachment('pan-scan.pdf', 'application/pdf', 'PAN Card Scan'),
+                    createDemoAttachment('bank-statement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Bank Statement')
+                ],
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 04:00 PM'),
+                    buildHistory('completed', 'Initial docs verified. However PAN mismatch found — next phase required.', 'SONU SHARMA', strYdayFull + ', 10:20 AM'),
+                    buildHistory('reopened', 'Customer submitted corrected PAN scan. Re-verify and close ticket.', 'RAHUL D.', strYdayFull + ', 02:00 PM')
+                ]
+            }));
+
+            // Task 3: To-Do — Created→Completed→Reopened→Failed→Reopened
+            tasks.push(buildDemoTask({
+                id: 1003, type: 'todo', status: 'Pending',
+                subject: 'Upload Compliance Audit Report for Branch',
+                detail: 'Compile signed audit checklist, compliance photos, attendance register, and branch summary report. Attach the final PDF and upload to portal before EOD.',
+                record: '-',
+                assignees: ["SONU SHARMA", "HR DEPT"],
+                dueDate: strTodayFull, dueTime: '05:00 PM',
+                createdDate: str2daysFull, createdTime: '09:00 AM', createdBy: 'ADMIN',
+                attachments: [
+                    createDemoAttachment('audit-checklist.pdf', 'application/pdf', 'Audit Checklist'),
+                    createDemoAttachment('branch-photos.mp4', 'video/mp4', 'Branch Photo Evidence'),
+                    createDemoAttachment('attendance-register.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Attendance Register'),
+                    createDemoAttachment('branch-audio-notes.mp3', 'audio/mpeg', 'Inspector Audio Notes')
+                ],
+                history: [
+                    buildHistory('created', '', 'ADMIN', str2daysFull + ', 09:00 AM'),
+                    buildHistory('completed', 'First draft submitted. Sent for manager review.', 'SONU SHARMA', str2daysFull + ', 04:00 PM'),
+                    buildHistory('reopened', 'Manager returned — attendance register page 3 missing. Reopen and re-attach.', 'HR DEPT', strYdayFull + ', 09:30 AM'),
+                    buildHistory('failed', 'Portal was down. Could not upload before EOD deadline.', 'SONU SHARMA', strYdayFull + ', 05:05 PM'),
+                    buildHistory('reopened', 'Portal restored. Extended deadline to today EOD. Reopened for final submission.', 'ADMIN', strTodayFull + ', 09:00 AM')
+                ]
+            }));
+
+            // ── 3 Complete ───────────────────────────────────────────────────────
+            tasks.push(buildDemoTask({
+                id: 2001, type: 'callback', status: 'Complete',
+                subject: 'Pricing recap and discount confirmation call.',
+                record: records.priya,
+                assignees: ["SONU SHARMA"],
+                dueDate: strYdayFull, dueTime: '11:30 AM',
+                createdDate: strYdayFull, createdTime: '10:00 AM', createdBy: 'SONU SHARMA',
+                attachments: [
+                    createDemoAttachment('quote-sheet.pdf', 'application/pdf', 'Quotation Sheet')
+                ],
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', strYdayFull + ', 10:00 AM'),
+                    buildHistory('completed', 'Discount approved and acknowledged. Customer happy. Policy issuance confirmed.', 'SONU SHARMA', strYdayFull + ', 11:30 AM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 2002, type: 'pendency', status: 'Complete',
+                subject: 'IT Portal ticket — login access restoration.',
+                record: records.naveen,
+                assignees: ["SNEHA", "RAHUL D."],
+                dueDate: str2daysFull, dueTime: '04:00 PM',
+                createdDate: str2daysFull, createdTime: '01:00 PM', createdBy: 'SNEHA',
+                attachments: [
+                    createDemoAttachment('it-ticket.pdf', 'application/pdf', 'IT Ticket Copy'),
+                    createDemoAttachment('screen-recording.mp4', 'video/mp4', 'Screen Recording')
+                ],
+                history: [
+                    buildHistory('created', '', 'SNEHA', str2daysFull + ', 01:00 PM'),
+                    buildHistory('completed', 'IT team restored access. Cache cleared, password reset done. Customer informed.', 'RAHUL D.', str2daysFull + ', 04:00 PM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 2003, type: 'todo', status: 'Complete',
+                subject: 'Onboard New Caller Batch — April 2026',
+                detail: 'Complete device allocation, login creation, and CRM walkthrough for the Apr 2026 caller batch of 8 members.',
+                record: '-',
+                assignees: ["SONU SHARMA", "HR DEPT"],
+                dueDate: strYdayFull, dueTime: '02:00 PM',
+                createdDate: str2daysFull, createdTime: '09:00 AM', createdBy: 'ADMIN',
+                attachments: [
+                    createDemoAttachment('onboarding-doc.pdf', 'application/pdf', 'Onboarding Document'),
+                    createDemoAttachment('device-list.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Device Allocation List')
+                ],
+                history: [
+                    buildHistory('created', '', 'ADMIN', str2daysFull + ', 09:00 AM'),
+                    buildHistory('completed', 'Device handover, login setup, and CRM training completed for all 8 callers.', 'SONU SHARMA', strYdayFull + ', 02:00 PM')
+                ]
+            }));
+
+            // ── 3 Failed ─────────────────────────────────────────────────────────
+            tasks.push(buildDemoTask({
+                id: 3001, type: 'todo', status: 'Failed',
+                subject: 'Missed Internal Product Training — Q2 2026',
+                detail: 'Attend and summarise Q2 product feature demo. Share notes with entire sales team before week end.',
+                record: '-',
+                assignees: ["SONU SHARMA"],
+                dueDate: str2daysFull, dueTime: '04:00 PM',
+                createdDate: str2daysFull, createdTime: '09:00 AM', createdBy: 'SONU SHARMA',
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 09:00 AM'),
+                    buildHistory('failed', 'Training missed due to urgent client escalation. Session recording not shared by trainer.', 'SONU SHARMA', str2daysFull + ', 04:10 PM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 3002, type: 'callback', status: 'Failed',
+                subject: 'Last retention call before policy lapse.',
+                record: records.aditi,
+                assignees: ["SONU SHARMA"],
+                dueDate: str2daysFull, dueTime: '05:00 PM',
+                createdDate: str2daysFull, createdTime: '10:30 AM', createdBy: 'SONU SHARMA',
+                attachments: [
+                    createDemoAttachment('retention-script.pdf', 'application/pdf', 'Retention Call Script')
+                ],
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 10:30 AM'),
+                    buildHistory('failed', 'Customer not reachable on all 4 registered numbers. No response to WhatsApp either. Policy will lapse.', 'SONU SHARMA', str2daysFull + ', 05:10 PM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 3003, type: 'pendency', status: 'Failed',
+                subject: 'Notarised affidavit — name correction in policy.',
+                record: records.krishnendu,
+                assignees: ["SNEHA"],
+                dueDate: strYdayFull, dueTime: '06:00 PM',
+                createdDate: str2daysFull, createdTime: '11:00 AM', createdBy: 'SNEHA',
+                attachments: [
+                    createDemoAttachment('affidavit-draft.pdf', 'application/pdf', 'Affidavit Draft'),
+                    createDemoAttachment('name-correction-audio.mp3', 'audio/mpeg', 'Customer Instruction Audio')
+                ],
+                history: [
+                    buildHistory('created', '', 'SNEHA', str2daysFull + ', 11:00 AM'),
+                    buildHistory('failed', 'Customer failed to provide notarised document within deadline. Underwriting has cancelled the request.', 'SNEHA', strYdayFull + ', 06:05 PM')
+                ]
+            }));
+
+            // ── 3 Overdue ────────────────────────────────────────────────────────
+            tasks.push(buildDemoTask({
+                id: 4001, type: 'callback', status: 'Pending',
+                subject: 'Follow-up call on lapsed premium notice.',
+                record: records.priya,
+                assignees: ["SONU SHARMA"],
+                dueDate: strYdayFull, dueTime: '02:00 PM',
+                createdDate: str2daysFull, createdTime: '08:30 AM', createdBy: 'SONU SHARMA',
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 08:30 AM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 4002, type: 'pendency', status: 'Pending',
+                subject: 'PAN card mismatch — corrected scan needed.',
+                record: records.naveen,
+                assignees: ["SNEHA"],
+                dueDate: str2daysFull, dueTime: '05:00 PM',
+                createdDate: str2daysFull, createdTime: '03:30 PM', createdBy: 'SNEHA',
+                history: [
+                    buildHistory('created', '', 'SNEHA', str2daysFull + ', 03:30 PM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 4003, type: 'todo', status: 'Pending',
+                subject: 'Send Revised Commercial Proposal',
+                detail: 'Share updated proposal with revised payment milestones and implementation dates. PDF to be signed and returned by the client.',
+                record: '-',
+                assignees: ["SONU SHARMA"],
+                dueDate: str2daysFull, dueTime: '01:00 PM',
+                createdDate: str2daysFull, createdTime: '09:50 AM', createdBy: 'SONU SHARMA',
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', str2daysFull + ', 09:50 AM')
+                ]
+            }));
+
+            // ── 2 Upcoming ───────────────────────────────────────────────────────
+            tasks.push(buildDemoTask({
+                id: 5001, type: 'callback', status: 'Pending',
+                subject: 'Premium package follow-up — after spouse discussion.',
+                record: records.aditi,
+                assignees: ["SONU SHARMA"],
+                dueDate: strTmrwFull, dueTime: '11:30 AM',
+                createdDate: strTodayFull, createdTime: '11:15 AM', createdBy: 'SONU SHARMA',
+                history: [
+                    buildHistory('created', '', 'SONU SHARMA', strTodayFull + ', 11:15 AM')
+                ]
+            }));
+
+            tasks.push(buildDemoTask({
+                id: 5002, type: 'todo', status: 'Pending',
+                subject: 'Prepare April Incentive Sheet',
+                detail: 'Compile caller-wise productivity, bonus eligibility, and leave adjustments. Submit before payroll review on Apr 10.',
+                record: '-',
+                assignees: ["SONU SHARMA", "HR DEPT"],
+                dueDate: strTmrwFull, dueTime: '04:00 PM',
+                createdDate: strTodayFull, createdTime: '09:30 AM', createdBy: 'ADMIN',
+                history: [
+                    buildHistory('created', '', 'ADMIN', strTodayFull + ', 09:30 AM')
+                ]
+            }));
+        }
+        function renderTasks() {
+            let container = document.getElementById('task-list');
+            container.innerHTML = '';
+            
+            let isAllTasks = (currentFilter === 'all');
+            document.getElementById('th-status').style.display = isAllTasks ? 'flex' : 'none';
+
+            let filteredTasks = tasks.filter(t => {
+                let tDate = new Date(t.dueDate);
+                let todayDate = new Date(strTodayFull);
+                let isToday = (t.dueDate === strTodayFull);
+                let isPast = tDate < todayDate;
+                let isFuture = tDate > todayDate;
+
+                let isMyTask = (t.createdBy === currentUser) || ((t.assignees || []).indexOf(currentUser) !== -1);
+                if (currentViewFilter === 'me' && !isMyTask) return false;
+                if (currentViewFilter === 'others' && isMyTask) return false;
+
+                let typeMatch = (currentTaskTypeFilter === 'all') || (t.type === currentTaskTypeFilter);
+
+                if (currentFilter === 'today') return t.status === 'Pending' && isToday && typeMatch;
+                if (currentFilter === 'upcoming') return t.status === 'Pending' && isFuture && typeMatch;
+                if (currentFilter === 'overdue') return t.status === 'Pending' && isPast && typeMatch;
+                if (currentFilter === 'complete') return t.status === 'Complete' && typeMatch;
+                if (currentFilter === 'failed') return t.status === 'Failed' && typeMatch;
+                return true && typeMatch;
+            });
+
+            let viewTasks = tasks.filter(function(t) {
+                let isMyTask = (t.createdBy === currentUser) || ((t.assignees || []).indexOf(currentUser) !== -1);
+                if (currentViewFilter === 'me') return isMyTask;
+                if (currentViewFilter === 'others') return !isMyTask;
+                return true;
+            });
+            document.getElementById('count-today').innerText = viewTasks.filter(t => t.status === 'Pending' && t.dueDate === strTodayFull).length;
+            document.getElementById('count-upcoming').innerText = viewTasks.filter(t => t.status === 'Pending' && new Date(t.dueDate) > new Date(strTodayFull)).length;
+            document.getElementById('count-overdue').innerText = viewTasks.filter(t => t.status === 'Pending' && new Date(t.dueDate) < new Date(strTodayFull)).length;
+            document.getElementById('count-complete').innerText = viewTasks.filter(t => t.status === 'Complete').length;
+            document.getElementById('count-failed').innerText = viewTasks.filter(t => t.status === 'Failed').length;
+            document.getElementById('count-all').innerText = viewTasks.length;
+
+            if (filteredTasks.length === 0) {
+                container.innerHTML = `<div class="empty-state"><p>No Tasks Found</p></div>`;
+                return;
+            }
+
+            let displayTasks = filteredTasks.slice().sort((taskA, taskB) => {
+                let dateA = new Date(`${taskA.dueDate} ${taskA.dueTime}`);
+                let dateB = new Date(`${taskB.dueDate} ${taskB.dueTime}`);
+                if (currentFilter === 'complete' || currentFilter === 'failed' || currentFilter === 'all') {
+                    return dateB - dateA;
+                }
+                return dateA - dateB;
+            });
+            let serialNum = 1;
+
+            displayTasks.forEach(t => {
+                let badgeType = ""; let badgeLabel = "";
+                if (t.type === 'callback') { badgeType = 'badge-callback'; badgeLabel = '📞 Callback'; }
+                if (t.type === 'pendency') { badgeType = 'badge-pendency'; badgeLabel = '⏳ Pendency'; }
+                if (t.type === 'todo') { badgeType = 'badge-todo'; badgeLabel = '📝 To-Do'; }
+
+                let stsClass = 'sts-pending';
+                if (t.status === 'Complete') stsClass = 'sts-complete';
+                if (t.status === 'Failed') stsClass = 'sts-failed';
+
+                let tagHtml = t.recordTag ? `<span class="tag-${t.recordTag.toLowerCase()}" style="margin-right:6px;">${t.recordTag}</span>` : '';
+                let recordHtml = t.record !== '-'
+                    ? tagHtml + `<span class="record-hyperlink" onclick="openLinkedRecord(event, '${String(t.record).replace(/'/g, "\\'")}', '${String(t.recordTag || '').replace(/'/g, "\\'")}', '${String(t.recordNumber || '').replace(/'/g, "\\'")}')">${t.record}</span>` + (t.recordNumber ? `<span style="color:#94a3b8;font-size:11px;margin-left:6px;">${t.recordNumber}</span>` : '')
+                    : '-';
+                let assigneesHtml = t.assignees.map(a => `<span style="font-size:11px;">👤 ${a}</span>`).join('<br>');
+                let statusTd = isAllTasks ? `<div class="td status"><span class="status-badge ${stsClass}">${t.status}</span></div>` : '';
+                let isOverdue = (t.status === 'Pending' && new Date(t.dueDate) < new Date(strTodayFull));
+
+                let tr = document.createElement('div');
+                tr.className = 'task-row';
+                tr.setAttribute('ondblclick', `openModalEdit(${t.id})`);
+                tr.innerHTML = `
+                    <div class="td number">${serialNum}</div>
+                    <div class="td type"><span class="task-type-badge ${badgeType}">${badgeLabel}</span></div>
+                    <div class="td created">
+                        <div class="created-meta-col">
+                            <span class="created-meta-name">${t.createdBy}</span>
+                            <span class="created-meta-date">${fmtShort(new Date(t.createdDate))}, ${t.createdTime}</span>
+                        </div>
+                    </div>
+                    <div class="td subject">${t.subject}</div>
+                    <div class="td record">${recordHtml}</div>
+                    <div class="td assigned" style="line-height:1.6;">${assigneesHtml}</div>
+                    ${statusTd}
+                    <div class="td date">
+                        <div class="due-meta-col">
+                            <span class="due-meta-date ${isOverdue ? 'due-overdue' : ''}">${t.dueDate === strTodayFull ? 'Today' : fmtShort(new Date(t.dueDate))}</span>
+                            <span class="due-meta-time">${t.dueTime}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(tr);
+                serialNum++;
+            });
+        }
+
+        function setFilter(status, btn) {
+            currentFilter = status;
+            document.querySelectorAll('.pill').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            renderTasks();
+        }
+
+        function setTaskTypeFilter(type) {
+            currentTaskTypeFilter = type;
+            renderTasks();
+        }
+
+        function switchViewFilter(view, btn) {
+            currentViewFilter = view;
+            document.querySelectorAll('.view-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            renderTasks();
+        }
+
+        function switchTheme(type, element) {
+            if (element) {
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                element.classList.add('active');
+            }
+            document.querySelectorAll('.fieldset').forEach(fs => fs.classList.remove('active'));
+            document.getElementById('fields-' + type).classList.add('active');
+            document.getElementById('currentTaskType').value = type;
+            
+            let isEditMode = document.getElementById('editingTaskId').value !== "";
+            let scheduleBox = document.getElementById('schedule-ui-box');
+            let repEl = document.getElementById('td-repeat');
+            let repWrap = document.getElementById('repeat-field-wrap');
+
+            if (type === 'todo') {
+                scheduleBox.classList.add('has-repeat');
+                repWrap.style.display = 'block';
+                document.getElementById('record-label').innerText = "Related to (Optional)";
+            } else {
+                scheduleBox.classList.remove('has-repeat');
+                repWrap.style.display = 'none';
+                repEl.value = "Don't repeat";
+                document.getElementById('record-label').innerText = type === 'callback' ? "Who to call? (Target Record)" : "Associated Record/Customer";
+            }
+
+            let attachSec = document.getElementById('attach-section');
+            if (attachSec) attachSec.style.display = (type === 'pendency' || type === 'todo') ? 'block' : 'none';
+
+            if (isEditMode) {
+                let rowNext = document.getElementById('btn-row-next');
+                let rowTodo = document.getElementById('btn-row-todo');
+                if (type === 'todo') {
+                    rowNext.style.display = 'none';
+                    rowTodo.style.display = 'grid';
+                } else {
+                    rowNext.style.display = 'grid';
+                    rowTodo.style.display = 'none';
+                }
+            }
+        }
+
+        function toggleDropdown() {
+            let menu = document.getElementById('recordDropdown');
+            menu.classList.toggle('active');
+            if (menu.classList.contains('active')) {
+                let si = document.getElementById('recordSearchInput');
+                if (si) { si.value = ''; filterRecordDropdown(''); si.focus(); }
+            }
+        }
+
+        function selectRecord(name, tag, number) {
+            let input = document.getElementById('targetRecordValue');
+            let typeIn = document.getElementById('targetRecordType');
+            let numberIn = document.getElementById('targetRecordNumber');
+            let btnText = document.getElementById('recordBtnText');
+            let btnObj = document.getElementById('recordBtn');
+
+            input.value = name;
+            typeIn.value = tag;
+            numberIn.value = number || '';
+            btnText.innerHTML = buildRecordSelectionHtml(name, tag, number);
+            btnObj.classList.add('selected');
+            document.getElementById('recordDropdown').classList.remove('active');
+            if (document.getElementById('recordSearchInput')) document.getElementById('recordSearchInput').value = '';
+        }
+
+        function filterRecordDropdown(val) {
+            let q = val.trim().toLowerCase();
+            let items = document.querySelectorAll('#recordDropdownList li');
+            items.forEach(function(li) {
+                let name = (li.getAttribute('data-name') || '').toLowerCase();
+                let num = (li.getAttribute('data-number') || '').toLowerCase();
+                li.style.display = (!q || name.includes(q) || num.includes(q)) ? '' : 'none';
+            });
+        }
+
+        function clearSelectedRecord(event) {
+            event.stopPropagation();
+            document.getElementById('targetRecordValue').value = '';
+            document.getElementById('targetRecordType').value = '';
+            document.getElementById('targetRecordNumber').value = '';
+            document.getElementById('recordBtnText').innerHTML = 'Click to select Lead/Record...';
+            document.getElementById('recordBtn').classList.remove('selected');
+            document.getElementById('recordDropdown').classList.remove('active');
+        }
+
+        function renderAssigneesUI(arr) {
+            let c = document.getElementById('assignee-list-ui');
+            c.innerHTML = arr.map(a => `<div class="user-tag"><div class="avatar">${a.charAt(0)}</div>${a}</div>`).join('');
+        }
+
+        function setupCreatedInput(dateStr, timeStr) {
+            document.getElementById('meta-date').value = `${dateStr}, ${timeStr}`;
+            document.getElementById('meta-by').value = `SONU SHARMA`;
+        }
+
+        /* ===== COMMENTS + HISTORY SECTION ===== */
+
+        function renderBottomTabs(taskId) {
+            let task = tasks.find(t => t.id == taskId);
+            if (!task) return;
+
+            let section = document.getElementById('task-bottom-tabs-section');
+            let header = document.getElementById('bottom-tab-header');
+            let content = document.getElementById('bottom-tab-content');
+
+            section.style.display = 'block';
+
+            let histCount = (task.history || []).filter(function(h) { return h.status !== 'comment'; }).length;
+            let cmtCount = (task.comments || []).length;
+
+            header.innerHTML = `
+                <button class="bottom-tab-btn ${activeBottomTab === 'history' ? 'active' : ''}" onclick="switchBottomTab('history', ${taskId})">
+                    📋 History <span style="background:#e2e8f0;color:#64748b;padding:1px 7px;border-radius:20px;font-size:11px;margin-left:4px;">${histCount}</span>
+                </button>
+                <button class="bottom-tab-btn ${activeBottomTab === 'comments' ? 'active' : ''}" onclick="switchBottomTab('comments', ${taskId})">
+                    💬 Comments <span style="background:#e2e8f0;color:#64748b;padding:1px 7px;border-radius:20px;font-size:11px;margin-left:4px;">${cmtCount}</span>
+                </button>
+            `;
+
+            if (activeBottomTab === 'comments') {
+                renderCommentsContent(task, content);
+            } else {
+                renderHistoryTableContent(task, content);
+            }
+        }
+
+        function switchBottomTab(tab, taskId) {
+            activeBottomTab = tab;
+            renderBottomTabs(taskId);
+        }
+
+        function renderHistoryTableContent(task, container) {
+            let rows = (task.history || []).filter(function(h) { return h.status !== 'comment'; }).slice().reverse();
+
+            if (rows.length === 0) {
+                container.innerHTML = `<div class="ht-empty">📭 No history yet for this task.</div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="history-table-wrap">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;">#</th>
+                                <th style="width:96px;">Status</th>
+                                <th>Details &amp; Remark</th>
+                                <th style="width:128px;">User</th>
+                                <th style="width:116px;">Date &amp; Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map((r, i) => {
+                                let cleanRemark = normalizeHistoryRemark(task.type, r.note || '');
+                                let noteHtml = '';
+                                if (r.taskNote) {
+                                    noteHtml += `<div class="ht-task-note"><span class="ht-note-label">Details</span>${escapeHtml(r.taskNote)}</div>`;
+                                }
+                                if (cleanRemark) {
+                                    noteHtml += `<div class="ht-remark-text"><span class="ht-remark-label">Remark</span><span>${escapeHtml(cleanRemark)}</span></div>`;
+                                } else if (!r.taskNote) {
+                                    noteHtml = `<span style="color:#cbd5e1;">—</span>`;
+                                }
+                                return `<tr>
+                                    <td style="text-align:center; color:#94a3b8; font-weight:700; font-size:12px; width:32px;">${i + 1}</td>
+                                    <td>${getHistoryStatusBadge(r.status)}</td>
+                                    <td class="ht-note-cell">${noteHtml}</td>
+                                    <td><div class="ht-user-cell"><div class="ht-avatar">${(r.user || 'S').charAt(0)}</div><span style="font-size:12px;font-weight:600;color:#334155;">${r.user || 'System'}</span></div></td>
+                                    <td class="ht-date-cell">${(r.dateTime || '-').replace(', ', '<br>')}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function normalizeHistoryRemark(taskType, note) {
+            let clean = (note || '').trim();
+            if (!clean || clean === '-') return '';
+            clean = clean.replace(/\s*from Task\s*#\d+/i, '').trim();
+            clean = clean.replace(/^Marked complete\s*[—-]\s*next phase scheduled\.?$/i, 'Next phase scheduled');
+            clean = clean.replace(/^Next phase created\.?$/i, 'Next phase scheduled');
+            if ((taskType === 'callback' || taskType === 'pendency') && /next phase/i.test(clean)) {
+                return 'Next phase scheduled';
+            }
+            return clean;
+        }
+
+        function getHistoryStatusBadge(status) {
+            if (status === 'created') return '<span class="ht-status-created">Created</span>';
+            if (status === 'completed') return '<span class="ht-status-completed">Completed</span>';
+            if (status === 'failed') return '<span class="ht-status-failed">Failed</span>';
+            if (status === 'reopened') return '<span class="ht-status-reopened">Reopened</span>';
+            if (status === 'comment') return '<span class="ht-status-comment">Comment</span>';
+            return `<span class="ht-status-comment">${status}</span>`;
+        }
+
+        function renderCommentsContent(task, container) {
+            let comments = task.comments || [];
+            let taskId = task.id;
+            container.innerHTML = `
+                <div class="comment-add-box">
+                    <div class="comment-add-label">💬 Add Comment</div>
+                    <textarea class="comment-textarea" id="comment-input-${taskId}" placeholder="Type your comment... (Ctrl+Enter to submit)"></textarea>
+                    <div class="comment-submit-row">
+                        <span class="comment-hint">Press <kbd>Ctrl+Enter</kbd> to submit</span>
+                        <button class="btn-add-comment" onclick="submitComment(${taskId})">▶ ADD</button>
+                    </div>
+                </div>
+                <div class="comments-list" id="comments-list-${taskId}">
+                    ${comments.length === 0 ? '<div class="ht-empty">💬 No comments yet.</div>' :
+                        comments.map(c => `
+                            <div class="comment-item">
+                                <div class="comment-item-meta">
+                                    <div class="comment-author"><div class="ht-avatar">${c.user.charAt(0)}</div>${c.user}</div>
+                                    <span class="comment-time">${c.dateTime}</span>
+                                </div>
+                                <div class="comment-text">${c.text}</div>
+                            </div>
+                        `).join('')
+                    }
+                </div>
+            `;
+            let ta = document.getElementById('comment-input-' + taskId);
+            if (ta) {
+                ta.addEventListener('keydown', function(e) {
+                    if (e.ctrlKey && e.key === 'Enter') submitComment(taskId);
+                });
+            }
+        }
+
+        function submitComment(taskId) {
+            let ta = document.getElementById('comment-input-' + taskId);
+            if (!ta || !ta.value.trim()) { if (ta) ta.focus(); return; }
+            let task = tasks.find(t => t.id == taskId);
+            if (!task) return;
+            let dNow = new Date();
+            task.comments = task.comments || [];
+            task.comments.unshift({ user: 'SONU SHARMA', text: ta.value.trim(), dateTime: fmtDateTime(dNow) });
+            ta.value = '';
+            activeBottomTab = 'comments';
+            renderBottomTabs(taskId);
+        }
+
+        /* ===== ATTACHMENT ZONE ===== */
+
+        function handleAttachInput(input) {
+            let files = Array.from(input.files);
+            processAttachFiles(files);
+            input.value = '';
+        }
+
+        function processAttachFiles(files) {
+            files.forEach(function(file) {
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    window._pendingAttachments.push({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        dataUrl: e.target.result
+                    });
+                    renderAttachPreview();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function renderAttachPreview() {
+            let list = document.getElementById('attach-files-list');
+            let zone = document.getElementById('attach-zone');
+            if (!list) return;
+            let attachments = window._pendingAttachments;
+            if (attachments.length === 0) {
+                if (zone) zone.classList.add('is-empty');
+                list.innerHTML = '';
+                return;
+            }
+            if (zone) zone.classList.remove('is-empty');
+            list.innerHTML = attachments.map(function(att, i) {
+                let isImage = att.type && att.type.startsWith('image/');
+                let isVideo = att.type && att.type.startsWith('video/');
+                let sizeStr = att.size > 1048576 ? (att.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(att.size / 1024)) + ' KB';
+                let format = getAttachmentFormat(att);
+                let thumbHtml = isImage
+                    ? '<img class="attach-file-thumb" src="' + att.dataUrl + '" alt="">'
+                    : '<div class="attach-file-icon">' + (isVideo ? '🎬' : getFileIcon(att.type)) + '</div>';
+                let safeName = escapeHtml(att.name);
+                return '<div class="attach-file-item">'
+                    + '<div class="attach-file-preview">' + thumbHtml + '</div>'
+                    + '<div class="attach-file-meta">'
+                    + '<div class="attach-file-format">' + format + '</div>'
+                    + '<span class="attach-file-name" title="' + safeName + '">' + safeName + '</span>'
+                    + '<span class="attach-file-size">' + sizeStr + '</span>'
+                    + '</div>'
+                    + '<div class="attach-file-actions">'
+                    + '<button type="button" class="attach-file-action" onclick="viewAttachment(' + i + ')">View</button>'
+                    + '<button type="button" class="attach-file-action" onclick="downloadAttachment(' + i + ')">Download</button>'
+                    + '<button type="button" class="attach-file-remove" onclick="removeAttachment(' + i + ')" aria-label="Remove">×</button>'
+                    + '</div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        function getAttachmentFormat(att) {
+            let name = att && att.name ? att.name : '';
+            let parts = name.split('.');
+            if (parts.length > 1) return '.' + parts.pop().toLowerCase();
+            if (att && att.type) {
+                let sub = att.type.split('/').pop() || 'file';
+                return '.' + sub.toLowerCase();
+            }
+            return '.file';
+        }
+
+        function getFileIcon(type) {
+            if (!type) return '📎';
+            if (type === 'application/pdf') return '📄';
+            if (type.includes('word') || type.includes('document')) return '📝';
+            if (type.includes('sheet') || type.includes('excel') || type.includes('spreadsheet')) return '📊';
+            if (type.includes('zip') || type.includes('compressed') || type.includes('archive')) return '🗜️';
+            if (type.startsWith('audio/')) return '🎵';
+            return '📎';
+        }
+
+        function removeAttachment(index) {
+            window._pendingAttachments.splice(index, 1);
+            renderAttachPreview();
+        }
+
+        function viewAttachment(index) {
+            let att = window._pendingAttachments[index];
+            if (!att || !att.dataUrl) return;
+            window.open(att.dataUrl, '_blank', 'noopener,noreferrer');
+        }
+
+        function downloadAttachment(index) {
+            let att = window._pendingAttachments[index];
+            if (!att || !att.dataUrl) return;
+            let link = document.createElement('a');
+            link.href = att.dataUrl;
+            link.download = att.name || 'attachment';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        /* ===== REMARK POPUP MODAL ===== */
+        function openRemarkModal(type) {
+            let editId = document.getElementById('editingTaskId').value;
+            currentRemarkType = type;
+
+            let icon = document.getElementById('remark-icon');
+            let title = document.getElementById('remark-title');
+            let sub = document.getElementById('remark-sub');
+            let confirmBtn = document.getElementById('remark-confirm-btn');
+            let reopenSchedule = document.getElementById('remark-reopen-schedule');
+            let ta = document.getElementById('remark-textarea');
+            let scheduleError = document.getElementById('remark-schedule-error');
+            let reopenDate = document.getElementById('remark-reopen-date');
+            let reopenTime = document.getElementById('remark-reopen-time');
+
+            ta.value = '';
+            ta.classList.remove('error');
+            document.getElementById('remark-error').style.display = 'none';
+            scheduleError.style.display = 'none';
+            reopenDate.classList.remove('error');
+            reopenTime.classList.remove('error');
+
+            if (type === 'complete') {
+                icon.innerHTML = '✅'; icon.className = 'remark-modal-icon complete-icon';
+                title.innerText = 'Mark as Complete';
+                sub.innerText = 'Please add a remark before marking this complete.';
+                confirmBtn.className = 'btn-remark-confirm complete';
+                confirmBtn.innerText = 'Mark Complete ✔';
+                reopenSchedule.style.display = 'none';
+                ta.placeholder = 'What was done? Add completion note... (required)';
+            } else if (type === 'fail') {
+                icon.innerHTML = '❌'; icon.className = 'remark-modal-icon fail-icon';
+                title.innerText = 'Mark as Failed';
+                sub.innerText = 'Please add a reason before marking this as failed.';
+                confirmBtn.className = 'btn-remark-confirm fail';
+                confirmBtn.innerText = 'Mark as Failed ❌';
+                reopenSchedule.style.display = 'none';
+                ta.placeholder = 'Why did this task fail? Add reason... (required)';
+            } else if (type === 'reopen') {
+                icon.innerHTML = '🔄'; icon.className = 'remark-modal-icon reopen-icon';
+                title.innerText = 'Reopen Task';
+                sub.innerText = 'Select new schedule and add a reason for reopening.';
+                confirmBtn.className = 'btn-remark-confirm reopen';
+                confirmBtn.innerText = 'Reopen Task 🔄';
+                reopenSchedule.style.display = 'grid';
+                setRemarkScheduleDate(strTodayFull, 'today');
+                setRemarkTaskTime('');
+                ta.placeholder = 'Why are you reopening this task? (required)';
+            }
+
+            document.getElementById('remarkModal').classList.add('active');
+        }
+
+        function closeRemarkModal() {
+            clearRemarkScheduleError();
+            document.getElementById('remarkModal').classList.remove('active');
+        }
+
+        function clearRemarkScheduleError() {
+            let scheduleError = document.getElementById('remark-schedule-error');
+            let reopenDate = document.getElementById('remark-reopen-date');
+            let reopenTime = document.getElementById('remark-reopen-time');
+            if (scheduleError) scheduleError.style.display = 'none';
+            if (reopenDate) reopenDate.classList.remove('error');
+            if (reopenTime) reopenTime.classList.remove('error');
+        }
+
+        function confirmRemark() {
+            let ta = document.getElementById('remark-textarea');
+            let remark = ta.value.trim();
+            if (!remark) {
+                ta.classList.add('error');
+                document.getElementById('remark-error').style.display = 'block';
+                ta.focus();
+                return;
+            }
+
+            let editId = document.getElementById('editingTaskId').value;
+            let task = tasks.find(t => t.id == editId);
+            if (!task) { closeRemarkModal(); return; }
+
+            let dNow = new Date();
+            task.history = task.history || [];
+
+            // Capture the current task subject/note to store alongside remark
+            let taskNote = task.subject || '';
+
+            if (currentRemarkType === 'complete') {
+                task.status = 'Complete';
+                task.history.push({ status: 'completed', note: remark, taskNote: taskNote, user: 'SONU SHARMA', dateTime: fmtDateTime(dNow) });
+                closeRemarkModal();
+                closeModal();
+                renderTasks();
+            } else if (currentRemarkType === 'fail') {
+                task.status = 'Failed';
+                task.history.push({ status: 'failed', note: remark, taskNote: taskNote, user: 'SONU SHARMA', dateTime: fmtDateTime(dNow) });
+                closeRemarkModal();
+                closeModal();
+                renderTasks();
+            } else if (currentRemarkType === 'reopen') {
+                let newDate = document.getElementById('remark-reopen-date').value;
+                let newTime = document.getElementById('remark-reopen-time').value;
+                if (!newTime) {
+                    document.getElementById('remark-reopen-time').classList.add('error');
+                    document.getElementById('remark-schedule-error').style.display = 'block';
+                    document.getElementById('remark-reopen-time').focus();
+                    return;
+                }
+                task.status = 'Pending';
+                task.dueDate = newDate;
+                task.dueTime = newTime;
+                task.history.push({ status: 'reopened', note: remark, taskNote: taskNote, user: 'SONU SHARMA', dateTime: fmtDateTime(dNow) });
+                closeRemarkModal();
+                closeModal();
+                // Auto-switch to the filter where the reopened task now lives
+                let targetFilter = 'today';
+                if (newDate === strTodayFull) targetFilter = 'today';
+                else if (new Date(newDate) > new Date(strTodayFull)) targetFilter = 'upcoming';
+                else targetFilter = 'overdue';
+                currentFilter = targetFilter;
+                document.querySelectorAll('.filters-section .pill').forEach(function(p) {
+                    p.classList.remove('active');
+                    let oc = p.getAttribute('onclick') || '';
+                    if (oc.indexOf("'" + targetFilter + "'") !== -1) p.classList.add('active');
+                });
+                renderTasks();
+            }
+        }
+
+        /* ===== MODAL OPEN/CLOSE ===== */
+        function openModalNew() {
+            document.getElementById('task-form').reset();
+            document.getElementById('editingTaskId').value = "";
+            document.getElementById('modal-main-title').innerText = "Create New Task";
+            
+            let dObj = new Date();
+            setupCreatedInput(fmtDate(dObj), dObj.toLocaleTimeString("en-US", {hour:'2-digit', minute:'2-digit'}));
+
+            document.getElementById('btn-submit').style.display = 'block';
+            document.getElementById('action-grid-edit').style.display = 'none';
+            document.getElementById('action-grid-reopen').style.display = 'none';
+            document.getElementById('task-bottom-tabs-section').style.display = 'none';
+            document.getElementById('modal-tabs').style.display = 'flex';
+
+            renderAssigneesUI(["SONU SHARMA"]);
+            
+            let btnText = document.getElementById('recordBtnText');
+            let btnObj = document.getElementById('recordBtn');
+            btnText.innerHTML = `Click to select Lead/Record...`;
+            btnObj.classList.remove('selected');
+            document.getElementById('targetRecordValue').value = "";
+            document.getElementById('targetRecordType').value = "";
+            document.getElementById('targetRecordNumber').value = "";
+
+            activeBottomTab = 'history';
+            window._pendingAttachments = [];
+            switchTheme('callback', document.getElementById('tab-callback'));
+            resetScheduleDefaults();
+            renderAttachPreview();
+            document.getElementById('taskModal').classList.add('active');
+        }
+
+        function openModalEdit(id) {
+            let task = tasks.find(t => t.id === id);
+            if (!task) return;
+
+            activeBottomTab = 'history';
+            document.getElementById('task-form').reset();
+            document.getElementById('editingTaskId').value = task.id;
+            document.getElementById('modal-main-title').innerText = `View/Edit Application Form`;
+
+            setupCreatedInput(task.createdDate, task.createdTime);
+            renderAssigneesUI(task.assignees);
+
+            // Show task type badge next to title
+            let typeLabels = { callback: '📞 Callback', pendency: '⏳ Pendency', todo: '📝 To-Do' };
+            let typeClasses = { callback: 'task-type-pill-callback', pendency: 'task-type-pill-pendency', todo: 'task-type-pill-todo' };
+            let titleEl = document.getElementById('modal-main-title');
+            titleEl.innerHTML = `View / Edit Task <span class="task-type-pill ${typeClasses[task.type] || ''}">${typeLabels[task.type] || task.type}</span>`;
+
+            let btnText = document.getElementById('recordBtnText');
+            let btnObj = document.getElementById('recordBtn');
+            if (task.record && task.record !== "-") {
+                document.getElementById('targetRecordValue').value = task.record;
+                document.getElementById('targetRecordType').value = task.recordTag;
+                document.getElementById('targetRecordNumber').value = task.recordNumber || '';
+                btnText.innerHTML = buildRecordSelectionHtml(task.record, task.recordTag, task.recordNumber || '');
+                btnObj.classList.add('selected');
+            } else {
+                document.getElementById('targetRecordValue').value = "";
+                document.getElementById('targetRecordNumber').value = "";
+                btnText.innerHTML = `Click to select Lead/Record...`;
+                btnObj.classList.remove('selected');
+            }
+
+            activeBottomTab = 'history';
+            setScheduleDate(task.dueDate, detectDateMode(task.dueDate));
+            setTaskTime(task.dueTime);
+
+            if (task.type === 'callback') document.getElementById('cb-note').value = task.subject;
+            if (task.type === 'pendency') document.getElementById('pd-subject').value = task.subject;
+            if (task.type === 'todo') {
+                document.getElementById('td-subject').value = task.subject;
+                document.getElementById('td-desc').value = task.detail || "";
+                document.getElementById('td-repeat').value = task.repeat || "Don't repeat";
+            }
+
+            document.getElementById('modal-tabs').style.display = 'none';
+            document.getElementById('btn-submit').style.display = 'none';
+
+            // Show correct action buttons based on status
+            if (task.status === 'Pending') {
+                document.getElementById('action-grid-edit').style.display = 'block';
+                document.getElementById('action-grid-reopen').style.display = 'none';
+            } else {
+                // Complete or Failed — show Reopen button
+                document.getElementById('action-grid-edit').style.display = 'none';
+                document.getElementById('action-grid-reopen').style.display = 'block';
+            }
+
+            switchTheme(task.type, null);
+            window._pendingAttachments = (task.attachments || []).slice();
+            renderAttachPreview();
+            renderBottomTabs(task.id);
+            document.getElementById('taskModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').classList.remove('active');
+            document.getElementById('recordDropdown').classList.remove('active');
+            closeDatePicker();
+            closeTimeDropdown();
+        }
+
+        function markCompleteFlow() { openRemarkModal('complete'); }
+
+        function markNextFlow() {
+            let editId = document.getElementById('editingTaskId').value;
+            let tk = tasks.find(t => t.id == editId);
+            if (tk) {
+                let dNow = new Date();
+                tk.status = 'Complete';
+                tk.history = tk.history || [];
+                tk.history.push({ status: 'completed', note: 'Next phase scheduled', taskNote: tk.subject || tk.detail || '', user: 'SONU SHARMA', dateTime: fmtDateTime(dNow) });
+
+                // Store previous task id so new task can inherit history
+                window._prevTaskIdForNext = tk.id;
+
+                document.getElementById('editingTaskId').value = "";
+                document.getElementById('modal-main-title').innerText = "Schedule Next Phase";
+                let dObj = new Date();
+                setupCreatedInput(fmtDate(dObj), dObj.toLocaleTimeString("en-US", {hour:'2-digit', minute:'2-digit'}));
+                document.getElementById('btn-submit').style.display = 'block';
+                document.getElementById('action-grid-edit').style.display = 'none';
+                document.getElementById('action-grid-reopen').style.display = 'none';
+                document.getElementById('task-bottom-tabs-section').style.display = 'none';
+                document.getElementById('cb-note').value = "";
+                document.getElementById('pd-subject').value = "";
+                document.getElementById('td-subject').value = "";
+                document.getElementById('td-desc').value = "";
+                document.getElementById('recordBtnText').innerHTML = 'Click to select Lead/Record...';
+                document.getElementById('recordBtn').classList.remove('selected');
+                document.getElementById('targetRecordValue').value = '';
+                document.getElementById('targetRecordType').value = '';
+                document.getElementById('targetRecordNumber').value = '';
+                window._pendingAttachments = [];
+                renderAttachPreview();
+                resetScheduleDefaults(true);
+            }
+            renderTasks();
+        }
+
+        function submitTask() {
+            let type = document.getElementById('currentTaskType').value;
+            let subject = ""; let det = ""; let rep = "Don't repeat";
+
+            if (type === 'callback') subject = document.getElementById('cb-note').value || "Callback Request";
+            if (type === 'pendency') subject = document.getElementById('pd-subject').value || "Pendency Item";
+            if (type === 'todo') {
+                subject = document.getElementById('td-subject').value || "To-Do";
+                det = document.getElementById('td-desc').value;
+                rep = document.getElementById('td-repeat').value;
+            }
+
+            let dateVal = document.getElementById('task-date').value;
+            let timeVal = document.getElementById('task-time').value;
+            let rec = document.getElementById('targetRecordValue').value || "-";
+            let recTag = document.getElementById('targetRecordType').value || "";
+            let recNum = document.getElementById('targetRecordNumber').value || "";
+
+            if (!timeVal) {
+                document.getElementById('task-time').focus();
+                openTimeDropdown();
+                return;
+            }
+
+            let nid = tasks.reduce((max, t) => Math.max(max, t.id), 1000) + 1;
+            let dObj = new Date();
+            let createdDT = fmtDateTime(dObj);
+
+            // If this is a "Schedule Next" — carry forward previous task's history
+            let inheritedHistory = [];
+            let inheritedComments = [];
+            let prevRefId = null;
+            if (window._prevTaskIdForNext) {
+                let prevTask = tasks.find(t => t.id == window._prevTaskIdForNext);
+                if (prevTask) {
+                    inheritedHistory = (prevTask.history || []).slice(); // copy all previous history
+                    inheritedComments = (prevTask.comments || []).slice();
+                    prevRefId = prevTask.id;
+                }
+                window._prevTaskIdForNext = null;
+            }
+            inheritedHistory.push({ status: 'created', note: prevRefId ? 'Next phase scheduled' : '', taskNote: subject || det || '', user: 'SONU SHARMA', dateTime: createdDT });
+
+            tasks.unshift({
+                id: nid, type: type, status: 'Pending',
+                subject: subject, detail: det, repeat: rep,
+                record: rec, recordTag: recTag, recordNumber: recNum, assignees: ["SONU SHARMA"],
+                dueDate: dateVal, dueTime: timeVal,
+                createdDate: fmtDate(dObj),
+                createdTime: dObj.toLocaleTimeString("en-US", {hour:'2-digit', minute:'2-digit'}),
+                createdBy: 'SONU SHARMA',
+                comments: inheritedComments,
+                history: inheritedHistory,
+                attachments: window._pendingAttachments.slice()
+            });
+            closeModal();
+            renderTasks();
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(e) {
+            let dd = document.getElementById('recordDropdown');
+            let btn = document.getElementById('recordBtn');
+            if (dd && !dd.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                dd.classList.remove('active');
+            }
+
+            let datePicker = document.getElementById('task-date-picker');
+            let dateTrigger = document.getElementById('task-date-display');
+            let dateMenu = document.getElementById('task-date-menu');
+            if (datePicker && dateTrigger && !datePicker.contains(e.target) && !dateTrigger.contains(e.target) && (!dateMenu || !dateMenu.contains(e.target))) {
+                closeDatePicker();
+            }
+
+            if (dateMenu && dateTrigger && !dateMenu.contains(e.target) && !dateTrigger.contains(e.target)) {
+                closeDateMenu();
+            }
+
+            let timeDropdown = document.getElementById('task-time-dropdown');
+            let timeInput = document.getElementById('task-time');
+            let timeChevron = document.querySelector('.schedule-input-chevron');
+            if (timeDropdown && timeInput && !timeDropdown.contains(e.target) && e.target !== timeInput && (!timeChevron || !timeChevron.contains(e.target))) {
+                closeTimeDropdown();
+            }
+
+            // Remark Modal outer click listeners
+            let rDatePicker = document.getElementById('remark-date-picker');
+            let rDateTrigger = document.getElementById('remark-date-display');
+            let rDateMenu = document.getElementById('remark-date-menu');
+            if (rDatePicker && rDateTrigger && !rDatePicker.contains(e.target) && !rDateTrigger.contains(e.target) && (!rDateMenu || !rDateMenu.contains(e.target))) {
+                closeRemarkDatePicker();
+            }
+            if (rDateMenu && rDateTrigger && !rDateMenu.contains(e.target) && !rDateTrigger.contains(e.target)) {
+                closeRemarkDateMenu();
+            }
+            let rTimeDropdown = document.getElementById('remark-time-dropdown');
+            let rTimeInput = document.getElementById('remark-reopen-time');
+            if (rTimeDropdown && rTimeInput && !rTimeDropdown.contains(e.target) && e.target !== rTimeInput) {
+                closeRemarkTimeDropdown();
+            }
+        });
+
+        // Ctrl+V paste attachment support (Pendency and To-Do only)
+        document.getElementById('taskModal').addEventListener('paste', function(e) {
+            let type = document.getElementById('currentTaskType').value;
+            if (type !== 'pendency' && type !== 'todo') return;
+            let items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
+            let files = items.filter(function(it) { return it.kind === 'file'; }).map(function(it) { return it.getAsFile(); });
+            if (files.length > 0) {
+                e.preventDefault();
+                processAttachFiles(files);
+            }
+        });
+
+        // Init scheduling labels / options
+        populateRemarkScheduleControls();
+
+        resetScheduleDefaults();
+
+        getInitialData();
+        renderTasks();
+
+        /* ===== PREVIEW / DEVELOPER REFERENCE MODAL ===== */
+        let currentPreviewTab = 'callback';
+
+        const PREVIEW_DATA = {
+            callback: {
+                label: 'Callback', icon: '📞',
+                tagline: 'Record mandatory · No Repeat · "Schedule Next" button available · Remark required on every action',
+                rows: [
+                    { status: 'created',   note: '-',                                                              user: 'SONU SHARMA', dt: 'Apr 05, 2026, 08:00 AM' },
+                    { status: 'completed', note: 'Customer confirmed. Package details sent on WhatsApp.',           user: 'SONU SHARMA', dt: 'Apr 05, 2026, 03:15 PM' },
+                    { status: 'created',   note: 'Next phase created from Task #1001',                             user: 'SONU SHARMA', dt: 'Apr 05, 2026, 03:16 PM', highlight: true },
+                    { status: 'reopened',  note: 'Customer called back — needs EMI breakup.',                      user: 'SONU SHARMA', dt: 'Apr 06, 2026, 10:00 AM' },
+                    { status: 'completed', note: 'EMI plan explained. Customer fully satisfied.',                   user: 'RAHUL D.',    dt: 'Apr 06, 2026, 11:30 AM' }
+                ]
+            },
+            pendency: {
+                label: 'Pendency', icon: '⏳',
+                tagline: 'Record mandatory · Attachments supported · "Schedule Next" button available · No Repeat · Remark required on every action',
+                rows: [
+                    { status: 'created',   note: '-',                                                              user: 'SONU SHARMA', dt: 'Apr 04, 2026, 04:00 PM' },
+                    { status: 'completed', note: 'All docs received and verified. Added to system.',               user: 'SNEHA',        dt: 'Apr 05, 2026, 10:20 AM' },
+                    { status: 'created',   note: 'Next phase created from Task #1002',                             user: 'SNEHA',        dt: 'Apr 05, 2026, 10:21 AM', highlight: true },
+                    { status: 'completed', note: 'IT ticket resolved. Account activated.',                         user: 'RAHUL D.',    dt: 'Apr 06, 2026, 09:00 AM' }
+                ]
+            },
+            todo: {
+                label: 'To-Do', icon: '📝',
+                tagline: 'Record optional · Attachments supported · Repeat option available · "Mark as Failed" instead of Schedule Next · Remark required on every action',
+                rows: [
+                    { status: 'created',   note: '-',                                                              user: 'ADMIN',        dt: 'Apr 06, 2026, 09:30 AM' },
+                    { status: 'completed', note: 'Incentive sheet prepared and shared with HR for review.',        user: 'SONU SHARMA', dt: 'Apr 07, 2026, 03:45 PM' },
+                    { status: 'reopened',  note: 'HR found 2 agents with wrong leave balance — correction needed.',user: 'HR DEPT',      dt: 'Apr 07, 2026, 05:30 PM' },
+                    { status: 'failed',    note: 'Payroll deadline passed. Task closed without final correction.', user: 'ADMIN',        dt: 'Apr 08, 2026, 09:00 AM', highlight: true }
+                ]
+            }
+        };
+
+        function openPreviewModal() {
+            currentPreviewTab = 'callback';
+            document.querySelectorAll('.preview-type-tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelector('.preview-type-tab').classList.add('active');
+            renderPreviewContent('callback');
+            document.getElementById('previewModal').classList.add('active');
+        }
+
+        function closePreviewModal() {
+            document.getElementById('previewModal').classList.remove('active');
+        }
+
+        function switchPreviewTab(type, btn) {
+            document.querySelectorAll('.preview-type-tab').forEach(function(t) { t.classList.remove('active'); });
+            btn.classList.add('active');
+            currentPreviewTab = type;
+            renderPreviewContent(type);
+        }
+
+        function renderPreviewContent(type) {
+            let d = PREVIEW_DATA[type];
+            let body = document.getElementById('preview-modal-body');
+
+            let statusLabels = { created: 'CREATED', completed: 'COMPLETED', reopened: 'REOPENED', failed: 'FAILED' };
+
+            let rows = d.rows.map(function(r, i) {
+                let highlightStyle = r.highlight ? 'background:#fffbeb;' : '';
+                let noteHtml = r.note === '-' ? '<span style="color:#94a3b8;">—</span>' : r.note;
+                return '<tr style="' + highlightStyle + '">'
+                    + '<td style="text-align:center;color:#94a3b8;font-weight:700;font-size:12px;">' + (i + 1) + '</td>'
+                    + '<td>' + getHistoryStatusBadge(r.status) + '</td>'
+                    + '<td class="ht-note-cell">' + noteHtml + '</td>'
+                    + '<td><div class="ht-user-cell"><div class="ht-avatar">' + r.user.charAt(0) + '</div><span style="font-size:12px;font-weight:600;color:#334155;">' + r.user + '</span></div></td>'
+                    + '<td class="ht-date-cell">' + r.dt.replace(', ', '<br>') + '</td>'
+                    + '</tr>';
+            }).join('');
+
+            body.innerHTML = '<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:12px;color:#0369a1;font-weight:600;">'
+                + d.icon + ' <strong>' + d.label + '</strong> — ' + d.tagline
+                + '</div>'
+                + '<div class="history-table-wrap">'
+                + '<table class="history-table">'
+                + '<thead><tr>'
+                + '<th style="width:36px;">#</th>'
+                + '<th style="width:110px;">Status</th>'
+                + '<th>Details &amp; Remark</th>'
+                + '<th style="width:150px;">User</th>'
+                + '<th style="width:140px;">Date &amp; Time</th>'
+                + '</tr></thead>'
+                + '<tbody>' + rows + '</tbody>'
+                + '</table>'
+                + '</div>';
+        }
+
+        /* ===== DEVELOPER NOTES MODAL ===== */
+        function openDevNotesModal() {
+            document.getElementById('devNotesModal').classList.add('active');
+        }
+        function closeDevNotesModal() {
+            document.getElementById('devNotesModal').classList.remove('active');
+        }
+        document.getElementById('devNotesModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDevNotesModal();
+        });
+    </script>
+</body>
+</html>

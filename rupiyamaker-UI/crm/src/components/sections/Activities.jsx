@@ -30,6 +30,18 @@ const groupActivitiesByDateAndTime = (activities) => {
   return groupedByDate;
 };
 
+// Map backend activity_type values to canonical frontend action names
+const normalizeAction = (activity) => {
+  const raw = activity.action || activity.activity_type || '';
+  switch (raw) {
+    case 'status_change':     return 'status_changed';
+    case 'sub_status_change': return 'status_changed';
+    case 'assignment':        return 'assigned';
+    case 'remark':            return 'note';
+    default:                  return raw;
+  }
+};
+
 export default function Activities({ leadId, userId, formatDate }) {
   const [activities, setActivities] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -102,78 +114,80 @@ export default function Activities({ leadId, userId, formatDate }) {
 
   const getActivityIcon = (action) => {
     switch (action) {
-      case 'created':
-        return '🎯';
+      case 'created':           return '🎯';
       case 'updated':
-      case 'field_update':
-        return '✏️';
-      case 'status_changed':
-        return '🔄';
-      case 'assigned':
-        return '👤';
+      case 'field_update':      return '✏️';
+      case 'status_changed':    return '🔄';
+      case 'assigned':          return '👤';
       case 'remark_added':
-      case 'note':
-        return '💬';
+      case 'note':              return '💬';
       case 'attachment_uploaded':
-      case 'document':
-        return '📎';
-      case 'task_added':
-        return '✅';
-      case 'task_completed':
-        return '🎉';
-      case 'login_form_updated':
-        return '📝';
-      case 'transferred':
-        return '🔀';
-      default:
-        return '📋';
+      case 'document':          return '📎';
+      case 'task_added':        return '✅';
+      case 'task_completed':    return '🎉';
+      case 'login_form_updated':return '📝';
+      case 'transferred':       return '🔀';
+      default:                  return '📋';
     }
   };
 
   const getActivityColor = (action) => {
     switch (action) {
-      case 'created':
-        return 'border-green-500 bg-green-900/20';
+      case 'created':           return 'border-green-500 bg-green-900/20';
       case 'updated':
-      case 'field_update':
-        return 'border-blue-500 bg-blue-900/20';
-      case 'status_changed':
-        return 'border-purple-500 bg-purple-900/20';
-      case 'assigned':
-        return 'border-yellow-500 bg-yellow-900/20';
-      case 'transferred':
-        return 'border-orange-500 bg-orange-900/20';
+      case 'field_update':      return 'border-blue-500 bg-blue-900/20';
+      case 'status_changed':    return 'border-purple-500 bg-purple-900/20';
+      case 'assigned':          return 'border-yellow-500 bg-yellow-900/20';
+      case 'transferred':       return 'border-orange-500 bg-orange-900/20';
       case 'note':
-      case 'remark_added':
-        return 'border-cyan-500 bg-cyan-900/20';
+      case 'remark_added':      return 'border-cyan-500 bg-cyan-900/20';
       case 'document':
-      case 'attachment_uploaded':
-        return 'border-indigo-500 bg-indigo-900/20';
-      default:
-        return 'border-gray-500 bg-gray-900/20';
+      case 'attachment_uploaded':return 'border-indigo-500 bg-indigo-900/20';
+      default:                  return 'border-gray-500 bg-gray-900/20';
     }
   };
 
   const formatActivityDescription = (activity) => {
-    const action = activity.action || activity.activity_type;
-    
+    const action = normalizeAction(activity);
+    const raw = activity.action || activity.activity_type || '';
+
     switch (action) {
       case 'created':
         return 'Lead created';
       case 'updated':
         return 'Lead details updated';
       case 'field_update':
-        // Return object with field name for custom rendering
         return {
           isFieldUpdate: true,
           fieldName: activity.details?.field_display_name || 'Field updated',
           oldValue: activity.details?.old_value || '',
           newValue: activity.details?.new_value || ''
         };
-      case 'status_changed':
-        return `Status: "${activity.details?.old_status || 'N/A'}" → "${activity.details?.new_status || 'N/A'}"`;
+      case 'status_changed': {
+        // Backend stores old/new in several possible field name variants
+        const isSub = raw === 'sub_status_change';
+        const oldVal =
+          activity.details?.old_status ||
+          activity.details?.from_status_name ||
+          activity.details?.from_sub_status ||
+          (isSub ? activity.details?.from_sub_status_name : null) ||
+          'N/A';
+        const newVal =
+          activity.details?.new_status ||
+          activity.details?.to_status_name ||
+          activity.details?.to_sub_status ||
+          (isSub ? activity.details?.to_sub_status_name : null) ||
+          activity.details?.new_sub_status ||
+          'N/A';
+        const label = isSub ? 'Sub-status' : 'Status';
+        return `${label}: “${oldVal}” → “${newVal}”`;
+      }
       case 'assigned':
-        return `Lead assigned to ${activity.details?.assigned_to_name || 'Unknown'}`;
+        return `Lead assigned to ${
+          activity.details?.assigned_to_name ||
+          activity.details?.to_user_name ||
+          'Unknown'
+        }`;
       case 'note':
       case 'remark_added':
         return 'Note added';
@@ -195,8 +209,8 @@ export default function Activities({ leadId, userId, formatDate }) {
 
   const filteredActivities = activities.filter(activity => {
     if (filter === 'all') return true;
-    const activityType = activity.action || activity.activity_type;
-    return activityType === filter;
+    // Normalize so backend type variants (status_change, assignment …) match the filter value
+    return normalizeAction(activity) === filter;
   });
 
   const activityTypes = [
@@ -221,23 +235,8 @@ export default function Activities({ leadId, userId, formatDate }) {
     );
   }
 
-  console.log('🎯 Rendering Activities component:', { 
-    leadId, 
-    userId, 
-    activitiesCount: activities.length, 
-    isLoading, 
-    error 
-  });
-
   return (
     <div className="space-y-4 bg-white p-4 rounded-lg">
-      {/* Debug Info */}
-      <div className="bg-blue-50 border border-blue-200 p-2 rounded text-xs">
-        <strong>Debug:</strong> LeadId: {leadId || 'MISSING'} | UserId: {userId || 'MISSING'} | 
-        Activities: {activities.length} | Loading: {isLoading ? 'YES' : 'NO'} | 
-        Error: {error || 'NONE'}
-      </div>
-      
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold text-black flex items-center">
@@ -290,7 +289,7 @@ export default function Activities({ leadId, userId, formatDate }) {
                   {Object.entries(timeGroups)
                     .sort((a, b) => new Date(b[1][0].created_at) - new Date(a[1][0].created_at)) // Sort times in descending order
                     .map(([time, activities], timeIndex, timeArray) => {
-                      const activityType = activities[0].action || activities[0].activity_type;
+                      const activityType = normalizeAction(activities[0]);
                       return (
                         <div key={time} className="relative flex items-start space-x-4 pb-4">
                           {/* Time and Timeline dot */}
@@ -302,7 +301,7 @@ export default function Activities({ leadId, userId, formatDate }) {
                               >
                               </div>
                               {timeIndex !== timeArray.length - 1 && (
-                                <div className="absolute top-8 right-2.5 w-0.5 h-full bg-gray-300"></div>
+                                <div className="absolute top-8 right-2.5 w-0.5 h-full bg-gray-300" />
                               )}
                             </div>
                           </div>
@@ -312,17 +311,7 @@ export default function Activities({ leadId, userId, formatDate }) {
                             {activities.map((activity, activityIndex) => {
                               const description = formatActivityDescription(activity);
                               const isFieldUpdate = description && typeof description === 'object' && description.isFieldUpdate;
-                              
-                              // Debug logging for first activity
-                              if (activityIndex === 0) {
-                                console.log('🎯 Processing activity:', {
-                                  action: activity.action,
-                                  activity_type: activity.activity_type,
-                                  description: description,
-                                  isFieldUpdate: isFieldUpdate,
-                                  details: activity.details
-                                });
-                              }
+                              const normalizedType = normalizeAction(activity);
                               
                               return (
                                 <div key={activity._id || activityIndex} className="bg-gray-50 p-3 rounded-lg border border-gray-200">

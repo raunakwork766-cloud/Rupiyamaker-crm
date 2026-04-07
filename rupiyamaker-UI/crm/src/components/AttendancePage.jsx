@@ -1785,12 +1785,13 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [statusDropdownOpen])
 
-  // Pre-select dropdown with current status whenever modal opens or employee/date changes
+  // Reset attendanceDetail + pre-select dropdown whenever modal opens or employee/date changes
   useEffect(() => {
     if (isOpen && employee && selectedDate) {
       const status = employee[`day${selectedDate}`] || 'A'
       setSelectedAttendance(status)
       setUpdateReason('')
+      setAttendanceDetail(null)  // Reset stale detail — loadAttendanceDetail will re-populate it
     }
   }, [isOpen, employee, selectedDate])
 
@@ -2266,16 +2267,16 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                   <div key={record._id || index} className="relative pl-4 border-l border-white/10 pb-2">
                     <div className="absolute w-2 h-2 bg-indigo-500 rounded-full -left-[4.5px] top-1.5 ring-4 ring-black" />
                     <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-500 font-mono">{record.changed_at ? formatDateTime(record.changed_at) : ''}</p>
+                      <p className="text-[10px] text-zinc-500 font-mono">{(record.changed_at || record.created_at) ? formatDateTime(record.changed_at || record.created_at) : ''}</p>
                       <p className="text-sm text-zinc-200">{record.action}</p>
-                      {record.old_value !== undefined && (
+                      {record.old_value !== undefined && record.old_value !== null && (
                         <p className="text-zinc-500 text-xs">{record.old_value} → {record.new_value}</p>
                       )}
                       {record.reason && (
                         <p className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mt-1 leading-relaxed">💬 {record.reason}</p>
                       )}
-                      {record.changed_by_name && (
-                        <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {record.changed_by_name}</p>
+                      {(record.changed_by_name || record.created_by_name) && (
+                        <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {record.changed_by_name || record.created_by_name}</p>
                       )}
                     </div>
                   </div>
@@ -2718,8 +2719,7 @@ export default function MonthlyAttendanceTable() {
   };
 
   // Fetch attendance data when component mounts or month changes
-  useEffect(() => {
-    const fetchAttendanceData = async () => {
+  const fetchAttendanceData = useCallback(async () => {
       if (!user?.user_id) return
       
       setLoading(true)
@@ -2932,10 +2932,11 @@ export default function MonthlyAttendanceTable() {
       } finally {
         setLoading(false)
       }
-    }
-
-    fetchAttendanceData()
   }, [selectedYear, selectedMonth, user])
+
+  useEffect(() => {
+    fetchAttendanceData()
+  }, [fetchAttendanceData])
 
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
   

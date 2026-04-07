@@ -24,26 +24,24 @@ class DetailedErrorBoundary extends React.Component {
         <div className="error-boundary p-6 bg-red-50 border border-red-200 rounded-lg">
           <h2 className="text-xl font-bold text-red-800 mb-4">Something went wrong!</h2>
           
-          {process.env.NODE_ENV === 'development' && (
-            <details className="mb-4">
-              <summary className="cursor-pointer text-red-700 font-medium mb-2">
-                Error Details (Development Mode)
-              </summary>
-              <div className="bg-red-100 p-4 rounded border">
-                <h3 className="font-medium text-red-800">Error:</h3>
-                <pre className="text-sm text-red-700 mb-2">
-                  {this.state.error && this.state.error.toString()}
-                </pre>
-                
-                <h3 className="font-medium text-red-800">Stack Trace:</h3>
-                <pre className="text-xs text-red-600 overflow-auto max-h-64">
-                  {this.state.errorInfo && this.state.errorInfo.componentStack 
-                    ? this.state.errorInfo.componentStack 
-                    : 'No stack trace available'}
-                </pre>
-              </div>
-            </details>
-          )}
+          <details className="mb-4" open>
+            <summary className="cursor-pointer text-red-700 font-medium mb-2">
+              Error Details
+            </summary>
+            <div className="bg-red-100 p-4 rounded border">
+              <h3 className="font-medium text-red-800">Error:</h3>
+              <pre className="text-sm text-red-700 mb-2 whitespace-pre-wrap">
+                {this.state.error && this.state.error.toString()}
+              </pre>
+              
+              <h3 className="font-medium text-red-800">Stack Trace:</h3>
+              <pre className="text-xs text-red-600 overflow-auto max-h-64 whitespace-pre-wrap">
+                {this.state.errorInfo && this.state.errorInfo.componentStack 
+                  ? this.state.errorInfo.componentStack 
+                  : 'No stack trace available'}
+              </pre>
+            </div>
+          </details>
           
           <div className="space-y-2">
             <p className="text-red-700">

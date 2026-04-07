@@ -414,7 +414,11 @@ async def check_phone_number(
             return None
         if isinstance(val, str):
             try:
-                return datetime.fromisoformat(val.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                # If the parsed datetime is naive (no timezone), treat as UTC
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
             except Exception:
                 return None
         if isinstance(val, datetime) and val.tzinfo is None:
@@ -2007,7 +2011,7 @@ async def get_lead(
             lead_dict["sub_status_name"] = sub_status_obj.get("name")
     
     # Resolve reassignment user names for display in the view popup
-    if lead.get("reassignment_status") == "approved":
+    if lead.get("reassignment_status") in ("approved", "direct"):
         # Resolve who requested the transfer
         req_by_id = lead.get("reassignment_requested_by")
         if req_by_id:

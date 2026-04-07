@@ -1017,6 +1017,118 @@ async def get_leads_by_loan_type(
     
     return {"leads": formatted_leads}
 
+@router.get("/search-leads")
+async def search_leads_for_task(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    search: str = Query("", description="Search term (name or phone)"),
+    limit: int = Query(20, description="Maximum number of leads to return"),
+    leads_db: LeadsDB = Depends(get_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Search leads across all loan types by name or phone number for task association."""
+    import re
+    from app.utils.permissions import PermissionManager
+    
+    try:
+        # Build the base query based on user permissions
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        base_query = {}
+        
+        # Check if user has 'all' level access to leads
+        has_all = await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False)
+        has_junior = await PermissionManager.check_permission(user_id, "leads", "junior", users_db, roles_db, raise_error=False)
+        
+        if has_all:
+            base_query = {}  # No filter - see all leads
+        elif has_junior:
+            subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            all_ids = [user_id] + subordinate_ids
+            base_query = {"assign_report_to": {"$in": all_ids}}
+        else:
+            base_query = {"assign_report_to": user_id}
+        
+        # Add search filter
+        search_query = dict(base_query)  # copy for both collections
+        if search and search.strip():
+            search_regex = re.escape(search.strip())
+            search_conditions = [
+                {"first_name": {"$regex": search_regex, "$options": "i"}},
+                {"last_name": {"$regex": search_regex, "$options": "i"}},
+                {"customer_name": {"$regex": search_regex, "$options": "i"}},
+                {"phone": {"$regex": search_regex, "$options": "i"}},
+                {"email": {"$regex": search_regex, "$options": "i"}},
+            ]
+            if search_query:
+                search_query = {"$and": [search_query, {"$or": search_conditions}]}
+            else:
+                search_query = {"$or": search_conditions}
+        
+        db = leads_db.db
+        half_limit = max(limit // 2, 10)
+        
+        # Fetch from both collections in parallel
+        import asyncio
+        leads_cursor = db["leads"].find(search_query).sort("created_at", -1).limit(half_limit)
+        login_cursor = db["login_leads"].find(search_query).sort("created_at", -1).limit(half_limit)
+        leads_list, login_list = await asyncio.gather(
+            leads_cursor.to_list(length=half_limit),
+            login_cursor.to_list(length=half_limit)
+        )
+        
+        formatted = []
+        
+        # Format regular leads
+        for lead in leads_list:
+            lead_login = lead.get("lead_login") or "Lead"
+            name = lead.get("customer_name") or f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip()
+            formatted.append({
+                "id": str(lead["_id"]),
+                "lead_id": str(lead["_id"]),
+                "customer_name": name,
+                "name": name,
+                "phone": lead.get("phone", ""),
+                "email": lead.get("email", ""),
+                "loan_type": lead.get("loan_type", ""),
+                "status": lead.get("status", ""),
+                "lead_login": lead_login,
+                "lead_number": lead.get("lead_number", ""),
+                "collection": "leads",
+            })
+        
+        # Format login leads
+        for lead in login_list:
+            name = lead.get("customer_name") or f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip()
+            formatted.append({
+                "id": str(lead["_id"]),
+                "lead_id": str(lead["_id"]),
+                "customer_name": name,
+                "name": name,
+                "phone": lead.get("phone", ""),
+                "email": lead.get("email", ""),
+                "loan_type": lead.get("loan_type", ""),
+                "status": lead.get("status", ""),
+                "lead_login": "Login",
+                "lead_number": lead.get("lead_number", ""),
+                "collection": "login_leads",
+            })
+        
+        # Sort combined by most recent, limit total
+        formatted.sort(key=lambda x: x.get("name", "").lower())
+        formatted = formatted[:limit]
+        
+        return {"leads": formatted}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error searching leads for task: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/leads-logins-by-type")
 async def get_leads_logins_by_type(
     loan_type: str = Query(..., description="Loan type to filter leads/logins"),
@@ -1608,25 +1720,7 @@ async def update_task(
                 detail="Task not found"
             )
         
-        print(f"Found task {task_id}, checking permissions...")
-        
-        # Check if user can edit this task (only creator or assigned users can edit)
-        user_object_id = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
-        assigned_to = task.get("assigned_to", [])
-        if not isinstance(assigned_to, list):
-            assigned_to = [assigned_to] if assigned_to else []
-        
-        can_edit = (
-            task.get("created_by") == user_object_id or  # Creator
-            user_object_id in assigned_to  # Assigned user
-        )
-        
-        if not can_edit:
-            print(f"User {user_id} cannot edit task {task_id} - not creator or assignee")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only edit tasks you created or are assigned to"
-            )
+        print(f"Found task {task_id}, proceeding with update...")
         
         # Validate assigned users if provided
         if task_update.assigned_to is not None:
@@ -1664,6 +1758,8 @@ async def update_task(
         
         # Handle status change to completed
         update_data = task_update.dict(exclude_unset=True)
+        # Remove remark from update_data — it's only for history, not stored on the task
+        update_data.pop("remark", None)
         old_status = task.get("status")
         if task_update.status == TaskStatus.COMPLETED and task.get("status") != TaskStatus.COMPLETED:
             update_data["completed_at"] = get_ist_now()
@@ -1697,9 +1793,14 @@ async def update_task(
                 changes_made["status"] = {"old": old_status.value if hasattr(old_status, 'value') else str(old_status), 
                                         "new": task_update.status.value if hasattr(task_update.status, 'value') else str(task_update.status)}
                 detailed_changes.append(f"Status: {old_status} → {task_update.status}")
+                # Pass remark and task_note if provided
+                status_remark = task_update.remark or ""
+                task_subject = task.get("subject", "")
                 await task_history_db.add_status_changed(task_id, user_id, user_name, 
                                                        old_status.value if hasattr(old_status, 'value') else str(old_status), 
-                                                       task_update.status.value if hasattr(task_update.status, 'value') else str(task_update.status))
+                                                       task_update.status.value if hasattr(task_update.status, 'value') else str(task_update.status),
+                                                       remark=status_remark,
+                                                       task_note=task_subject)
             
             # Track subject/title changes
             if task_update.subject and task_update.subject != task.get("subject"):

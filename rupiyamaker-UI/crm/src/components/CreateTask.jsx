@@ -17,11 +17,7 @@ function getCurrentDateTimeString() {
 export default function CreateTask({ onClose, onSave, preselectedLead }) {
   // State for API data
   const [users, setUsers] = useState([]);
-  const [loanTypes, setLoanTypes] = useState([]);
-  const [leads, setLeads] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [loadingLoanTypes, setLoadingLoanTypes] = useState(false);
-  const [loadingLeads, setLoadingLeads] = useState(false);
 
   // State to track if we're in a lead context (preselectedLead was provided)
   const [isLeadPreselected, setIsLeadPreselected] = useState(!!preselectedLead);
@@ -115,61 +111,10 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
     }
   }, []);
 
-  // Fetch loan types with lead counts
-  const fetchLoanTypes = useCallback(async () => {
-    const userId = getUserId();
-    if (!userId) return;
-    
-    setLoadingLoanTypes(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/tasks/loan-types-with-leads?user_id=${userId}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setLoanTypes(data.loan_types || []);
-    } catch (error) {
-      console.error('Error fetching loan types:', error);
-      setLoanTypes([]);
-    } finally {
-      setLoadingLoanTypes(false);
-    }
-  }, []);
-
-  // Fetch leads by loan type and record type with optional search
-  const fetchLeadsByLoanType = useCallback(async (loanType, recordType = 'leads', searchTerm = '', searchLimit = 5) => {
-    const userId = getUserId();
-    if (!userId || !loanType) return;
-    
-    setLoadingLeads(true);
-    try {
-      // Build URL with search parameters
-      let url = `${API_BASE_URL}/tasks/leads-logins-by-type?loan_type=${encodeURIComponent(loanType)}&record_type=${encodeURIComponent(recordType)}&user_id=${userId}&limit=${searchLimit}`;
-      
-      // Add search parameter if provided
-      if (searchTerm && searchTerm.trim()) {
-        url += `&search=${encodeURIComponent(searchTerm.trim())}`;
-      }
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setLeads(data.leads || []);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
-      setLeads([]);
-    } finally {
-      setLoadingLeads(false);
-    }
-  }, []); // Empty dependency array since it doesn't depend on any state or props
-
-  // Load users and loan types on mount
+  // Load users on mount
   useEffect(() => {
     fetchUsers();
-    fetchLoanTypes();
-  }, [fetchUsers, fetchLoanTypes]);
+  }, [fetchUsers]);
 
   // Function to get the currently logged-in user from localStorage
   const getCurrentLoggedInUser = () => {
@@ -228,7 +173,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
     subject: "",
     message: "",
     attachments: [], // Changed to array to support multiple attachments
-    taskType: "",
+    taskType: "Call",
     associateWithRecords: [],
     assignedTo: [], // Changed to an array to hold multiple assignees (user objects with ID and name)
     dueDateOption: "today", // Set initial value to 'today'
@@ -248,18 +193,65 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
     }
   }, [form.createdBy, form.assignedTo.length]); // Re-run if createdBy changes or assignedTo becomes empty
 
-  const [isOpen, setIsOpen] = useState(true); // State to control modal visibility
+  const [isOpen, setIsOpen] = useState(true);
   const [currentDateTime, setCurrentDateTime] = useState(
     getCurrentDateTimeString()
   );
-  const [showAssociatePopup, setShowAssociatePopup] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showClockTimePicker, setShowClockTimePicker] = useState(false); // State for the clock picker
-  const [showAssignPopup, setShowAssignPopup] = useState(false); // State for the assign popup
-  const [showDaysSelector, setShowDaysSelector] = useState(false); // State for custom repeat days selector
-  const [calendarPosition, setCalendarPosition] = useState('below'); // 'below' or 'above'
+  const [showClockTimePicker, setShowClockTimePicker] = useState(false);
+  const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showDaysSelector, setShowDaysSelector] = useState(false);
+  const [calendarPosition, setCalendarPosition] = useState('below');
   const messageRef = useRef(null);
-  const dueDateSelectRef = useRef(null); // Ref for the due date select element
+  const dueDateSelectRef = useRef(null);
+
+  // Inline record dropdown states
+  const [showRecordDropdown, setShowRecordDropdown] = useState(false);
+  const [recordSearchTerm, setRecordSearchTerm] = useState('');
+  const [recordSearchResults, setRecordSearchResults] = useState([]);
+  const [loadingRecordSearch, setLoadingRecordSearch] = useState(false);
+  const recordDropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (recordDropdownRef.current && !recordDropdownRef.current.contains(e.target)) {
+        setShowRecordDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Search leads when search term changes (debounced)
+  useEffect(() => {
+    if (!showRecordDropdown) return;
+    const timeoutId = setTimeout(async () => {
+      const userId = getUserId();
+      if (!userId) return;
+      setLoadingRecordSearch(true);
+      try {
+        const url = `${API_BASE_URL}/tasks/search-leads?user_id=${userId}&search=${encodeURIComponent(recordSearchTerm)}&limit=20`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setRecordSearchResults(data.leads || []);
+        }
+      } catch (err) {
+        console.error('Error searching leads:', err);
+      } finally {
+        setLoadingRecordSearch(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [recordSearchTerm, showRecordDropdown]);
+
+  // Load initial leads when dropdown opens
+  useEffect(() => {
+    if (showRecordDropdown && recordSearchResults.length === 0 && !loadingRecordSearch) {
+      setRecordSearchTerm('');
+    }
+  }, [showRecordDropdown]);
   
   // Calculate calendar position when it's shown
   useEffect(() => {
@@ -401,14 +393,20 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     
+    // For Callback/Pendency, auto-set subject from message if empty
+    let effectiveSubject = form.subject.trim();
+    if (!effectiveSubject && (form.taskType === 'Call' || form.taskType === 'Pendency')) {
+      effectiveSubject = form.message.trim().substring(0, 100) || (form.taskType === 'Call' ? 'Callback' : 'Pendency');
+    }
+    
     // Basic validation
-    if (!form.subject.trim()) {
+    if (!effectiveSubject) {
       alert('Please enter a subject');
       return;
     }
     
     if (!form.message.trim()) {
-      alert('Please enter a message');
+      alert(form.taskType === 'Call' ? 'Please enter a quick note' : form.taskType === 'Pendency' ? 'Please describe what is pending' : 'Please enter a description');
       return;
     }
     
@@ -421,7 +419,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
     
     // Create JSON data to match what the API expects
     const taskData = {
-      subject: form.subject,
+      subject: effectiveSubject,
       task_details: form.message,
       task_type: form.taskType || 'To-Do',
       status: 'Pending',
@@ -546,271 +544,351 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
 
   if (!isOpen) return null;
 
+  const taskTypeTabStyle = (type) => ({
+    flex: 1,
+    padding: '8px 0',
+    textAlign: 'center',
+    background: form.taskType === type ? 'white' : 'transparent',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: 700,
+    color: form.taskType === type ? '#00aaff' : '#64748b',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    boxShadow: form.taskType === type ? '0 2px 5px rgba(0,0,0,0.05)' : 'none',
+  });
+
   return (
-    <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
-      <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-3xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+      <div className="relative bg-white w-full max-w-[700px] max-h-[96vh] flex flex-col overflow-hidden" style={{ borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
         <button
-          className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
+          className="absolute right-5 top-5 flex items-center justify-center z-10 cursor-pointer transition hover:text-[#334155]"
+          style={{ background: '#f1f5f9', width: '28px', height: '28px', borderRadius: '50%', border: 'none', fontSize: '16px', color: '#64748b' }}
           onClick={handleClose}
           aria-label="Close"
           type="button"
         >
           ×
         </button>
+
+        <div className="flex-1 overflow-y-auto" style={{ padding: '14px 18px' }}>
+        <div style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', marginBottom: '5px' }}>Create New Task</div>
+
+        {/* Task Type Tabs */}
+        <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '3px', gap: '3px', marginTop: '8px', marginBottom: '12px' }}>
+          <button type="button" style={taskTypeTabStyle('Call')} onClick={() => handleChange('taskType', 'Call')}>📞 Callback</button>
+          <button type="button" style={taskTypeTabStyle('Pendency')} onClick={() => handleChange('taskType', 'Pendency')}>⏳ Pendency</button>
+          <button type="button" style={taskTypeTabStyle('To-Do')} onClick={() => handleChange('taskType', 'To-Do')}>📝 To-Do</button>
+        </div>
+
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <label className="block font-bold text-gray-700 mb-1">
-                Date & Time
+          {/* Row 1: Created Date & Created By */}
+          <div className="grid grid-cols-2 gap-2 mb-2.5">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide">
+                Created Date & Time
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                className="w-full px-3 py-2 rounded-md text-[13px] font-semibold outline-none"
+                style={{ border: '1.5px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }}
                 value={currentDateTime}
                 readOnly
+                disabled
               />
             </div>
-            <div className="flex-1">
-              <label
-                className="block font-bold text-gray-700 mb-1"
-                htmlFor="createdBy"
-              >
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide">
                 Created By
               </label>
               <input
-                id="createdBy"
                 type="text"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                className="w-full px-3 py-2 rounded-md text-[13px] font-semibold outline-none"
+                style={{ border: '1.5px solid #cbd5e1', background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }}
                 value={form.createdBy?.name || "Current User"}
                 readOnly
+                disabled
               />
             </div>
           </div>
 
-          <div className="mt-4">
-            <label
-              className="block font-bold text-gray-700 mb-1"
-              htmlFor="subject"
-            >
-              Subject
+          {/* Row 2: Associate / Target Record — Inline Dropdown */}
+          <div className="mb-2.5">
+            <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+              {form.taskType === 'Call' ? 'Who to call? (Target Record)' : form.taskType === 'Pendency' ? 'Related Record' : 'Associate with Record'}
             </label>
-            <input
-              id="subject"
-              type="text"
-              className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
-              value={form.subject}
-              onChange={(e) => handleChange("subject", e.target.value)}
-              onBlur={() => handleBlur("subject")}
-              placeholder="Enter subject"
-              required
-            />
-          </div>
-
-          <div className="mt-4">
-            <label
-              className="block font-bold text-gray-700 mb-1"
-              htmlFor="message"
-            >
-              Message
-            </label>
-            <textarea
-              ref={messageRef}
-              id="message"
-              className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden"
-              rows={3}
-              value={form.message}
-              onChange={(e) => handleChange("message", e.target.value)}
-              onBlur={() => handleBlur("message")}
-              placeholder="Enter message"
-              required
-              style={{
-                minHeight: "3rem",
-                maxHeight: "400px",
-                transition: "height 0.2s",
-              }}
-            />
-          </div>
-
-          <div className="flex flex-col items-start mt-4">
-            <label className="block font-bold text-gray-700 mb-2">
-              Attachments
-            </label>
-            <label className="inline-flex items-center px-4 py-2 bg-cyan-500 text-white font-bold rounded-lg shadow cursor-pointer hover:bg-cyan-600 transition">
-              📎 Photo/PDF
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={handleFileChange}
-                multiple
-              />
-            </label>
-            
-            {/* Display selected attachments */}
-            {form.attachments && form.attachments.length > 0 && (
-              <div className="mt-3 w-full">
-                <h4 className="font-semibold text-gray-700 mb-2">Selected Files:</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {form.attachments.map((attachment, index) => (
-                    <div key={attachment.id} className="flex items-center bg-gray-100 p-2 rounded-lg relative border-2 border-blue-200">
-                      {attachment.url && attachment.url.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                        <img
-                          src={attachment.url}
-                          alt={`Preview ${index}`}
-                          className="w-16 h-16 object-cover rounded-lg mr-2"
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/64x64?text=Error";
-                          }}
-                        />
-                      ) : (
-                        <div className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-lg mr-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
+            <div style={{ position: 'relative' }} ref={recordDropdownRef}>
+              {/* Selector Button */}
+              <button
+                type="button"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: form.associateWithRecords.length > 0 ? '1.5px solid #94a3b8' : '1.5px dashed #94a3b8',
+                  background: form.associateWithRecords.length > 0 ? 'linear-gradient(180deg, #ffffff, #f8fbff)' : 'linear-gradient(180deg, #fbfdff, #f3f9ff)',
+                  borderRadius: '8px',
+                  textAlign: 'left',
+                  cursor: isLeadPreselected ? 'not-allowed' : 'pointer',
+                  color: form.associateWithRecords.length > 0 ? '#0f172a' : '#00aaff',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  minHeight: '44px',
+                  boxShadow: form.associateWithRecords.length > 0 ? '0 4px 10px rgba(15,23,42,0.05)' : 'inset 0 1px 0 rgba(255,255,255,0.7)',
+                  transition: 'all 0.2s',
+                  opacity: isLeadPreselected ? 0.75 : 1,
+                }}
+                onClick={() => {
+                  if (isLeadPreselected) return;
+                  setShowRecordDropdown(!showRecordDropdown);
+                }}
+                disabled={isLeadPreselected}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                  {form.associateWithRecords.length > 0 ? (
+                    <>
+                      <span style={{ background: (form.associateWithRecords[0].lead_login || 'Lead') === 'Lead' ? 'rgba(0,170,255,0.1)' : 'rgba(243,156,18,0.1)', color: (form.associateWithRecords[0].lead_login || 'Lead') === 'Lead' ? '#00aaff' : '#f39c12', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                        {form.associateWithRecords[0].lead_login || 'Lead'}
+                      </span>
+                      <strong style={{ fontWeight: 700, color: '#0f172a' }}>{form.associateWithRecords[0].name || form.associateWithRecords[0].customer_name || 'Selected'}</strong>
+                      {form.associateWithRecords[0].phone && (
+                        <span style={{ color: '#64748b', fontSize: '12px', marginLeft: '6px' }}>{form.associateWithRecords[0].phone}</span>
                       )}
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm text-black font-medium truncate">{attachment.name}</span>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-green-600">
-                            Ready to upload
+                    </>
+                  ) : (
+                    'Click to select Lead/Record...'
+                  )}
+                </span>
+                {/* Clear button when selected */}
+                {form.associateWithRecords.length > 0 && !isLeadPreselected && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleChange('associateWithRecords', []);
+                      setShowRecordDropdown(false);
+                    }}
+                    style={{ background: '#e2e8f0', color: '#475569', width: '22px', height: '22px', borderRadius: '50%', fontSize: '14px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                  >×</span>
+                )}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {showRecordDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  width: '100%',
+                  background: '#fff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '10px',
+                  boxShadow: '0 15px 30px rgba(15,23,42,0.12)',
+                  zIndex: 50,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}>
+                  {/* Search Input */}
+                  <input
+                    type="text"
+                    style={{ border: 'none', borderBottom: '1.5px solid #e2e8f0', borderRadius: 0, padding: '12px 14px', fontSize: '13px', outline: 'none', fontWeight: 600, color: '#0f172a' }}
+                    placeholder="Search by name or number..."
+                    value={recordSearchTerm}
+                    onChange={(e) => setRecordSearchTerm(e.target.value)}
+                    autoFocus
+                  />
+                  {/* Results List */}
+                  <ul style={{ maxHeight: '180px', overflowY: 'auto', listStyle: 'none', margin: 0, padding: 0 }}>
+                    {loadingRecordSearch ? (
+                      <li style={{ padding: '15px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        Searching...
+                      </li>
+                    ) : recordSearchResults.length > 0 ? (
+                      recordSearchResults.map((lead) => (
+                        <li
+                          key={lead.id}
+                          style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s', color: '#0f172a', flexWrap: 'wrap' }}
+                          onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                          onClick={() => {
+                            handleChange('associateWithRecords', [{
+                              id: lead.id,
+                              lead_id: lead.lead_id || lead.id,
+                              name: lead.name || lead.customer_name,
+                              customer_name: lead.customer_name,
+                              phone: lead.phone,
+                              loan_type: lead.loan_type,
+                              lead_login: lead.lead_login || 'Lead',
+                              lead_number: lead.lead_number,
+                            }]);
+                            setShowRecordDropdown(false);
+                            setRecordSearchTerm('');
+                          }}
+                        >
+                          <span style={{ background: (lead.lead_login || 'Lead') === 'Lead' ? 'rgba(0,170,255,0.1)' : 'rgba(243,156,18,0.1)', color: (lead.lead_login || 'Lead') === 'Lead' ? '#00aaff' : '#f39c12', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                            {lead.lead_login || 'Lead'}
                           </span>
-                          {attachment.file && (
-                            <span className="text-xs text-gray-500">
-                              {(attachment.file.size / 1024 / 1024).toFixed(2)} MB
-                            </span>
-                          )}
-                        </div>
+                          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>{lead.name || lead.customer_name}</span>
+                          {lead.phone && <span style={{ color: '#64748b', fontSize: '12px', marginLeft: '6px' }}>{lead.phone}</span>}
+                        </li>
+                      ))
+                    ) : (
+                      <li style={{ padding: '15px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        {recordSearchTerm ? `No records found for "${recordSearchTerm}"` : 'Type to search leads...'}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+            {isLeadPreselected && (
+              <p style={{ fontSize: '11px', color: '#00aaff', marginTop: '4px', fontWeight: 600 }}>Lead is already pre-selected from the current view</p>
+            )}
+          </div>
+
+          {/* Row 3: Conditional Fields per Task Type */}
+          {form.taskType === 'Call' && (
+            <div className="mb-2.5">
+              <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+                Quick Note
+              </label>
+              <textarea
+                ref={messageRef}
+                className="w-full px-3 py-2 rounded-md text-[13px] text-[#0f172a] font-medium outline-none bg-white resize-vertical transition"
+                style={{ border: '1.5px solid #94a3b8', minHeight: '70px', maxHeight: '400px' }}
+                onFocus={(e) => e.target.style.borderColor = '#00aaff'}
+                onBlur={(e) => e.target.style.borderColor = '#94a3b8'}
+                value={form.message}
+                onChange={(e) => handleChange("message", e.target.value)}
+                placeholder="Enter notes or callback details..."
+              />
+            </div>
+          )}
+
+          {form.taskType === 'Pendency' && (
+            <div className="mb-2.5">
+              <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+                What is Pending? (Document/Details)
+              </label>
+              <textarea
+                ref={messageRef}
+                className="w-full px-3 py-2 rounded-md text-[13px] text-[#0f172a] font-medium outline-none bg-white resize-vertical transition"
+                style={{ border: '1.5px solid #94a3b8', minHeight: '70px', maxHeight: '400px' }}
+                onFocus={(e) => e.target.style.borderColor = '#00aaff'}
+                onBlur={(e) => e.target.style.borderColor = '#94a3b8'}
+                value={form.message}
+                onChange={(e) => handleChange("message", e.target.value)}
+                placeholder="Describe the pending items..."
+              />
+            </div>
+          )}
+
+          {form.taskType === 'To-Do' && (
+            <>
+              <div className="mb-2.5">
+                <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+                  Task Subject
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 rounded-md text-[13px] text-[#0f172a] font-semibold outline-none bg-white transition"
+                  style={{ border: '1.5px solid #94a3b8' }}
+                  onFocus={(e) => e.target.style.borderColor = '#00aaff'}
+                  onBlur={(e) => e.target.style.borderColor = '#94a3b8'}
+                  value={form.subject}
+                  onChange={(e) => handleChange("subject", e.target.value)}
+                  placeholder="Enter task title"
+                />
+              </div>
+              <div className="mb-2.5">
+                <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+                  Description
+                </label>
+                <textarea
+                  ref={messageRef}
+                  className="w-full px-3 py-2 rounded-md text-[13px] text-[#0f172a] font-medium outline-none bg-white resize-vertical transition"
+                  style={{ border: '1.5px solid #94a3b8', minHeight: '70px', maxHeight: '400px' }}
+                  onFocus={(e) => e.target.style.borderColor = '#00aaff'}
+                  onBlur={(e) => e.target.style.borderColor = '#94a3b8'}
+                  value={form.message}
+                  onChange={(e) => handleChange("message", e.target.value)}
+                  placeholder="Details about the task..."
+                />
+              </div>
+            </>
+          )}
+
+          {/* Row 4: Attachments — only for Pendency & To-Do */}
+          {(form.taskType === 'Pendency' || form.taskType === 'To-Do') && (
+          <div className="mb-2.5">
+            <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+              📎 Attachments
+            </label>
+            <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: '8px', padding: '7px 10px', background: 'linear-gradient(180deg, #fbfdff, #f4f9ff)' }}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Attach files</span>
+                <label className="cursor-pointer" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', color: '#fff', border: 'none', padding: '5px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 800 }}>
+                  ＋ Add
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    multiple
+                  />
+                </label>
+              </div>
+              {form.attachments && form.attachments.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {form.attachments.map((attachment, index) => (
+                    <div key={attachment.id} className="flex items-center justify-between gap-2 bg-white rounded-lg overflow-hidden" style={{ border: '1px solid #cbd5e1', padding: '6px 10px' }}>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span style={{ background: '#eff6ff', color: '#0284c7', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                          {attachment.name?.split('.').pop() || 'FILE'}
+                        </span>
+                        <span className="truncate" style={{ fontSize: '12px', color: '#334155', fontWeight: 700, maxWidth: '180px' }}>{attachment.name}</span>
+                        {attachment.file && (
+                          <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', marginRight: '6px' }}>
+                            {(attachment.file.size / 1024 / 1024).toFixed(2)} MB
+                          </span>
+                        )}
                       </div>
                       <button
                         type="button"
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        className="flex items-center justify-center"
+                        style={{ width: '22px', height: '22px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
                         onClick={() => handleRemoveAttachment(attachment)}
-                        title="Remove attachment"
+                        title="Remove"
                       >
                         ×
                       </button>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4">
-            <label
-              className="block font-bold text-gray-700 mb-1"
-              htmlFor="taskType"
-            >
-              Task
-            </label>
-            <select
-              id="taskType"
-              className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-              value={form.taskType}
-              onChange={(e) => handleChange("taskType", e.target.value)}
-              required
-            >
-              <option value="">Select Task</option>
-              <option value="To-Do">To-Do</option>
-              <option value="Call">Call</option>
-              <option value="Pendency">Pendency</option>
-              <option value="Processing">Processing</option>
-              <option value="Completed">Completed</option>
-            </select>
-          </div>
-
-          
-
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Associate with records
-            </label>
-            <button
-              type="button"
-              className={`w-full px-3 py-2 border border-cyan-400 rounded bg-gray-100 text-black font-bold text-left transition-opacity ${isLeadPreselected ? 'cursor-not-allowed opacity-75' : 'hover:bg-gray-200 cursor-pointer'}`}
-              onClick={() => !isLeadPreselected && setShowAssociatePopup(true)}
-              disabled={isLeadPreselected}
-            >
-              {form.associateWithRecords.length > 0
-                ? form.associateWithRecords.length === 1 
-                  ? `${form.associateWithRecords[0].name || form.associateWithRecords[0].customer_name || 'Selected Lead'}${isLeadPreselected ? ' (Pre-selected from lead)' : ''}`
-                  : `${form.associateWithRecords.length} record(s) selected${isLeadPreselected ? ' (Pre-selected from lead)' : ''}`
-                : "Associated with 0 records"}
-            </button>
-            {isLeadPreselected && (
-              <p className="text-sm text-cyan-600 mt-1">Lead is already pre-selected from the current view</p>
-            )}
-          </div>
-
-          {/* Modified Assignee Section for multiple assignees */}
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Assignee
-            </label>
-            <div className="flex flex-wrap items-center gap-2 border border-cyan-400 rounded-md bg-white p-1 pr-2 min-h-[42px]">
-              {" "}
-              {/* Added min-h and flex-wrap */}
-              {/* Display all assigned names as pills */}
-              {form.assignedTo.map((assignee, index) => {
-                // Properly construct user name from first_name and last_name, fallback to name, then to assignee
-                const userName = assignee?.first_name && assignee?.last_name 
-                  ? `${assignee.first_name} ${assignee.last_name}`.trim()
-                  : assignee?.name || assignee; // Handle both user objects and strings
-                const userId = assignee?.user_id || assignee?.id || assignee;
-                return (
-                  <div
-                    key={userId} // Using user ID as key for uniqueness
-                    className="bg-blue-100 text-blue-800 py-1 px-3 rounded-md flex items-center"
-                  >
-                    {/* Profile icon with initials */}
-                    <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-2 text-xs flex-shrink-0">
-                      {userName.split(' ')
-                        .map(part => part[0])
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase()}
-                    </div>
-                    <span>{userName}</span>
-                    <button
-                      type="button"
-                      className="ml-2 text-blue-500 hover:text-blue-700"
-                      onClick={() => handleRemoveAssignee(assignee)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className="text-blue-600 font-medium hover:text-blue-800 ml-auto" // Pushed to the right
-                onClick={() => setShowAssignPopup(true)}
-              >
-                + Add more
-              </button>
+              )}
             </div>
           </div>
-          {/* End of Modified Assignee Section */}
+          )}
 
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Due date {form.dueDateOption === "custom" && form.dueDate && (
-                <span className="text-sm font-normal text-gray-600">
-                  (Selected: {form.dueDate})
-                </span>
-              )}
-            </label>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
+          {/* Row 5: Schedule Date + Time */}
+          <div className="mb-2.5">
+            <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '1.2fr 1fr', alignItems: 'start' }}>
+              <div className="relative">
+                <div className="flex items-center gap-1 mb-1" style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  <span style={{ display: 'inline-block', width: '3px', height: '10px', background: '#00aaff', borderRadius: '2px' }}></span>
+                  📅 Schedule Date
+                </div>
                 <select
                   ref={dueDateSelectRef}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  style={{ width: '100%', border: '1.5px solid #94a3b8', background: '#fff', color: '#0f172a', minHeight: '42px', borderRadius: '8px', padding: '0 12px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', outline: 'none' }}
                   value={form.dueDateOption}
                   onChange={(e) => {
                     const value = e.target.value;
-                    console.log('Due date option selected:', value);
                     if (value === "today") {
                       handleChange("dueDateOption", "today");
                       handleChange("dueDate", getTodayDate());
@@ -823,33 +901,22 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
                       setShowCalendar(false);
                     } else if (value === "custom") {
                       handleChange("dueDateOption", "custom");
-                      handleChange(
-                        "dueDate",
-                        form.customDate ? formatDate(form.customDate) : ""
-                      );
+                      handleChange("dueDate", form.customDate ? formatDate(form.customDate) : "");
                       setShowCalendar(true);
                     }
                   }}
-                  onFocus={(e) => {
-                    // When dropdown opens and custom is already selected, show calendar
-                    if (form.dueDateOption === "custom") {
-                      setShowCalendar(true);
-                    }
-                  }}
+                  onFocus={(e) => { if (form.dueDateOption === "custom") setShowCalendar(true); }}
                   required
                 >
                   <option value="today">Today ({getTodayDate()})</option>
                   <option value="tomorrow">Tomorrow ({getTomorrowDate()})</option>
-                  <option value="custom">
-                    Custom Date
-                  </option>
+                  <option value="custom">Custom Date</option>
                 </select>
 
                 {form.dueDateOption === "custom" && showCalendar && (
-                  <div 
-                    className={`absolute bg-white border border-cyan-400 rounded shadow-lg z-[9999] ${
-                      calendarPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-                    }`}
+                  <div
+                    className={`absolute z-[9999] ${calendarPosition === 'above' ? 'bottom-full mb-2' : 'mt-1.5'}`}
+                    style={{ background: '#fff', border: '1px solid #dbeafe', borderRadius: '12px', boxShadow: '0 15px 30px rgba(15,23,42,0.12)', padding: '8px' }}
                   >
                     <DatePicker
                       selected={form.customDate || new Date()}
@@ -862,135 +929,87 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
                       showYearDropdown
                       scrollableYearDropdown
                       yearDropdownItemNumber={100}
-                      dateFormat="dd MMM yyyy" // Change DatePicker format
-                      className="border border-cyan-400 rounded p-2"
+                      dateFormat="dd MMM yyyy"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="flex-1 relative">
+              <div>
+                <div className="flex items-center gap-1 mb-1" style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  <span style={{ display: 'inline-block', width: '3px', height: '10px', background: '#00aaff', borderRadius: '2px' }}></span>
+                  ⏰ Schedule Time
+                </div>
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
+                  style={{ width: '100%', border: '1.5px solid #94a3b8', minHeight: '42px', borderRadius: '8px', padding: '0 12px', fontSize: '13px', fontWeight: 700, color: '#0f172a', outline: 'none', background: '#fff', cursor: 'pointer' }}
                   value={form.dueTime}
                   readOnly
-                  onClick={() => setShowClockTimePicker(true)} // Open the clock picker
-                  placeholder="HH:MM AM/PM"
+                  onClick={() => setShowClockTimePicker(true)}
+                  placeholder="Select time"
                   required
                 />
               </div>
             </div>
           </div>
 
-          <div className="mt-4">
-            <label className="block font-bold text-gray-700 mb-1">
-              Repeat Task
+          {/* Row 6: Assigned To */}
+          <div className="mb-2.5">
+            <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
+              Assigned To
             </label>
-           
-            <div className="relative">
-              <select
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
-                value={form.repeatOption || "none"}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  console.log('🔄 Repeat option selected:', value);
-                  console.log('🔄 Current form.repeatOption:', form.repeatOption);
-                  
-                  // Update form state immediately
-                  setForm((prev) => ({
-                    ...prev,
-                    repeatOption: value,
-                    // Clear custom days if not custom
-                    ...(value !== "custom" && { repeatCustomDays: [] })
-                  }));
-                  
-                  // Show days selector for custom repeat
-                  if (value === "custom") {
-                    setShowDaysSelector(true);
-                  } else {
-                    setShowDaysSelector(false);
-                  }
-                }}
+            <div className="flex flex-wrap items-center gap-2 bg-white" style={{ border: '1.5px solid #94a3b8', borderRadius: '8px', padding: '6px 12px', minHeight: '42px' }}>
+              {form.assignedTo.map((assignee, index) => {
+                const userName = assignee?.first_name && assignee?.last_name
+                  ? `${assignee.first_name} ${assignee.last_name}`.trim()
+                  : assignee?.name || assignee;
+                const userId = assignee?.user_id || assignee?.id || assignee;
+                return (
+                  <div
+                    key={userId}
+                    className="inline-flex items-center gap-1.5"
+                    style={{ backgroundColor: '#eef2f6', border: '1px solid #d1d9e6', color: '#334155', padding: '4px 10px 4px 6px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}
+                  >
+                    <div className="flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#00aaff', color: 'white', width: '22px', height: '22px', borderRadius: '50%', fontSize: '10px', fontWeight: 800 }}>
+                      {userName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
+                    </div>
+                    <span>{userName}</span>
+                    <button
+                      type="button"
+                      className="ml-1 hover:text-red-500 transition"
+                      style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none' }}
+                      onClick={() => handleRemoveAssignee(assignee)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                className="ml-auto hover:text-[#00aaff] transition"
+                style={{ color: '#00aaff', fontWeight: 600, fontSize: '13px', background: 'none', border: 'none', cursor: 'pointer' }}
+                onClick={() => setShowAssignPopup(true)}
               >
-                <option value="none">Don't repeat</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="custom">Custom Repeat</option>
-              </select>
-
-             
-
-              {form.repeatOption === "custom" && showDaysSelector && (
-                <div className="mt-2 p-4 border border-cyan-400 rounded bg-white">
-                  <div className="mb-2 font-medium text-gray-700">
-                    Select days:
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                      (day) => (
-                        <label key={day} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            className="mr-1 w-4 h-4 text-cyan-600 focus:ring-cyan-500"
-                            checked={form.repeatCustomDays?.includes(day) || false}
-                            onChange={(e) => {
-                              const isChecked = e.target.checked;
-                              setForm((prev) => {
-                                const currentDays = prev.repeatCustomDays || [];
-                                if (isChecked && !currentDays.includes(day)) {
-                                  return {
-                                    ...prev,
-                                    repeatCustomDays: [...currentDays, day],
-                                  };
-                                } else if (!isChecked && currentDays.includes(day)) {
-                                  return {
-                                    ...prev,
-                                    repeatCustomDays: currentDays.filter(
-                                      (d) => d !== day
-                                    ),
-                                  };
-                                }
-                                return prev;
-                              });
-                            }}
-                          />
-                          <span className="text-sm text-black">{day}</span>
-                        </label>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
+                + Add
+              </button>
             </div>
           </div>
 
-          <div className="flex gap-4 mt-6">
+          {/* Row 7: Submit */}
+          <div style={{ marginTop: '10px', marginBottom: '10px' }}>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
+              style={{ backgroundColor: '#00aaff', color: 'white', border: 'none', padding: '14px', width: '100%', borderRadius: '8px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,170,255,0.2)', transition: 'all 0.2s' }}
+              onMouseOver={(e) => { e.target.style.transform = 'translateY(-2px)'; e.target.style.boxShadow = '0 6px 15px rgba(0,170,255,0.3)'; e.target.style.backgroundColor = '#0099e6'; }}
+              onMouseOut={(e) => { e.target.style.transform = 'translateY(0)'; e.target.style.boxShadow = '0 4px 12px rgba(0,170,255,0.2)'; e.target.style.backgroundColor = '#00aaff'; }}
             >
               Create Task
             </button>
           </div>
         </form>
+        </div>
       </div>
-
-      {showAssociatePopup && (
-        <AssociatePopup
-          onClose={() => setShowAssociatePopup(false)}
-          onSelect={(records) => {
-            handleChange("associateWithRecords", records);
-            setShowAssociatePopup(false);
-          }}
-          loanTypes={loanTypes}
-          leads={leads}
-          loadingLoanTypes={loadingLoanTypes}
-          loadingLeads={loadingLeads}
-          onFetchLeads={fetchLeadsByLoanType}
-        />
-      )}
 
       {showClockTimePicker && (
         <ClockTimePicker
@@ -1018,285 +1037,6 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   );
 }
 
-// AssociatePopup component - Modified with API integration
-function AssociatePopup({ onClose, onSelect, loanTypes, leads, loadingLoanTypes, loadingLeads, onFetchLeads }) {
-  const [selectedRecordType, setSelectedRecordType] = useState("");
-  const [selectedLoanType, setSelectedLoanType] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRecords, setSelectedRecords] = useState([]); // Store actual lead objects, not strings (single selection only)
-
-  // Format a lead object into a display string
-  const formatLeadDisplay = (lead) => {
-    const leadType = lead.lead_login || 'Lead';
-    return `${lead.customer_name} - ${lead.phone || lead.email || 'No contact'} (${lead.status}) [${leadType}]`;
-  };
-
-  // Get leads filtered by search term
-  const getFilteredLeads = () => {
-    if (!selectedLoanType || !leads) return [];
-    
-    // Since we're now doing server-side search, just return the leads as-is
-    // The filtering is done on the server when searchTerm changes
-    return leads;
-  };
-
-  // Handle search with debounced server-side search
-  const handleSearchChange = (newSearchTerm) => {
-    setSearchTerm(newSearchTerm);
-  };
-
-  // Debounced search effect
-  useEffect(() => {
-    if (!selectedLoanType || !selectedRecordType) return;
-
-    const timeoutId = setTimeout(() => {
-      const recordType = selectedRecordType.toLowerCase();
-      // Use higher limit when searching (50) vs default (5)
-      const searchLimit = searchTerm.trim() ? 50 : 5;
-      onFetchLeads(selectedLoanType, recordType, searchTerm, searchLimit);
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timeoutId);
-  }, [searchTerm, selectedLoanType, selectedRecordType]); // Removed onFetchLeads from dependency array
-
-  const filteredLeads = getFilteredLeads();
-
-  const toggleRecord = (record) => {
-    // Single selection - replace any existing selection with the new one
-    const recordWithLoanType = {
-      ...record,
-      name: record.customer_name || record.name, // Ensure 'name' property exists
-      loan_type: selectedLoanType, // Add the currently selected loan type
-      loanType: selectedLoanType   // Add both formats for compatibility
-    };
-    setSelectedRecords([recordWithLoanType]); // Always replace with single selection
-  };
-
-  // Check if a record is selected
-  const isRecordSelected = (record) => {
-    return selectedRecords.some(selected => selected.id === record.id);
-  };
-
-  // Handle loan type selection
-  const handleLoanTypeSelect = (loanType) => {
-    setSelectedLoanType(loanType);
-    setSearchTerm("");
-    // Fetch leads based on the selected record type with default limit
-    const recordType = selectedRecordType.toLowerCase();
-    onFetchLeads(loanType, recordType, "", 5); // Default: no search, 5 leads
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
-    >
-      <div className="bg-transparent backdrop-blur-sm p-6 rounded-2xl shadow-2xl w-[90%] max-w-5xl mx-auto flex max-h-[90vh] overflow-hidden relative">
-        <div className="w-1/4 border-r p-4 bg-white bg-opacity-80 rounded-l-2xl">
-          <h3 className="font-bold mb-4 text-lg text-black">Record Types</h3>
-          <div className="space-y-3">
-            {/* Leads record type button */}
-            <button
-              className={`w-full text-left px-4 py-3 rounded-xl font-medium transition ${
-                selectedRecordType === "Leads"
-                  ? "bg-cyan-500 text-white shadow-md"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-              onClick={() => {
-                setSelectedRecordType("Leads");
-                setSelectedLoanType(""); // Reset loan type when parent is clicked
-                setSearchTerm("");
-              }}
-            >
-              Leads
-            </button>
-            
-            {/* Show loan types only if Leads is selected */}
-            {selectedRecordType === "Leads" && (
-              <div className="ml-4 space-y-2 mt-2 border-l-2 border-cyan-300 pl-3">
-                {loadingLoanTypes ? (
-                  <div className="text-gray-500 text-sm">Loading loan types...</div>
-                ) : (
-                  loanTypes.map((loanType) => (
-                    <button
-                      key={loanType.id}
-                      className={`w-full text-left px-4 py-2 rounded-lg font-medium transition ${
-                        selectedLoanType === loanType.name
-                          ? "bg-cyan-100 text-cyan-800 shadow-sm"
-                          : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-                      }`}
-                      onClick={() => handleLoanTypeSelect(loanType.name)}
-                    >
-                      {loanType.name} ({loanType.lead_count || 0})
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-
-            {/* Login record type button */}
-            <button
-              className={`w-full text-left px-4 py-3 rounded-xl font-medium transition ${
-                selectedRecordType === "Login"
-                  ? "bg-cyan-500 text-white shadow-md"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-              onClick={() => {
-                setSelectedRecordType("Login");
-                setSelectedLoanType(""); // Reset loan type when parent is clicked
-                setSearchTerm("");
-              }}
-            >
-              Login
-            </button>
-            
-            {/* Show loan types only if Login is selected */}
-            {selectedRecordType === "Login" && (
-              <div className="ml-4 space-y-2 mt-2 border-l-2 border-cyan-300 pl-3">
-                {loadingLoanTypes ? (
-                  <div className="text-gray-500 text-sm">Loading loan types...</div>
-                ) : (
-                  loanTypes.map((loanType) => (
-                    <button
-                      key={loanType.id}
-                      className={`w-full text-left px-4 py-2 rounded-lg font-medium transition ${
-                        selectedLoanType === loanType.name
-                          ? "bg-cyan-100 text-cyan-800 shadow-sm"
-                          : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-                      }`}
-                      onClick={() => handleLoanTypeSelect(loanType.name)}
-                    >
-                      {loanType.name} ({loanType.login_count || 0})
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="w-3/4 p-6 overflow-y-auto bg-white bg-opacity-80 rounded-r-2xl">
-          {selectedLoanType ? (
-            <>
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="font-bold text-xl text-black">
-                    {selectedLoanType}
-                  </h3>
-                  <p className="text-gray-600 text-sm">
-                    Select a {selectedRecordType.toLowerCase().slice(0, -1)} to associate with this task
-                  </p>
-                </div>
-                <div className="relative w-1/2">
-                  <input
-                    type="text"
-                    placeholder={`Search ${selectedLoanType}`}
-                    className="border px-4 py-2 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-cyan-500 text-black"
-                    value={searchTerm}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                  />
-                  {searchTerm && (
-                    <button
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      onClick={() => handleSearchChange("")}
-                      type="button"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {loadingLeads ? (
-                <div className="text-center text-gray-500 mt-20">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4"></div>
-                  <p>Loading leads...</p>
-                </div>
-              ) : filteredLeads.length > 0 ? (
-                <ul className="space-y-3">
-                  {filteredLeads.map((lead) => {
-                    const leadDisplay = formatLeadDisplay(lead);
-                    const isSelected = isRecordSelected(lead);
-                    return (
-                      <li
-                        key={lead.id}
-                        className={`p-4 border rounded-xl cursor-pointer transition text-black ${
-                          isSelected
-                            ? "bg-cyan-100 border-cyan-500 shadow"
-                            : "hover:bg-gray-100"
-                        }`}
-                        onClick={() => toggleRecord(lead)}
-                      >
-                        <div className="flex items-center">
-                          <div className="flex-1">{leadDisplay}</div>
-                          {isSelected && (
-                            <div className="text-cyan-500">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="text-gray-500 text-center mt-20 text-lg">
-                  {searchTerm
-                    ? `No ${selectedRecordType.toLowerCase()} found matching "${searchTerm}"`
-                    : `No ${selectedRecordType.toLowerCase()} available`}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <p className="text-lg font-medium">Please select a record type</p>
-              <p className="text-sm">Select a record type from the left panel to view records</p>
-            </div>
-          )}
-
-          {/* Show buttons only if a loan type is selected */}
-          {selectedLoanType && (
-            <div className="flex justify-end gap-4 mt-8">
-              <button
-                className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition"
-                onClick={() => onSelect(selectedRecords)}
-                disabled={selectedRecords.length === 0}
-              >
-                Select ({selectedRecords.length > 0 ? `1 lead selected` : 'No lead selected'})
-              </button>
-              <button
-                className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // AssignPopup component
 function AssignPopup({ onClose, onSelect, users, loadingUsers }) {
