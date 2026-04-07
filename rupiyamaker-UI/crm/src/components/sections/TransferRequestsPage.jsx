@@ -432,7 +432,7 @@ const TransferRequestsPage = ({ user }) => {
                   const requestedBy = (lead.requestor_name || lead.reassignment_requested_by_name || '—').trim();
                   const createdBy = (lead.created_by_name || '—').trim();
                   const teamName = (lead.department_name || lead.team_name || '—').trim();
-                  const leadStatus = lead.status || lead.lead_status || '';
+                  const leadStatus = lead.lead_status || '';
                   const subStatus = lead.sub_status || '';
                   const age = daysAgo(lead.reassignment_requested_at);
                   const dateStr = fmtDate(lead.reassignment_requested_at);
@@ -555,9 +555,9 @@ const TransferRequestsPage = ({ user }) => {
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <h2 className="text-sm font-black text-gray-900 tracking-tight">{customerName.toUpperCase()}</h2>
                     {/* Lead main status */}
-                    {(fullLeadData?.status || currentLead.status || currentLead.lead_status) && (
+                    {(fullLeadData?.status || currentLead.lead_status) && (
                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border bg-teal-50 text-teal-700 border-teal-200">
-                        {fullLeadData?.status || currentLead.status || currentLead.lead_status}
+                        {fullLeadData?.status || currentLead.lead_status}
                       </span>
                     )}
                     {/* Lead sub-status */}
