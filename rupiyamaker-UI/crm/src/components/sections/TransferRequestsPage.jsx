@@ -554,12 +554,25 @@ const TransferRequestsPage = ({ user }) => {
                 <div>
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <h2 className="text-sm font-black text-gray-900 tracking-tight">{customerName.toUpperCase()}</h2>
+                    {/* Lead main status */}
+                    {(fullLeadData?.status || currentLead.status || currentLead.lead_status) && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border bg-teal-50 text-teal-700 border-teal-200">
+                        {fullLeadData?.status || currentLead.status || currentLead.lead_status}
+                      </span>
+                    )}
+                    {/* Lead sub-status */}
+                    {(fullLeadData?.sub_status || currentLead.sub_status) && (
+                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase border bg-gray-100 text-gray-600 border-gray-200">
+                        {fullLeadData?.sub_status || currentLead.sub_status}
+                      </span>
+                    )}
+                    {/* Approval / transfer status badge */}
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
                       activeTab === 'pending'  ? 'bg-yellow-50 text-yellow-600 border-yellow-200' :
                       activeTab === 'approved' ? 'bg-green-50 text-green-600 border-green-200' :
                       activeTab === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
                                                  'bg-blue-50 text-blue-600 border-blue-200'
-                    }`}>{activeTab.toUpperCase()}</span>
+                    }`}>{activeTab === 'direct' ? 'DIRECT TRANSFER' : activeTab.toUpperCase()}</span>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
                     {(currentLead.phone || currentLead.mobile_number) && (
@@ -879,9 +892,9 @@ const TransferRequestsPage = ({ user }) => {
                           // Auto-rejection: system rejected it (no approver name, or note contains "auto" / "24 hours")
                           const isAutoRej = isRejected && (!decisionBy.trim() || (decisionNote || '').toLowerCase().includes('auto') || (decisionNote || '').toLowerCase().includes('24 hour') || (decisionBy || '').toLowerCase() === 'system');
 
-                          // Lead/login status pills from current lead
-                          const leadSt = currentLead.lead_status || currentLead.status || '';
-                          const subSt = currentLead.sub_status || '';
+                          // Lead/login status pills — prefer fullLeadData (complete document) over list-API data
+                          const leadSt = fullLeadData?.status || currentLead.lead_status || currentLead.status || '';
+                          const subSt = fullLeadData?.sub_status || currentLead.sub_status || '';
                           const hasLogin = currentLead.file_sent_to_login;
 
                           // Card border color
