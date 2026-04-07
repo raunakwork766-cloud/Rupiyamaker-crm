@@ -379,9 +379,14 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
                 }
             }
         }
+
+        // Permission not found in array format — deny access (do NOT fall back to
+        // hasPermission with an array, that would cause infinite mutual recursion)
+        console.warn(`🚫 hasUniversalPermission: No permission found for ${page}.${action}`);
+        return false;
     }
 
-    // Fallback to legacy permission checking
+    // Fallback to legacy permission checking (only when NOT array format)
     console.log('🔄 Falling back to legacy permission check');
     return hasPermission(userPermissions, page, action);
 };
