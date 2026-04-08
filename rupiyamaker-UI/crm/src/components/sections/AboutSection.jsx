@@ -187,6 +187,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   // User permissions state
   const [canEditAlternateNumber, setCanEditAlternateNumber] = useState(false);
   const [isUserSuperAdmin, setIsUserSuperAdmin] = useState(false);
+  const [canViewDataCode, setCanViewDataCode] = useState(false);
   
   // Auto-save feedback state
   const [saveStatus, setSaveStatus] = useState('');
@@ -778,6 +779,73 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                                    originalAlternateNumber.toLowerCase() === 'null';
     
     setCanEditAlternateNumber(isOriginalAlternateNumberEmpty);
+  };
+
+  // Check if user has permission to view the Data Code field (leads.pl_&_odd_leads → view_data_code)
+  const checkDataCodePermission = () => {
+    try {
+      const userPermissions = getUserPermissions();
+
+      // Super admin always has access
+      if (isSuperAdmin(userPermissions)) {
+        setCanViewDataCode(true);
+        return;
+      }
+
+      const userRole = localStorage.getItem('userRole');
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      if (userData.role_name === 'Super Admin' || userRole === 'Super Admin') {
+        setCanViewDataCode(true);
+        return;
+      }
+
+      // Check from normalized localStorage permissions (object format set at login)
+      const plOddPerms =
+        userPermissions['leads.pl_&_odd_leads'] ||
+        userPermissions['leads.pl_odd_leads'] ||
+        userPermissions['leads_pl_&_odd_leads'] ||
+        userPermissions['leads_pl_odd_leads'];
+
+      if (plOddPerms) {
+        if (plOddPerms === '*') {
+          setCanViewDataCode(true);
+          return;
+        }
+        if (typeof plOddPerms === 'object' && !Array.isArray(plOddPerms) && plOddPerms.view_data_code === true) {
+          setCanViewDataCode(true);
+          return;
+        }
+        if (Array.isArray(plOddPerms) && plOddPerms.includes('view_data_code')) {
+          setCanViewDataCode(true);
+          return;
+        }
+      }
+
+      // Also check from userData.role.permissions (raw backend array format)
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+        const plOddPermission = user.role.permissions.find(p =>
+          p.page === 'leads.pl_&_odd_leads' ||
+          p.page === 'leads.pl_odd_leads' ||
+          p.page === 'leads_pl_&_odd_leads' ||
+          p.page === 'leads_pl_odd_leads'
+        );
+        if (plOddPermission && plOddPermission.actions) {
+          const actions = Array.isArray(plOddPermission.actions)
+            ? plOddPermission.actions
+            : [plOddPermission.actions];
+          if (actions.includes('view_data_code')) {
+            setCanViewDataCode(true);
+            return;
+          }
+        }
+      }
+
+      setCanViewDataCode(false);
+    } catch (error) {
+      console.error('Error checking data code permission:', error);
+      setCanViewDataCode(false);
+    }
   };
 
   // Fetch loan types from API

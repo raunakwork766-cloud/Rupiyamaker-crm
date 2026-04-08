@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { ClipboardList, Ticket, CheckCircle2, X, AlertTriangle, Clock, User, Calendar } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+
+// Lazy-load EditTask so it only loads when a task popup is needed
+const EditTaskLazy = lazy(() => import('./EditTask'));
 
 /**
  * PopTaskTicketModal — blocking task/ticket acknowledgment popup.
@@ -29,6 +32,11 @@ const PopTaskTicketModal = () => {
   const timerRef = useRef(null);
   const mountedRef = useRef(true);
   const dismissCheckRef = useRef(null);
+  // Ref to cancel an in-flight full-task fetch if current changes
+  const editLoadRef = useRef(null);
+
+  // Full task data for EditTask modal (only set when current is a task)
+  const [editTaskData, setEditTaskData] = useState(null);
 
   const getUserId = useCallback(() => {
     try {
@@ -138,7 +146,7 @@ const PopTaskTicketModal = () => {
     timerRef.current = setTimeout(async () => {
       await fetchPending();
       if (mountedRef.current) schedulePoll();
-    }, 10000);
+    }, 3000); // Poll every 3 seconds for near-immediate notification (same as announcements)
   }, [fetchPending]);
 
   // Check every 5 minutes if any dismissed item's 24h has expired
@@ -150,17 +158,235 @@ const PopTaskTicketModal = () => {
     return () => clearInterval(dismissCheckRef.current);
   }, [cleanupDismissEntries, fetchPending]);
 
+  // ── EditTask integration ──────────────────────────────────────────────────
+  // When a task comes into `current`, fetch its full data and show EditTask.
+  // For tickets we keep the existing simple acknowledgment popup.
   useEffect(() => {
-    mountedRef.current = true;
+    editLoadRef.current = null;
+    if (!current || current.type !== 'task') {
+      setEditTaskData(null);
+      return;
+    }
+
+    // Show immediately with the partial data we already have
+    setEditTaskData({
+      id: current.id,
+      subject: current.subject || '',
+      message: current.details || '',
+      task_details: current.details || '',
+      typeTask: current.task_type || 'To-Do',
+      status: current.status || 'Pending',
+      priority: current.priority || 'Medium',
+      date: current.due_date || '',
+      due_date: current.due_date || '',
+      created_at: current.created_at,
+      createdBy: current.created_by_name || 'Admin',
+      creator_name: current.created_by_name || 'Admin',
+      assign: 'Loading…',
+      assigned_to: [],
+      attachments: [],
+      comments: [],
+      history: [],
+      notes: '',
+      lead_id: null,
+      loan_type: null,
+      isLoading: true,
+    });
+
+    // Fetch full task data in background and update EditTask
+    const taskId = current.id;
+    editLoadRef.current = taskId;
+    const userId = getUserId();
+    if (!userId) return;
+
+    fetch(
+      `${API_BASE_URL}/tasks/${taskId}?user_id=${encodeURIComponent(userId)}&include_attachments=true`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Cache-Control': 'no-cache',
+        },
+      }
+    )
+      .then(res => {
+        if (!res.ok) {
+          // 404 = task deleted; 403 = no access — clear loading state either way
+          if (editLoadRef.current === taskId && mountedRef.current) {
+            setEditTaskData(prev => (prev ? { ...prev, isLoading: false } : null));
+          }
+          return null;
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (!data || editLoadRef.current !== taskId || !mountedRef.current) return;
+        setEditTaskData({ ...data, isLoading: false });
+      })
+      .catch(() => {
+        if (editLoadRef.current === taskId && mountedRef.current) {
+          setEditTaskData(prev => (prev ? { ...prev, isLoading: false } : null));
+        }
+      });
+  }, [current, getUserId]);
+
+  // Silently acknowledge a task and advance the queue
+  const acknowledgeAndAdvance = useCallback(
+    async (taskId) => {
+      const userId = getUserId();
+      if (userId && taskId) {
+        try {
+          await fetch(
+            `${API_BASE_URL}/tasks/${taskId}/acknowledge?user_id=${encodeURIComponent(userId)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${localStorage.getItem('token')}`,
+              },
+              body: JSON.stringify({ employee_remark: '' }),
+            }
+          );
+        } catch (_) {}
+        // Remove any dismiss entry so the task doesn't re-show
+        try {
+          const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
+          if (raw) {
+            const dt = JSON.parse(raw);
+            delete dt[taskId];
+            localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(dt));
+          }
+        } catch (_) {}
+      }
+      setEditTaskData(null);
+      editLoadRef.current = null;
+      window.dispatchEvent(new CustomEvent('task-ticket-acknowledged', { detail: { type: 'task', id: taskId } }));
+      setQueue(prev => {
+        const remaining = prev.filter(w => w.id !== taskId);
+        const visible = remaining.filter(w => !isDismissedRecently(w.id));
+        setCurrent(visible.length > 0 ? visible[0] : null);
+        return remaining;
+      });
+    },
+    [getUserId, isDismissedRecently]
+  );
+
+  // Called when EditTask is closed (X button)
+  const handleEditTaskClose = useCallback(() => {
+    if (!current) return;
+    acknowledgeAndAdvance(current.id);
+  }, [current, acknowledgeAndAdvance]);
+
+  // Called when EditTask auto-saves or explicitly saves — make the API call and return updated task
+  const handleEditTaskSave = useCallback(
+    async (updatePayload) => {
+      const taskId = updatePayload._id || updatePayload.id || current?.id;
+      const userId = getUserId();
+      if (!taskId || !userId) return null;
+
+      const body = {
+        subject: updatePayload.subject || updatePayload.title,
+        task_details: updatePayload.message || updatePayload.description,
+        priority: updatePayload.priority || 'Medium',
+        status: updatePayload.status,
+        assigned_to: updatePayload.assigned_to || updatePayload.assigned_users || [],
+        due_date: updatePayload.date || updatePayload.due_date || null,
+        due_time: updatePayload.time || null,
+        is_urgent: updatePayload.is_urgent || false,
+        notes: updatePayload.notes || '',
+        task_type: updatePayload.typeTask || updatePayload.task_type || 'To-Do',
+        user_id: userId,
+      };
+
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/tasks/${taskId}?user_id=${encodeURIComponent(userId)}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify(body),
+          }
+        );
+        if (res.ok) {
+          const updated = await res.json();
+          // If keepModalOpen flag, stay in EditTask; otherwise acknowledge and close
+          if (!updatePayload.keepModalOpen) {
+            acknowledgeAndAdvance(taskId);
+          }
+          return updated;
+        }
+      } catch (_) {}
+      return null;
+    },
+    [current, getUserId, acknowledgeAndAdvance]
+  );
+
+  // ── localStorage trigger check (1s) — same mechanism as announcement system ─────
+  // When admin creates a task, Task.jsx writes globalTaskTrigger to localStorage.
+  // This allows same-browser tabs to react in <1 second (cross-device still uses polling).
+  useEffect(() => {
+    const checkTaskTrigger = () => {
+      try {
+        const raw = localStorage.getItem('globalTaskTrigger');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        const age = Date.now() - (data.timestamp || 0);
+        localStorage.removeItem('globalTaskTrigger');
+        if (age < 30000) {
+          // Backend needs ~500ms to save — wait then poll immediately
+          setTimeout(() => { if (mountedRef.current) fetchPending(); }, 600);
+        }
+      } catch (_) {
+        localStorage.removeItem('globalTaskTrigger');
+      }
+    };
+    checkTaskTrigger();
+    const triggerInterval = setInterval(checkTaskTrigger, 1000);
+    return () => clearInterval(triggerInterval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Initial poll + event listeners ───────────────────────────────────────
+  useEffect(() => {
     fetchPending();
     schedulePoll();
-    const onFocus = () => fetchPending();
+
+    const onFocus = () => { fetchPending(); };
+    const onTaskCreated = () => {
+      // Small delay so backend has time to save, then poll immediately
+      setTimeout(() => fetchPending(), 800);
+    };
+    // Also poll when the tab becomes visible (user switches tabs)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchPending();
+    };
+    // BroadcastChannel: when another tab creates a task, poll on this tab too
+    let bc = null;
+    try {
+      bc = new BroadcastChannel('rupiyame_task_events');
+      bc.onmessage = (ev) => {
+        if (ev.data === 'task-created' || ev.data === 'ticket-created') {
+          setTimeout(() => fetchPending(), 800);
+        }
+      };
+    } catch (_) {}
+
     window.addEventListener('focus', onFocus);
+    window.addEventListener('task-created', onTaskCreated);
+    window.addEventListener('ticket-created', onTaskCreated);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       mountedRef.current = false;
       clearTimeout(timerRef.current);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('task-created', onTaskCreated);
+      window.removeEventListener('ticket-created', onTaskCreated);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (bc) bc.close();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -240,6 +466,58 @@ const PopTaskTicketModal = () => {
   };
 
   if (!current) return null;
+
+  // ── For tasks: ALWAYS show blocking overlay (never show simple modal) ──────
+  // This prevents accidental dismiss during EditTask lazy-load
+  if (current.type === 'task') {
+    // editTaskData not ready yet — show a full blocking loading screen
+    if (!editTaskData) {
+      return (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        >
+          <div style={{ textAlign: 'center', color: '#fff' }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>New Task Assigned</div>
+            <div style={{ fontSize: 14, opacity: 0.8 }}>{current.subject || 'Loading task details...'}</div>
+            <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'center' }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', opacity: 0.8, animation: `bounce 1s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
+          <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }`}</style>
+        </div>
+      );
+    }
+
+    // editTaskData ready — show full EditTask inside blocking overlay
+    return (
+      <div
+        className="fixed inset-0 z-[99999] flex items-center justify-center"
+        style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Suspense fallback={
+          <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>Loading task...</div>
+        }>
+          <EditTaskLazy
+            key={`pop-edit-${current.id}`}
+            taskData={editTaskData}
+            onClose={handleEditTaskClose}
+            onSave={handleEditTaskSave}
+            currentUserId={getUserId()}
+            apiBaseUrl={API_BASE_URL}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // (old code below kept for ticket type items)
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';

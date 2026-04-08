@@ -1299,7 +1299,8 @@ async def get_tasks_due_on_date(self, user_id: str, date_str: str) -> List[Dict[
 async def get_unacknowledged_tasks(self, user_id: str) -> List[Dict[str, Any]]:
     """
     Get tasks assigned to a user that are not yet acknowledged by that user.
-    Excludes tasks created by the user themselves.
+    Includes self-assigned tasks (created_by == user_id) so the popup shows even when
+    a user assigns a task to themselves.
     Only returns tasks from the last 30 days to avoid flooding old data.
     Returns tasks sorted by created_at descending (newest first).
     """
@@ -1310,7 +1311,6 @@ async def get_unacknowledged_tasks(self, user_id: str) -> List[Dict[str, Any]]:
         tasks = []
         async for doc in self.collection.find({
             "assigned_to": user_oid,
-            "created_by": {"$ne": user_oid},
             "status": {"$nin": ["Completed", "Cancelled"]},
             "created_at": {"$gte": cutoff_date},
             "$or": [

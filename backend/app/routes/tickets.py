@@ -52,10 +52,11 @@ security = HTTPBearer()
 
 # File upload configuration
 UPLOAD_DIR = "media/tickets"
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
 ALLOWED_EXTENSIONS = {
-    'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 
-    'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar'
+    'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg',
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar',
+    'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'
 }
 
 def ensure_upload_dir():

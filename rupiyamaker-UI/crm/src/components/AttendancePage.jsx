@@ -435,28 +435,41 @@ const sampleComments = [
   },
 ]
 
-// Excel export — uses ExcelJS to produce a color-coded .xlsx matching the website display
 const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays) => {
   const ExcelJS = (await import('exceljs')).default
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
 
-  // ── Color map: status → { bg (ARGB), fontColor (ARGB), value } ──
-  // Values shown on website: P/L=1, HD=0.5, LV=0, A=0, AB=-1, H=1, SP=1, S0=0, W/WK/blank=—
+  // ── Color map: status → { bg/font ARGB (UPPERCASE), numeric value } ──
+  // Using UPPERCASE ARGB + bgColor for maximum Excel compatibility
+  const fill = (hex) => ({
+    type: 'pattern', pattern: 'solid',
+    fgColor: { argb: hex.toUpperCase() },
+    bgColor: { argb: hex.toUpperCase() },
+  })
+
   const STATUS_STYLE = {
-    P:    { bg: 'FF10b981', font: 'FF000000', val: '1'    },   // green
-    L:    { bg: 'FF10b981', font: 'FF000000', val: '1'    },   // green (late = full present)
-    LV:   { bg: 'FFff7b00', font: 'FF000000', val: '0'    },   // orange
-    H:    { bg: 'FF06b6d4', font: 'FF000000', val: '1'    },   // cyan
-    SP:   { bg: 'FF06b6d4', font: 'FF000000', val: '1'    },   // cyan
-    S0:   { bg: 'FF18181b', font: 'FFFFFFFF', val: '0'    },   // very dark
-    HD:   { bg: 'FFffdd00', font: 'FF000000', val: '0.5'  },   // yellow
-    AB:   { bg: 'FFff2a2a', font: 'FFFFFFFF', val: '-1'   },   // red
-    A:    { bg: 'FFFFFFFF', font: 'FF000000', val: '0'    },   // white
-    WK:   { bg: 'FF3b82f6', font: 'FFFFFFFF', val: 'IN'   },   // blue
-    W:    { bg: 'FF111113', font: 'FF52525b', val: '—'    },   // weekend dark
+    P:  { fillHex: '10B981', font: '000000', val: 1    },  // green  → 1
+    L:  { fillHex: '10B981', font: '000000', val: 1    },  // green  → 1 (late = full present)
+    LV: { fillHex: 'FF7B00', font: '000000', val: 0    },  // orange → 0
+    H:  { fillHex: '06B6D4', font: '000000', val: 1    },  // cyan   → 1
+    SP: { fillHex: '06B6D4', font: '000000', val: 1    },  // cyan   → 1
+    S0: { fillHex: '18181B', font: 'FFFFFF', val: 0    },  // dark   → 0
+    HD: { fillHex: 'FFDD00', font: '000000', val: 0.5  },  // yellow → 0.5
+    AB: { fillHex: 'FF2A2A', font: 'FFFFFF', val: -1   },  // red    → -1
+    A:  { fillHex: 'F5F5F5', font: '000000', val: 0    },  // white  → 0
+    WK: { fillHex: '3B82F6', font: 'FFFFFF', val: 'IN' },  // blue   → IN
+    W:  { fillHex: '111113', font: '52525B', val: '—'  },  // weekend
   }
 
-  const getStyle = (status) => STATUS_STYLE[status] || { bg: 'FF1a1a1a', font: 'FF71717a', val: '' }
+  const getStyle = (status) => STATUS_STYLE[status] || { fillHex: '1A1A1A', font: '71717A', val: '' }
+
+  // ExcelJS border helper
+  const border = (color = '1F1F22') => ({
+    top:    { style: 'thin', color: { argb: 'FF' + color.toUpperCase() } },
+    left:   { style: 'thin', color: { argb: 'FF' + color.toUpperCase() } },
+    bottom: { style: 'thin', color: { argb: 'FF' + color.toUpperCase() } },
+    right:  { style: 'thin', color: { argb: 'FF' + color.toUpperCase() } },
+  })
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'RupiyaMe CRM'
@@ -470,192 +483,187 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
   sheet.getColumn(1).width = 12   // Emp ID
   sheet.getColumn(2).width = 22   // Name
   sheet.getColumn(3).width = 18   // Department
-  for (let d = 1; d <= daysInMonth; d++) sheet.getColumn(3 + d).width = 5
-  sheet.getColumn(3 + daysInMonth + 1).width = 8   // Present
-  sheet.getColumn(3 + daysInMonth + 2).width = 8   // Late
-  sheet.getColumn(3 + daysInMonth + 3).width = 9   // Half Day
-  sheet.getColumn(3 + daysInMonth + 4).width = 9   // Holidays
-  sheet.getColumn(3 + daysInMonth + 5).width = 11  // Absconding
-  sheet.getColumn(3 + daysInMonth + 6).width = 12  // Att %
+  for (let d = 1; d <= daysInMonth; d++) sheet.getColumn(3 + d).width = 6  // wider day col
+  sheet.getColumn(3 + daysInMonth + 1).width = 9
+  sheet.getColumn(3 + daysInMonth + 2).width = 7
+  sheet.getColumn(3 + daysInMonth + 3).width = 9
+  sheet.getColumn(3 + daysInMonth + 4).width = 9
+  sheet.getColumn(3 + daysInMonth + 5).width = 11
+  sheet.getColumn(3 + daysInMonth + 6).width = 12
 
   // ── Row 1: Title ──
-  const titleRow = sheet.getRow(1)
   const lastCol = 3 + daysInMonth + 6
   sheet.mergeCells(1, 1, 1, lastCol)
-  const titleCell = titleRow.getCell(1)
+  const titleCell = sheet.getRow(1).getCell(1)
   titleCell.value = `Attendance Report — ${months[selectedMonth - 1]} ${selectedYear}`
-  titleCell.font = { bold: true, size: 14, color: { argb: 'FF0ea5e9' } }
+  titleCell.font = { bold: true, size: 14, color: { argb: 'FF0EA5E9' } }
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
-  titleRow.height = 24
+  titleCell.fill = fill('0A0A0D')
+  sheet.getRow(1).height = 24
 
   // ── Row 2: Headers ──
   const headerRow = sheet.getRow(2)
   headerRow.height = 32
 
-  const headerStyle = (cell, value) => {
+  const applyHeader = (cell, value, bgHex = '0A0A0D') => {
     cell.value = value
-    cell.font = { bold: true, color: { argb: 'FF0ea5e9' }, size: 9 }
+    cell.font = { bold: true, color: { argb: 'FF0EA5E9' }, size: 9 }
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+    cell.fill = fill(bgHex)
     cell.border = {
-      top: { style: 'thin', color: { argb: 'FF2a2a30' } },
-      left: { style: 'thin', color: { argb: 'FF2a2a30' } },
-      bottom: { style: 'medium', color: { argb: 'FF0ea5e9' } },
-      right: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      ...border('2A2A30'),
+      bottom: { style: 'medium', color: { argb: 'FF0EA5E9' } },
     }
   }
 
-  headerStyle(headerRow.getCell(1), 'EMP ID')
-  headerStyle(headerRow.getCell(2), 'NAME')
-  headerStyle(headerRow.getCell(3), 'DEPARTMENT')
+  applyHeader(headerRow.getCell(1), 'EMP ID')
+  applyHeader(headerRow.getCell(2), 'NAME')
+  applyHeader(headerRow.getCell(3), 'DEPARTMENT')
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dayName = getDayName(selectedYear, selectedMonth, d)
     const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
     const isHoliday = holidays.some(h => h.date === dateKey)
     const isSun = dayName === 'Sun'
+    const bgHex = isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D'
+    const fontArgb = isHoliday ? 'FF06B6D4' : isSun ? 'FFa78bfa' : 'FF0EA5E9'
     const hdrCell = headerRow.getCell(3 + d)
     hdrCell.value = `${d}\n${dayName.substring(0,3)}`
-    hdrCell.font = {
-      bold: true, size: 8,
-      color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FFa78bfa' : 'FF0ea5e9' },
-    }
+    hdrCell.font = { bold: true, size: 8, color: { argb: fontArgb } }
     hdrCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-    hdrCell.fill = {
-      type: 'pattern', pattern: 'solid',
-      fgColor: { argb: isHoliday ? 'FF061a1c' : isSun ? 'FF2e1065' : 'FF0a0a0d' },
-    }
+    hdrCell.fill = fill(bgHex)
     hdrCell.border = {
-      top: { style: 'thin', color: { argb: 'FF2a2a30' } },
-      left: { style: 'thin', color: { argb: 'FF2a2a30' } },
-      bottom: { style: 'medium', color: { argb: 'FF0ea5e9' } },
-      right: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      ...border(isHoliday ? '06B6D4' : isSun ? '5B21B6' : '2A2A30'),
+      bottom: { style: 'medium', color: { argb: 'FF0EA5E9' } },
     }
   }
 
   const summaryHeaders = ['Present', 'Late', 'Half\nDay', 'Holidays', 'Abscond', 'Att %']
-  summaryHeaders.forEach((h, i) => headerStyle(headerRow.getCell(3 + daysInMonth + 1 + i), h))
+  summaryHeaders.forEach((h, i) => applyHeader(headerRow.getCell(3 + daysInMonth + 1 + i), h))
 
-  // ── Data rows ──
+  // ── IST today key ──
   const getISTTodayKey = () => {
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
   }
   const todayKey = getISTTodayKey()
 
+  // ── Data rows ──
   attendanceData.forEach((record, rowIdx) => {
     const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
     const row = sheet.getRow(3 + rowIdx)
     row.height = 18
 
-    const baseStyle = (cell, value, fontColor = 'FFFFFFFF') => {
+    const applyBase = (cell, value, fontHex = 'FFFFFF', leftAlign = false) => {
       cell.value = value
-      cell.font = { color: { argb: fontColor }, size: 9, bold: false }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        left: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        bottom: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        right: { style: 'thin', color: { argb: 'FF1f1f22' } },
-      }
+      cell.font = { color: { argb: 'FF' + fontHex.toUpperCase() }, size: 9, bold: false }
+      cell.alignment = { horizontal: leftAlign ? 'left' : 'center', vertical: 'middle' }
+      cell.fill = fill('0A0A0D')
+      cell.border = border('1F1F22')
     }
 
-    // Fixed info columns
     const idCell = row.getCell(1)
-    baseStyle(idCell, record.employeeId, 'FF0ea5e9')
+    applyBase(idCell, record.employeeId, '0EA5E9')
     idCell.font = { ...idCell.font, bold: true }
 
     const nameCell = row.getCell(2)
-    baseStyle(nameCell, record.name, 'FFFFFFFF')
-    nameCell.alignment = { horizontal: 'left', vertical: 'middle' }
+    applyBase(nameCell, record.name, 'FFFFFF', true)
     nameCell.font = { ...nameCell.font, bold: true }
 
     const deptCell = row.getCell(3)
-    baseStyle(deptCell, record.department, 'FFa1a1aa')
-    deptCell.alignment = { horizontal: 'left', vertical: 'middle' }
+    applyBase(deptCell, record.department, 'A1A1AA', true)
 
-    // Day cells
+    // ── Day cells ──
     for (let d = 1; d <= daysInMonth; d++) {
       const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
       const isSun = getDayName(selectedYear, selectedMonth, d) === 'Sun'
       const isHoliday = holidays.some(h => h.date === dateKey)
 
       let rawStatus = record[`day${d}`]
-      // Same auto-absent rule as the UI
+      // If no status and it's a past working day → treat as Absent (same as UI)
       if (!rawStatus && !isSun && !isHoliday && dateKey <= todayKey) rawStatus = 'A'
 
-      const s = getStyle(rawStatus)
       const cell = row.getCell(3 + d)
 
-      // Use weekend/holiday bg when no status but cell is special day
-      let cellBg = s.bg
-      if (!rawStatus && isHoliday) cellBg = 'FF061a1c'
-      else if (!rawStatus && isSun) cellBg = 'FF2e1065'
-
-      cell.value = rawStatus ? s.val : (isHoliday ? '—' : isSun ? '—' : '')
-      cell.font = { bold: true, size: 9, color: { argb: rawStatus ? s.font : 'FF52525b' } }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBg } }
-      cell.border = {
-        top: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
-        left: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
-        bottom: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
-        right: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
+      if (rawStatus) {
+        const s = getStyle(rawStatus)
+        cell.value = s.val           // numeric (1, 0.5, 0, -1) or string (IN, —)
+        cell.font = { bold: true, size: 9, color: { argb: 'FF' + s.font.toUpperCase() } }
+        cell.fill = fill(s.fillHex)
+      } else {
+        // Empty future day — use special bg if holiday/weekend
+        const bgHex = isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D'
+        cell.value = ''
+        cell.font = { size: 9, color: { argb: 'FF52525B' } }
+        cell.fill = fill(bgHex)
       }
+
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = border(isHoliday ? '06B6D4' : isSun ? '5B21B6' : '1F1F22')
     }
 
-    // Summary columns
+    // ── Summary columns ──
     const summaryVals = [
-      { val: stats.present,            color: 'FF10b981' },
-      { val: stats.late,               color: 'FFe5e5e5' },
-      { val: stats.halfDay,            color: 'FFffdd00' },
-      { val: stats.holidays,           color: 'FF06b6d4' },
-      { val: stats.absconding,         color: 'FFff2a2a' },
-      { val: `${stats.attendancePercentage}%`, color: stats.attendancePercentage >= 75 ? 'FF10b981' : 'FFff2a2a' },
+      { val: stats.present,            hex: '10B981' },
+      { val: stats.late,               hex: 'E5E5E5' },
+      { val: stats.halfDay,            hex: 'FFDD00' },
+      { val: stats.holidays,           hex: '06B6D4' },
+      { val: stats.absconding,         hex: 'FF2A2A' },
+      { val: `${stats.attendancePercentage}%`, hex: stats.attendancePercentage >= 75 ? '10B981' : 'FF2A2A' },
     ]
-    summaryVals.forEach(({ val, color }, i) => {
+    summaryVals.forEach(({ val, hex }, i) => {
       const cell = row.getCell(3 + daysInMonth + 1 + i)
       cell.value = val
-      cell.font = { bold: true, size: 9, color: { argb: color } }
+      cell.font = { bold: true, size: 9, color: { argb: 'FF' + hex } }
       cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        left: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        bottom: { style: 'thin', color: { argb: 'FF1f1f22' } },
-        right: { style: 'thin', color: { argb: 'FF1f1f22' } },
-      }
+      cell.fill = fill('0A0A0D')
+      cell.border = border('1F1F22')
     })
   })
 
   // ── Legend sheet ──
   const legend = workbook.addWorksheet('Legend')
-  legend.getColumn(1).width = 12
-  legend.getColumn(2).width = 20
-  legend.getColumn(3).width = 28
-  const legendRows = [
-    ['Value', 'Color', 'Meaning'],
-    ['1',     '#10b981 (Green)',  'Present / Late (counted as full day)'],
-    ['0.5',   '#ffdd00 (Yellow)', 'Half Day'],
-    ['0',     '#ff7b00 (Orange)', 'Leave'],
-    ['0',     '#ffffff (White)',  'Absent (no deduction shown as 0)'],
-    ['-1',    '#ff2a2a (Red)',    'Absconding (deducted)'],
-    ['1',     '#06b6d4 (Cyan)',   'Holiday / Sunday Paid'],
-    ['0',     '#18181b (Dark)',   'Sunday Zero'],
-    ['—',     '#2e1065 (Purple)', 'Weekend (Sunday)'],
-    ['IN',    '#3b82f6 (Blue)',   'Currently Checked In'],
+  legend.getColumn(1).width = 10
+  legend.getColumn(2).width = 22
+  legend.getColumn(3).width = 38
+  const legendData = [
+    { val: 1,    fillHex: '10B981', font: '000000', desc: 'Present / Late (full day)' },
+    { val: 0.5,  fillHex: 'FFDD00', font: '000000', desc: 'Half Day' },
+    { val: 0,    fillHex: 'FF7B00', font: '000000', desc: 'Leave (LV)' },
+    { val: 0,    fillHex: 'F5F5F5', font: '000000', desc: 'Absent (white)' },
+    { val: -1,   fillHex: 'FF2A2A', font: 'FFFFFF', desc: 'Absconding' },
+    { val: 1,    fillHex: '06B6D4', font: '000000', desc: 'Holiday / Sunday Paid' },
+    { val: 0,    fillHex: '18181B', font: 'FFFFFF', desc: 'Sunday Zero (not paid)' },
+    { val: '—',  fillHex: '2E1065', font: 'A78BFA', desc: 'Weekend (Sunday)' },
+    { val: 'IN', fillHex: '3B82F6', font: 'FFFFFF', desc: 'Currently Checked In' },
   ]
-  legendRows.forEach((lr, ri) => {
-    const row = legend.getRow(ri + 1)
-    lr.forEach((v, ci) => {
-      const c = row.getCell(ci + 1)
-      c.value = v
-      c.font = ri === 0 ? { bold: true, color: { argb: 'FF0ea5e9' } } : { color: { argb: 'FF111827' } }
-      c.alignment = { horizontal: 'left', vertical: 'middle' }
-      if (ri === 0) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
-    })
+  // Header row
+  const lhRow = legend.getRow(1)
+  ;['Value', 'Color', 'Meaning'].forEach((h, ci) => {
+    const c = lhRow.getCell(ci + 1)
+    c.value = h
+    c.font = { bold: true, color: { argb: 'FF0EA5E9' }, size: 10 }
+    c.fill = fill('0A0A0D')
+    c.alignment = { horizontal: 'left', vertical: 'middle' }
+  })
+  lhRow.height = 20
+  legendData.forEach((ld, ri) => {
+    const lrow = legend.getRow(ri + 2)
+    lrow.height = 18
+    const c1 = lrow.getCell(1)
+    c1.value = ld.val
+    c1.font = { bold: true, size: 10, color: { argb: 'FF' + ld.font } }
+    c1.alignment = { horizontal: 'center', vertical: 'middle' }
+    c1.fill = fill(ld.fillHex)
+    c1.border = border('CCCCCC')
+    const c2 = lrow.getCell(2)
+    c2.value = `#${ld.fillHex}`
+    c2.font = { size: 9, color: { argb: 'FF' + ld.fillHex } }
+    c2.alignment = { horizontal: 'left', vertical: 'middle' }
+    const c3 = lrow.getCell(3)
+    c3.value = ld.desc
+    c3.font = { size: 9 }
+    c3.alignment = { horizontal: 'left', vertical: 'middle' }
   })
 
   // ── Download ──

@@ -14,7 +14,7 @@ function getCurrentDateTimeString() {
   return formatDateTime(new Date());
 }
 
-export default function CreateTask({ onClose, onSave, preselectedLead }) {
+export default function CreateTask({ onClose, onSave, preselectedLead, defaultTaskType }) {
   // State for API data
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -168,12 +168,21 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   // Get the current user when component initializes
   const currentUser = getCurrentLoggedInUser();
 
+  // Map taskTypeFilter values to CreateTask taskType values
+  const resolveDefaultTaskType = () => {
+    if (!defaultTaskType || defaultTaskType === 'all') return 'Call';
+    if (defaultTaskType === 'callback') return 'Call';
+    if (defaultTaskType === 'pendency') return 'Pendency';
+    if (defaultTaskType === 'todo') return 'To-Do';
+    return 'Call';
+  };
+
   const [form, setForm] = useState({
     createdBy: currentUser, // Use the dynamically retrieved user object with ID and name
     subject: "",
     message: "",
     attachments: [], // Changed to array to support multiple attachments
-    taskType: "Call",
+    taskType: resolveDefaultTaskType(),
     associateWithRecords: [],
     assignedTo: [], // Changed to an array to hold multiple assignees (user objects with ID and name)
     dueDateOption: "today", // Set initial value to 'today'
@@ -204,6 +213,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   const [calendarPosition, setCalendarPosition] = useState('below');
   const messageRef = useRef(null);
   const dueDateSelectRef = useRef(null);
+  const modalRef = useRef(null);
 
   // Inline record dropdown states
   const [showRecordDropdown, setShowRecordDropdown] = useState(false);
@@ -289,7 +299,17 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
 
   const handleChange = (field, value) => {
     console.log(`📝 CreateTask: Field ${field} changed to: ${value}`);
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Clear attachments when switching task type tabs — attachments belong to the tab they were added on
+      if (field === 'taskType' && value !== prev.taskType) {
+        prev.attachments.forEach(att => {
+          if (att.url && att.url.startsWith('blob:')) URL.revokeObjectURL(att.url);
+        });
+        updated.attachments = [];
+      }
+      return updated;
+    });
   };
 
   // Handle blur - apply uppercase when user leaves the field
@@ -304,65 +324,81 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
     setForm((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
   };
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    console.log("Selected files for attachment:", files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+  // Shared file validation and processing
+  const processFiles = (files) => {
+    if (!files || files.length === 0) return;
     
-    if (files.length > 0) {
-      // Validate file types - must match backend validation exactly
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
-      const maxSize = 10 * 1024 * 1024; // 10MB limit
-      
-      const validFiles = [];
-      const rejectedFiles = [];
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+      'application/pdf',
+      'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+    ];
+    const maxSize = 25 * 1024 * 1024; // 25MB limit (higher for videos)
+    
+    const validFiles = [];
+    const rejectedFiles = [];
 
-      files.forEach(file => {
-        // Check file type
-        if (!allowedTypes.includes(file.type)) {
-          rejectedFiles.push({ file, reason: 'Invalid file type. Only JPEG, PNG, GIF images and PDF files are allowed.' });
-          return;
-        }
-        
-        // Check file size
-        if (file.size > maxSize) {
-          rejectedFiles.push({ file, reason: 'File size exceeds 10MB limit.' });
-          return;
-        }
-        
-        validFiles.push(file);
-      });
-
-      // Show errors for rejected files
-      if (rejectedFiles.length > 0) {
-        const errorMessages = rejectedFiles.map(({ file, reason }) => `${file.name}: ${reason}`);
-        alert('Some files were rejected:\n\n' + errorMessages.join('\n'));
+    files.forEach(file => {
+      if (!allowedTypes.includes(file.type)) {
+        rejectedFiles.push({ file, reason: 'Invalid file type. Allowed: images, PDF, and videos.' });
+        return;
       }
-
-      // Process valid files
-      if (validFiles.length > 0) {
-        const newAttachments = validFiles.map((file) => ({
-          id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Unique ID for tracking
-          file,
-          name: file.name,
-          url: URL.createObjectURL(file),
-          isNew: true
-        }));
-
-        console.log('Created new attachment objects:', newAttachments);
-
-        setForm(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, ...newAttachments]
-        }));
-
-        // Clear the input to allow selecting the same file again if needed
-        e.target.value = '';
-      } else {
-        // Clear the input if no valid files
-        e.target.value = '';
+      if (file.size > maxSize) {
+        rejectedFiles.push({ file, reason: 'File size exceeds 25MB limit.' });
+        return;
       }
+      validFiles.push(file);
+    });
+
+    if (rejectedFiles.length > 0) {
+      const errorMessages = rejectedFiles.map(({ file, reason }) => `${file.name}: ${reason}`);
+      alert('Some files were rejected:\n\n' + errorMessages.join('\n'));
+    }
+
+    if (validFiles.length > 0) {
+      const newAttachments = validFiles.map((file) => ({
+        id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        file,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        isNew: true
+      }));
+
+      setForm(prev => ({
+        ...prev,
+        attachments: [...prev.attachments, ...newAttachments]
+      }));
     }
   };
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    processFiles(files);
+    e.target.value = '';
+  };
+
+  // Native paste listener — mirrors task_creation.html's addEventListener('paste', ...) approach.
+  // React's synthetic onPaste on a div is unreliable when child inputs/textareas have focus;
+  // a native DOM listener on the modal element fires reliably regardless of focus.
+  const taskTypeRef = useRef(form.taskType);
+  useEffect(() => { taskTypeRef.current = form.taskType; }, [form.taskType]);
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl) return;
+    const handler = (e) => {
+      if (taskTypeRef.current !== 'Pendency' && taskTypeRef.current !== 'To-Do') return;
+      const items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
+      const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
+      if (files.length > 0) {
+        e.preventDefault();
+        processFiles(files);
+      }
+    };
+    modalEl.addEventListener('paste', handler);
+    // Auto-focus the overlay so paste works immediately without clicking
+    modalEl.focus();
+    return () => modalEl.removeEventListener('paste', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to remove an attachment from CreateTask
   const handleRemoveAttachment = (attachmentToRemove) => {
@@ -428,7 +464,10 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
       due_time: form.dueTime,
       is_urgent: form.dueDateOption === 'urgent' || false,
       created_by: form.createdBy?.user_id || getUserId(), // Use user ID instead of name
-      assigned_to: form.assignedTo?.map(user => user.user_id || user) || [form.createdBy?.user_id || getUserId()], // Extract user IDs
+      assigned_to: form.assignedTo?.map(user => {
+        if (typeof user === 'string') return user;
+        return user.user_id || user.id || null;
+      }).filter(Boolean) || [form.createdBy?.user_id || getUserId()], // Extract user IDs
       notes: '',
       user_id: getUserId() // Add the current user's ID as required by the API
     };
@@ -560,7 +599,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
   });
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', outline: 'none' }} ref={modalRef} tabIndex={-1}>
       <div className="relative bg-white w-full max-w-[700px] max-h-[96vh] flex flex-col overflow-hidden" style={{ borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
         <button
           className="absolute right-5 top-5 flex items-center justify-center z-10 cursor-pointer transition hover:text-[#334155]"
@@ -831,12 +870,12 @@ export default function CreateTask({ onClose, onSave, preselectedLead }) {
             </label>
             <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: '8px', padding: '7px 10px', background: 'linear-gradient(180deg, #fbfdff, #f4f9ff)' }}>
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Attach files</span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Attach files (or Ctrl+V to paste)</span>
                 <label className="cursor-pointer" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', color: '#fff', border: 'none', padding: '5px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 800 }}>
                   ＋ Add
                   <input
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="image/*,video/*,application/pdf"
                     className="hidden"
                     onChange={handleFileChange}
                     multiple

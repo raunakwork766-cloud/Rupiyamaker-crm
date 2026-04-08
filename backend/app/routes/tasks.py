@@ -1516,7 +1516,7 @@ async def get_pending_acknowledgment_tasks(
                 "id": t.get("id") or str(t.get("_id", "")),
                 "type": "task",
                 "subject": t.get("subject", ""),
-                "details": t.get("details", ""),
+                "details": t.get("task_details", "") or t.get("details", ""),
                 "task_type": t.get("task_type", ""),
                 "priority": t.get("priority", "Medium"),
                 "status": t.get("status", ""),
@@ -1993,19 +1993,23 @@ async def upload_task_attachment(
         )
     
     # Check file type and size
-    allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
+    allowed_types = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+        'application/pdf',
+        'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+    ]
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only JPEG, PNG, GIF images and PDF files are allowed"
+            detail="Only images, PDF, and video files are allowed"
         )
     
-    # Check file size (10MB limit)
-    max_size = 10 * 1024 * 1024  # 10MB
+    # Check file size (25MB limit)
+    max_size = 25 * 1024 * 1024  # 25MB
     if file.size > max_size:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File size exceeds 10MB limit"
+            detail="File size exceeds 25MB limit"
         )
     
     try:

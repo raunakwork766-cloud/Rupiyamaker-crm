@@ -72,7 +72,7 @@ const RoleSettings = () => {
         // Leads CRM - Section-wise permissions matching sidebar structure (2 sections only)
         'Leads CRM': {
             'Create LEAD': ['show', 'add', 'reassignment_popup'],
-            'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'delete'],
+            'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'delete'],
         },
         
         'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
@@ -100,9 +100,9 @@ const RoleSettings = () => {
         const map = {
             'feeds': { show:'Sidebar Access', post:'Create Post', all:'Manage All', delete:'Delete' },
             'Leads CRM|Create LEAD': { show:'View Leads', add:'Add Lead', reassignment_popup:'Reassign Popup' },
-            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', delete:'Delete' },
+            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', view_data_code:'View Data Code', delete:'Delete' },
             'login': { show:'Sidebar', own:'Own Logins', junior:'Junior Logins', all:'All Logins', channel:'Channel', edit:'Edit', delete:'Delete' },
-            'tasks': { show:'Sidebar', own:'Own Tasks', junior:'Junior Tasks', all:'All Tasks', delete:'Delete' },
+            'tasks': { show:'Sidebar', own:'My Tab Only', junior:'Others Tab (Junior)', all:'All Tab', delete:'Delete' },
             'tickets': { show:'Sidebar', own:'Own Tickets', junior:'Junior Tickets', all:'All Tickets', delete:'Delete' },
             'warnings': { show:'Sidebar', own:'Own Warnings', junior:'Junior Warnings', all:'All Warnings', delete:'Delete Warning', issue:'Issue Warning', view_mistakes:'View Mistake Directory', create_mistake:'Create Mistake Category', edit_mistake:'Edit Mistake Category', delete_mistake:'Delete Mistake Category' },
             'interview': { show:'Sidebar', junior:'Junior Panel', all:'All Interviews', settings:'Settings', delete:'Delete' },
@@ -173,6 +173,7 @@ const RoleSettings = () => {
         'reassignment_popup': '🔄 Reassignment Popup - Can view and interact with reassignment popup window',
         'download_obligation': '📥 Download - Can download obligation documents',
         'status_update': '🔄 Status Update - Can update record status',
+        'view_data_code': '🏷️ View Data Code - Can see the Data Code field in lead details',
         'view_other': '👀 View Others - Can view other users records (deprecated)'
     };
 
@@ -884,7 +885,7 @@ const RoleSettings = () => {
                         // Distribute actions to appropriate sections based on their type
                         const createActions = actions.filter(a => ['show', 'add', 'edit', 'delete'].includes(a));
                         const viewActions = actions.filter(a => ['show', 'own', 'junior', 'all'].includes(a));
-                        const otherActions = actions.filter(a => ['assign', 'download_obligation', 'status_update', 'delete'].includes(a));
+                        const otherActions = actions.filter(a => ['assign', 'download_obligation', 'status_update', 'view_data_code', 'delete'].includes(a));
                         
                         // If we have create-type actions, add to Create LEAD section
                         if (createActions.length > 0) {

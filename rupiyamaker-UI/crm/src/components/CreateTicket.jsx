@@ -330,18 +330,63 @@ export default function CreateTicket({ onClose, onSubmit }) {
     setForm((prev) => ({ ...prev, [field]: prev[field].toUpperCase() }));
   };
 
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      handleChange("attachment", file);
-      handleChange("attachmentName", file.name);
-      
-      // Also maintain compatibility with the old files array
-      const files = Array.from(event.target.files);
+  // Shared file processing for ticket attachments
+  const processTicketFiles = (files) => {
+    if (!files || files.length === 0) return;
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+      'application/pdf',
+      'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+    ];
+    const maxSize = 25 * 1024 * 1024;
+    const validFiles = [];
+    const rejectedFiles = [];
+    files.forEach(file => {
+      if (!allowedTypes.includes(file.type)) {
+        rejectedFiles.push(`${file.name}: Invalid file type. Allowed: images, PDF, and videos.`);
+        return;
+      }
+      if (file.size > maxSize) {
+        rejectedFiles.push(`${file.name}: File size exceeds 25MB limit.`);
+        return;
+      }
+      validFiles.push(file);
+    });
+    if (rejectedFiles.length > 0) {
+      alert('Some files were rejected:\n\n' + rejectedFiles.join('\n'));
+    }
+    if (validFiles.length > 0) {
+      const firstFile = validFiles[0];
+      handleChange("attachment", firstFile);
+      handleChange("attachmentName", firstFile.name);
       setForm(prev => ({
         ...prev,
-        selectedFiles: [...prev.selectedFiles, ...files]
+        selectedFiles: [...prev.selectedFiles, ...validFiles]
       }));
+    }
+  };
+
+  const handleFileChange = (event) => {
+    const files = Array.from(event.target.files);
+    processTicketFiles(files);
+    event.target.value = '';
+  };
+
+  // Handle paste (Ctrl+V) for ticket attachments
+  const handlePaste = (e) => {
+    const clipboardItems = e.clipboardData?.items;
+    if (!clipboardItems) return;
+    const files = [];
+    for (let i = 0; i < clipboardItems.length; i++) {
+      const item = clipboardItems[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      processTicketFiles(files);
     }
   };
 
@@ -546,20 +591,23 @@ export default function CreateTicket({ onClose, onSubmit }) {
               </select>
             </div> */}
 
-            <div className="flex flex-col items-start mt-4">
+            <div className="flex flex-col items-start mt-4" onPaste={handlePaste}>
               <label className="block font-bold text-gray-700 mb-2">
                 Attachment
               </label>
-              <label className="inline-flex items-center px-4 py-2 bg-cyan-500 text-white font-bold rounded-lg shadow cursor-pointer hover:bg-cyan-600 transition">
-                Photo/PDF
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  multiple
-                />
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center px-4 py-2 bg-cyan-500 text-white font-bold rounded-lg shadow cursor-pointer hover:bg-cyan-600 transition">
+                  Photo/PDF/Video
+                  <input
+                    type="file"
+                    accept="image/*,video/*,application/pdf"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    multiple
+                  />
+                </label>
+                <span className="text-xs text-gray-400">or Ctrl+V to paste</span>
+              </div>
               {form.attachmentName && (
                 <span className="mt-2 text-green-700 font-semibold text-sm">
                   Uploaded: {form.attachmentName}

@@ -604,6 +604,7 @@ export default function EditTask({
   const messageRef = useRef(null);
   const lastSavedRef = useRef(null); // Track last saved state for auto-save change detection
   const autoSaveTimerRef = useRef(null);
+  const modalRef = useRef(null);
   
   // Calculate calendar position when it's shown
   useEffect(() => {
@@ -1598,72 +1599,80 @@ export default function EditTask({
     }
   };
 
-  const handleAttachmentChange = (e) => {
-    const files = Array.from(e.target.files);
-    console.log("Selected files for attachment:", files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+  // Shared file validation and processing for EditTask
+  const processAttachmentFiles = (files) => {
+    if (!files || files.length === 0) return;
 
-    if (files.length > 0) {
-      // Validate file types - must match backend validation exactly
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
-      const maxSize = 10 * 1024 * 1024; // 10MB limit
-      
-      const validFiles = [];
-      const rejectedFiles = [];
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+      'application/pdf',
+      'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+    ];
+    const maxSize = 25 * 1024 * 1024; // 25MB
 
-      files.forEach(file => {
-        // Check file type
-        if (!allowedTypes.includes(file.type)) {
-          rejectedFiles.push({ file, reason: 'Invalid file type. Only JPEG, PNG, GIF images and PDF files are allowed.' });
-          return;
-        }
-        
-        // Check file size
-        if (file.size > maxSize) {
-          rejectedFiles.push({ file, reason: 'File size exceeds 10MB limit.' });
-          return;
-        }
-        
-        validFiles.push(file);
-      });
+    const validFiles = [];
+    const rejectedFiles = [];
 
-      // Show errors for rejected files
-      if (rejectedFiles.length > 0) {
-        const errorMessages = rejectedFiles.map(({ file, reason }) => `${file.name}: ${reason}`);
-        alert('Some files were rejected:\n\n' + errorMessages.join('\n'));
+    files.forEach(file => {
+      if (!allowedTypes.includes(file.type)) {
+        rejectedFiles.push({ file, reason: 'Invalid file type. Allowed: images, PDF, and videos.' });
+        return;
       }
-
-      // Process valid files
-      if (validFiles.length > 0) {
-        const newAttachments = validFiles.map((file) => ({
-          id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Unique ID for tracking
-          file,
-          name: file.name,
-          url: URL.createObjectURL(file),
-          isNew: true,
-          isFromBackend: false  // Explicitly mark as not from backend
-        }));
-
-        console.log("Created new attachment objects:", newAttachments);
-
-        setTask((prev) => {
-          const updatedTask = {
-            ...prev,
-            attachments: [...prev.attachments, ...newAttachments],
-            newAttachments: [...prev.newAttachments, ...newAttachments],
-            showAttachments: true,
-          };
-          console.log("Updated task with new attachments:", updatedTask.newAttachments);
-          return updatedTask;
-        });
-
-        // Clear the input to allow selecting the same file again if needed
-        e.target.value = '';
-      } else {
-        // Clear the input if no valid files
-        e.target.value = '';
+      if (file.size > maxSize) {
+        rejectedFiles.push({ file, reason: 'File size exceeds 25MB limit.' });
+        return;
       }
+      validFiles.push(file);
+    });
+
+    if (rejectedFiles.length > 0) {
+      const errorMessages = rejectedFiles.map(({ file, reason }) => `${file.name}: ${reason}`);
+      alert('Some files were rejected:\n\n' + errorMessages.join('\n'));
+    }
+
+    if (validFiles.length > 0) {
+      const newAttachments = validFiles.map((file) => ({
+        id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        file,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        isNew: true,
+        isFromBackend: false
+      }));
+
+      setTask((prev) => ({
+        ...prev,
+        attachments: [...prev.attachments, ...newAttachments],
+        newAttachments: [...prev.newAttachments, ...newAttachments],
+        showAttachments: true,
+      }));
     }
   };
+
+  const handleAttachmentChange = (e) => {
+    const files = Array.from(e.target.files);
+    processAttachmentFiles(files);
+    e.target.value = '';
+  };
+
+  // Native paste listener — mirrors task_creation.html's addEventListener('paste', ...) approach.
+  // More reliable than React's synthetic onPaste when child inputs/textareas hold focus.
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl) return;
+    const handler = (e) => {
+      const items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
+      const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
+      if (files.length > 0) {
+        e.preventDefault();
+        processAttachmentFiles(files);
+      }
+    };
+    modalEl.addEventListener('paste', handler);
+    // Auto-focus the overlay so paste works immediately without clicking
+    modalEl.focus();
+    return () => modalEl.removeEventListener('paste', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = (field, value) => {
     setTask((prev) => ({ ...prev, [field]: value }));
@@ -2049,7 +2058,7 @@ export default function EditTask({
   const pc = pillColors[typePill.cls] || pillColors.todo;
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', justifyContent:'center', alignItems:'center', background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)' }}>
+    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', justifyContent:'center', alignItems:'center', background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)', outline:'none' }} ref={modalRef} tabIndex={-1}>
       <div style={{ background:'#fff', width:'100%', maxWidth:700, maxHeight:'96vh', borderRadius:12, position:'relative', boxShadow:'0 15px 50px rgba(0,0,0,0.6)', display:'flex', flexDirection:'column', border:'1px solid rgba(0,0,0,0.1)', overflow:'hidden' }}>
         {/* Close button */}
         <button
@@ -2253,12 +2262,13 @@ export default function EditTask({
                 ＋ Add File
                 <input
                   type="file"
-                  accept="image/*,application/pdf"
+                  accept="image/*,video/*,application/pdf"
                   style={{ display:'none' }}
                   onChange={handleAttachmentChange}
                   multiple
                 />
               </label>
+              <span style={{ fontSize:11, color:'#94a3b8' }}>or Ctrl+V to paste</span>
             </div>
 
             {/* Display existing attachments with a clear heading */}

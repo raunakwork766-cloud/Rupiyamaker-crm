@@ -108,12 +108,20 @@ const fetchWithAuth = async (url, options = {}) => {
               console.error('🔴 422 Error Response (text):', errorText);
             }
           }
+          // Don't retry on definitive client errors (4xx) - only retry on network/5xx
+          if (response.status >= 400 && response.status < 500) {
+            throw Object.assign(new Error(`HTTP error! status: ${response.status}`), { response });
+          }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         return response;
       } catch (error) {
         lastError = error;
+        // Don't retry on 4xx client errors
+        if (error.response && error.response.status >= 400 && error.response.status < 500) {
+          throw error;
+        }
         retries--;
 
         if (retries > 0) {
@@ -367,6 +375,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     @keyframes taskSpin { to { transform: rotate(360deg); } }
 
     .task-error-banner { margin-bottom: 20px; padding: 16px; background: #1a0000; border: 1px solid #ff4757; border-radius: 8px; }
+    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   `;
 
   // PERFORMANCE: Cache keys for localStorage
@@ -420,7 +429,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useTabWithHistory('filter', 'due_today', { localStorageKey: 'taskActiveFilter' });
-  const [assignmentFilter, setAssignmentFilter] = useState("all");
+  const [assignmentFilter, setAssignmentFilter] = useState("me");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
   const [editTask, setEditTask] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -493,7 +502,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [permissions, setPermissions] = useState({
     show: true,
     create: false,
-    edit_others: false
+    edit_others: false,
+    view_others: false, // Can see "Others" tab (junior permission)
+    view_all: false     // Can see "All" tab (all permission)
   });
 
   // Memoized user management for better performance
@@ -516,7 +527,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           show: true,
           create: true,
           edit_others: true,
-          delete: true // Add delete permission for super admin
+          delete: true,
+          view_others: true, // Super admin can see Others tab
+          view_all: true     // Super admin can see All tab
         });
         return;
       }
@@ -525,7 +538,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         show: hasPermission(userPermissions, 'tasks', 'show') || hasPermission(userPermissions, 'Tasks', 'show'),
         create: hasPermission(userPermissions, 'tasks', 'create') || hasPermission(userPermissions, 'Tasks', 'create'),
         edit_others: hasPermission(userPermissions, 'tasks', 'edit_others') || hasPermission(userPermissions, 'Tasks', 'edit_others'),
-        delete: hasPermission(userPermissions, 'tasks', 'delete') || hasPermission(userPermissions, 'Tasks', 'delete') // Add delete permission check
+        delete: hasPermission(userPermissions, 'tasks', 'delete') || hasPermission(userPermissions, 'Tasks', 'delete'),
+        junior: hasPermission(userPermissions, 'tasks', 'junior') || hasPermission(userPermissions, 'Tasks', 'junior'),
+        all: hasPermission(userPermissions, 'tasks', 'all') || hasPermission(userPermissions, 'Tasks', 'all')
       };
 
       if (userPermissions?.tasks === "*" || userPermissions?.Tasks === "*" ||
@@ -534,7 +549,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           show: true,
           create: true,
           edit_others: true,
-          delete: true // Add delete permission for wildcard users
+          delete: true,
+          view_others: true,
+          view_all: true
         });
         return;
       }
@@ -544,21 +561,27 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           show: true,
           create: taskPermissions.create || true,
           edit_others: taskPermissions.edit_others,
-          delete: taskPermissions.delete // Add delete permission
+          delete: taskPermissions.delete,
+          view_others: taskPermissions.junior || taskPermissions.all, // junior or all permission → Others tab
+          view_all: taskPermissions.all                               // all permission → All tab
         });
       } else {
         setPermissions({
           show: false,
           create: false,
           edit_others: false,
-          delete: false // Add delete permission
+          delete: false,
+          view_others: false,
+          view_all: false
         });
       }
     } catch (error) {
       setPermissions({
         show: true,
         create: false,
-        edit_others: false
+        edit_others: false,
+        view_others: false,
+        view_all: false
       });
     }
   }, []);
@@ -849,8 +872,30 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     }));
   };
 
+  // Notification popup state (same pattern as WarningPage)
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
+  const notificationTimerRef = useRef(null);
+
+  const showNotification = useCallback((message, severity = 'info') => {
+    setNotification({ open: true, message, severity });
+    // Auto-dismiss after 4 seconds
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(prev => ({ ...prev, open: false }));
+    }, 4000);
+  }, []);
+
   // Add state to track when a task is edited
   const [lastTaskUpdate, setLastTaskUpdate] = useState(null);
+
+  // Reset assignmentFilter to 'me' if user lacks permission for current filter
+  useEffect(() => {
+    if (assignmentFilter === 'others' && !permissions.view_others && !isSuperAdmin(getUserPermissions())) {
+      setAssignmentFilter('me');
+    } else if (assignmentFilter === 'all' && !permissions.view_all && !isSuperAdmin(getUserPermissions())) {
+      setAssignmentFilter('me');
+    }
+  }, [permissions, assignmentFilter]);
 
   // Optimized data fetching effect
   useEffect(() => {
@@ -1797,7 +1842,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         if (assignedToRaw) {
           try {
             const assignedToArray = JSON.parse(assignedToRaw);
-            newTaskData.assigned_to = [currentUserId];
+            newTaskData.assigned_to = Array.isArray(assignedToArray) && assignedToArray.length > 0 ? assignedToArray : [currentUserId];
           } catch (e) {
             newTaskData.assigned_to = [currentUserId];
           }
@@ -1843,16 +1888,21 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           body: JSON.stringify(newTaskData)
         });
 
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.detail || `Task creation failed (${response.status})`);
+        }
+
         const responseData = await response.json();
 
         // Check if there are attachments to upload
         const attachmentFile = data instanceof FormData ? data.get('attachment') : attachment;
         const attachments = data instanceof FormData ? null : (data.attachments || []);
         
-        if (attachmentFile && responseData.id) {
+        if (attachmentFile && (responseData.task_id || responseData.id)) {
           // Handle single attachment (backward compatibility)
 
-          const taskId = responseData.id;
+          const taskId = responseData.task_id || responseData.id;
           const attachmentFormData = new FormData();
           attachmentFormData.append('file', attachmentFile);
 
@@ -1870,9 +1920,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         }
 
         // Handle multiple attachments (new format)
-        if (attachments && attachments.length > 0 && responseData.id) {
+        if (attachments && attachments.length > 0 && (responseData.task_id || responseData.id)) {
 
-          const taskId = responseData.id;
+          const taskId = responseData.task_id || responseData.id;
           
           for (let i = 0; i < attachments.length; i++) {
             const attachment = attachments[i];
@@ -1897,13 +1947,30 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         }
 
         // Refresh tasks and stats after successful creation
-        await fetchTasks();
-        await fetchTaskStats();
+        // Close modal and trigger popup immediately — don't let background refresh block them
         setShowCreateModal(false);
+        showNotification('Task created successfully! ✅', 'success');
+        // Trigger immediate popup for assigned users (PopTaskTicketModal listens for this)
+        window.dispatchEvent(new CustomEvent('task-created'));
+        // Write localStorage trigger so PopTaskTicketModal polls immediately (same as announcement mechanism)
+        try {
+          localStorage.setItem('globalTaskTrigger', JSON.stringify({ timestamp: Date.now(), actionType: 'task-created' }));
+        } catch (_) {}
+        // Broadcast to other open tabs of the same user so they also poll immediately
+        try {
+          const bc = new BroadcastChannel('rupiyame_task_events');
+          bc.postMessage('task-created');
+          bc.close();
+        } catch (_) {}
+        // Background refresh (non-blocking)
+        fetchTasks().catch(() => {});
+        fetchTaskStats();
       } catch (error) {
+        showNotification(`Failed to create task: ${error.message}`, 'error');
         throw new Error(`Failed to create task: ${error.message}`);
       }
     } catch (error) {
+      showNotification(`Failed to create task: ${error.message}`, 'error');
       setError(`Failed to create task: ${error.message}`);
     }
   };
@@ -2171,10 +2238,10 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           <div className="task-view-toggle-bar">
             <div className="task-view-toggle-group">
               {[
-                { key: 'me', label: '👤 My' },
-                { key: 'others', label: '👥 Others' },
-                { key: 'all', label: '📋 All' }
-              ].map(v => (
+                { key: 'me', label: '👤 My', visible: true },
+                { key: 'others', label: '👥 Others', visible: permissions.view_others || isSuperAdmin(getUserPermissions()) },
+                { key: 'all', label: '📋 All', visible: permissions.view_all || isSuperAdmin(getUserPermissions()) }
+              ].filter(v => v.visible).map(v => (
                 <button
                   key={v.key}
                   className={`task-view-toggle-btn${assignmentFilter === v.key ? ' active' : ''}`}
@@ -2428,6 +2495,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               <CreateTask
                 onClose={closeCreateModal}
                 onSave={handleCreateTaskSave}
+                defaultTaskType={taskTypeFilter}
               />
             </Suspense>
           )}
@@ -2443,6 +2511,32 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           >
             <ChevronUp size={24} />
           </button>
+        )}
+
+        {/* Notification Popup */}
+        {notification.open && (
+          <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 1100 }}>
+            <div style={{
+              padding: '14px 22px',
+              borderRadius: 12,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              background: notification.severity === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' :
+                           notification.severity === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' :
+                           notification.severity === 'warning' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
+                           'linear-gradient(135deg, #3b82f6, #2563eb)',
+              animation: 'slideInRight 0.3s ease-out'
+            }}>
+              <span>{notification.message}</span>
+              <button onClick={() => { if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current); setNotification(prev => ({ ...prev, open: false })); }}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+            </div>
+          </div>
         )}
       </div>
       </>

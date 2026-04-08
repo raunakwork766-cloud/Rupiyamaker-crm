@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
@@ -307,8 +307,11 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   const [showAssignPopup, setShowAssignPopup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [historyItems, setHistoryItems] = useState([]);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [showIssueConfirmation, setShowIssueConfirmation] = useState(null); // holds assignee info for confirmation
+  const autoSaveTimerRef = useRef(null);
+  const pendingSaveRef = useRef(false);
   const [backendHistoryLoaded, setBackendHistoryLoaded] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -403,6 +406,87 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     }
   }, [ticket.message]);
 
+  // Cleanup auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Auto-save function - debounced
+  const triggerAutoSave = useCallback((updatedTicket) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    pendingSaveRef.current = true;
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        setAutoSaving(true);
+        const ticketData = {
+          subject: updatedTicket.subject,
+          description: updatedTicket.message,
+          priority: updatedTicket.priority || "medium",
+          status: updatedTicket.status.toLowerCase(),
+          assigned_users: updatedTicket.assigned_users || [],
+        };
+
+        if (!ticketData.subject.trim() || !ticketData.description.trim()) {
+          setAutoSaving(false);
+          pendingSaveRef.current = false;
+          return;
+        }
+
+        await API.tickets.updateTicket(updatedTicket.id, ticketData);
+        console.log("✅ Auto-saved ticket successfully");
+        pendingSaveRef.current = false;
+
+        // Handle file attachments if needed
+        if (updatedTicket.newAttachments?.length > 0) {
+          const filesToUpload = updatedTicket.newAttachments
+            .filter(attachment => attachment.file)
+            .map(attachment => attachment.file);
+          if (filesToUpload.length > 0) {
+            await API.tickets.uploadAttachments(updatedTicket.id, filesToUpload);
+            // Clear newAttachments after upload
+            setTicket(prev => ({ ...prev, newAttachments: [] }));
+          }
+        }
+
+        setTimeout(() => refreshHistory(), 500);
+      } catch (err) {
+        console.error("❌ Auto-save failed:", err);
+        toast.error("Auto-save failed");
+        pendingSaveRef.current = false;
+      } finally {
+        setAutoSaving(false);
+      }
+    }, 1000);
+  }, []);
+
+  // Immediate save (no debounce) - for assignee changes
+  const saveImmediately = useCallback(async (updatedTicket) => {
+    try {
+      setAutoSaving(true);
+      const ticketData = {
+        subject: updatedTicket.subject,
+        description: updatedTicket.message,
+        priority: updatedTicket.priority || "medium",
+        status: updatedTicket.status.toLowerCase(),
+        assigned_users: updatedTicket.assigned_users || [],
+      };
+      await API.tickets.updateTicket(updatedTicket.id, ticketData);
+      console.log("✅ Saved ticket immediately");
+      setTimeout(() => refreshHistory(), 500);
+    } catch (err) {
+      console.error("❌ Immediate save failed:", err);
+      toast.error("Failed to save changes");
+    } finally {
+      setAutoSaving(false);
+    }
+  }, []);
+
   // Function to handle form submission
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -458,7 +542,6 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
       }
       
       // Exit edit mode after successful update
-      setIsEditing(false);
       
       toast.success("Ticket updated successfully");
     } catch (err) {
@@ -473,23 +556,39 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
     }
   };
 
-  const handleAttachmentChange = (e) => {
-    const files = Array.from(e.target.files);
-    console.log("Selected files for attachment:", files.map(f => f.name));
-    
-    if (files.length > 0) {
-      const newAttachments = files
-        .filter((file) => file.type.startsWith("image/") || file.type === "application/pdf")
-        .map((file) => ({
-          file,
-          name: file.name,
-          url: URL.createObjectURL(file),
-          isNew: true,
-          isFromBackend: false  // Explicitly mark as not from backend
-        }));
-      
-      console.log("Created new attachment objects:", newAttachments);
-      
+  // Shared file processing for ticket attachments
+  const processTicketAttachmentFiles = (files) => {
+    if (!files || files.length === 0) return;
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+      'application/pdf',
+      'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+    ];
+    const maxSize = 25 * 1024 * 1024;
+    const validFiles = [];
+    const rejectedFiles = [];
+    files.forEach(file => {
+      if (!allowedTypes.includes(file.type)) {
+        rejectedFiles.push(`${file.name}: Invalid file type. Allowed: images, PDF, and videos.`);
+        return;
+      }
+      if (file.size > maxSize) {
+        rejectedFiles.push(`${file.name}: File size exceeds 25MB limit.`);
+        return;
+      }
+      validFiles.push(file);
+    });
+    if (rejectedFiles.length > 0) {
+      alert('Some files were rejected:\n\n' + rejectedFiles.join('\n'));
+    }
+    if (validFiles.length > 0) {
+      const newAttachments = validFiles.map((file) => ({
+        file,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        isNew: true,
+        isFromBackend: false
+      }));
       setTicket((prev) => {
         const updatedTicket = {
           ...prev,
@@ -497,15 +596,46 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
           newAttachments: [...prev.newAttachments, ...newAttachments],
           showAttachments: true,
         };
-        console.log("Updated ticket with new attachments:", updatedTicket.newAttachments);
+        triggerAutoSave(updatedTicket);
         return updatedTicket;
       });
+    }
+  };
+
+  const handleAttachmentChange = (e) => {
+    const files = Array.from(e.target.files);
+    processTicketAttachmentFiles(files);
+    e.target.value = '';
+  };
+
+  // Handle paste (Ctrl+V) for ticket attachments
+  const handleAttachmentPaste = (e) => {
+    const clipboardItems = e.clipboardData?.items;
+    if (!clipboardItems) return;
+    const files = [];
+    for (let i = 0; i < clipboardItems.length; i++) {
+      const item = clipboardItems[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      processTicketAttachmentFiles(files);
     }
   };
  
   // Handle field change - no uppercase conversion during typing (voice typing compatibility)
   const handleChange = (field, value) => {
-    setTicket((prev) => ({ ...prev, [field]: value }));
+    setTicket((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Trigger auto-save for editable fields (not comments)
+      if (['subject', 'message', 'priority'].includes(field)) {
+        triggerAutoSave(updated);
+      }
+      return updated;
+    });
   };
 
   // Handle blur - apply uppercase when user leaves the field
@@ -590,9 +720,9 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   };
  
   const handleClose = () => {
-    // Log if user was in edit mode when closing
-    if (isEditing) {
-      addHistoryItem("Cancelled editing", "Exited edit mode without saving changes");
+    // If there's a pending auto-save, let it finish
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
     }
     
     setIsOpen(false); // Close the modal locally
@@ -845,12 +975,17 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
       const remainingAssignees = assigneeNames.length > 0 ? assigneeNames.join(', ') : 'Unassigned';
       addHistoryItem("Removed assignee", `Removed: ${nameToRemove}. Current assignees: ${remainingAssignees}`);
       
-      return {
+      const updatedTicket = {
         ...prevTicket,
         assignedTo: updatedAssignedTo,
         assign: assigneeNames.join(", "),
         assigned_users: updatedAssignedUserIds
       };
+
+      // Save immediately after removing assignee
+      saveImmediately(updatedTicket);
+
+      return updatedTicket;
     });
   };
 
@@ -885,12 +1020,19 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
         // Add to history with current assignee list
         addHistoryItem("Added assignee", `Added: ${assigneeName}. Current assignees: ${assigneeNames.join(', ')}`);
         
-        return {
+        const updatedTicket = {
           ...prevTicket,
           assignedTo: updatedAssignedTo,
           assign: assigneeNames.join(", "),
           assigned_users: updatedAssignedUserIds
         };
+
+        // Save immediately and show confirmation popup
+        saveImmediately(updatedTicket);
+        setShowIssueConfirmation(assigneeName);
+        setTimeout(() => setShowIssueConfirmation(null), 2500);
+
+        return updatedTicket;
       }
       return prevTicket;
     });
@@ -907,9 +1049,17 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
         >
           ×
         </button>
-        <h2 className="text-xl font-bold text-blue-500 mb-4">EDIT TICKET</h2>
+        <h2 className="text-xl font-bold text-blue-500 mb-4 flex items-center gap-3">
+          EDIT TICKET
+          {autoSaving && (
+            <span className="text-sm font-normal text-gray-400 flex items-center gap-1">
+              <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent"></div>
+              Saving...
+            </span>
+          )}
+        </h2>
         
-          <form onSubmit={handleEditSubmit}>
+          <form onSubmit={(e) => e.preventDefault()}>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <label className="block font-bold text-gray-700 mb-1">
@@ -948,13 +1098,12 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
               <input
                 id="subject"
                 type="text"
-                className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold ${!isEditing ? 'bg-gray-100' : ''}`}
+                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
                 value={ticket.subject}
                 onChange={(e) => handleChange("subject", e.target.value)}
                 onBlur={() => handleBlur("subject")}
                 placeholder="Enter subject"
                 required
-                readOnly={!isEditing}
               />
             </div>
 
@@ -968,14 +1117,13 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
               <textarea
                 ref={messageRef}
                 id="message"
-                className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden ${!isEditing ? 'bg-gray-100' : ''}`}
+                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden"
                 rows={3}
                 value={ticket.message}
                 onChange={(e) => handleChange("message", e.target.value)}
                 onBlur={() => handleBlur("message")}
                 placeholder="Enter ticket details..."
                 required
-                readOnly={!isEditing}
                 style={{
                   minHeight: "3rem",
                   maxHeight: "400px",
@@ -983,21 +1131,23 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                 }}
               />
             </div>
-            <div className="flex flex-col items-start mt-4">
+            <div className="flex flex-col items-start mt-4" onPaste={handleAttachmentPaste}>
               <label className="block font-bold text-gray-700 mb-2">
                 Attachment
               </label>
-              <label className={`inline-flex items-center px-4 py-2 font-bold rounded-lg shadow transition ${isEditing ? 'bg-cyan-500 text-white cursor-pointer hover:bg-cyan-600' : 'bg-gray-400 text-gray-600 cursor-not-allowed'}`}>
-                Photo/PDF
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="hidden"
-                  onChange={handleAttachmentChange}
-                  multiple
-                  disabled={!isEditing}
-                />
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center px-4 py-2 font-bold rounded-lg shadow transition bg-cyan-500 text-white cursor-pointer hover:bg-cyan-600">
+                  Photo/PDF/Video
+                  <input
+                    type="file"
+                    accept="image/*,video/*,application/pdf"
+                    className="hidden"
+                    onChange={handleAttachmentChange}
+                    multiple
+                  />
+                </label>
+                <span className="text-xs text-gray-400">or Ctrl+V to paste</span>
+              </div>
               
               {/* Display existing attachments with a clear heading */}
               <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
@@ -1049,21 +1199,19 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                           )}
                         </div>
                       </div>
-                      {isEditing && (
-                        <button
-                          type="button"
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                          onClick={() => {
-                            setTicket(prev => ({
-                              ...prev,
-                              attachments: prev.attachments.filter(a => a !== attachment),
-                              removedAttachments: [...(prev.removedAttachments || []), attachment]
-                            }));
-                          }}
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        onClick={() => {
+                          setTicket(prev => ({
+                            ...prev,
+                            attachments: prev.attachments.filter(a => a !== attachment),
+                            removedAttachments: [...(prev.removedAttachments || []), attachment]
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1116,21 +1264,19 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                           </span>
                         </div>
                       </div>
-                      {isEditing && (
-                        <button
-                          type="button"
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                          onClick={() => {
-                            setTicket(prev => ({
-                              ...prev,
-                              attachments: prev.attachments.filter(a => a !== attachment),
-                              newAttachments: prev.newAttachments.filter(a => a !== attachment)
-                            }));
-                          }}
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        onClick={() => {
+                          setTicket(prev => ({
+                            ...prev,
+                            attachments: prev.attachments.filter(a => a !== attachment),
+                            newAttachments: prev.newAttachments.filter(a => a !== attachment)
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1169,27 +1315,23 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                           .toUpperCase()}
                       </div>
                       <span>{assigneeName}</span>
-                      {isEditing && (
-                        <button
-                          type="button"
-                          className="ml-2 text-blue-500 hover:text-blue-700"
-                          onClick={() => handleRemoveAssignee(assigneeName)}
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="ml-2 text-blue-500 hover:text-blue-700"
+                        onClick={() => handleRemoveAssignee(assigneeName)}
+                      >
+                        ×
+                      </button>
                     </div>
                   );
                 })}
-                {isEditing && (
-                  <button
-                    type="button"
-                    className="text-blue-600 font-medium hover:text-blue-800 ml-auto" // Pushed to the right
-                    onClick={() => setShowAssignPopup(true)}
-                  >
-                    + Add more
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="text-blue-600 font-medium hover:text-blue-800 ml-auto"
+                  onClick={() => setShowAssignPopup(true)}
+                >
+                  + Add more
+                </button>
               </div>
             </div>
             {/* End of Modified Assignee Section */}
@@ -1218,31 +1360,6 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                   >
                     {isLoading ? "Processing..." : "Failed Ticket"}
                   </button>
-
-                  {/* Edit Ticket Button - Only show when not in edit mode */}
-                  {!isEditing && (
-                    <button
-                      type="button"
-                      className="flex-1 px-6 py-3 bg-orange-600 text-white font-bold rounded-lg shadow hover:bg-orange-700 transition text-lg"
-                      onClick={() => {
-                        setIsEditing(true);
-                        addHistoryItem("Started editing", "Entered edit mode to modify ticket details");
-                      }}
-                    >
-                      Edit Ticket
-                    </button>
-                  )}
-
-                  {/* Update Button - Only show when in edit mode */}
-                  {isEditing && (
-                    <button
-                      type="submit"
-                      className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Updating..." : "Update Ticket"}
-                    </button>
-                  )}
                 </>
               ) : ticket.status === "CLOSED" ? (
                 <>
@@ -1267,31 +1384,6 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                   >
                     {isLoading ? "Reopening..." : "Reopen Task"}
                   </button>
-
-                  {/* Edit Ticket Button - Only show when not in edit mode */}
-                  {!isEditing && (
-                    <button
-                      type="button"
-                      className="flex-1 px-6 py-3 bg-orange-600 text-white font-bold rounded-lg shadow hover:bg-orange-700 transition text-lg"
-                      onClick={() => {
-                        setIsEditing(true);
-                        addHistoryItem("Started editing", "Entered edit mode to modify ticket details");
-                      }}
-                    >
-                      Edit Ticket
-                    </button>
-                  )}
-
-                  {/* Update Button - Only show when in edit mode */}
-                  {isEditing && (
-                    <button
-                      type="submit"
-                      className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Updating..." : "Update Ticket"}
-                    </button>
-                  )}
                 </>
               ) : null}
             </div>
@@ -1625,6 +1717,25 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
             setShowAssignPopup(false);
           }}
         />
+      )}
+
+      {/* Issue Confirmation Popup */}
+      {showIssueConfirmation && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm mx-auto pointer-events-auto animate-bounce-in border-2 border-green-400">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Ticket Issued!</h3>
+              <p className="text-gray-600 font-medium">
+                Ticket has been issued to <span className="text-blue-600 font-bold">{showIssueConfirmation}</span>
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
