@@ -435,195 +435,240 @@ const sampleComments = [
   },
 ]
 
-// Remove the jsPDF imports and replace with this simpler approach
-const exportToPDF = (attendanceData, selectedYear, selectedMonth, holidays) => {
-  // Create HTML content for the report
+// Excel export — uses ExcelJS to produce a color-coded .xlsx matching the website display
+const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays) => {
+  const ExcelJS = (await import('exceljs')).default
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
 
-  // Generate HTML table
-  let htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Monthly Attendance Report - ${months[selectedMonth - 1]} ${selectedYear}</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { text-align: center; margin-bottom: 20px; }
-        .info { margin-bottom: 15px; font-size: 12px; }
-        table { width: 100%; border-collapse: collapse; font-size: 10px; }
-        th, td { border: 1px solid #ddd; padding: 4px; text-align: center; }
-        th { background-color: #2980b9; color: white; font-weight: bold; }
-        .employee-info { text-align: left; min-width: 120px; }
-        .summary { text-align: left; font-size: 9px; }
-        .status-P { background-color: #10b981; color: white; font-weight: bold; }
-        .status-A { background-color: #ef4444; color: white; font-weight: bold; }
-        .status-L { background: linear-gradient(135deg, #eab308, #f97316); color: white; font-weight: bold; }
-        .status-LV { background-color: #f97316; color: white; font-weight: bold; }
-        .status-H { background-color: #3b82f6; color: white; font-weight: bold; }
-        .status-HD { background-color: #eab308; color: white; font-weight: bold; }
-        .status-AB { background-color: #ef4444; color: white; font-weight: bold; }
-        .legend { margin-top: 20px; font-size: 11px; }
-        .legend-item { display: inline-block; margin-right: 15px; margin-bottom: 5px; }
-        .legend-color { display: inline-block; width: 20px; height: 15px; margin-right: 5px; vertical-align: middle; }
-        .monthly-summary { margin-top: 20px; font-size: 12px; }
-        @media print { body { margin: 10px; } }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2></h2>
-        <h3>${months[selectedMonth - 1]} ${selectedYear}</h3>
-      </div>
-      
-      <div class="info">
-        <strong>Generated on:</strong> ${formatDateTime(new Date())}<br>
-  `
+  // ── Color map: status → { bg (ARGB), fontColor (ARGB), value } ──
+  // Values shown on website: P/L=1, HD=0.5, LV=0, A=0, AB=-1, H=1, SP=1, S0=0, W/WK/blank=—
+  const STATUS_STYLE = {
+    P:    { bg: 'FF10b981', font: 'FF000000', val: '1'    },   // green
+    L:    { bg: 'FF10b981', font: 'FF000000', val: '1'    },   // green (late = full present)
+    LV:   { bg: 'FFff7b00', font: 'FF000000', val: '0'    },   // orange
+    H:    { bg: 'FF06b6d4', font: 'FF000000', val: '1'    },   // cyan
+    SP:   { bg: 'FF06b6d4', font: 'FF000000', val: '1'    },   // cyan
+    S0:   { bg: 'FF18181b', font: 'FFFFFFFF', val: '0'    },   // very dark
+    HD:   { bg: 'FFffdd00', font: 'FF000000', val: '0.5'  },   // yellow
+    AB:   { bg: 'FFff2a2a', font: 'FFFFFFFF', val: '-1'   },   // red
+    A:    { bg: 'FFFFFFFF', font: 'FF000000', val: '0'    },   // white
+    WK:   { bg: 'FF3b82f6', font: 'FFFFFFFF', val: 'IN'   },   // blue
+    W:    { bg: 'FF111113', font: 'FF52525b', val: '—'    },   // weekend dark
+  }
 
-  // Add holidays info
-  const currentMonthHolidays = holidays.filter((holiday) => {
-    const holidayDate = new Date(holiday.date)
-    return holidayDate.getFullYear() === selectedYear && holidayDate.getMonth() + 1 === selectedMonth
+  const getStyle = (status) => STATUS_STYLE[status] || { bg: 'FF1a1a1a', font: 'FF71717a', val: '' }
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'RupiyaMe CRM'
+  workbook.created = new Date()
+
+  const sheet = workbook.addWorksheet(`${months[selectedMonth - 1]} ${selectedYear}`, {
+    views: [{ state: 'frozen', xSplit: 3, ySplit: 2 }],
   })
 
-  if (currentMonthHolidays.length > 0) {
-    htmlContent += `<strong>Company Holidays:</strong> ${currentMonthHolidays.map((h) => h.name).join(", ")}<br>`
+  // ── Column widths ──
+  sheet.getColumn(1).width = 12   // Emp ID
+  sheet.getColumn(2).width = 22   // Name
+  sheet.getColumn(3).width = 18   // Department
+  for (let d = 1; d <= daysInMonth; d++) sheet.getColumn(3 + d).width = 5
+  sheet.getColumn(3 + daysInMonth + 1).width = 8   // Present
+  sheet.getColumn(3 + daysInMonth + 2).width = 8   // Late
+  sheet.getColumn(3 + daysInMonth + 3).width = 9   // Half Day
+  sheet.getColumn(3 + daysInMonth + 4).width = 9   // Holidays
+  sheet.getColumn(3 + daysInMonth + 5).width = 11  // Absconding
+  sheet.getColumn(3 + daysInMonth + 6).width = 12  // Att %
+
+  // ── Row 1: Title ──
+  const titleRow = sheet.getRow(1)
+  const lastCol = 3 + daysInMonth + 6
+  sheet.mergeCells(1, 1, 1, lastCol)
+  const titleCell = titleRow.getCell(1)
+  titleCell.value = `Attendance Report — ${months[selectedMonth - 1]} ${selectedYear}`
+  titleCell.font = { bold: true, size: 14, color: { argb: 'FF0ea5e9' } }
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+  titleRow.height = 24
+
+  // ── Row 2: Headers ──
+  const headerRow = sheet.getRow(2)
+  headerRow.height = 32
+
+  const headerStyle = (cell, value) => {
+    cell.value = value
+    cell.font = { bold: true, color: { argb: 'FF0ea5e9' }, size: 9 }
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      left: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      bottom: { style: 'medium', color: { argb: 'FF0ea5e9' } },
+      right: { style: 'thin', color: { argb: 'FF2a2a30' } },
+    }
   }
 
-  htmlContent += `
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th class="employee-info">Employee Details</th>
-  `
+  headerStyle(headerRow.getCell(1), 'EMP ID')
+  headerStyle(headerRow.getCell(2), 'NAME')
+  headerStyle(headerRow.getCell(3), 'DEPARTMENT')
 
-  // Add day headers
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dayName = getDayName(selectedYear, selectedMonth, day)
-    htmlContent += `<th>${day}<br><small>${dayName.substring(0, 3)}</small></th>`
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayName = getDayName(selectedYear, selectedMonth, d)
+    const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    const isHoliday = holidays.some(h => h.date === dateKey)
+    const isSun = dayName === 'Sun'
+    const hdrCell = headerRow.getCell(3 + d)
+    hdrCell.value = `${d}\n${dayName.substring(0,3)}`
+    hdrCell.font = {
+      bold: true, size: 8,
+      color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FFa78bfa' : 'FF0ea5e9' },
+    }
+    hdrCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    hdrCell.fill = {
+      type: 'pattern', pattern: 'solid',
+      fgColor: { argb: isHoliday ? 'FF061a1c' : isSun ? 'FF2e1065' : 'FF0a0a0d' },
+    }
+    hdrCell.border = {
+      top: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      left: { style: 'thin', color: { argb: 'FF2a2a30' } },
+      bottom: { style: 'medium', color: { argb: 'FF0ea5e9' } },
+      right: { style: 'thin', color: { argb: 'FF2a2a30' } },
+    }
   }
 
-  htmlContent += `
-            <th>Present</th>
-            <th>Late</th>
-            <th>Half Day</th>
-            <th>Holidays</th>
-            <th>Absconding</th>
-            <th>Attendance %</th>
-          </tr>
-        </thead>
-        <tbody>
-  `
+  const summaryHeaders = ['Present', 'Late', 'Half\nDay', 'Holidays', 'Abscond', 'Att %']
+  summaryHeaders.forEach((h, i) => headerStyle(headerRow.getCell(3 + daysInMonth + 1 + i), h))
 
-  // Add employee rows
-  attendanceData.forEach((record) => {
+  // ── Data rows ──
+  const getISTTodayKey = () => {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+  }
+  const todayKey = getISTTodayKey()
+
+  attendanceData.forEach((record, rowIdx) => {
     const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
+    const row = sheet.getRow(3 + rowIdx)
+    row.height = 18
 
-    htmlContent += `
-      <tr>
-        <td class="employee-info">
-          <strong>${record.name}</strong><br>
-          <small>${record.employeeId}</small><br>
-          <small>${record.department}</small>
-        </td>
-    `
-
-    // Add attendance data for each day
-    for (let day = 1; day <= daysInMonth; day++) {
-      const status = record[`day${day}`] || "-"
-      htmlContent += `<td class="status-${status}">${status}</td>`
+    const baseStyle = (cell, value, fontColor = 'FFFFFFFF') => {
+      cell.value = value
+      cell.font = { color: { argb: fontColor }, size: 9, bold: false }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        left: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        bottom: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        right: { style: 'thin', color: { argb: 'FF1f1f22' } },
+      }
     }
 
-    // Add summary stats
-    htmlContent += `
-        <td>${stats.present}</td>
-        <td>${stats.late}</td>
-        <td>${stats.halfDay}</td>
-        <td>${stats.holidays}</td>
-        <td>${stats.absconding}</td>
-        <td>${stats.attendancePercentage}%</td>
-      </tr>
-    `
+    // Fixed info columns
+    const idCell = row.getCell(1)
+    baseStyle(idCell, record.employeeId, 'FF0ea5e9')
+    idCell.font = { ...idCell.font, bold: true }
+
+    const nameCell = row.getCell(2)
+    baseStyle(nameCell, record.name, 'FFFFFFFF')
+    nameCell.alignment = { horizontal: 'left', vertical: 'middle' }
+    nameCell.font = { ...nameCell.font, bold: true }
+
+    const deptCell = row.getCell(3)
+    baseStyle(deptCell, record.department, 'FFa1a1aa')
+    deptCell.alignment = { horizontal: 'left', vertical: 'middle' }
+
+    // Day cells
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+      const isSun = getDayName(selectedYear, selectedMonth, d) === 'Sun'
+      const isHoliday = holidays.some(h => h.date === dateKey)
+
+      let rawStatus = record[`day${d}`]
+      // Same auto-absent rule as the UI
+      if (!rawStatus && !isSun && !isHoliday && dateKey <= todayKey) rawStatus = 'A'
+
+      const s = getStyle(rawStatus)
+      const cell = row.getCell(3 + d)
+
+      // Use weekend/holiday bg when no status but cell is special day
+      let cellBg = s.bg
+      if (!rawStatus && isHoliday) cellBg = 'FF061a1c'
+      else if (!rawStatus && isSun) cellBg = 'FF2e1065'
+
+      cell.value = rawStatus ? s.val : (isHoliday ? '—' : isSun ? '—' : '')
+      cell.font = { bold: true, size: 9, color: { argb: rawStatus ? s.font : 'FF52525b' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBg } }
+      cell.border = {
+        top: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
+        left: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
+        bottom: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
+        right: { style: 'thin', color: { argb: isHoliday ? 'FF06b6d4' : isSun ? 'FF5b21b6' : 'FF1f1f22' } },
+      }
+    }
+
+    // Summary columns
+    const summaryVals = [
+      { val: stats.present,            color: 'FF10b981' },
+      { val: stats.late,               color: 'FFe5e5e5' },
+      { val: stats.halfDay,            color: 'FFffdd00' },
+      { val: stats.holidays,           color: 'FF06b6d4' },
+      { val: stats.absconding,         color: 'FFff2a2a' },
+      { val: `${stats.attendancePercentage}%`, color: stats.attendancePercentage >= 75 ? 'FF10b981' : 'FFff2a2a' },
+    ]
+    summaryVals.forEach(({ val, color }, i) => {
+      const cell = row.getCell(3 + daysInMonth + 1 + i)
+      cell.value = val
+      cell.font = { bold: true, size: 9, color: { argb: color } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        left: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        bottom: { style: 'thin', color: { argb: 'FF1f1f22' } },
+        right: { style: 'thin', color: { argb: 'FF1f1f22' } },
+      }
+    })
   })
 
-  htmlContent += `
-        </tbody>
-      </table>
-      
-      <div class="legend">
-        <h4>Legend:</h4>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #10b981;"></span>P = Present
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background: linear-gradient(135deg, #eab308, #f97316);"></span>L = Late
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #f97316;"></span>LV = Leave
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #3b82f6;"></span>H = Holiday
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #eab308;"></span>HD = Half Day
-        </div>
-        <div class="legend-item">
-          <span class="legend-color" style="background-color: #ef4444;"></span>AB = Absconding
-        </div>
-      </div>
-      
-      <div class="monthly-summary">
-        <h4>Monthly Summary:</h4>
-  `
+  // ── Legend sheet ──
+  const legend = workbook.addWorksheet('Legend')
+  legend.getColumn(1).width = 12
+  legend.getColumn(2).width = 20
+  legend.getColumn(3).width = 28
+  const legendRows = [
+    ['Value', 'Color', 'Meaning'],
+    ['1',     '#10b981 (Green)',  'Present / Late (counted as full day)'],
+    ['0.5',   '#ffdd00 (Yellow)', 'Half Day'],
+    ['0',     '#ff7b00 (Orange)', 'Leave'],
+    ['0',     '#ffffff (White)',  'Absent (no deduction shown as 0)'],
+    ['-1',    '#ff2a2a (Red)',    'Absconding (deducted)'],
+    ['1',     '#06b6d4 (Cyan)',   'Holiday / Sunday Paid'],
+    ['0',     '#18181b (Dark)',   'Sunday Zero'],
+    ['—',     '#2e1065 (Purple)', 'Weekend (Sunday)'],
+    ['IN',    '#3b82f6 (Blue)',   'Currently Checked In'],
+  ]
+  legendRows.forEach((lr, ri) => {
+    const row = legend.getRow(ri + 1)
+    lr.forEach((v, ci) => {
+      const c = row.getCell(ci + 1)
+      c.value = v
+      c.font = ri === 0 ? { bold: true, color: { argb: 'FF0ea5e9' } } : { color: { argb: 'FF111827' } }
+      c.alignment = { horizontal: 'left', vertical: 'middle' }
+      if (ri === 0) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0a0a0d' } }
+    })
+  })
 
-  // Calculate totals
-  const totalPresent = attendanceData.reduce((acc, record) => {
-    const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-    return acc + stats.present
-  }, 0)
-
-  const totalLate = attendanceData.reduce((acc, record) => {
-    const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-    return acc + stats.late
-  }, 0)
-
-  const avgAttendance = (
-    attendanceData.reduce((acc, record) => {
-      const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
-      return acc + Number.parseFloat(stats.attendancePercentage)
-    }, 0) / attendanceData.length
-  ).toFixed(1)
-
-  htmlContent += `
-        <p><strong>Total Present Days:</strong> ${totalPresent}</p>
-        <p><strong>Total Late Days:</strong> ${totalLate}</p>
-        <p><strong>Average Attendance:</strong> ${avgAttendance}%</p>
-      </div>
-    </body>
-    </html>
-  `
-
-  // Create and download the HTML file
-  const blob = new Blob([htmlContent], { type: "text/html" })
+  // ── Download ──
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
+  const link = document.createElement('a')
   link.href = url
-  link.download = `Attendance_Report_${months[selectedMonth - 1]}_${selectedYear}.html`
+  link.download = `Attendance_${months[selectedMonth - 1]}_${selectedYear}.xlsx`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
-
-  // Also offer to print (which can save as PDF)
-  const printWindow = window.open("", "_blank")
-  printWindow.document.write(htmlContent)
-  printWindow.document.close()
-
-  // Auto-trigger print dialog after a short delay
-  setTimeout(() => {
-    printWindow.print()
-  }, 500)
 }
 
 // Holiday Management Modal Component
@@ -3427,11 +3472,11 @@ export default function MonthlyAttendanceTable() {
             )}
 
             <button
-              onClick={() => exportToPDF(attendanceData, selectedYear, selectedMonth, holidays)}
+              onClick={() => exportToPDF(attendanceData, selectedYear, selectedMonth, holidays).catch(e => alert('Export failed: ' + e.message))}
               className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 text-xs"
             >
               <Download className="h-3 w-3 mr-1" />
-              Export
+              Export Excel
             </button>
           </div>
         </div>
