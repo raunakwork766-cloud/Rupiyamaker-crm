@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import ClockTimePicker from "./ClockTimePicker";
+import TaskSchedulePicker from "./TaskSchedulePicker";
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
@@ -537,7 +535,9 @@ export default function EditTask({
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
   const [showComments, setShowComments] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
-  const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
+  const assignDropdownRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isEditing, setIsEditing] = useState(true);
@@ -570,14 +570,19 @@ export default function EditTask({
   const leadDropdownRef = useRef(null);
   const leadSearchTimerRef = useRef(null);
 
-  // Date picker related state (similar to CreateTask)
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [showClockTimePicker, setShowClockTimePicker] = useState(false);
+  // Date picker related state
   const [showDaysSelector, setShowDaysSelector] = useState(false);
-  const [calendarPosition, setCalendarPosition] = useState('below'); // 'below' or 'above'
-  
-  // Ref for the due date select element to calculate positioning
-  const dueDateSelectRef = useRef(null);
+
+  // Close assign dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target)) {
+        setShowAssignDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Network status monitoring
   useEffect(() => {
@@ -606,23 +611,6 @@ export default function EditTask({
   const autoSaveTimerRef = useRef(null);
   const modalRef = useRef(null);
   
-  // Calculate calendar position when it's shown
-  useEffect(() => {
-    if (showCalendar && dueDateSelectRef.current) {
-      const selectElement = dueDateSelectRef.current;
-      const rect = selectElement.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      
-      // If there's less than 400px below and more space above, show calendar above
-      if (spaceBelow < 400 && spaceAbove > spaceBelow) {
-        setCalendarPosition('above');
-      } else {
-        setCalendarPosition('below');
-      }
-    }
-  }, [showCalendar]);
-
   // Get userId from localStorage (similar to CreateTask)
   const getUserId = () => {
     try {
@@ -1125,16 +1113,6 @@ export default function EditTask({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showLeadDropdown]);
-
-  // Handle time selection from ClockTimePicker
-  const handleTimeSelect = (time) => {
-    setTask(prev => {
-      const updated = { ...prev, dueTime: time };
-      debouncedAutoSave(updated);
-      return updated;
-    });
-    setShowClockTimePicker(false);
-  };
 
   // Function to handle form submission
   const handleEditSubmit = async (e) => {
@@ -2421,140 +2399,105 @@ export default function EditTask({
           {/* Assignee Section */}
           <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
             <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>Assigned To</label>
-            <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:8, border:'1.5px solid #94a3b8', borderRadius:6, background:'#fff', padding:'6px 8px', minHeight:42 }}>
-              {/* Display all assigned names as pills */}
-              {task.assignedTo && task.assignedTo.map((assignee, index) => {
-                // Get user details based on whether assignee is a string or object
-                const assigneeData = typeof assignee === 'string' 
-                  ? { name: assignee, first_name: '', last_name: '', designation: '' }
-                  : assignee;
-
-                const displayName = assigneeData.first_name && assigneeData.last_name 
-                  ? `${assigneeData.first_name} ${assigneeData.last_name}`.trim()
-                  : assigneeData.name || assignee;
-
-                const designation = assigneeData.designation || '';
-
-                return (
-                  <div
-                    key={index}
-                    style={{ display:'flex', alignItems:'center', background:'#e0f2fe', padding:'4px 10px', borderRadius:20, gap:6 }}
-                  >
-                    <div style={{ width:24, height:24, borderRadius:'50%', background:'#00aaff', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
-                      {displayName.split(' ')
-                        .map(part => part[0])
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase()}
-                    </div>
-                    <span style={{ fontWeight:600, fontSize:12, color:'#0f172a' }}>{displayName}</span>
-                    <button
-                      type="button"
-                      style={{ background:'none', border:'none', color:'#64748b', cursor:'pointer', fontWeight:700, fontSize:14, padding:0, marginLeft:2 }}
-                      onClick={() => handleRemoveAssignee(displayName)}
-                    >×</button>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                style={{ background:'none', border:'none', color:'#00aaff', fontSize:12, fontWeight:700, cursor:'pointer', marginLeft:'auto' }}
-                onClick={() => setShowAssignPopup(true)}
+            <div ref={assignDropdownRef} style={{ position: 'relative' }}>
+              <div
+                style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:8, border:'1.5px solid #94a3b8', borderRadius:6, background:'#fff', padding:'6px 8px', minHeight:42, cursor:'text' }}
+                onClick={() => { if (!users.length) fetchUsers(); setShowAssignDropdown(true); }}
               >
-                + Add more
-              </button>
+                {task.assignedTo && task.assignedTo.map((assignee, index) => {
+                  const assigneeData = typeof assignee === 'string'
+                    ? { name: assignee, first_name: '', last_name: '', designation: '' }
+                    : assignee;
+                  const displayName = assigneeData.first_name && assigneeData.last_name
+                    ? `${assigneeData.first_name} ${assigneeData.last_name}`.trim()
+                    : assigneeData.name || assignee;
+                  return (
+                    <div key={index} style={{ display:'flex', alignItems:'center', background:'#e0f2fe', padding:'4px 10px', borderRadius:20, gap:6 }}>
+                      <div style={{ width:24, height:24, borderRadius:'50%', background:'#00aaff', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
+                        {displayName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight:600, fontSize:12, color:'#0f172a' }}>{displayName}</span>
+                      <button
+                        type="button"
+                        style={{ background:'none', border:'none', color:'#64748b', cursor:'pointer', fontWeight:700, fontSize:14, padding:0, marginLeft:2 }}
+                        onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(displayName); }}
+                      >×</button>
+                    </div>
+                  );
+                })}
+                <input
+                  type="text"
+                  placeholder={!task.assignedTo || task.assignedTo.length === 0 ? 'Search & add assignee...' : '+ Add more'}
+                  value={assignSearchTerm}
+                  onChange={(e) => { setAssignSearchTerm(e.target.value); setShowAssignDropdown(true); }}
+                  onFocus={() => { if (!users.length) fetchUsers(); setShowAssignDropdown(true); }}
+                  style={{ border:'none', outline:'none', fontSize:12, color:'#475569', background:'transparent', minWidth:120, flex:1 }}
+                />
+              </div>
+              {showAssignDropdown && (
+                <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, background:'#fff', border:'1.5px solid #94a3b8', borderRadius:8, boxShadow:'0 8px 24px rgba(0,0,0,0.12)', zIndex:200, maxHeight:200, overflowY:'auto' }}>
+                  {loadingUsers ? (
+                    <div style={{ padding:'12px', textAlign:'center', fontSize:12, color:'#94a3b8' }}>Loading users...</div>
+                  ) : (() => {
+                    const alreadySelected = new Set((task.assignedTo || []).map(a => {
+                      const d = typeof a === 'string' ? a : (a?.first_name && a?.last_name ? `${a.first_name} ${a.last_name}`.trim() : a?.name || '');
+                      return d.toLowerCase();
+                    }));
+                    const filtered = users.filter(u => {
+                      const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim();
+                      if (alreadySelected.has(name.toLowerCase())) return false;
+                      if (!assignSearchTerm.trim()) return true;
+                      return name.toLowerCase().includes(assignSearchTerm.toLowerCase());
+                    });
+                    return filtered.length === 0 ? (
+                      <div style={{ padding:'12px', textAlign:'center', fontSize:12, color:'#94a3b8' }}>No users found</div>
+                    ) : filtered.map(user => {
+                      const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                      return (
+                        <div
+                          key={user.id || user.user_id}
+                          onMouseDown={(e) => { e.preventDefault(); handleAddAssignee(user); setAssignSearchTerm(''); setShowAssignDropdown(false); }}
+                          style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 14px', cursor:'pointer', fontSize:13, color:'#1e293b' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{ width:28, height:28, borderRadius:'50%', background:'#00aaff', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
+                            {name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight:600 }}>{name}</div>
+                            {user.designation && <div style={{ fontSize:11, color:'#64748b' }}>{user.designation}</div>}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Schedule Section */}
-          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
-            <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-              📅 Schedule Date & ⏰ Time
-            </label>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-              <div style={{ position:'relative' }}>
-                <select
-                  ref={dueDateSelectRef}
-                  style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'pointer', appearance:'none', paddingRight:30, backgroundImage:"url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%2300aaff\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>')", backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}
-                  value={task.dueDateOption || "today"}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === "today") {
-                      setTask(prev => {
-                        const updated = { ...prev, dueDateOption: "today", dueDate: getTodayDate(), customDate: null };
-                        debouncedAutoSave(updated);
-                        return updated;
-                      });
-                      setShowCalendar(false);
-                    } else if (value === "tomorrow") {
-                      setTask(prev => {
-                        const updated = { ...prev, dueDateOption: "tomorrow", dueDate: getTomorrowDate(), customDate: null };
-                        debouncedAutoSave(updated);
-                        return updated;
-                      });
-                      setShowCalendar(false);
-                    } else if (value === "custom") {
-                      handleChange("dueDateOption", "custom");
-                      handleChange(
-                        "dueDate",
-                        task.customDate ? formatDateToDDMonYYYY(task.customDate) : ""
-                      );
-                      setShowCalendar(true);
-                    }
-                  }}
-                  onFocus={(e) => {
-                    if (task.dueDateOption === "custom") {
-                      setShowCalendar(true);
-                    }
-                  }}
-                  required
-                >
-                  <option value="today">Today ({getTodayDate()})</option>
-                  <option value="tomorrow">Tomorrow ({getTomorrowDate()})</option>
-                  <option value="custom">
-                    Custom Date
-                  </option>
-                </select>
-
-                {task.dueDateOption === "custom" && showCalendar && (
-                  <div 
-                    className={`absolute bg-white border border-cyan-400 rounded shadow-lg z-[9999] ${
-                      calendarPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-                    }`}
-                  >
-                    <DatePicker
-                      selected={task.customDate || new Date()}
-                      onChange={(date) => {
-                        setTask(prev => {
-                          const updated = { ...prev, customDate: date, dueDate: formatDateToDDMonYYYY(date) };
-                          debouncedAutoSave(updated);
-                          return updated;
-                        });
-                        setShowCalendar(false);
-                      }}
-                      inline
-                      showYearDropdown
-                      scrollableYearDropdown
-                      yearDropdownItemNumber={100}
-                      dateFormat="dd MMM yyyy"
-                      className="border border-cyan-400 rounded p-2"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div style={{ position:'relative' }}>
-                <input
-                  type="text"
-                  style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #94a3b8', borderRadius:6, fontSize:13, color:'#333', fontWeight:600, outline:'none', background:'#fff', cursor:'pointer' }}
-                  value={task.dueTime || "08:00 AM"}
-                  readOnly
-                  onClick={() => setShowClockTimePicker(true)}
-                  placeholder="HH:MM AM/PM"
-                  required
-                />
-              </div>
-            </div>
+          <div style={{ marginBottom:10 }}>
+            <TaskSchedulePicker
+              date={task.dueDate}
+              time={task.dueTime || '08:00 AM'}
+              dateOption={task.dueDateOption || 'today'}
+              onDateChange={(date, option) => {
+                setTask(prev => {
+                  const updated = { ...prev, dueDate: date, dueDateOption: option };
+                  debouncedAutoSave(updated);
+                  return updated;
+                });
+              }}
+              onTimeChange={(time) => {
+                setTask(prev => {
+                  const updated = { ...prev, dueTime: time };
+                  debouncedAutoSave(updated);
+                  return updated;
+                });
+              }}
+            />
           </div>
 
           {/* Repeat Section - only for Todo */}
@@ -2853,26 +2796,6 @@ export default function EditTask({
         {/* end scrollable body */}
         </div>
       </div>
-
-      {/* Assign Popup */}
-      {showAssignPopup && (
-        <AssignPopup
-          onClose={() => setShowAssignPopup(false)}
-          onSelect={(user) => {
-            handleAddAssignee(user);
-            setShowAssignPopup(false);
-          }}
-        />
-      )}
-
-      {/* Clock Time Picker */}
-      {showClockTimePicker && (
-        <ClockTimePicker
-          onClose={() => setShowClockTimePicker(false)}
-          onTimeSelect={handleTimeSelect}
-          initialTime={task.dueTime}
-        />
-      )}
 
       {/* Remark Modal */}
       {remarkModalOpen && (

@@ -581,6 +581,40 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         return hasDeletePerm;
     };
 
+    // Check if user can rollback a lead from Login status (change status of a login-flagged lead)
+    // Super Admin always gets this. For others, explicit rollback_login action is required.
+    const canRollbackLoginStatus = () => {
+        try {
+            // Super admin check first
+            if (isSuperAdmin()) return true;
+
+            // Check from user object in localStorage
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                const user = JSON.parse(userData);
+                if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+                    const found = user.role.permissions.some(p => {
+                        const pageMatches = ['leads', 'Leads', 'leads.pl_&_odd_leads', 'leads.pl_odd_leads',
+                            'leads_pl_&_odd_leads', 'leads_pl_odd_leads'].includes(p.page);
+                        const actions = Array.isArray(p.actions) ? p.actions : [];
+                        return pageMatches && actions.includes('rollback_login');
+                    });
+                    if (found) return true;
+                }
+            }
+            // Check from permissions state
+            if (Array.isArray(permissions)) {
+                return permissions.some(p => {
+                    const pageMatches = ['leads', 'Leads', 'leads.pl_&_odd_leads', 'leads.pl_odd_leads',
+                        'leads_pl_&_odd_leads', 'leads_pl_odd_leads'].includes(p.page);
+                    const actions = Array.isArray(p.actions) ? p.actions : [];
+                    return pageMatches && actions.includes('rollback_login');
+                });
+            }
+        } catch (e) {}
+        return false;
+    };
+
     const canUpdateStatus = () => {
         // 🔒 PERMISSION-BASED CHECK: Only allow status updates if user has status_update permission
         // This respects Settings → Roles and Permissions configuration
@@ -5687,10 +5721,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         parent_status: parentStatus
                     };
                     
-                    // Automatically set file_sent_to_login if this is a login-related status
-                    if (shouldSetFileSentToLogin) {
-                        updatePayload.file_sent_to_login = true;
-                    }
+                    // Set or clear file_sent_to_login based on the new status
+                    updatePayload.file_sent_to_login = shouldSetFileSentToLogin;
                     
                     // If changing from "NOT A LEAD" to another status, update created date
                     if (currentLeadIsNotALead && !newStatusIsNotALead) {
@@ -5718,7 +5750,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             status: mainStatusName,
                             sub_status: selectedValue,
                             parent_status: parentStatus,
-                            ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                            file_sent_to_login: shouldSetFileSentToLogin,
                             ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
                                 created_at: updatePayload.created_at 
                             })
@@ -5743,7 +5775,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 status: mainStatusName, 
                                 sub_status: selectedValue,
                                 parent_status: parentStatus,
-                                ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                                file_sent_to_login: shouldSetFileSentToLogin,
                                 ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
                                     created_at: updatePayload.created_at 
                                 })
@@ -5764,7 +5796,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 status: mainStatusName,
                                 sub_status: selectedValue,
                                 parent_status: parentStatus,
-                                ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                                file_sent_to_login: shouldSetFileSentToLogin,
                                 ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
                                     created_at: updatePayload.created_at 
                                 })
@@ -5777,7 +5809,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     status: mainStatusName,
                                     sub_status: selectedValue,
                                     parent_status: parentStatus,
-                                    ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                                    file_sent_to_login: shouldSetFileSentToLogin,
                                     ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
                                         created_at: updatePayload.created_at 
                                     })
@@ -5862,17 +5894,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 updateData.sub_status = subStatusValue;
             }
             
-            // Automatically set file_sent_to_login if this is a login-related status
-            if (shouldSetFileSentToLogin) {
-                updateData.file_sent_to_login = true;
-            }
+            // Always set file_sent_to_login explicitly (true or false) based on new status
+            updateData.file_sent_to_login = shouldSetFileSentToLogin;
             
             // If changing from "NOT A LEAD" to another status, update created date
             if (currentLeadIsNotALead && !newStatusIsNotALead) {
                 updateData.created_at = getISTTimestamp();
-            }
-            if (shouldSetFileSentToLogin) {
-                updateData.file_sent_to_login = true;
             }
 
             // Update lead status via API
@@ -5895,7 +5922,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         status: statusValue,
                         parent_status: parentStatus,
                         ...(subStatusValue && { sub_status: subStatusValue }),
-                        ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                        file_sent_to_login: shouldSetFileSentToLogin,
                         ...(currentLeadIsNotALead && !isNotALeadStatus(statusValue, subStatusValue) && { 
                             created_at: updateData.created_at 
                         })
@@ -5910,7 +5937,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         status: statusValue,
                         parent_status: parentStatus,
                         ...(subStatusValue && { sub_status: subStatusValue }),
-                        ...(shouldSetFileSentToLogin && { file_sent_to_login: true }),
+                        file_sent_to_login: shouldSetFileSentToLogin,
                         ...(currentLeadIsNotALead && !isNotALeadStatus(statusValue, subStatusValue) && { 
                             created_at: updateData.created_at 
                         })
@@ -6233,6 +6260,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         { key: "name", label: "CUSTOMER NAME", className: "text-left whitespace-nowrap" },
         { key: "status", label: "STATUS", className: "text-left whitespace-nowrap" },
         { key: "totalIncome", label: "TOTAL INCOME", className: "text-left whitespace-nowrap" },
+        { key: "assignLead", label: "ASSIGN LEAD", className: "text-left whitespace-nowrap" },
         { key: "finalEligibility", label: "FOIR ELIGIBILITY", className: "text-left whitespace-nowrap" },
         { key: "financial_details.total_bt_pos", label: "TOTAL BT POS", className: "text-left whitespace-nowrap" },
         { key: "financial_details.cibil_score", label: "CIBIL SCORE", className: "text-left whitespace-nowrap" },
@@ -7171,18 +7199,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
                         const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
                         const loginLeads = allLeads.filter(l => l.file_sent_to_login === true);
-                        const groups = {};
-                        loginLeads.forEach(lead => {
-                            const sub = typeof lead.sub_status === 'object' ? (lead.sub_status?.name || '') : (lead.sub_status || '');
-                            const key = sub || 'No Sub-Status';
-                            if (!groups[key]) groups[key] = { total: 0, noReview: 0, pendingMy: 0 };
-                            groups[key].total++;
-                            if (!lead.last_activity_date) groups[key].noReview++;
-                            const createdBy = String(lead.created_by || '').trim();
-                            const assignedTo = String(lead.assigned_to || '').trim();
-                            if (currentUserId && (createdBy === currentUserId || assignedTo === currentUserId)) groups[key].pendingMy++;
-                        });
-                        return Object.entries(groups).filter(([_, c]) => c.total > 0).map(([subStatus, c]) => ({ subStatus, ...c })).sort((a, b) => b.total - a.total);
+                        const noReview = loginLeads.filter(l => !l.last_activity_date).length;
+                        const pendingMy = loginLeads.filter(l => {
+                            const createdBy = String(l.created_by || '').trim();
+                            const assignedTo = String(l.assigned_to || '').trim();
+                            return currentUserId && (createdBy === currentUserId || assignedTo === currentUserId);
+                        }).length;
+                        return loginLeads.length > 0
+                            ? [{ subStatus: 'LOGIN', total: loginLeads.length, noReview, pendingMy }]
+                            : [];
                     })() : getSubStatusBreakdown(activeCardModal);
                     return (
                         <div
@@ -7530,25 +7555,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             {(() => {
-                                                                // Check if file is sent to login OR if status indicates login
+                                                                // Show Login badge for file_sent_to_login flag OR any login-related status/sub-status
+                                                                // Only users with rollback_login permission can override via dropdown
                                                                 const statusValue = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
                                                                 const subStatusValue = typeof lead.sub_status === 'object' ? (lead.sub_status?.name || '') : (lead.sub_status || '');
+                                                                const loginKeywords = ['file sent to login', 'active login', 'new login', 'login submitted', 'login file sent', 'sent to login'];
+                                                                const isLoginStatus = !!lead.file_sent_to_login ||
+                                                                    loginKeywords.some(kw => statusValue.toLowerCase() === kw || subStatusValue.toLowerCase() === kw);
                                                                 
-                                                                // List of login-related statuses
-                                                                const loginStatuses = [
-                                                                    'file sent to login', 'file sent', 'sent to login', 
-                                                                    'login submitted', 'active login', 'new login',
-                                                                    'disbursed', 'converted', 'approved', 'loan approved',
-                                                                    'login file sent'
-                                                                ];
-                                                                
-                                                                const isLoginStatus = lead.file_sent_to_login || 
-                                                                    loginStatuses.some(ls => 
-                                                                        statusValue.toLowerCase().includes(ls) || 
-                                                                        subStatusValue.toLowerCase().includes(ls)
-                                                                    );
-                                                                
-                                                                if (isLoginStatus) {
+                                                                if (isLoginStatus && !canRollbackLoginStatus()) {
                                                                     return (
                                                                         <div className="flex items-center justify-center">
                                                                             <span className="bg-green-500 text-white text-sm px-3 py-2 rounded-full font-bold flex items-center">
@@ -7556,6 +7571,22 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                                                                                 </svg>
                                                                                 Login
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                } else if (isLoginStatus && canRollbackLoginStatus()) {
+                                                                    // Rollback permission user — badge dikhega, click karne pe dropdown khulega
+                                                                    return (
+                                                                        <div className="flex items-center justify-center relative status-dropdown-container">
+                                                                            <span
+                                                                                className="bg-green-500 text-white text-sm px-3 py-2 rounded-full font-bold flex items-center cursor-pointer hover:bg-green-600 transition-colors status-dropdown-button"
+                                                                                onClick={(e) => { e.stopPropagation(); handleStatusDropdownClick(rowIdx, e); }}
+                                                                                title="Click to change status"
+                                                                            >
+                                                                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                                                                </svg>
+                                                                                Login ✎
                                                                             </span>
                                                                         </div>
                                                                     );
@@ -7860,6 +7891,50 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             return "-";
                                                         })()}
                                                     </td>
+
+                                                    {/* Assign Lead column */}
+                                                    <td className="py-2 px-4 whitespace-nowrap">
+                                                        {(() => {
+                                                            const raw = lead.assign_report_to || lead.assignReportTo;
+                                                            if (!raw) return <span className="text-gray-500 text-sm">-</span>;
+                                                            // Build id→name map from employees
+                                                            const idToName = {};
+                                                            if (Array.isArray(employees)) {
+                                                                employees.forEach(emp => {
+                                                                    const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                                                                    [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).forEach(id => { idToName[String(id)] = empName; });
+                                                                });
+                                                            }
+                                                            // Extract IDs list
+                                                            let ids = [];
+                                                            if (Array.isArray(raw)) {
+                                                                ids = raw.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                            } else if (typeof raw === 'string') {
+                                                                try {
+                                                                    const parsed = JSON.parse(raw);
+                                                                    if (Array.isArray(parsed)) {
+                                                                        ids = parsed.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                                    } else {
+                                                                        ids = [raw.trim()];
+                                                                    }
+                                                                } catch {
+                                                                    ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+                                                                }
+                                                            }
+                                                            // Resolve each ID to name
+                                                            const names = ids.map(id => idToName[id] || id).filter(Boolean);
+                                                            if (names.length === 0) return <span className="text-gray-500 text-sm">-</span>;
+                                                            const isMultiple = names.length > 1;
+                                                            return (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    {names.map((name, i) => (
+                                                                        <span key={i} className={`text-white font-semibold ${isMultiple ? 'text-[11px] leading-tight' : 'text-sm'}`}>{name}</span>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+
                                                     <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                         {(() => {
                                                             // FOIR Eligibility = finalEligibility saved by ObligationSection ONLY
@@ -8118,6 +8193,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                 TOTAL INCOME
                                             </th>
                                             <th className="bg-white py-3 px-4 text-blue-600 font-bold sticky top-0 z-50 shadow-sm border-b border-gray-200 whitespace-nowrap w-36">
+                                                ASSIGN LEAD
+                                            </th>
+                                            <th className="bg-white py-3 px-4 text-blue-600 font-bold sticky top-0 z-50 shadow-sm border-b border-gray-200 whitespace-nowrap w-36">
                                                 FOIR ELIGIBILITY
                                             </th>
                                             <th className="bg-white py-3 px-4 text-blue-600 font-bold sticky top-0 z-50 shadow-sm border-b border-gray-200 whitespace-nowrap w-36">
@@ -8258,6 +8336,46 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                         return formatCurrency(income);
                                                                     }
                                                                     return "-";
+                                                                })()}
+                                                            </td>
+
+                                                            {/* Assign Lead column - fullscreen table */}
+                                                            <td className="py-2 px-4 whitespace-nowrap">
+                                                                {(() => {
+                                                                    const raw = lead.assign_report_to || lead.assignReportTo;
+                                                                    if (!raw) return <span className="text-gray-500 text-sm">-</span>;
+                                                                    const idToName = {};
+                                                                    if (Array.isArray(employees)) {
+                                                                        employees.forEach(emp => {
+                                                                            const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                                                                            [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).forEach(id => { idToName[String(id)] = empName; });
+                                                                        });
+                                                                    }
+                                                                    let ids = [];
+                                                                    if (Array.isArray(raw)) {
+                                                                        ids = raw.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                                    } else if (typeof raw === 'string') {
+                                                                        try {
+                                                                            const parsed = JSON.parse(raw);
+                                                                            if (Array.isArray(parsed)) {
+                                                                                ids = parsed.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                                            } else {
+                                                                                ids = [raw.trim()];
+                                                                            }
+                                                                        } catch {
+                                                                            ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+                                                                        }
+                                                                    }
+                                                                    const names = ids.map(id => idToName[id] || id).filter(Boolean);
+                                                                    if (names.length === 0) return <span className="text-gray-500 text-sm">-</span>;
+                                                                    const isMultiple = names.length > 1;
+                                                                    return (
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            {names.map((name, i) => (
+                                                                                <span key={i} className={`text-white font-semibold ${isMultiple ? 'text-[11px] leading-tight' : 'text-sm'}`}>{name}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
                                                                 })()}
                                                             </td>
                                                             

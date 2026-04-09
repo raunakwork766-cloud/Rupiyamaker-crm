@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { ClipboardList, Ticket, CheckCircle2, X, AlertTriangle, Clock, User, Calendar } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 
-// Lazy-load EditTask so it only loads when a task popup is needed
+// Lazy-load EditTask and EditTicket so they only load when needed
 const EditTaskLazy = lazy(() => import('./EditTask'));
+const EditTicketLazy = lazy(() => import('./EditTicket'));
 
 /**
  * PopTaskTicketModal — blocking task/ticket acknowledgment popup.
@@ -32,11 +33,13 @@ const PopTaskTicketModal = () => {
   const timerRef = useRef(null);
   const mountedRef = useRef(true);
   const dismissCheckRef = useRef(null);
-  // Ref to cancel an in-flight full-task fetch if current changes
+  // Ref to cancel an in-flight full-task/ticket fetch if current changes
   const editLoadRef = useRef(null);
 
   // Full task data for EditTask modal (only set when current is a task)
   const [editTaskData, setEditTaskData] = useState(null);
+  // Full ticket data for EditTicket modal (only set when current is a ticket)
+  const [editTicketData, setEditTicketData] = useState(null);
 
   const getUserId = useCallback(() => {
     try {
@@ -160,7 +163,6 @@ const PopTaskTicketModal = () => {
 
   // ── EditTask integration ──────────────────────────────────────────────────
   // When a task comes into `current`, fetch its full data and show EditTask.
-  // For tickets we keep the existing simple acknowledgment popup.
   useEffect(() => {
     editLoadRef.current = null;
     if (!current || current.type !== 'task') {
@@ -210,7 +212,6 @@ const PopTaskTicketModal = () => {
     )
       .then(res => {
         if (!res.ok) {
-          // 404 = task deleted; 403 = no access — clear loading state either way
           if (editLoadRef.current === taskId && mountedRef.current) {
             setEditTaskData(prev => (prev ? { ...prev, isLoading: false } : null));
           }
@@ -225,6 +226,66 @@ const PopTaskTicketModal = () => {
       .catch(() => {
         if (editLoadRef.current === taskId && mountedRef.current) {
           setEditTaskData(prev => (prev ? { ...prev, isLoading: false } : null));
+        }
+      });
+  }, [current, getUserId]);
+
+  // ── EditTicket integration ────────────────────────────────────────────────
+  // When a ticket comes into `current`, fetch its full data and show EditTicket.
+  useEffect(() => {
+    if (!current || current.type !== 'ticket') {
+      setEditTicketData(null);
+      return;
+    }
+
+    // Show immediately with partial data
+    setEditTicketData({
+      _id: current.id,
+      id: current.id,
+      subject: current.subject || '',
+      description: current.details || '',
+      status: current.status || 'open',
+      priority: current.priority || 'Medium',
+      created_at: current.created_at,
+      created_by_name: current.created_by_name || 'Admin',
+      assigned_users: [],
+      assigned_users_details: [],
+      attachments: [],
+      comments: [],
+      isLoading: true,
+    });
+
+    // Fetch full ticket data in background and update EditTicket
+    const ticketId = current.id;
+    editLoadRef.current = ticketId;
+    const userId = getUserId();
+    if (!userId) return;
+
+    fetch(
+      `${API_BASE_URL}/tickets/${ticketId}?user_id=${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Cache-Control': 'no-cache',
+        },
+      }
+    )
+      .then(res => {
+        if (!res.ok) {
+          if (editLoadRef.current === ticketId && mountedRef.current) {
+            setEditTicketData(prev => (prev ? { ...prev, isLoading: false } : null));
+          }
+          return null;
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (!data || editLoadRef.current !== ticketId || !mountedRef.current) return;
+        setEditTicketData({ ...data, isLoading: false });
+      })
+      .catch(() => {
+        if (editLoadRef.current === ticketId && mountedRef.current) {
+          setEditTicketData(prev => (prev ? { ...prev, isLoading: false } : null));
         }
       });
   }, [current, getUserId]);
@@ -323,7 +384,58 @@ const PopTaskTicketModal = () => {
     [current, getUserId, acknowledgeAndAdvance]
   );
 
-  // ── localStorage trigger check (1s) — same mechanism as announcement system ─────
+  // Silently acknowledge a ticket and advance the queue
+  const acknowledgeAndAdvanceTicket = useCallback(
+    async (ticketId) => {
+      const userId = getUserId();
+      if (userId && ticketId) {
+        try {
+          await fetch(
+            `${API_BASE_URL}/tickets/${ticketId}/acknowledge?user_id=${encodeURIComponent(userId)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${localStorage.getItem('token')}`,
+              },
+              body: JSON.stringify({ employee_remark: '' }),
+            }
+          );
+        } catch (_) {}
+        try {
+          const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
+          if (raw) {
+            const dt = JSON.parse(raw);
+            delete dt[ticketId];
+            localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(dt));
+          }
+        } catch (_) {}
+      }
+      setEditTicketData(null);
+      editLoadRef.current = null;
+      window.dispatchEvent(new CustomEvent('task-ticket-acknowledged', { detail: { type: 'ticket', id: ticketId } }));
+      setQueue(prev => {
+        const remaining = prev.filter(w => w.id !== ticketId);
+        const visible = remaining.filter(w => !isDismissedRecently(w.id));
+        setCurrent(visible.length > 0 ? visible[0] : null);
+        return remaining;
+      });
+    },
+    [getUserId, isDismissedRecently]
+  );
+
+  // Called when EditTicket is closed (X button)
+  const handleEditTicketClose = useCallback(() => {
+    if (!current) return;
+    acknowledgeAndAdvanceTicket(current.id);
+  }, [current, acknowledgeAndAdvanceTicket]);
+
+  // Called when EditTicket saves
+  const handleEditTicketSave = useCallback(async () => {
+    if (!current) return null;
+    acknowledgeAndAdvanceTicket(current.id);
+    return null;
+  }, [current, acknowledgeAndAdvanceTicket]);
   // When admin creates a task, Task.jsx writes globalTaskTrigger to localStorage.
   // This allows same-browser tabs to react in <1 second (cross-device still uses polling).
   useEffect(() => {
@@ -467,32 +579,35 @@ const PopTaskTicketModal = () => {
 
   if (!current) return null;
 
-  // ── For tasks: ALWAYS show blocking overlay (never show simple modal) ──────
-  // This prevents accidental dismiss during EditTask lazy-load
+  // ── For tasks: ALWAYS show EditTask immediately (never intermediate loading screen) ──
+  // Use editTaskData if ready, else build minimal data from `current` inline.
+  // This avoids the one-render-frame gap where editTaskData is null but current is set.
   if (current.type === 'task') {
-    // editTaskData not ready yet — show a full blocking loading screen
-    if (!editTaskData) {
-      return (
-        <div
-          className="fixed inset-0 z-[99999] flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
-        >
-          <div style={{ textAlign: 'center', color: '#fff' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>New Task Assigned</div>
-            <div style={{ fontSize: 14, opacity: 0.8 }}>{current.subject || 'Loading task details...'}</div>
-            <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'center' }}>
-              {[0, 1, 2].map(i => (
-                <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', opacity: 0.8, animation: `bounce 1s ease-in-out ${i * 0.2}s infinite` }} />
-              ))}
-            </div>
-          </div>
-          <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }`}</style>
-        </div>
-      );
-    }
+    const taskDataForModal = editTaskData || {
+      id: current.id,
+      subject: current.subject || 'Loading...',
+      message: current.details || '',
+      task_details: current.details || '',
+      typeTask: current.task_type || 'To-Do',
+      status: current.status || 'Pending',
+      priority: current.priority || 'Medium',
+      date: current.due_date || '',
+      due_date: current.due_date || '',
+      created_at: current.created_at,
+      createdBy: current.created_by_name || 'Admin',
+      creator_name: current.created_by_name || 'Admin',
+      assign: 'Loading…',
+      assigned_to: [],
+      attachments: [],
+      comments: [],
+      history: [],
+      notes: '',
+      lead_id: null,
+      loan_type: null,
+      isLoading: true,
+    };
 
-    // editTaskData ready — show full EditTask inside blocking overlay
+    // Show EditTask inside blocking overlay (stopPropagation prevents background clicks)
     return (
       <div
         className="fixed inset-0 z-[99999] flex items-center justify-center"
@@ -505,7 +620,7 @@ const PopTaskTicketModal = () => {
         }>
           <EditTaskLazy
             key={`pop-edit-${current.id}`}
-            taskData={editTaskData}
+            taskData={taskDataForModal}
             onClose={handleEditTaskClose}
             onSave={handleEditTaskSave}
             currentUserId={getUserId()}
@@ -515,9 +630,46 @@ const PopTaskTicketModal = () => {
       </div>
     );
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
-  // (old code below kept for ticket type items)
+  // ── For tickets: ALWAYS show EditTicket immediately (same pattern as tasks) ──
+  if (current.type === 'ticket') {
+    const ticketDataForModal = editTicketData || {
+      _id: current.id,
+      id: current.id,
+      subject: current.subject || 'Loading...',
+      description: current.details || '',
+      status: current.status || 'open',
+      priority: current.priority || 'Medium',
+      created_at: current.created_at,
+      created_by_name: current.created_by_name || 'Admin',
+      assigned_users: [],
+      assigned_users_details: [],
+      attachments: [],
+      comments: [],
+      isLoading: true,
+    };
+
+    return (
+      <div
+        className="fixed inset-0 z-[99999] flex items-center justify-center"
+        style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Suspense fallback={
+          <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>Loading ticket...</div>
+        }>
+          <EditTicketLazy
+            key={`pop-ticket-${current.id}`}
+            ticket={ticketDataForModal}
+            onClose={handleEditTicketClose}
+            onSave={handleEditTicketSave}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';

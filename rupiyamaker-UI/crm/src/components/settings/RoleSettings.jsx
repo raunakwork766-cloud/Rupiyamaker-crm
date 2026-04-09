@@ -72,7 +72,7 @@ const RoleSettings = () => {
         // Leads CRM - Section-wise permissions matching sidebar structure (2 sections only)
         'Leads CRM': {
             'Create LEAD': ['show', 'add', 'reassignment_popup'],
-            'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'delete'],
+            'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'rollback_login', 'delete'],
         },
         
         'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
@@ -100,7 +100,7 @@ const RoleSettings = () => {
         const map = {
             'feeds': { show:'Sidebar Access', post:'Create Post', all:'Manage All', delete:'Delete' },
             'Leads CRM|Create LEAD': { show:'View Leads', add:'Add Lead', reassignment_popup:'Reassign Popup' },
-            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', view_data_code:'View Data Code', delete:'Delete' },
+            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', view_data_code:'View Data Code', rollback_login:'Rollback Login', delete:'Delete' },
             'login': { show:'Sidebar', own:'Own Logins', junior:'Junior Logins', all:'All Logins', channel:'Channel', edit:'Edit', delete:'Delete' },
             'tasks': { show:'Sidebar', own:'My Tab Only', junior:'Others Tab (Junior)', all:'All Tab', delete:'Delete' },
             'tickets': { show:'Sidebar', own:'Own Tickets', junior:'Junior Tickets', all:'All Tickets', delete:'Delete' },

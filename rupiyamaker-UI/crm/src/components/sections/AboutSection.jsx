@@ -501,6 +501,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     fetchDataCodes();
     fetchAssignableUsers();
     checkUserPermissions();
+    checkDataCodePermission();
     fetchAllUsersForSuperAdmin();
     fetchDepartments();
   }, []);
@@ -2038,6 +2039,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               )}
             </div>
           </div>
+          {canViewDataCode && (
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>DATA CODE</label>
             <div className="relative w-full dropdown-container">
@@ -2134,6 +2136,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               )}
             </div>
           </div>
+          )}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>CUSTOMER NAME</label>
             <input

@@ -1085,6 +1085,16 @@ export default function TicketPage() {
       fetchTickets();
       fetchAllTicketsForCounting(permissions); // Also refresh the counting data
       setShowCreateModal(false);
+      // Trigger immediate popup for assigned users (same mechanism as tasks & announcements)
+      window.dispatchEvent(new CustomEvent('ticket-created'));
+      try {
+        localStorage.setItem('globalTaskTrigger', JSON.stringify({ timestamp: Date.now(), actionType: 'ticket-created' }));
+      } catch (_) {}
+      try {
+        const bc = new BroadcastChannel('rupiyame_task_events');
+        bc.postMessage('ticket-created');
+        bc.close();
+      } catch (_) {}
     } catch (err) {
       toast.error("Failed to create ticket");
     }

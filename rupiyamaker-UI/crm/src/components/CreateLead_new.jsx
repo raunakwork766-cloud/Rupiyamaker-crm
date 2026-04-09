@@ -5032,8 +5032,8 @@ function CreateLead() {
               </div>
             </div>
 
-            {/* Mobile Check Results - Fixed height container to prevent layout shifts */}
-            <div className="min-h-[100px]">
+            {/* Mobile Check Results */}
+            <div>
               {/* ─── MULTI-LEAD DUPLICATE DISPLAY ─── */}
               {existingLeadData && (() => {
                 const leads = allDuplicateLeads.length > 0 ? allDuplicateLeads : [existingLeadData];
@@ -5836,7 +5836,7 @@ function CreateLead() {
                         }}
                       >
                         {assignedTo.length === 0 && (
-                          <span className="text-gray-400 font-normal text-sm">Click to select assignee</span>
+                          <span className="text-gray-400 font-normal text-sm">Don't Select Team manager</span>
                         )}
                         {assignedTo.map((assignee) => {
                           const displayName = typeof assignee === 'object' ? assignee.name : assignee;

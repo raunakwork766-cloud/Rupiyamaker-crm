@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import ClockTimePicker from "./ClockTimePicker"; // Adjust path as needed
+import TaskSchedulePicker, { getNearestTimeSlot } from "./TaskSchedulePicker";
 import API from '../services/api';
 import { formatDateTime, formatDate } from '../utils/dateUtils';
 
@@ -187,7 +185,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
     assignedTo: [], // Changed to an array to hold multiple assignees (user objects with ID and name)
     dueDateOption: "today", // Set initial value to 'today'
     dueDate: formatDate(new Date()), // Set initial due date to today using new format
-    dueTime: "08:00 AM", // Initial time, matching the format
+    dueTime: getNearestTimeSlot(new Date()), // Auto-set to nearest 30-min slot
     customDate: null,
     repeatOption: "none", // For repeat task: none, daily, weekly, monthly, custom
     repeatCustomDays: [], // For custom repeat, store selected days
@@ -206,13 +204,11 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   const [currentDateTime, setCurrentDateTime] = useState(
     getCurrentDateTimeString()
   );
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [showClockTimePicker, setShowClockTimePicker] = useState(false);
-  const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
+  const assignDropdownRef = useRef(null);
   const [showDaysSelector, setShowDaysSelector] = useState(false);
-  const [calendarPosition, setCalendarPosition] = useState('below');
   const messageRef = useRef(null);
-  const dueDateSelectRef = useRef(null);
   const modalRef = useRef(null);
 
   // Inline record dropdown states
@@ -222,11 +218,14 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   const [loadingRecordSearch, setLoadingRecordSearch] = useState(false);
   const recordDropdownRef = useRef(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (recordDropdownRef.current && !recordDropdownRef.current.contains(e.target)) {
         setShowRecordDropdown(false);
+      }
+      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target)) {
+        setShowAssignDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -263,23 +262,6 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
     }
   }, [showRecordDropdown]);
   
-  // Calculate calendar position when it's shown
-  useEffect(() => {
-    if (showCalendar && dueDateSelectRef.current) {
-      const selectElement = dueDateSelectRef.current;
-      const rect = selectElement.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      
-      // If there's less than 400px below and more space above, show calendar above
-      if (spaceBelow < 400 && spaceAbove > spaceBelow) {
-        setCalendarPosition('above');
-      } else {
-        setCalendarPosition('below');
-      }
-    }
-  }, [showCalendar]);
-
   // Watch for changes in form fields
   useEffect(() => {
     console.log("Form changed:", {
@@ -916,80 +898,16 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
 
           {/* Row 5: Schedule Date + Time */}
           <div className="mb-2.5">
-            <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '1.2fr 1fr', alignItems: 'start' }}>
-              <div className="relative">
-                <div className="flex items-center gap-1 mb-1" style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                  <span style={{ display: 'inline-block', width: '3px', height: '10px', background: '#00aaff', borderRadius: '2px' }}></span>
-                  📅 Schedule Date
-                </div>
-                <select
-                  ref={dueDateSelectRef}
-                  style={{ width: '100%', border: '1.5px solid #94a3b8', background: '#fff', color: '#0f172a', minHeight: '42px', borderRadius: '8px', padding: '0 12px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', outline: 'none' }}
-                  value={form.dueDateOption}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === "today") {
-                      handleChange("dueDateOption", "today");
-                      handleChange("dueDate", getTodayDate());
-                      handleChange("customDate", null);
-                      setShowCalendar(false);
-                    } else if (value === "tomorrow") {
-                      handleChange("dueDateOption", "tomorrow");
-                      handleChange("dueDate", getTomorrowDate());
-                      handleChange("customDate", null);
-                      setShowCalendar(false);
-                    } else if (value === "custom") {
-                      handleChange("dueDateOption", "custom");
-                      handleChange("dueDate", form.customDate ? formatDate(form.customDate) : "");
-                      setShowCalendar(true);
-                    }
-                  }}
-                  onFocus={(e) => { if (form.dueDateOption === "custom") setShowCalendar(true); }}
-                  required
-                >
-                  <option value="today">Today ({getTodayDate()})</option>
-                  <option value="tomorrow">Tomorrow ({getTomorrowDate()})</option>
-                  <option value="custom">Custom Date</option>
-                </select>
-
-                {form.dueDateOption === "custom" && showCalendar && (
-                  <div
-                    className={`absolute z-[9999] ${calendarPosition === 'above' ? 'bottom-full mb-2' : 'mt-1.5'}`}
-                    style={{ background: '#fff', border: '1px solid #dbeafe', borderRadius: '12px', boxShadow: '0 15px 30px rgba(15,23,42,0.12)', padding: '8px' }}
-                  >
-                    <DatePicker
-                      selected={form.customDate || new Date()}
-                      onChange={(date) => {
-                        handleChange("customDate", date);
-                        handleChange("dueDate", formatDate(date));
-                        setShowCalendar(false);
-                      }}
-                      inline
-                      showYearDropdown
-                      scrollableYearDropdown
-                      yearDropdownItemNumber={100}
-                      dateFormat="dd MMM yyyy"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <div className="flex items-center gap-1 mb-1" style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                  <span style={{ display: 'inline-block', width: '3px', height: '10px', background: '#00aaff', borderRadius: '2px' }}></span>
-                  ⏰ Schedule Time
-                </div>
-                <input
-                  type="text"
-                  style={{ width: '100%', border: '1.5px solid #94a3b8', minHeight: '42px', borderRadius: '8px', padding: '0 12px', fontSize: '13px', fontWeight: 700, color: '#0f172a', outline: 'none', background: '#fff', cursor: 'pointer' }}
-                  value={form.dueTime}
-                  readOnly
-                  onClick={() => setShowClockTimePicker(true)}
-                  placeholder="Select time"
-                  required
-                />
-              </div>
-            </div>
+            <TaskSchedulePicker
+              date={form.dueDate}
+              time={form.dueTime}
+              dateOption={form.dueDateOption}
+              onDateChange={(date, option) => {
+                handleChange("dueDate", date);
+                handleChange("dueDateOption", option);
+              }}
+              onTimeChange={(time) => handleChange("dueTime", time)}
+            />
           </div>
 
           {/* Row 6: Assigned To */}
@@ -997,41 +915,81 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
             <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
               Assigned To
             </label>
-            <div className="flex flex-wrap items-center gap-2 bg-white" style={{ border: '1.5px solid #94a3b8', borderRadius: '8px', padding: '6px 12px', minHeight: '42px' }}>
-              {form.assignedTo.map((assignee, index) => {
-                const userName = assignee?.first_name && assignee?.last_name
-                  ? `${assignee.first_name} ${assignee.last_name}`.trim()
-                  : assignee?.name || assignee;
-                const userId = assignee?.user_id || assignee?.id || assignee;
-                return (
-                  <div
-                    key={userId}
-                    className="inline-flex items-center gap-1.5"
-                    style={{ backgroundColor: '#eef2f6', border: '1px solid #d1d9e6', color: '#334155', padding: '4px 10px 4px 6px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}
-                  >
-                    <div className="flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#00aaff', color: 'white', width: '22px', height: '22px', borderRadius: '50%', fontSize: '10px', fontWeight: 800 }}>
-                      {userName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
-                    </div>
-                    <span>{userName}</span>
-                    <button
-                      type="button"
-                      className="ml-1 hover:text-red-500 transition"
-                      style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none' }}
-                      onClick={() => handleRemoveAssignee(assignee)}
+            <div ref={assignDropdownRef} style={{ position: 'relative' }}>
+              <div className="flex flex-wrap items-center gap-2 bg-white" style={{ border: '1.5px solid #94a3b8', borderRadius: '8px', padding: '6px 12px', minHeight: '42px', cursor: 'text' }} onClick={() => { setShowAssignDropdown(true); }}>
+                {form.assignedTo.map((assignee, index) => {
+                  const userName = assignee?.first_name && assignee?.last_name
+                    ? `${assignee.first_name} ${assignee.last_name}`.trim()
+                    : assignee?.name || assignee;
+                  const userId = assignee?.user_id || assignee?.id || assignee;
+                  return (
+                    <div
+                      key={userId}
+                      className="inline-flex items-center gap-1.5"
+                      style={{ backgroundColor: '#eef2f6', border: '1px solid #d1d9e6', color: '#334155', padding: '4px 10px 4px 6px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}
                     >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className="ml-auto hover:text-[#00aaff] transition"
-                style={{ color: '#00aaff', fontWeight: 600, fontSize: '13px', background: 'none', border: 'none', cursor: 'pointer' }}
-                onClick={() => setShowAssignPopup(true)}
-              >
-                + Add
-              </button>
+                      <div className="flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#00aaff', color: 'white', width: '22px', height: '22px', borderRadius: '50%', fontSize: '10px', fontWeight: 800 }}>
+                        {userName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
+                      </div>
+                      <span>{userName}</span>
+                      <button
+                        type="button"
+                        className="ml-1 hover:text-red-500 transition"
+                        style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none' }}
+                        onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+                <input
+                  type="text"
+                  placeholder={form.assignedTo.length === 0 ? 'Search & add assignee...' : '+ Add more'}
+                  value={assignSearchTerm}
+                  onChange={(e) => { setAssignSearchTerm(e.target.value); setShowAssignDropdown(true); }}
+                  onFocus={() => setShowAssignDropdown(true)}
+                  style={{ border: 'none', outline: 'none', fontSize: '12px', color: '#475569', background: 'transparent', minWidth: '120px', flex: 1 }}
+                />
+              </div>
+              {showAssignDropdown && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1.5px solid #94a3b8', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: '200px', overflowY: 'auto' }}>
+                  {loadingUsers ? (
+                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>Loading users...</div>
+                  ) : (() => {
+                    const alreadySelected = new Set(form.assignedTo.map(a => String(a?.user_id || a?.id || a?.name || a)));
+                    const filtered = users.filter(u => {
+                      const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim();
+                      const uid = String(u.id || u.user_id || '');
+                      if (alreadySelected.has(uid) || alreadySelected.has(name)) return false;
+                      if (!assignSearchTerm.trim()) return true;
+                      return name.toLowerCase().includes(assignSearchTerm.toLowerCase());
+                    });
+                    return filtered.length === 0 ? (
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>No users found</div>
+                    ) : filtered.map(user => {
+                      const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                      return (
+                        <div
+                          key={user.id || user.user_id}
+                          onMouseDown={(e) => { e.preventDefault(); handleAddAssignee(user); setAssignSearchTerm(''); setShowAssignDropdown(false); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#00aaff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                            {name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{name}</div>
+                            {user.designation && <div style={{ fontSize: 11, color: '#64748b' }}>{user.designation}</div>}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1049,35 +1007,12 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
         </form>
         </div>
       </div>
-
-      {showClockTimePicker && (
-        <ClockTimePicker
-          initialTime={form.dueTime}
-          onSelectTime={(newTime) => {
-            handleChange("dueTime", newTime);
-            setShowClockTimePicker(false); // Close after selection
-          }}
-          onClose={() => setShowClockTimePicker(false)} // Close on CANCEL or X
-        />
-      )}
-
-      {showAssignPopup && (
-        <AssignPopup
-          onClose={() => setShowAssignPopup(false)}
-          onSelect={(userObject) => {
-            handleAddAssignee(userObject); // Call the new handler to add the assignee (user object)
-            setShowAssignPopup(false);
-          }}
-          users={users}
-          loadingUsers={loadingUsers}
-        />
-      )}
     </div>
   );
 }
 
 
-// AssignPopup component
+// AssignPopup component (kept for reference but no longer used)
 function AssignPopup({ onClose, onSelect, users, loadingUsers }) {
   const [assigneeName, setAssigneeName] = useState("");
   const [filteredAssignees, setFilteredAssignees] = useState([]);
