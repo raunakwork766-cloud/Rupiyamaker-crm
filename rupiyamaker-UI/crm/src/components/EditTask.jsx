@@ -533,8 +533,9 @@ export default function EditTask({
   });
   const [isOpen, setIsOpen] = useState(true);
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
-  const [showComments, setShowComments] = useState(false);
-  const [showHistory, setShowHistory] = useState(true);
+  const [activeTab, setActiveTab] = useState('history'); // 'history' | 'comments'
+  const showComments = activeTab === 'comments';
+  const showHistory = activeTab === 'history';
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
   const [assignSearchTerm, setAssignSearchTerm] = useState('');
   const assignDropdownRef = useRef(null);
@@ -754,8 +755,7 @@ export default function EditTask({
       populateAssigneeDetails(formattedTask, initialTask);
       
       // Reset to default tab (History) when a new task is loaded
-      setShowComments(false);
-      setShowHistory(true);
+      setActiveTab('history');
     }
   }, [initialTask]);
   
@@ -1840,9 +1840,7 @@ export default function EditTask({
 
   const handleClose = () => {
     setIsOpen(false); // Close the modal locally
-    // Reset to History tab for next open
-    setShowHistory(true);
-    setShowComments(false);
+    setActiveTab('history'); // Reset to History tab for next open
     if (onClose) onClose(); // Call the parent onClose if provided
   };
 
@@ -1874,13 +1872,11 @@ export default function EditTask({
   };
 
   const toggleComments = () => {
-    setShowComments(!showComments);
-    setShowHistory(false);
+    setActiveTab(activeTab === 'comments' ? 'history' : 'comments');
   };
 
   const toggleHistory = () => {
-    setShowHistory(true);
-    setShowComments(false);
+    setActiveTab('history');
   };
 
   // Function to remove an assignee
