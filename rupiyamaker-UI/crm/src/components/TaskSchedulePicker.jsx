@@ -39,7 +39,7 @@ function getUpcomingSlots() {
     const period = match[3].toUpperCase();
     if (period === 'PM' && h !== 12) h += 12;
     if (period === 'AM' && h === 12) h = 0;
-    return (h * 60 + m) >= nowMinutes;
+    return (h * 60 + m) > nowMinutes;
   });
 }
 

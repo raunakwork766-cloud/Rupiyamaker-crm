@@ -533,8 +533,8 @@ export default function EditTask({
   });
   const [isOpen, setIsOpen] = useState(true);
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
-  const [showComments, setShowComments] = useState(true);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
   const [assignSearchTerm, setAssignSearchTerm] = useState('');
   const assignDropdownRef = useRef(null);
@@ -753,8 +753,9 @@ export default function EditTask({
       // Populate assignee details if only IDs are available
       populateAssigneeDetails(formattedTask, initialTask);
       
-      // Keep comments open but reset history when new task is loaded
-      setShowHistory(false);
+      // Reset to default tab (History) when a new task is loaded
+      setShowComments(false);
+      setShowHistory(true);
     }
   }, [initialTask]);
   
@@ -1839,8 +1840,9 @@ export default function EditTask({
 
   const handleClose = () => {
     setIsOpen(false); // Close the modal locally
-    // Reset history but keep comments open for next use
-    setShowHistory(false);
+    // Reset to History tab for next open
+    setShowHistory(true);
+    setShowComments(false);
     if (onClose) onClose(); // Call the parent onClose if provided
   };
 
