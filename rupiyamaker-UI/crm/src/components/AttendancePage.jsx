@@ -2467,6 +2467,7 @@ export default function MonthlyAttendanceTable() {
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
   const [empStatusFilter, setEmpStatusFilter] = useState('active') // 'all' | 'active' | 'inactive'
+  const [empStatusDropdownOpen, setEmpStatusDropdownOpen] = useState(false)
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [teamSearchText, setTeamSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -3690,16 +3691,35 @@ export default function MonthlyAttendanceTable() {
           )}
         </div>
         {/* Employee Status filter dropdown */}
-        <div style={{position:'relative',flexShrink:0}}>
-          <select
-            value={empStatusFilter}
-            onChange={e => setEmpStatusFilter(e.target.value)}
-            style={{background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 28px 7px 10px',color: empStatusFilter !== 'all' ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',height:'32px',appearance:'none',backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center'}}
+        <div style={{position:'relative',flexShrink:0,minWidth:'120px'}}>
+          <div
+            onClick={() => setEmpStatusDropdownOpen(o => !o)}
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setEmpStatusDropdownOpen(false), 160) }}
+            tabIndex={0}
+            style={{background:'#0d0d10',border:'1px solid ' + (empStatusDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 28px 7px 10px',color: empStatusFilter !== 'all' ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',userSelect:'none',position:'relative',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
           >
-            <option value="all">All Employees</option>
-            <option value="active">Active Only</option>
-            <option value="inactive">Inactive Only</option>
-          </select>
+            {empStatusFilter === 'all' ? 'All Employees' : empStatusFilter === 'active' ? 'Active Only' : 'Inactive Only'}
+            <svg style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%) rotate(' + (empStatusDropdownOpen ? '180deg' : '0deg') + ')',width:'10px',height:'10px',color:'#a1a1aa',transition:'transform 0.2s',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          {empStatusDropdownOpen && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,boxShadow:'0 8px 24px rgba(0,0,0,0.7)',minWidth:'140px'}}>
+              <div style={{maxHeight:'200px',overflowY:'auto'}}>
+                {[{label:'All Employees', value:'all'}, {label:'Active Only', value:'active'}, {label:'Inactive Only', value:'inactive'}]
+                  .map(opt => (
+                    <div
+                      key={opt.value}
+                      onMouseDown={() => { setEmpStatusFilter(opt.value); setEmpStatusDropdownOpen(false) }}
+                      style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === empStatusFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === empStatusFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
+                      onMouseEnter={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='#1f1f22' }}
+                      onMouseLeave={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='transparent' }}
+                    >
+                      {opt.label}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
         </div>
         {/* Results count */}
         <div style={{fontSize:'11px',color:'#52525b',marginLeft:'auto',whiteSpace:'nowrap'}}>
