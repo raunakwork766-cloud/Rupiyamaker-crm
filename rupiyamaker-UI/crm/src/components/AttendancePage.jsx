@@ -2769,7 +2769,7 @@ export default function MonthlyAttendanceTable() {
       .map(emp => {
         const empId = emp.employee_id || emp._id;
         const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
-        const isActiveEmp = empStatus ? (empStatus === 'active') : (emp.employee_status === 'active' || emp.is_active === true);
+        const isActiveEmp = empStatus ? (empStatus === 'active') : (emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false);
         const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
         const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || emp.username || 'Unknown';
         return {
@@ -2815,7 +2815,7 @@ export default function MonthlyAttendanceTable() {
             activeEmployeeIds = new Set();
             employeesResponse.data.forEach(emp => {
               const empId = emp.employee_id || emp._id;
-              const isActive = emp.employee_status === 'active' || emp.is_active === true;
+              const isActive = emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false;
               const status = isActive ? 'active' : 'inactive';
               if (empId) {
                 // Status map for accurate active/inactive filtering
@@ -3288,7 +3288,7 @@ export default function MonthlyAttendanceTable() {
             activeEmployeeIds = new Set();
             employeesResponse.data.forEach(emp => {
               const empId = emp.employee_id || emp._id;
-              const isActive = emp.employee_status === 'active' || emp.is_active === true;
+              const isActive = emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false;
               if (empId) {
                 empStatusMap2[empId] = isActive ? 'active' : 'inactive';
                 empStatusMap2[String(empId)] = isActive ? 'active' : 'inactive';
