@@ -2662,7 +2662,7 @@ export default function MonthlyAttendanceTable() {
   const canViewAllRecords = () => canUserViewAll();
 
   // Convert API response to calendar format and filter by active employees
-  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}) => {
+  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}) => {
     if (!apiData?.employees?.length) {
       return [];
     }
@@ -2719,9 +2719,13 @@ export default function MonthlyAttendanceTable() {
       const empId = employee.employee_id;
       const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
       
-      const isActiveEmp = !activeEmployeeIds || activeEmployeeIds.size === 0
-        ? true
-        : activeEmployeeIds.has(empId) || activeEmployeeIds.has(String(empId)) || activeEmployeeIds.has(Number(empId));
+      // Determine employee active status from HRMS employee status map
+      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+      const isActiveEmp = empStatus
+        ? (empStatus === 'active')
+        : (!activeEmployeeIds || activeEmployeeIds.size === 0
+          ? true
+          : activeEmployeeIds.has(empId) || activeEmployeeIds.has(String(empId)) || activeEmployeeIds.has(Number(empId)));
 
       const employeeRecord = {
         id: employee.employee_id,
@@ -2789,35 +2793,36 @@ export default function MonthlyAttendanceTable() {
       setWarningPenaltiesMap({}) // Reset warning penalties when month/year changes
       
       try {
-        // Fetch active employees list first
+        // Fetch ALL employees (active + inactive) from Employee page for status filtering
         let activeEmployeeIds = null;
         const salaryMap = {};
+        const employeeStatusMap = {};
         try {
-          const employeesResponse = await hrmsService.getAllEmployees();
+          const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
             console.log('📊 All employees from HRMS:', employeesResponse.data.length);
             
-            const activeEmployees = employeesResponse.data.filter(emp => {
-              const isActive = emp.employee_status === 'active' || emp.is_active === true;
-              if (!isActive) {
-                console.log('❌ Inactive employee:', emp.first_name, emp.last_name, '- employee_id:', emp.employee_id, '- status:', emp.employee_status);
-              }
-              return isActive;
-            });
-            
-            console.log('✅ Active employees count:', activeEmployees.length);
-            
-            // Create a Set of active employee IDs for fast lookup
-            // Store in multiple formats to handle type mismatches
+            // Build employee status map for all employees
             activeEmployeeIds = new Set();
-            activeEmployees.forEach(emp => {
+            employeesResponse.data.forEach(emp => {
               const empId = emp.employee_id || emp._id;
+              const isActive = emp.employee_status === 'active' || emp.is_active === true;
+              const status = isActive ? 'active' : 'inactive';
               if (empId) {
-                activeEmployeeIds.add(empId);
-                activeEmployeeIds.add(String(empId));
-                activeEmployeeIds.add(Number(empId));
+                // Status map for accurate active/inactive filtering
+                employeeStatusMap[empId] = status;
+                employeeStatusMap[String(empId)] = status;
+                // Active set for backward compatibility (filtering in convertToCalendarFormat)
+                if (isActive) {
+                  activeEmployeeIds.add(empId);
+                  activeEmployeeIds.add(String(empId));
+                  activeEmployeeIds.add(Number(empId));
+                }
               }
             });
+            
+            console.log('✅ Active employees:', Array.from(activeEmployeeIds).length / 3);
+            console.log('📋 Status map entries:', Object.keys(employeeStatusMap).length / 2);
             
             // Build salary map from same employee data (no extra API call)
             employeesResponse.data.forEach(emp => {
@@ -2853,7 +2858,7 @@ export default function MonthlyAttendanceTable() {
         } catch (e) { /* use defaults */ }
         
         if (response && response.employees) {
-          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap)
+          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap)
 
           // Fetch leave balances for all employees in parallel
           const leaveBalanceResults = await Promise.allSettled(
@@ -3262,23 +3267,27 @@ export default function MonthlyAttendanceTable() {
     // Optionally refresh attendance data to reflect holiday changes
     if (user?.user_id && (permissions !== null || isAdmin())) {
       try {
-        // Fetch active employees list first
+        // Fetch ALL employees for status map
         let activeEmployeeIds = null;
         const salaryMap2 = {};
+        const empStatusMap2 = {};
         try {
-          const employeesResponse = await hrmsService.getAllEmployees();
+          const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
             activeEmployeeIds = new Set();
-            employeesResponse.data
-              .filter(emp => emp.employee_status === 'active' || emp.is_active === true)
-              .forEach(emp => {
-                const empId = emp.employee_id || emp._id;
-                if (empId) {
+            employeesResponse.data.forEach(emp => {
+              const empId = emp.employee_id || emp._id;
+              const isActive = emp.employee_status === 'active' || emp.is_active === true;
+              if (empId) {
+                empStatusMap2[empId] = isActive ? 'active' : 'inactive';
+                empStatusMap2[String(empId)] = isActive ? 'active' : 'inactive';
+                if (isActive) {
                   activeEmployeeIds.add(empId);
                   activeEmployeeIds.add(String(empId));
                   activeEmployeeIds.add(Number(empId));
                 }
-              });
+              }
+            });
             // Build salary map
             employeesResponse.data.forEach(emp => {
               const eid = emp.employee_id || emp._id;
@@ -3295,7 +3304,7 @@ export default function MonthlyAttendanceTable() {
 
         const response = await attendanceAPI.getCalendar(selectedYear, selectedMonth, user.user_id)
         if (response && response.employees) {
-          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2)
+          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2, empStatusMap2)
           
           // Filter data based on user permissions
           if (!canViewAllRecords()) {
