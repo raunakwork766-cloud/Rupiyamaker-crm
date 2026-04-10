@@ -2661,57 +2661,38 @@ export default function MonthlyAttendanceTable() {
   // Legacy compatibility for the old canViewAll function
   const canViewAllRecords = () => canUserViewAll();
 
-  // Convert API response to calendar format and filter by active employees
-  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}) => {
-    if (!apiData?.employees?.length) {
-      return [];
-    }
+  // Convert API response to calendar format and merge with HRMS employees
+  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}, allHrmsEmployees = []) => {
+    console.log('🔍 Total employees from attendance API:', apiData?.employees?.length || 0);
+    console.log('🔍 Total HRMS employees:', allHrmsEmployees.length);
 
-    console.log('🔍 Total employees from API:', apiData.employees.length);
-    console.log('🔍 Active employee IDs set:', activeEmployeeIds);
-
-    const filtered = apiData.employees
+    // Process attendance API employees
+    const attendanceEmployeeIds = new Set();
+    const filtered = (apiData?.employees || [])
       .filter(employee => {
-        // Check if employee has any actual attendance records for this month
         const hasAttendance = employee.days && employee.days.some(day => {
           const status = parseFloat(day.status);
-          // Check for any actual attendance status (P, HD, LV, AB, L, WK)
-          return status === 1.0 || status === 1 || // Present
-                 status === 2.0 || status === 2 || // Working/IN (checked in today)
-                 status === 0.5 || // Half Day
-                 status === 0 || status === 0.0 || // Leave
-                 status === -2 || status === -2.0 || // Absconding
-                 day.status === "L"; // Late
+          return status === 1.0 || status === 1 ||
+                 status === 2.0 || status === 2 ||
+                 status === 0.5 ||
+                 status === 0 || status === 0.0 ||
+                 status === -2 || status === -2.0 ||
+                 day.status === "L";
         });
 
-        // STRICT FILTERING: Only if we have active employee list
         if (activeEmployeeIds && activeEmployeeIds.size > 0) {
-          // Try multiple ID formats for matching
           const empId = employee.employee_id;
-          const empIdStr = String(empId);
-          const empIdNum = Number(empId);
-          
           const isActiveEmployee = activeEmployeeIds.has(empId) || 
-                                   activeEmployeeIds.has(empIdStr) || 
-                                   activeEmployeeIds.has(empIdNum);
-          
-          // Debug log for each employee
-          console.log(`👤 ${employee.employee_name} (ID: ${empId}, type: ${typeof empId}):`, {
-            isActive: isActiveEmployee,
-            hasAttendance: hasAttendance,
-            willShow: isActiveEmployee || hasAttendance,
-            checkedIDs: [empId, empIdStr, empIdNum]
-          });
-          
-          // Show employee ONLY if:
-          // 1. They are in the active employees list, OR
-          // 2. They have attendance for this month (inactive with historical data)
+                                   activeEmployeeIds.has(String(empId)) || 
+                                   activeEmployeeIds.has(Number(empId));
           return isActiveEmployee || hasAttendance;
         }
-
-        // STRICT: If no active employee list, show ONLY those with attendance
-        console.log(`⚠️ No active employee list, filtering by attendance only. ${employee.employee_name} - hasAttendance:`, hasAttendance);
         return hasAttendance;
+      })
+      .map(employee => {
+        attendanceEmployeeIds.add(employee.employee_id);
+        attendanceEmployeeIds.add(String(employee.employee_id));
+        return employee;
       })
       .map(employee => {
       // Create a record for each employee with day status mapping
@@ -2779,8 +2760,34 @@ export default function MonthlyAttendanceTable() {
         });      return employeeRecord;
     });
     
-    console.log('✅ Filtered to', filtered.length, 'employees');
-    return filtered;
+    // Add HRMS employees that are NOT in attendance data (placeholder records)
+    const hrmsOnlyRecords = allHrmsEmployees
+      .filter(emp => {
+        const empId = emp.employee_id || emp._id;
+        return empId && !attendanceEmployeeIds.has(empId) && !attendanceEmployeeIds.has(String(empId));
+      })
+      .map(emp => {
+        const empId = emp.employee_id || emp._id;
+        const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+        const isActiveEmp = empStatus ? (empStatus === 'active') : (emp.employee_status === 'active' || emp.is_active === true);
+        const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
+        const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || emp.username || 'Unknown';
+        return {
+          id: empId,
+          mongoId: emp._id || empId,
+          name: empName,
+          employeeId: emp.employee_id || emp.username || `EMP-${String(empId).slice(-6)}`,
+          department: emp.department_name || "Unknown Department",
+          role: emp.designation || "",
+          photo: emp.profile_photo,
+          salary: empSalary,
+          isActive: isActiveEmp
+        };
+      });
+
+    const allRecords = [...filtered, ...hrmsOnlyRecords];
+    console.log('✅ Attendance records:', filtered.length, '+ HRMS-only:', hrmsOnlyRecords.length, '= Total:', allRecords.length);
+    return allRecords;
   };
 
   // Fetch attendance data when component mounts or month changes
@@ -2797,10 +2804,12 @@ export default function MonthlyAttendanceTable() {
         let activeEmployeeIds = null;
         const salaryMap = {};
         const employeeStatusMap = {};
+        let allHrmsEmployees = [];
         try {
           const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
-            console.log('📊 All employees from HRMS:', employeesResponse.data.length);
+            allHrmsEmployees = employeesResponse.data;
+            console.log('📊 All employees from HRMS:', allHrmsEmployees.length);
             
             // Build employee status map for all employees
             activeEmployeeIds = new Set();
@@ -2858,7 +2867,7 @@ export default function MonthlyAttendanceTable() {
         } catch (e) { /* use defaults */ }
         
         if (response && response.employees) {
-          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap)
+          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap, allHrmsEmployees)
 
           // Fetch leave balances for all employees in parallel
           const leaveBalanceResults = await Promise.allSettled(
@@ -3271,9 +3280,11 @@ export default function MonthlyAttendanceTable() {
         let activeEmployeeIds = null;
         const salaryMap2 = {};
         const empStatusMap2 = {};
+        let allHrmsEmps2 = [];
         try {
           const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
+            allHrmsEmps2 = employeesResponse.data;
             activeEmployeeIds = new Set();
             employeesResponse.data.forEach(emp => {
               const empId = emp.employee_id || emp._id;
@@ -3304,7 +3315,7 @@ export default function MonthlyAttendanceTable() {
 
         const response = await attendanceAPI.getCalendar(selectedYear, selectedMonth, user.user_id)
         if (response && response.employees) {
-          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2, empStatusMap2)
+          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2, empStatusMap2, allHrmsEmps2)
           
           // Filter data based on user permissions
           if (!canViewAllRecords()) {
