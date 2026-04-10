@@ -2466,6 +2466,7 @@ export default function MonthlyAttendanceTable() {
   const [searchQuery, setSearchQuery] = useState('')
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
+  const [empStatusFilter, setEmpStatusFilter] = useState('all') // 'all' | 'active' | 'inactive'
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [teamSearchText, setTeamSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -2717,6 +2718,10 @@ export default function MonthlyAttendanceTable() {
       const empId = employee.employee_id;
       const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
       
+      const isActiveEmp = !activeEmployeeIds || activeEmployeeIds.size === 0
+        ? true
+        : activeEmployeeIds.has(empId) || activeEmployeeIds.has(String(empId)) || activeEmployeeIds.has(Number(empId));
+
       const employeeRecord = {
         id: employee.employee_id,
         mongoId: employee.user_mongo_id || employee.employee_id, // MongoDB _id for history API calls
@@ -2725,7 +2730,8 @@ export default function MonthlyAttendanceTable() {
         department: employee.department_name || "Unknown Department",
         role: employee.role_name || "",
         photo: employee.employee_photo,
-        salary: empSalary
+        salary: empSalary,
+        isActive: isActiveEmp
       };
 
         // Map each day's status to the expected format
@@ -3370,6 +3376,11 @@ export default function MonthlyAttendanceTable() {
     if (teamFilter) {
       data = data.filter(r => r.department === teamFilter)
     }
+    if (empStatusFilter === 'active') {
+      data = data.filter(r => r.isActive !== false)
+    } else if (empStatusFilter === 'inactive') {
+      data = data.filter(r => r.isActive === false)
+    }
     if (statusFilter !== 'all' && isCurrentMonth) {
       data = data.filter(r => {
         const s = r[`day${todayDay}`]
@@ -3393,7 +3404,7 @@ export default function MonthlyAttendanceTable() {
       })
     }
     return data
-  }, [attendanceData, searchQuery, teamFilter, statusFilter, sortConfig, isCurrentMonth, todayDay])
+  }, [attendanceData, searchQuery, teamFilter, empStatusFilter, statusFilter, sortConfig, isCurrentMonth, todayDay])
 
   if (loading || (user && permissions === null && !isAdmin())) {
     return (
@@ -3671,6 +3682,18 @@ export default function MonthlyAttendanceTable() {
               </div>
             </div>
           )}
+        </div>
+        {/* Employee Status filter dropdown */}
+        <div style={{position:'relative',flexShrink:0}}>
+          <select
+            value={empStatusFilter}
+            onChange={e => setEmpStatusFilter(e.target.value)}
+            style={{background:'#0d0d10',border:'1px solid #27272a',borderRadius:'6px',padding:'7px 28px 7px 10px',color: empStatusFilter !== 'all' ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',height:'32px',appearance:'none',backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center'}}
+          >
+            <option value="all">All Employees</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
         </div>
         {/* Results count */}
         <div style={{fontSize:'11px',color:'#52525b',marginLeft:'auto',whiteSpace:'nowrap'}}>
