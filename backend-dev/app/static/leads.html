@@ -1,0 +1,2489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Agency CRM - Leads Module</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        .lead-card {
+            margin-bottom: 15px;
+            cursor: pointer;
+        }
+        .lead-card:hover {
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .note-card {
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        .document-card {
+            margin-bottom: 10px;
+        }
+        .activity-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .priority-high {
+            border-left: 5px solid #dc3545;
+        }
+        .priority-medium {
+            border-left: 5px solid #ffc107;
+        }
+        .priority-low {
+            border-left: 5px solid #28a745;
+        }
+        .tab-content {
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingOverlay">
+        <div class="spinner-border text-light" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Loan Agency CRM</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Leads</a>
+                    </li>
+                </ul>
+                <div class="ms-auto d-flex">
+                    <div class="dropdown">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
+                            <span id="currentUserName">User</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="logout()">Logout</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Authentication -->
+            <div class="col-md-12 mb-4" id="authSection">
+                <div class="section">
+                    <h3>Authentication</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="userId" class="form-label">User ID:</label>
+                                <input type="text" id="userId" class="form-control" placeholder="Enter your user ID">
+                                <div class="form-text">Your MongoDB User ID for API authentication</div>
+                            </div>
+                            <button class="btn btn-primary" onclick="setUserId()">Set User ID</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Lead Management -->
+            <div class="col-md-4 mb-4">
+                <div class="section">
+                    <h3>Leads</h3>
+                    
+                    <!-- Search and filter -->
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <input type="text" id="searchInput" class="form-control" placeholder="Search leads...">
+                            <button class="btn btn-outline-secondary" type="button" onclick="searchLeads()">Search</button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <select id="statusFilter" class="form-select" onchange="filterLeads()">
+                                    <option value="">All Statuses</option>
+                                    <!-- Will be populated dynamically -->
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <select id="departmentFilter" class="form-select" onchange="filterLeads()">
+                                    <option value="">All Departments</option>
+                                    <!-- Will be populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createLeadModal">
+                            <i class="bi bi-plus-circle"></i> Create Lead
+                        </button>
+                    </div>
+                    
+                    <!-- Lead list -->
+                    <div id="leadsList" class="mt-4">
+                        <!-- Will be populated with leads -->
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <div class="mt-3">
+                        <nav>
+                            <ul class="pagination justify-content-center" id="leadsPagination">
+                                <!-- Will be populated dynamically -->
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Lead Details -->
+            <div class="col-md-8 mb-4">
+                <div class="section">
+                    <div id="leadDetailsContainer">
+                        <h3>Lead Details</h3>
+                        <p class="text-muted">Select a lead to view details</p>
+                    </div>
+                    
+                    <div id="leadDetails" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 id="leadName">Lead Name</h3>
+                            <div>
+                                <button class="btn btn-success me-2" id="shareLeadBtn">Share</button>
+                                <button class="btn btn-primary me-2" id="editLeadBtn">Edit</button>
+                                <button class="btn btn-danger" id="deleteLeadBtn">Delete</button>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Complete Lead Information</h5>
+                                        <div class="row">
+                                            <div class="col-md-8">
+                                                <!-- Dynamic lead details will be populated here -->
+                                                <div id="leadDetailsContent">
+                                                    <!-- Will be populated dynamically with organized sections -->
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="card">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Status & Assignment</h5>
+                                                        <table class="table table-sm">
+                                                            <tbody id="leadStatusTable">
+                                                                <!-- Will be populated dynamically -->
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2">
+                                                            <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#assignLeadModal">
+                                                                Assign/Reassign
+                                                            </button>
+                                                            <button class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#transferLeadModal">
+                                                                Transfer
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tabs for different sections -->
+                        <ul class="nav nav-tabs" id="leadTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="notes-tab" data-bs-toggle="tab" data-bs-target="#notes-tab-pane" type="button" role="tab">Notes</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents-tab-pane" type="button" role="tab">Documents</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="activities-tab" data-bs-toggle="tab" data-bs-target="#activities-tab-pane" type="button" role="tab">Activities</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="transfers-tab" data-bs-toggle="tab" data-bs-target="#transfers-tab-pane" type="button" role="tab">Transfers</button>
+                            </li>
+                        </ul>
+                        
+                        <div class="tab-content" id="leadTabContent">
+                            <!-- Notes Tab -->
+                            <div class="tab-pane fade show active" id="notes-tab-pane" role="tabpanel" tabindex="0">
+                                <div class="mb-3">
+                                    <h5>Add Note</h5>
+                                    <div class="mb-3">
+                                        <select id="noteType" class="form-select">
+                                            <option value="general">General Note</option>
+                                            <option value="call">Call Log</option>
+                                            <option value="meeting">Meeting Note</option>
+                                            <option value="followup">Follow-up</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <textarea id="noteContent" class="form-control" rows="3" placeholder="Enter note content..."></textarea>
+                                    </div>
+                                    <button id="addNoteBtn" class="btn btn-primary">Add Note</button>
+                                </div>
+                                <hr>
+                                <div id="notesList">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <!-- Documents Tab -->
+                            <div class="tab-pane fade" id="documents-tab-pane" role="tabpanel" tabindex="0">
+                                <div class="mb-3">
+                                    <h5>Upload Document</h5>
+                                    <form id="documentForm" enctype="multipart/form-data">
+                                        <div class="mb-3">
+                                            <label for="documentFiles" class="form-label">Select file(s)</label>
+                                            <input type="file" id="documentFiles" class="form-control" multiple>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="documentType" class="form-label">Document Type</label>
+                                            <select id="documentType" class="form-select">
+                                                <option value="identification">Identification</option>
+                                                <option value="income">Income Verification</option>
+                                                <option value="property">Property Document</option>
+                                                <option value="financial">Financial Statement</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="documentCategory" class="form-label">Category</label>
+                                            <select id="documentCategory" class="form-select">
+                                                <option value="government_id">Government ID</option>
+                                                <option value="passport">Passport</option>
+                                                <option value="paystub">Pay Stub</option>
+                                                <option value="tax_return">Tax Return</option>
+                                                <option value="bank_statement">Bank Statement</option>
+                                                <option value="property_deed">Property Deed</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="documentDescription" class="form-label">Description</label>
+                                            <input type="text" id="documentDescription" class="form-control" placeholder="Document description">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="documentPassword" class="form-label">Document Password <small class="text-muted">(if file is password-protected)</small></label>
+                                            <input type="password" id="documentPassword" class="form-control" placeholder="Enter password if document is protected">
+                                            <div class="form-text">If the uploaded file (PDF, ZIP, etc.) has a password, enter it here for future reference.</div>
+                                        </div>
+                                        <button type="button" id="uploadDocumentBtn" class="btn btn-primary">Upload</button>
+                                    </form>
+                                </div>
+                                <hr>
+                                <div id="documentsList">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <!-- Activities Tab -->
+                            <div class="tab-pane fade" id="activities-tab-pane" role="tabpanel" tabindex="0">
+                                <div id="activitiesList">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <!-- Transfers Tab -->
+                            <div class="tab-pane fade" id="transfers-tab-pane" role="tabpanel" tabindex="0">
+                                <div id="transfersList">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Create Lead Modal -->
+    <div class="modal fade" id="createLeadModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New Lead</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+                    <form id="createLeadForm">
+                        <!-- Basic Information -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Basic Information</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="firstName" class="form-label">First Name *</label>
+                                        <input type="text" class="form-control" id="firstName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="lastName" class="form-label">Last Name *</label>
+                                        <input type="text" class="form-control" id="lastName" required>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="email" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="email">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="phone" class="form-label">Phone</label>
+                                        <input type="tel" class="form-control" id="phone">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="dateOfBirth" class="form-label">Date of Birth</label>
+                                        <input type="date" class="form-control" id="dateOfBirth">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="gender" class="form-label">Gender</label>
+                                        <select class="form-select" id="gender">
+                                            <option value="">Select Gender</option>
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                            <option value="other">Other</option>
+                                            <option value="prefer_not_to_say">Prefer not to say</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="maritalStatus" class="form-label">Marital Status</label>
+                                        <select class="form-select" id="maritalStatus">
+                                            <option value="">Select Status</option>
+                                            <option value="single">Single</option>
+                                            <option value="married">Married</option>
+                                            <option value="divorced">Divorced</option>
+                                            <option value="widowed">Widowed</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="nationality" class="form-label">Nationality</label>
+                                        <input type="text" class="form-control" id="nationality">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="source" class="form-label">Source</label>
+                                        <input type="text" class="form-control" id="source" placeholder="How did they find us?">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Address Information -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Address Information</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="addressLine1" class="form-label">Address Line 1</label>
+                                        <input type="text" class="form-control" id="addressLine1">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="addressLine2" class="form-label">Address Line 2</label>
+                                        <input type="text" class="form-control" id="addressLine2">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="city" class="form-label">City</label>
+                                        <input type="text" class="form-control" id="city">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="state" class="form-label">State</label>
+                                        <input type="text" class="form-control" id="state">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="postalCode" class="form-label">Postal Code</label>
+                                        <input type="text" class="form-control" id="postalCode">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="country" class="form-label">Country</label>
+                                        <input type="text" class="form-control" id="country">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Employment Information -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Employment Information</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="occupation" class="form-label">Occupation</label>
+                                        <input type="text" class="form-control" id="occupation">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="employerName" class="form-label">Employer Name</label>
+                                        <input type="text" class="form-control" id="employerName">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="employmentType" class="form-label">Employment Type</label>
+                                        <select class="form-select" id="employmentType">
+                                            <option value="">Select Type</option>
+                                            <option value="full_time">Full Time</option>
+                                            <option value="part_time">Part Time</option>
+                                            <option value="contract">Contract</option>
+                                            <option value="freelance">Freelance</option>
+                                            <option value="self_employed">Self Employed</option>
+                                            <option value="unemployed">Unemployed</option>
+                                            <option value="retired">Retired</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="yearsOfExperience" class="form-label">Years of Experience</label>
+                                        <input type="number" class="form-control" id="yearsOfExperience" min="0">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Financial Information -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Financial Information</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="monthlyIncome" class="form-label">Monthly Income</label>
+                                        <input type="number" class="form-control" id="monthlyIncome" min="0" step="0.01">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="annualIncome" class="form-label">Annual Income</label>
+                                        <input type="number" class="form-control" id="annualIncome" min="0" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label for="bankName" class="form-label">Bank Name</label>
+                                        <input type="text" class="form-control" id="bankName">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="accountNumber" class="form-label">Account Number</label>
+                                        <input type="text" class="form-control" id="accountNumber">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="ifscCode" class="form-label">IFSC Code</label>
+                                        <input type="text" class="form-control" id="ifscCode">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Identity Documents -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Identity Documents</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="panNumber" class="form-label">PAN Number</label>
+                                        <input type="text" class="form-control" id="panNumber">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="aadharNumber" class="form-label">Aadhar Number</label>
+                                        <input type="text" class="form-control" id="aadharNumber">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Loan Information -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Loan Information</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="loanType" class="form-label">Loan Type</label>
+                                        <select class="form-select" id="loanType">
+                                            <option value="">Select Loan Type</option>
+                                            <!-- Will be populated dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="loanAmount" class="form-label">Loan Amount</label>
+                                        <input type="number" class="form-control" id="loanAmount" min="0" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Emergency Contact -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Emergency Contact</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="emergencyContactName" class="form-label">Contact Name</label>
+                                        <input type="text" class="form-control" id="emergencyContactName">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="emergencyContactPhone" class="form-label">Contact Phone</label>
+                                        <input type="tel" class="form-control" id="emergencyContactPhone">
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="emergencyContactRelation" class="form-label">Relation</label>
+                                        <input type="text" class="form-control" id="emergencyContactRelation">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- References -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">References</h6>
+                            </div>
+                            <div class="card-body">
+                                <h6>Reference 1</h6>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="reference1Name" class="form-label">Name</label>
+                                        <input type="text" class="form-control" id="reference1Name">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="reference1Phone" class="form-label">Phone</label>
+                                        <input type="tel" class="form-control" id="reference1Phone">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="reference1Relation" class="form-label">Relation</label>
+                                        <input type="text" class="form-control" id="reference1Relation">
+                                    </div>
+                                </div>
+                                
+                                <h6>Reference 2</h6>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="reference2Name" class="form-label">Name</label>
+                                        <input type="text" class="form-control" id="reference2Name">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="reference2Phone" class="form-label">Phone</label>
+                                        <input type="tel" class="form-control" id="reference2Phone">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="reference2Relation" class="form-label">Relation</label>
+                                        <input type="text" class="form-control" id="reference2Relation">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Assignment & Management -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="mb-0">Assignment & Management</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="createLeadDepartment" class="form-label">Department *</label>
+                                        <select class="form-select" id="createLeadDepartment" required>
+                                            <option value="">Select Department</option>
+                                            <!-- Will be populated dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="createLeadAssignedTo" class="form-label">Assign To</label>
+                                        <select class="form-select" id="createLeadAssignedTo">
+                                            <option value="">Select Department First</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="priority" class="form-label">Priority</label>
+                                        <select class="form-select" id="priority">
+                                            <option value="low">Low</option>
+                                            <option value="medium" selected>Medium</option>
+                                            <option value="high">High</option>
+                                            <option value="urgent">Urgent</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitLeadBtn">Create Lead</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Lead Modal -->
+    <div class="modal fade" id="editLeadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Lead</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editLeadForm">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="editFirstName" class="form-label">First Name</label>
+                                <input type="text" class="form-control" id="editFirstName" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editLastName" class="form-label">Last Name</label>
+                                <input type="text" class="form-control" id="editLastName" required>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="editEmail" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="editEmail">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editPhone" class="form-label">Phone</label>
+                                <input type="tel" class="form-control" id="editPhone">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="editLoanType" class="form-label">Loan Type</label>
+                                <select class="form-select" id="editLoanType">
+                                    <option value="personal">Personal Loan</option>
+                                    <option value="mortgage">Mortgage</option>
+                                    <option value="auto">Auto Loan</option>
+                                    <option value="business">Business Loan</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editLoanAmount" class="form-label">Loan Amount</label>
+                                <input type="number" class="form-control" id="editLoanAmount">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="editStatus" class="form-label">Status</label>
+                                <select class="form-select" id="editStatus">
+                                    <!-- Will be populated dynamically -->
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editSubStatus" class="form-label">Sub-Status</label>
+                                <select class="form-select" id="editSubStatus">
+                                    <option value="">Select Status First</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPriority" class="form-label">Priority</label>
+                            <select class="form-select" id="editPriority">
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editSource" class="form-label">Source</label>
+                            <input type="text" class="form-control" id="editSource">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="updateLeadBtn">Update Lead</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Assign Lead Modal -->
+    <div class="modal fade" id="assignLeadModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assign/Reassign Lead</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <small>Choose a user to assign this lead to. Users are grouped by their roles and reporting hierarchy.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignToUser" class="form-label">Assign To (Grouped by Role)</label>
+                        <select class="form-select" id="assignToUser">
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignNotes" class="form-label">Assignment Notes</label>
+                        <textarea class="form-control" id="assignNotes" rows="3" placeholder="Add notes about this assignment..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="assignLeadBtn">Assign Lead</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Transfer Lead Modal -->
+    <div class="modal fade" id="transferLeadModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Transfer Lead</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="transferDepartment" class="form-label">Department</label>
+                        <select class="form-select" id="transferDepartment">
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="transferToUser" class="form-label">Assign To</label>
+                        <select class="form-select" id="transferToUser">
+                            <option value="">Select Department First</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="reportingOption" class="form-label">Reporting Users</label>
+                        <select class="form-select" id="reportingOption">
+                            <option value="preserve">Preserve existing reporting users</option>
+                            <option value="reset">Remove all reporting users</option>
+                            <option value="merge">Keep existing and add department defaults</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="transferNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="transferNotes" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="transferLeadBtn">Transfer Lead</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <!-- Share Lead Modal -->
+    <div class="modal fade" id="shareLeadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Share Lead</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Generate Share Link -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="mb-0">Generate New Share Link</h6>
+                        </div>
+                        <div class="card-body">
+                            <form id="shareLeadForm">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="shareExpiresAt" class="form-label">Expires At</label>
+                                        <input type="datetime-local" class="form-control" id="shareExpiresAt" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="shareMaxAccess" class="form-label">Max Access Count</label>
+                                        <input type="number" class="form-control" id="shareMaxAccess" min="1" value="10">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="shareNotes" class="form-label">Notes (Optional)</label>
+                                    <textarea class="form-control" id="shareNotes" rows="2" placeholder="Internal notes about this share link"></textarea>
+                                </div>
+                                <button type="button" class="btn btn-primary" id="generateShareBtn">Generate Share Link</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Existing Share Links -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Existing Share Links</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="shareLinksContainer">
+                                <p class="text-center">Loading share links...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Reporter Modal -->
+    <div class="modal fade" id="addReporterModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Reporting User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="reporterUser" class="form-label">Select User</label>
+                        <select class="form-select" id="reporterUser">
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="addReporterBtn">Add Reporter</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let currentUserId = localStorage.getItem('userId') || '';
+        let currentPage = 1;
+        let totalPages = 1;
+        let pageSize = 10;
+        let currentLeadId = null;
+        let currentSearch = '';
+        let currentStatusFilter = '';
+        let currentDepartmentFilter = '';
+        let statuses = [];
+        
+        // Global variables for loan types
+        let loanTypes = [];
+        
+        // Helper function to get loan type name by ID
+        function getLoanTypeName(loanTypeId) {
+            if (!loanTypeId) return 'N/A';
+            const loanType = loanTypes.find(lt => lt._id === loanTypeId);
+            return loanType ? loanType.name : loanTypeId;
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            if (currentUserId) {
+                hideAuthSection();
+                initializeApp();
+            } else {
+                showAuthSection();
+            }
+        });
+        
+        function setUserId() {
+            const userId = document.getElementById('userId').value.trim();
+            if (userId) {
+                currentUserId = userId;
+                localStorage.setItem('userId', userId);
+                hideAuthSection();
+                initializeApp();
+            } else {
+                alert('Please enter a valid User ID');
+            }
+        }
+        
+        function hideAuthSection() {
+            document.getElementById('authSection').style.display = 'none';
+            document.getElementById('currentUserName').textContent = `User (${currentUserId.substring(0, 6)}...)`;
+        }
+        
+        function showAuthSection() {
+            document.getElementById('authSection').style.display = 'block';
+        }
+        
+        function logout() {
+            localStorage.removeItem('userId');
+            currentUserId = '';
+            showAuthSection();
+            // Clear lead data
+            document.getElementById('leadsList').innerHTML = '';
+            document.getElementById('leadDetails').style.display = 'none';
+            document.getElementById('leadDetailsContainer').innerHTML = '<h3>Lead Details</h3><p class="text-muted">Select a lead to view details</p>';
+        }
+        
+        function initializeApp() {
+            // Load initial data
+            fetchLeads();
+            fetchStatusOptions();
+            fetchDepartments();
+            fetchLoanTypes();
+            
+            // Set up event listeners
+            document.getElementById('submitLeadBtn').addEventListener('click', createLead);
+            document.getElementById('updateLeadBtn').addEventListener('click', updateLead);
+            document.getElementById('assignLeadBtn').addEventListener('click', assignLead);
+            document.getElementById('transferLeadBtn').addEventListener('click', transferLead);
+            document.getElementById('shareLeadBtn').addEventListener('click', openShareLeadModal);
+            document.getElementById('generateShareBtn').addEventListener('click', generateShareLink);
+            document.getElementById('addNoteBtn').addEventListener('click', addNote);
+            document.getElementById('uploadDocumentBtn').addEventListener('click', uploadDocument);
+            document.getElementById('deleteLeadBtn').addEventListener('click', confirmDeleteLead);
+            document.getElementById('createLeadDepartment').addEventListener('change', updateAssigneeOptions);
+            document.getElementById('transferDepartment').addEventListener('change', updateTransferUserOptions);
+            document.getElementById('editStatus').addEventListener('change', updateSubStatusOptions);
+        }
+        
+        // Show loading overlay
+        function showLoading() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+        
+        // Hide loading overlay
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+        
+        // API helper function
+        async function apiRequest(endpoint, method = 'GET', body = null, isFormData = false) {
+            showLoading();
+            
+            const headers = {
+                'Accept': 'application/json'
+            };
+            
+            if (!isFormData && method !== 'GET' && body) {
+                headers['Content-Type'] = 'application/json';
+            }
+            
+            // Add user ID as query parameter
+            const separator = endpoint.includes('?') ? '&' : '?';
+            const url = `${endpoint}${separator}user_id=${currentUserId}`;
+            
+            try {
+                const options = {
+                    method,
+                    headers
+                };
+                
+                if (body) {
+                    if (isFormData) {
+                        options.body = body;
+                    } else {
+                        options.body = JSON.stringify(body);
+                    }
+                }
+                
+                const response = await fetch(url, options);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'API request failed' }));
+                    throw new Error(errorData.detail || 'API request failed');
+                }
+                
+                // Check if response is empty
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return await response.json();
+                }
+                
+                return {};
+            } catch (error) {
+                console.error('API Error:', error);
+                alert(`Error: ${error.message}`);
+                return null;
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Fetch leads with filtering and pagination
+        async function fetchLeads() {
+            const filters = [];
+            if (currentPage) filters.push(`page=${currentPage}`);
+            if (pageSize) filters.push(`page_size=${pageSize}`);
+            if (currentSearch) filters.push(`search=${encodeURIComponent(currentSearch)}`);
+            if (currentStatusFilter) filters.push(`status=${currentStatusFilter}`);
+            if (currentDepartmentFilter) filters.push(`department_id=${currentDepartmentFilter}`);
+            
+            const queryString = filters.join('&');
+            const endpoint = `/leads?${queryString}`;
+            
+            const data = await apiRequest(endpoint);
+            if (data) {
+                displayLeads(data.items);
+                updatePagination(data.total, data.page, data.page_size, data.pages);
+            }
+        }
+        
+        // Display leads in the list
+        function displayLeads(leads) {
+            const container = document.getElementById('leadsList');
+            
+            if (!leads || leads.length === 0) {
+                container.innerHTML = '<p class="text-center">No leads found</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            leads.forEach(lead => {
+                // Determine priority class
+                let priorityClass = '';
+                switch (lead.priority) {
+                    case 'high':
+                    case 'urgent':
+                        priorityClass = 'priority-high';
+                        break;
+                    case 'medium':
+                        priorityClass = 'priority-medium';
+                        break;
+                    default:
+                        priorityClass = 'priority-low';
+                }
+                
+                const card = document.createElement('div');
+                card.className = `card lead-card ${priorityClass}`;
+                card.dataset.leadId = lead._id;
+                card.onclick = () => selectLead(lead._id);
+                
+                card.innerHTML = `
+                    <div class="card-body">
+                        <h5 class="card-title">${lead.first_name} ${lead.last_name}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">${lead.status_name || lead.status || 'N/A'}</h6>
+                        <p class="card-text">
+                            ${lead.email || 'No email'} | ${lead.phone || 'No phone'}<br>
+                            <small class="text-muted">Assigned to: ${lead.assigned_user_name || 'Unassigned'}</small>
+                        </p>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        // Update pagination controls
+        function updatePagination(total, currentPage, pageSize, totalPages) {
+            const container = document.getElementById('leadsPagination');
+            container.innerHTML = '';
+            
+            // No need for pagination if only 1 page
+            if (totalPages <= 1) return;
+            
+            // Previous button
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevLi.innerHTML = `<a class="page-link" href="#" ${currentPage > 1 ? `onclick="goToPage(${currentPage - 1})"` : ''}>Previous</a>`;
+            container.appendChild(prevLi);
+            
+            // Page numbers
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            
+            // Adjust if we're near the end
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageLi = document.createElement('li');
+                pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                pageLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${i})">${i}</a>`;
+                container.appendChild(pageLi);
+            }
+            
+            // Next button
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextLi.innerHTML = `<a class="page-link" href="#" ${currentPage < totalPages ? `onclick="goToPage(${currentPage + 1})"` : ''}>Next</a>`;
+            container.appendChild(nextLi);
+        }
+        
+        // Change page
+        function goToPage(page) {
+            currentPage = page;
+            fetchLeads();
+        }
+        
+        // Search leads
+        function searchLeads() {
+            const searchInput = document.getElementById('searchInput').value.trim();
+            currentSearch = searchInput;
+            currentPage = 1; // Reset to first page when searching
+            fetchLeads();
+        }
+        
+        // Filter leads by status or department
+        function filterLeads() {
+            currentStatusFilter = document.getElementById('statusFilter').value;
+            currentDepartmentFilter = document.getElementById('departmentFilter').value;
+            currentPage = 1; // Reset to first page when filtering
+            fetchLeads();
+        }
+        
+        // Fetch statuses for dropdown
+        async function fetchStatusOptions() {
+            const data = await apiRequest('/leads/admin/statuses');
+            if (data) {
+                statuses = data;
+                populateStatusDropdowns(data);
+            }
+        }
+        
+        // Fetch departments for dropdown
+        async function fetchDepartments() {
+            const data = await apiRequest('/leads/assignment-options');
+            if (data && data.departments) {
+                populateDepartmentDropdowns(data.departments);
+            }
+        }
+        
+        // Fetch loan types for dropdown
+        async function fetchLoanTypes() {
+            const data = await apiRequest('/loan-types/');
+            if (data) {
+                loanTypes = data; // Store globally
+                populateLoanTypeDropdowns(data);
+            }
+        }
+        
+        // Populate status dropdowns
+        function populateStatusDropdowns(statuses) {
+            const statusFilter = document.getElementById('statusFilter');
+            const editStatus = document.getElementById('editStatus');
+            
+            // Clear existing options (except the first one for filters)
+            statusFilter.innerHTML = '<option value="">All Statuses</option>';
+            editStatus.innerHTML = '';
+            
+            // Add status options
+            statuses.forEach(status => {
+                const option = document.createElement('option');
+                option.value = status.id;
+                option.textContent = status.name;
+                
+                statusFilter.appendChild(option.cloneNode(true));
+                editStatus.appendChild(option);
+            });
+        }
+        
+        // Populate department dropdowns
+        function populateDepartmentDropdowns(departments) {
+            const departmentFilter = document.getElementById('departmentFilter');
+            const createLeadDepartment = document.getElementById('createLeadDepartment');
+            const transferDepartment = document.getElementById('transferDepartment');
+            
+            // Clear existing options (except the first one for filters)
+            departmentFilter.innerHTML = '<option value="">All Departments</option>';
+            createLeadDepartment.innerHTML = '<option value="">Select Department</option>';
+            transferDepartment.innerHTML = '<option value="">Select Department</option>';
+            
+            // Add department options
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name;
+                
+                departmentFilter.appendChild(option.cloneNode(true));
+                createLeadDepartment.appendChild(option.cloneNode(true));
+                transferDepartment.appendChild(option);
+            });
+        }
+        
+        // Populate loan type dropdowns
+        function populateLoanTypeDropdowns(loanTypes) {
+            const createLoanType = document.getElementById('loanType');
+            const editLoanType = document.getElementById('editLoanType');
+            
+            // Clear existing options
+            createLoanType.innerHTML = '<option value="">Select Loan Type</option>';
+            editLoanType.innerHTML = '<option value="">Select Loan Type</option>';
+            
+            // Add loan type options
+            loanTypes.forEach(loanType => {
+                const option1 = document.createElement('option');
+                option1.value = loanType._id;
+                option1.textContent = loanType.name;
+                createLoanType.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = loanType._id;
+                option2.textContent = loanType.name;
+                editLoanType.appendChild(option2);
+            });
+        }
+        
+        // Update assignee options based on selected department
+        async function updateAssigneeOptions() {
+            const departmentId = document.getElementById('createLeadDepartment').value;
+            const assigneeSelect = document.getElementById('createLeadAssignedTo');
+            
+            if (!departmentId || departmentId.trim() === '') {
+                assigneeSelect.innerHTML = '<option value="">Select Department First</option>';
+                return;
+            }
+            
+            try {
+                const data = await apiRequest(`/leads/assignment-options?department_id=${encodeURIComponent(departmentId)}`);
+                if (data && data.users) {
+                    assigneeSelect.innerHTML = '<option value="">Unassigned</option>';
+                    
+                    data.users.forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = `${user.name} (TL - ${user.role_name || 'No role'})`;
+                        assigneeSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching assignment options:', error);
+                assigneeSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+        
+        // Update transfer user options based on selected department
+        async function updateTransferUserOptions() {
+            const departmentId = document.getElementById('transferDepartment').value;
+            const userSelect = document.getElementById('transferToUser');
+            
+            if (!departmentId || departmentId.trim() === '') {
+                userSelect.innerHTML = '<option value="">Select Department First</option>';
+                return;
+            }
+            
+            try {
+                const data = await apiRequest(`/leads/assignment-options?department_id=${encodeURIComponent(departmentId)}&show_all_users=true`);
+                if (data && data.users) {
+                    userSelect.innerHTML = '';
+                    
+                    data.users.forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = `${user.name} (${user.role_name || 'No role'})`;
+                        userSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching assignment options:', error);
+                userSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+        
+        // Update sub-status options based on selected status
+        async function updateSubStatusOptions() {
+            const statusId = document.getElementById('editStatus').value;
+            const subStatusSelect = document.getElementById('editSubStatus');
+            
+            if (!statusId) {
+                subStatusSelect.innerHTML = '<option value="">Select Status First</option>';
+                return;
+            }
+            
+            const data = await apiRequest(`/leads/admin/sub-statuses?parent_status_id=${statusId}`);
+            if (data) {
+                subStatusSelect.innerHTML = '<option value="">None</option>';
+                
+                data.forEach(subStatus => {
+                    const option = document.createElement('option');
+                    option.value = subStatus.id;
+                    option.textContent = subStatus.name;
+                    subStatusSelect.appendChild(option);
+                });
+            }
+        }
+        
+        // Select a lead to display details
+        async function selectLead(leadId) {
+            if (currentLeadId === leadId) return;
+            
+            currentLeadId = leadId;
+            const data = await apiRequest(`/leads/${leadId}`);
+            
+            if (data) {
+                displayLeadDetails(data);
+                fetchLeadNotes(leadId);
+                fetchLeadDocuments(leadId);
+                fetchLeadActivities(leadId);
+                fetchLeadTransfers(leadId);
+                
+                // Highlight selected lead in the list
+                const leadCards = document.querySelectorAll('.lead-card');
+                leadCards.forEach(card => {
+                    card.classList.remove('bg-light');
+                    if (card.dataset.leadId === leadId) {
+                        card.classList.add('bg-light');
+                    }
+                });
+            }
+        }
+        
+        // Display lead details
+        function displayLeadDetails(lead) {
+            document.getElementById('leadDetailsContainer').style.display = 'none';
+            document.getElementById('leadDetails').style.display = 'block';
+            
+            // Set lead name in header
+            document.getElementById('leadName').textContent = `${lead.first_name} ${lead.last_name}`;
+            
+            // Build organized lead details with card sections
+            const leadDetailsHtml = `
+                <!-- Basic Information Section -->
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-user"></i> Basic Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Full Name:</strong> ${lead.first_name || ''} ${lead.last_name || ''}</p>
+                                <p><strong>Email:</strong> ${lead.email || 'N/A'}</p>
+                                <p><strong>Phone:</strong> ${lead.phone || 'N/A'}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Lead ID:</strong> ${lead.lead_id || 'N/A'}</p>
+                                <p><strong>Source:</strong> ${lead.source || 'N/A'}</p>
+                                <p><strong>Created:</strong> ${lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'N/A'}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loan Information Section -->
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="fas fa-money-bill-wave"></i> Loan Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Loan Type:</strong> ${getLoanTypeName(lead.loan_type) || 'N/A'}</p>
+                                <p><strong>Loan Amount:</strong> ${lead.loan_amount ? '₹' + lead.loan_amount.toLocaleString() : 'N/A'}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                ${lead.dynamic_fields ? `
+                    <!-- Personal Information Section -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-info text-white">
+                            <h6 class="mb-0"><i class="fas fa-id-card"></i> Personal Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p><strong>Date of Birth:</strong> ${lead.dynamic_fields.date_of_birth || 'N/A'}</p>
+                                    <p><strong>Gender:</strong> ${lead.dynamic_fields.gender || 'N/A'}</p>
+                                    <p><strong>Marital Status:</strong> ${lead.dynamic_fields.marital_status || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Nationality:</strong> ${lead.dynamic_fields.personal_details?.nationality || 'N/A'}</p>
+                                    <p><strong>Occupation:</strong> ${lead.dynamic_fields.personal_details?.occupation || 'N/A'}</p>
+                                    <p><strong>Employer:</strong> ${lead.dynamic_fields.personal_details?.employer_name || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Employment Type:</strong> ${lead.dynamic_fields.personal_details?.employment_type || 'N/A'}</p>
+                                    <p><strong>Experience:</strong> ${lead.dynamic_fields.personal_details?.years_of_experience || 'N/A'} years</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Address Information Section -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-warning text-dark">
+                            <h6 class="mb-0"><i class="fas fa-map-marker-alt"></i> Address Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Address Line 1:</strong> ${lead.dynamic_fields.address?.line1 || 'N/A'}</p>
+                                    <p><strong>Address Line 2:</strong> ${lead.dynamic_fields.address?.line2 || 'N/A'}</p>
+                                    <p><strong>City:</strong> ${lead.dynamic_fields.address?.city || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>State:</strong> ${lead.dynamic_fields.address?.state || 'N/A'}</p>
+                                    <p><strong>Postal Code:</strong> ${lead.dynamic_fields.address?.postal_code || 'N/A'}</p>
+                                    <p><strong>Country:</strong> ${lead.dynamic_fields.address?.country || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Financial Information Section -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-dark text-white">
+                            <h6 class="mb-0"><i class="fas fa-chart-line"></i> Financial Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Monthly Income:</strong> ${lead.dynamic_fields.financial_details?.monthly_income ? '₹' + lead.dynamic_fields.financial_details.monthly_income.toLocaleString() : 'N/A'}</p>
+                                    <p><strong>Annual Income:</strong> ${lead.dynamic_fields.financial_details?.annual_income ? '₹' + lead.dynamic_fields.financial_details.annual_income.toLocaleString() : 'N/A'}</p>
+                                    <p><strong>Bank Name:</strong> ${lead.dynamic_fields.financial_details?.bank_name || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Account Number:</strong> ${lead.dynamic_fields.financial_details?.account_number ? '****-' + lead.dynamic_fields.financial_details.account_number.slice(-4) : 'N/A'}</p>
+                                    <p><strong>IFSC Code:</strong> ${lead.dynamic_fields.financial_details?.ifsc_code || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Identity Documents Section -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-secondary text-white">
+                            <h6 class="mb-0"><i class="fas fa-id-badge"></i> Identity Documents</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>PAN Number:</strong> ${lead.dynamic_fields.identity_details?.pan_number || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Aadhar Number:</strong> ${lead.dynamic_fields.identity_details?.aadhar_number ? '****-****-' + lead.dynamic_fields.identity_details.aadhar_number.slice(-4) : 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Emergency Contact Section -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-danger text-white">
+                            <h6 class="mb-0"><i class="fas fa-phone-alt"></i> Emergency Contact</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p><strong>Name:</strong> ${lead.dynamic_fields.emergency_contact?.name || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Phone:</strong> ${lead.dynamic_fields.emergency_contact?.phone || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Relation:</strong> ${lead.dynamic_fields.emergency_contact?.relation || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- References Section -->
+                    <div class="card mb-3">
+                        <div class="card-header" style="background-color: #6f42c1; color: white;">
+                            <h6 class="mb-0"><i class="fas fa-users"></i> References</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                ${lead.dynamic_fields.references && lead.dynamic_fields.references.length > 0 ? 
+                                    lead.dynamic_fields.references.map((ref, index) => {
+                                        if (ref.name) {
+                                            return `
+                                                <div class="col-md-6 mb-3">
+                                                    <div class="border rounded p-3">
+                                                        <h6 class="text-muted">Reference ${index + 1}</h6>
+                                                        <p><strong>Name:</strong> ${ref.name || 'N/A'}</p>
+                                                        <p><strong>Phone:</strong> ${ref.phone || 'N/A'}</p>
+                                                        <p><strong>Relation:</strong> ${ref.relation || 'N/A'}</p>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }
+                                        return '';
+                                    }).join('') : '<p class="text-muted">No references available</p>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+            
+            // Fill the lead details content
+            document.getElementById('leadDetailsContent').innerHTML = leadDetailsHtml;
+            
+            // Fill status table
+            const statusTable = document.getElementById('leadStatusTable');
+            statusTable.innerHTML = `
+                <tr><th>Status:</th><td>${lead.status_name || lead.status || 'N/A'}</td></tr>
+                <tr><th>Sub-Status:</th><td>${lead.sub_status_name || lead.sub_status || 'N/A'}</td></tr>
+                <tr><th>Priority:</th><td>${lead.priority || 'N/A'}</td></tr>
+                <tr><th>Assigned To:</th><td>${lead.assigned_user_name || 'Unassigned'}</td></tr>
+                <tr><th>Department:</th><td>${lead.department_name || lead.department_id || 'N/A'}</td></tr>
+            `;
+            
+            // Set button visibility based on permissions
+            document.getElementById('editLeadBtn').style.display = lead.can_edit ? 'inline-block' : 'none';
+            document.getElementById('deleteLeadBtn').style.display = lead.can_delete ? 'inline-block' : 'none';
+            
+            // Store lead data for edit modal
+            document.getElementById('editLeadBtn').onclick = () => openEditLeadModal(lead);
+            
+            // Update options in assign modal
+            updateAssignModalOptions(lead);
+            
+            // Update reporters list if any
+            if (lead.reporters && lead.reporters.length > 0) {
+                let reportersList = '<div class="mt-3"><h6>Reporting Users:</h6><ul>';
+                lead.reporters.forEach(reporter => {
+                    reportersList += `<li>${reporter.name}</li>`;
+                });
+                reportersList += '</ul></div>';
+                statusTable.innerHTML += reportersList;
+            }
+        }
+        
+        // Open edit lead modal with lead data
+        function openEditLeadModal(lead) {
+            document.getElementById('editFirstName').value = lead.first_name || '';
+            document.getElementById('editLastName').value = lead.last_name || '';
+            document.getElementById('editEmail').value = lead.email || '';
+            document.getElementById('editPhone').value = lead.phone || '';
+            document.getElementById('editLoanType').value = lead.loan_type || '';
+            document.getElementById('editLoanAmount').value = lead.loan_amount || '';
+            document.getElementById('editStatus').value = lead.status || '';
+            document.getElementById('editPriority').value = lead.priority || 'medium';
+            document.getElementById('editSource').value = lead.source || '';
+            
+            // Populate and set sub-status
+            updateSubStatusOptions().then(() => {
+                if (lead.sub_status) {
+                    document.getElementById('editSubStatus').value = lead.sub_status;
+                }
+            });
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editLeadModal'));
+            modal.show();
+        }
+        
+        // Update assignee options in assign modal
+        async function updateAssignModalOptions(lead) {
+            if (!lead.department_id || lead.department_id.trim() === '') return;
+            
+            try {
+                const data = await apiRequest(`/leads/assignment-options?department_id=${encodeURIComponent(lead.department_id)}`);
+                if (data && data.users) {
+                    const assigneeSelect = document.getElementById('assignToUser');
+                    assigneeSelect.innerHTML = '<option value="">Select User to Assign</option>';
+                    
+                    // Group users by role for better display
+                    const usersByRole = {};
+                    data.users.forEach(user => {
+                        const role = user.role_name || 'No Role';
+                        if (!usersByRole[role]) {
+                            usersByRole[role] = [];
+                        }
+                        usersByRole[role].push(user);
+                    });
+                    
+                    // Add users with role grouping
+                    Object.keys(usersByRole).sort().forEach(role => {
+                        // Add optgroup for each role
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = role;
+                        
+                        usersByRole[role].forEach(user => {
+                            const option = document.createElement('option');
+                            option.value = user.id;
+                            option.textContent = `${user.name}${user.reporting_to ? ` (Reports to: ${user.reporting_to_name})` : ''}`;
+                            
+                            // Select current assignee if exists
+                            if (lead.assigned_to === user.id) {
+                                option.selected = true;
+                            }
+                            
+                            optgroup.appendChild(option);
+                        });
+                        
+                        assigneeSelect.appendChild(optgroup);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching assignment options:', error);
+                const assigneeSelect = document.getElementById('assignToUser');
+                assigneeSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+        
+        // Create a new lead
+        async function createLead() {
+            const leadData = {
+                first_name: document.getElementById('firstName').value,
+                last_name: document.getElementById('lastName').value,
+                email: document.getElementById('email').value || null,
+                phone: document.getElementById('phone').value || null,
+                loan_type: document.getElementById('loanType').value,
+                loan_amount: document.getElementById('loanAmount').value ? parseFloat(document.getElementById('loanAmount').value) : null,
+                department_id: document.getElementById('createLeadDepartment').value,
+                assigned_to: document.getElementById('createLeadAssignedTo').value || null,
+                priority: document.getElementById('priority').value,
+                source: document.getElementById('source').value || null,
+                created_by: currentUserId,
+                dynamic_fields: {
+                    date_of_birth: document.getElementById('dateOfBirth').value || null,
+                    gender: document.getElementById('gender').value || null,
+                    marital_status: document.getElementById('maritalStatus').value || null,
+                    nationality: document.getElementById('nationality').value || null,
+                    address: {
+                        line1: document.getElementById('addressLine1').value || null,
+                        line2: document.getElementById('addressLine2').value || null,
+                        city: document.getElementById('city').value || null,
+                        state: document.getElementById('state').value || null,
+                        postal_code: document.getElementById('postalCode').value || null,
+                        country: document.getElementById('country').value || null
+                    },
+                    personal_details: {
+                        occupation: document.getElementById('occupation').value || null,
+                        employer_name: document.getElementById('employerName').value || null,
+                        employment_type: document.getElementById('employmentType').value || null,
+                        years_of_experience: document.getElementById('yearsOfExperience').value ? parseInt(document.getElementById('yearsOfExperience').value) : null
+                    },
+                    financial_details: {
+                        monthly_income: document.getElementById('monthlyIncome').value ? parseFloat(document.getElementById('monthlyIncome').value) : null,
+                        annual_income: document.getElementById('annualIncome').value ? parseFloat(document.getElementById('annualIncome').value) : null,
+                        bank_name: document.getElementById('bankName').value || null,
+                        account_number: document.getElementById('accountNumber').value || null,
+                        ifsc_code: document.getElementById('ifscCode').value || null
+                    },
+                    identity_details: {
+                        pan_number: document.getElementById('panNumber').value || null,
+                        aadhar_number: document.getElementById('aadharNumber').value || null
+                    },
+                    emergency_contact: {
+                        name: document.getElementById('emergencyContactName').value || null,
+                        phone: document.getElementById('emergencyContactPhone').value || null,
+                        relation: document.getElementById('emergencyContactRelation').value || null
+                    },
+                    references: [
+                        {
+                            name: document.getElementById('reference1Name').value || null,
+                            phone: document.getElementById('reference1Phone').value || null,
+                            relation: document.getElementById('reference1Relation').value || null
+                        },
+                        {
+                            name: document.getElementById('reference2Name').value || null,
+                            phone: document.getElementById('reference2Phone').value || null,
+                            relation: document.getElementById('reference2Relation').value || null
+                        }
+                    ]
+                }
+            };
+            
+            const data = await apiRequest('/leads', 'POST', leadData);
+            
+            if (data && data.id) {
+                alert('Lead created successfully!');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('createLeadModal'));
+                modal.hide();
+                
+                // Reset form
+                document.getElementById('createLeadForm').reset();
+                
+                // Refresh leads list
+                fetchLeads();
+                
+                // Select the newly created lead
+                setTimeout(() => {
+                    selectLead(data.id);
+                }, 500);
+            }
+        }
+        
+        // Update a lead
+        async function updateLead() {
+            if (!currentLeadId) return;
+            
+            const leadData = {
+                first_name: document.getElementById('editFirstName').value,
+                last_name: document.getElementById('editLastName').value,
+                email: document.getElementById('editEmail').value || null,
+                phone: document.getElementById('editPhone').value || null,
+                loan_type: document.getElementById('editLoanType').value,
+                loan_amount: document.getElementById('editLoanAmount').value ? parseFloat(document.getElementById('editLoanAmount').value) : null,
+                status: document.getElementById('editStatus').value,
+                sub_status: document.getElementById('editSubStatus').value || null,
+                priority: document.getElementById('editPriority').value,
+                source: document.getElementById('editSource').value || null
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}`, 'PUT', leadData);
+            
+            if (data) {
+                alert('Lead updated successfully!');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editLeadModal'));
+                modal.hide();
+                
+                // Refresh leads list and details
+                fetchLeads();
+                selectLead(currentLeadId);
+            }
+        }
+        
+        // Confirm delete lead
+        function confirmDeleteLead() {
+            if (!currentLeadId) return;
+            
+            if (confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
+                deleteLead();
+            }
+        }
+        
+        // Delete a lead
+        async function deleteLead() {
+            if (!currentLeadId) return;
+            
+            const data = await apiRequest(`/leads/${currentLeadId}`, 'DELETE');
+            
+            if (data) {
+                alert('Lead deleted successfully!');
+                
+                // Reset current lead
+                currentLeadId = null;
+                
+                // Hide lead details
+                document.getElementById('leadDetails').style.display = 'none';
+                document.getElementById('leadDetailsContainer').style.display = 'block';
+                
+                // Refresh leads list
+                fetchLeads();
+            }
+        }
+        
+        // Assign lead to a user
+        async function assignLead() {
+            if (!currentLeadId) return;
+            
+            const assignData = {
+                assigned_to: document.getElementById('assignToUser').value,
+                notes: document.getElementById('assignNotes').value || null
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/assign`, 'POST', assignData);
+            
+            if (data) {
+                alert('Lead assigned successfully!');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('assignLeadModal'));
+                modal.hide();
+                
+                // Refresh lead details
+                selectLead(currentLeadId);
+            }
+        }
+        
+        // Transfer lead to another department/user
+        async function transferLead() {
+            if (!currentLeadId) return;
+            
+            const transferData = {
+                to_department_id: document.getElementById('transferDepartment').value,
+                to_user_id: document.getElementById('transferToUser').value,
+                notes: document.getElementById('transferNotes').value || null,
+                reporting_option: document.getElementById('reportingOption').value
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/transfer`, 'POST', transferData);
+            
+            if (data) {
+                alert('Lead transferred successfully!');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('transferLeadModal'));
+                modal.hide();
+                
+                // Refresh lead details
+                selectLead(currentLeadId);
+            }
+        }
+        
+        // ========= Share Lead Functionality =========
+        
+        // Open share lead modal
+        async function openShareLeadModal() {
+            if (!currentLeadId) return;
+            
+            // Set default expiration time (7 days from now)
+            const now = new Date();
+            now.setDate(now.getDate() + 7);
+            const expiryString = now.toISOString().slice(0, 16); // Format for datetime-local input
+            document.getElementById('shareExpiresAt').value = expiryString;
+            
+            // Show modal and load existing share links
+            const modal = new bootstrap.Modal(document.getElementById('shareLeadModal'));
+            modal.show();
+            
+            // Load existing share links
+            await fetchShareLinks();
+        }
+        
+        // Generate a new share link
+        async function generateShareLink() {
+            if (!currentLeadId) return;
+            
+            const expiresAt = document.getElementById('shareExpiresAt').value;
+            const maxAccess = document.getElementById('shareMaxAccess').value;
+            const notes = document.getElementById('shareNotes').value;
+            
+            if (!expiresAt) {
+                alert('Please select an expiration date and time');
+                return;
+            }
+            
+            const shareData = {
+                expires_at: new Date(expiresAt).toISOString(),
+                max_access_count: parseInt(maxAccess) || 10,
+                notes: notes || null
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/share`, 'POST', shareData);
+            
+            if (data && data.share_url) {
+                alert('Share link generated successfully!');
+                
+                // Clear form
+                document.getElementById('shareExpiresAt').value = '';
+                document.getElementById('shareMaxAccess').value = '10';
+                document.getElementById('shareNotes').value = '';
+                
+                // Refresh share links list
+                await fetchShareLinks();
+            }
+        }
+        
+        // Fetch existing share links
+        async function fetchShareLinks() {
+            if (!currentLeadId) return;
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/share-links`);
+            
+            if (data) {
+                displayShareLinks(data);
+            }
+        }
+        
+        // Display share links
+        function displayShareLinks(shareLinks) {
+            const container = document.getElementById('shareLinksContainer');
+            
+            if (!shareLinks || shareLinks.length === 0) {
+                container.innerHTML = '<p class="text-center text-muted">No share links generated yet</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            shareLinks.forEach(link => {
+                const linkCard = document.createElement('div');
+                linkCard.className = 'card mb-3';
+                
+                const isExpired = new Date(link.expires_at) < new Date();
+                const isActive = link.is_active && !isExpired;
+                const statusBadge = isActive ? 
+                    '<span class="badge bg-success">Active</span>' : 
+                    '<span class="badge bg-secondary">Inactive</span>';
+                
+                linkCard.innerHTML = `
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <h6 class="card-title d-flex align-items-center">
+                                    Share Link ${statusBadge}
+                                    ${isExpired ? '<span class="badge bg-warning ms-2">Expired</span>' : ''}
+                                </h6>
+                                <div class="mb-2">
+                                    <strong>URL:</strong>
+                                    <div class="input-group mt-1">
+                                        <input type="text" class="form-control" value="${window.location.origin}${link.share_url}" readonly>
+                                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('${window.location.origin}${link.share_url}')">
+                                            <i class="bi bi-clipboard"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <small><strong>Created:</strong> ${new Date(link.created_at).toLocaleString()}</small><br>
+                                        <small><strong>Expires:</strong> ${new Date(link.expires_at).toLocaleString()}</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small><strong>Access Count:</strong> ${link.access_count}/${link.max_access_count}</small><br>
+                                        <small><strong>Created By:</strong> ${link.creator_name || 'Unknown'}</small>
+                                    </div>
+                                </div>
+                                ${link.notes ? `<div class="mt-2"><small><strong>Notes:</strong> ${link.notes}</small></div>` : ''}
+                                ${link.last_accessed_at ? `<div class="mt-1"><small><strong>Last Accessed:</strong> ${new Date(link.last_accessed_at).toLocaleString()}</small></div>` : ''}
+                            </div>
+                            <div class="ms-3">
+                                ${isActive ? 
+                                    `<button class="btn btn-sm btn-outline-danger" onclick="deactivateShareLink('${link._id}')">Deactivate</button>` :
+                                    '<button class="btn btn-sm btn-outline-secondary" disabled>Inactive</button>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(linkCard);
+            });
+        }
+        
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Create a temporary toast notification
+                const toast = document.createElement('div');
+                toast.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toast.innerHTML = `
+                    <div class="toast show" role="alert">
+                        <div class="toast-header">
+                            <strong class="me-auto">Success</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+                        </div>
+                        <div class="toast-body">
+                            Share link copied to clipboard!
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(toast);
+                
+                // Remove toast after 3 seconds
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 3000);
+            }).catch(() => {
+                alert('Failed to copy to clipboard. Please copy manually.');
+            });
+        }
+        
+        // Deactivate a share link
+        async function deactivateShareLink(linkId) {
+            if (!currentLeadId || !linkId) return;
+            
+            if (confirm('Are you sure you want to deactivate this share link? It will no longer be accessible.')) {
+                const data = await apiRequest(`/leads/${currentLeadId}/share-links/${linkId}/deactivate`, 'POST');
+                
+                if (data) {
+                    // Refresh share links list
+                    await fetchShareLinks();
+                }
+            }
+        }
+        
+        // Fetch lead notes
+        async function fetchLeadNotes(leadId) {
+            const data = await apiRequest(`/leads/${leadId}/notes`);
+            
+            if (data) {
+                displayNotes(data);
+            }
+        }
+        
+        // Display notes
+        function displayNotes(notes) {
+            const container = document.getElementById('notesList');
+            
+            if (!notes || notes.length === 0) {
+                container.innerHTML = '<p class="text-center">No notes yet</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            notes.forEach(note => {
+                const noteCard = document.createElement('div');
+                noteCard.className = 'card note-card mb-3';
+                
+                // Format note type badge
+                let typeClass = 'bg-secondary';
+                switch (note.note_type) {
+                    case 'call':
+                        typeClass = 'bg-primary';
+                        break;
+                    case 'meeting':
+                        typeClass = 'bg-info';
+                        break;
+                    case 'followup':
+                        typeClass = 'bg-warning';
+                        break;
+                }
+                
+                noteCard.innerHTML = `
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <h6 class="card-title">
+                                <span class="badge ${typeClass}">${note.note_type.charAt(0).toUpperCase() + note.note_type.slice(1)}</span>
+                                ${note.creator_name || 'Unknown User'}
+                            </h6>
+                            <small class="text-muted">${new Date(note.created_at).toLocaleString()}</small>
+                        </div>
+                        <p class="card-text">${note.content}</p>
+                        ${note.can_edit || note.can_delete ? 
+                            `<div class="text-end">
+                                ${note.can_edit ? `<button class="btn btn-sm btn-outline-primary me-2" onclick="editNote('${note._id}', '${note.content}', '${note.note_type}')">Edit</button>` : ''}
+                                ${note.can_delete ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteNote('${note._id}')">Delete</button>` : ''}
+                            </div>` : ''}
+                    </div>
+                `;
+                
+                container.appendChild(noteCard);
+            });
+        }
+        
+        // Add a note
+        async function addNote() {
+            if (!currentLeadId) return;
+            
+            const noteData = {
+                lead_id: currentLeadId,
+                content: document.getElementById('noteContent').value,
+                note_type: document.getElementById('noteType').value,
+                created_by: currentUserId
+            };
+            
+            if (!noteData.content.trim()) {
+                alert('Please enter note content');
+                return;
+            }
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/notes`, 'POST', noteData);
+            
+            if (data) {
+                // Clear note input
+                document.getElementById('noteContent').value = '';
+                
+                // Refresh notes list
+                fetchLeadNotes(currentLeadId);
+            }
+        }
+        
+        // Edit note (placeholder - would need a modal in real app)
+        function editNote(noteId, content, noteType) {
+            // This would typically open a modal with form
+            const newContent = prompt('Edit note:', content);
+            
+            if (newContent !== null) {
+                updateNote(noteId, newContent, noteType);
+            }
+        }
+        
+        // Update a note
+        async function updateNote(noteId, content, noteType) {
+            if (!currentLeadId || !noteId) return;
+            
+            const noteData = {
+                content: content,
+                note_type: noteType
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/notes/${noteId}`, 'PUT', noteData);
+            
+            if (data) {
+                // Refresh notes list
+                fetchLeadNotes(currentLeadId);
+            }
+        }
+        
+        // Delete a note
+        async function deleteNote(noteId) {
+            if (!currentLeadId || !noteId) return;
+            
+            if (confirm('Are you sure you want to delete this note?')) {
+                const data = await apiRequest(`/leads/${currentLeadId}/notes/${noteId}`, 'DELETE');
+                
+                if (data) {
+                    // Refresh notes list
+                    fetchLeadNotes(currentLeadId);
+                }
+            }
+        }
+        
+        // Fetch lead documents
+        async function fetchLeadDocuments(leadId) {
+            const data = await apiRequest(`/leads/${leadId}/documents`);
+            
+            if (data) {
+                displayDocuments(data);
+            }
+        }
+        
+        // Display documents
+        function displayDocuments(documents) {
+            const container = document.getElementById('documentsList');
+            
+            if (!documents || documents.length === 0) {
+                container.innerHTML = '<p class="text-center">No documents yet</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            documents.forEach(doc => {
+                const docCard = document.createElement('div');
+                docCard.className = 'card document-card mb-3';
+                
+                // Determine icon based on file type
+                let iconClass = 'bi-file';
+                switch (doc.file_type) {
+                    case 'image':
+                        iconClass = 'bi-file-image';
+                        break;
+                    case 'pdf':
+                        iconClass = 'bi-file-pdf';
+                        break;
+                    case 'document':
+                        iconClass = 'bi-file-word';
+                        break;
+                    case 'spreadsheet':
+                        iconClass = 'bi-file-excel';
+                        break;
+                }
+                
+                docCard.innerHTML = `
+                    <div class="card-body">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="bi ${iconClass} fs-3"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h6 class="card-title">
+                                    ${doc.filename}
+                                    ${doc.password ? '<i class="bi bi-lock-fill text-warning ms-1" title="Password Protected"></i>' : ''}
+                                </h6>
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <span class="badge bg-info">${doc.document_type}</span>
+                                        <span class="badge bg-secondary">${doc.category}</span>
+                                        <span class="badge ${getStatusBadgeClass(doc.status)}">${doc.status}</span>
+                                        ${doc.password ? '<span class="badge bg-warning"><i class="bi bi-lock"></i> Protected</span>' : ''}
+                                    </div>
+                                    <small class="text-muted">Uploaded by ${doc.uploader_name || 'Unknown'}</small>
+                                </div>
+                                ${doc.description ? `<p class="card-text mt-2 mb-0"><small>${doc.description}</small></p>` : ''}
+                                ${doc.password ? `<p class="card-text mt-1 mb-0"><small class="text-warning"><i class="bi bi-info-circle"></i> Password: <code>${doc.password}</code></small></p>` : ''}
+                                <div class="mt-2">
+                                    <a href="${doc.file_path}" class="btn btn-sm btn-outline-primary" target="_blank">View</a>
+                                    ${doc.can_edit ? `<button class="btn btn-sm btn-outline-secondary" onclick="updateDocumentStatus('${doc._id}')">Update Status</button>` : ''}
+                                    ${doc.can_delete ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteDocument('${doc._id}')">Delete</button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(docCard);
+            });
+        }
+        
+        // Get badge class for document status
+        function getStatusBadgeClass(status) {
+            switch (status) {
+                case 'required':
+                    return 'bg-warning';
+                case 'received':
+                    return 'bg-info';
+                case 'verified':
+                    return 'bg-success';
+                case 'invalid':
+                    return 'bg-danger';
+                default:
+                    return 'bg-secondary';
+            }
+        }
+        
+        // Upload document
+        async function uploadDocument() {
+            if (!currentLeadId) return;
+            
+            const files = document.getElementById('documentFiles').files;
+            if (files.length === 0) {
+                alert('Please select at least one file');
+                return;
+            }
+            
+            const documentType = document.getElementById('documentType').value;
+            const category = document.getElementById('documentCategory').value;
+            const description = document.getElementById('documentDescription').value;
+            const password = document.getElementById('documentPassword').value;
+            
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            
+            formData.append('document_type', documentType);
+            formData.append('category', category);
+            
+            if (description) {
+                formData.append('description', description);
+            }
+            
+            if (password) {
+                formData.append('password', password);
+            }
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/documents`, 'POST', formData, true);
+            
+            if (data) {
+                alert('Document(s) uploaded successfully!');
+                
+                // Clear form
+                document.getElementById('documentForm').reset();
+                
+                // Refresh documents list
+                fetchLeadDocuments(currentLeadId);
+            }
+        }
+        
+        // Update document status (placeholder)
+        function updateDocumentStatus(docId) {
+            const newStatus = prompt('Enter new status (required, received, under_review, verified, invalid, not_applicable):');
+            if (!newStatus) return;
+            if (!['required', 'received', 'under_review', 'verified', 'invalid', 'not_applicable'].includes(newStatus)) {
+                alert('Invalid status. Please use one of the allowed values.');
+                return;
+            }
+            
+            updateDocumentStatusAPI(docId, newStatus);
+        }
+        
+        // Update document status via API
+        async function updateDocumentStatusAPI(docId, status) {
+            if (!currentLeadId || !docId) return;
+            
+            const docData = {
+                status: status
+            };
+            
+            const data = await apiRequest(`/leads/${currentLeadId}/documents/${docId}`, 'PUT', docData);
+            
+            if (data) {
+                // Refresh documents list
+                fetchLeadDocuments(currentLeadId);
+            }
+        }
+        
+        // Delete a document
+        async function deleteDocument(docId) {
+            if (!currentLeadId || !docId) return;
+            
+            if (confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+                const data = await apiRequest(`/leads/${currentLeadId}/documents/${docId}`, 'DELETE');
+                
+                if (data) {
+                    // Refresh documents list
+                    fetchLeadDocuments(currentLeadId);
+                }
+            }
+        }
+        
+        // Fetch lead activities
+        async function fetchLeadActivities(leadId) {
+            const data = await apiRequest(`/leads/${leadId}/activities`);
+            
+            if (data) {
+                displayActivities(data);
+            }
+        }
+        
+        // Display activities
+        function displayActivities(activities) {
+            const container = document.getElementById('activitiesList');
+            
+            if (!activities || activities.length === 0) {
+                container.innerHTML = '<p class="text-center">No activities yet</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            activities.forEach(activity => {
+                const activityItem = document.createElement('div');
+                activityItem.className = 'activity-item';
+                
+                // Determine activity icon and color
+                let iconClass = 'bi-info-circle';
+                let iconColor = 'text-secondary';
+                
+                switch (activity.activity_type) {
+                    case 'create':
+                        iconClass = 'bi-plus-circle';
+                        iconColor = 'text-success';
+                        break;
+                    case 'update':
+                        iconClass = 'bi-pencil';
+                        iconColor = 'text-primary';
+                        break;
+                    case 'status_change':
+                    case 'sub_status_change':
+                        iconClass = 'bi-arrow-right';
+                        iconColor = 'text-info';
+                        break;
+                    case 'assignment':
+                    case 'department_transfer':
+                        iconClass = 'bi-person';
+                        iconColor = 'text-warning';
+                        break;
+                    case 'document':
+                        iconClass = 'bi-file-earmark';
+                        iconColor = 'text-info';
+                        break;
+                    case 'note':
+                    case 'note_update':
+                        iconClass = 'bi-chat';
+                        iconColor = 'text-primary';
+                        break;
+                    case 'delete':
+                        iconClass = 'bi-trash';
+                        iconColor = 'text-danger';
+                        break;
+                }
+                
+                activityItem.innerHTML = `
+                    <div class="d-flex">
+                        <div class="me-3">
+                            <i class="bi ${iconClass} fs-5 ${iconColor}"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <strong>${activity.description}</strong>
+                                <small class="text-muted">${new Date(activity.created_at).toLocaleString()}</small>
+                            </div>
+                            <div>
+                                <small>By: ${activity.user_name || 'Unknown User'}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(activityItem);
+            });
+        }
+        
+        // Fetch lead transfer history
+        async function fetchLeadTransfers(leadId) {
+            const data = await apiRequest(`/leads/${leadId}/transfer-history`);
+            
+            if (data) {
+                displayTransfers(data);
+            }
+        }
+        
+        // Display transfer history
+        function displayTransfers(transfers) {
+            const container = document.getElementById('transfersList');
+            
+            if (!transfers || transfers.length === 0) {
+                container.innerHTML = '<p class="text-center">No transfers yet</p>';
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>By</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transfersTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            const tbody = document.getElementById('transfersTableBody');
+            
+            transfers.forEach(transfer => {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>${new Date(transfer.transferred_at).toLocaleString()}</td>
+                    <td>
+                        ${transfer.from_user_name || 'None'}<br>
+                        <small class="text-muted">${transfer.from_department_name || 'No Department'}</small>
+                    </td>
+                    <td>
+                        ${transfer.to_user_name || 'None'}<br>
+                        <small class="text-muted">${transfer.to_department_name || 'No Department'}</small>
+                    </td>
+                    <td>${transfer.transferred_by_name || 'Unknown'}</td>
+                    <td>${transfer.notes || '-'}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</body>
+</html>

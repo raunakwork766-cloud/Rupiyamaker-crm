@@ -1,0 +1,2149 @@
+from fastapi import APIRouter, HTTPException, Query, Request, Depends, Body
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from bson import ObjectId
+from datetime import datetime, timedelta
+import os
+from app.utils.permission_helpers import is_super_admin_permission
+from app.utils.timezone import get_ist_now
+
+from ..database.Warnings import WarningDB
+from ..database.Users import UsersDB
+from ..database.Departments import DepartmentsDB
+from ..database.Roles import RolesDB
+from ..database.Notifications import NotificationsDB
+from app.database import get_database_instances
+from ..schemas.warning_schemas import (
+    WarningCreate, WarningUpdate, WarningResponse, WarningStats,
+    WarningRanking, WarningFilterRequest, WarningListResponse,
+    WarningRankingResponse, DuplicateWarningResponse, WarningPermissions,
+    WarningRemovalRequest, WarningRemovalRequestResponse
+)
+
+router = APIRouter(prefix="/warnings", tags=["warnings"])
+
+# Dependency to get DB instances
+async def get_warnings_db():
+    db_instances = get_database_instances()
+    return db_instances["warnings"]
+
+async def get_users_db():
+    db_instances = get_database_instances()
+    return db_instances["users"]
+
+async def get_departments_db():
+    db_instances = get_database_instances()
+    return db_instances["departments"]
+
+async def get_roles_db():
+    db_instances = get_database_instances()
+    return db_instances["roles"]
+
+async def get_notifications_db():
+    db_instances = get_database_instances()
+    return db_instances["notifications"]
+
+# Database instances are obtained using centralized get_database_instances()
+# within each function to avoid dependency injection issues
+
+async def get_local_user_permissions(user_id: str) -> List[Dict[str, Any]]:
+    """Get user permissions for warnings - local implementation to avoid import issues"""
+    try:
+        # Get database instances from centralized source
+        from app.database import get_database_instances
+        db_instances = get_database_instances()
+        user_db = db_instances['users']
+        roles_db = db_instances['roles']
+        
+        user = await user_db.get_user(user_id)
+        if not user:
+            return []
+            
+        role_id = user.get('role_id')
+        if not role_id:
+            return []
+            
+        role = await roles_db.get_role(role_id)
+        if not role:
+            return []
+            
+        return role.get("permissions", [])
+    except Exception as e:
+        print(f"Error getting user permissions: {e}")
+        return []
+
+from app.utils.permission_helpers import is_super_admin_permission
+from app.database import get_database_instances
+
+async def get_subordinate_users_for_warnings(user_id: str) -> List[str]:
+    """Get subordinate users for hierarchical warnings access"""
+    try:
+        # Get database instances from centralized source
+        from app.database import get_database_instances
+        db_instances = get_database_instances()
+        user_db = db_instances['users']
+        roles_db = db_instances['roles']
+        
+        user = await user_db.get_user(user_id)
+        if not user or not user.get("role_id"):
+            return []
+            
+        user_role_id = user["role_id"]
+        
+        # Get all subordinate roles
+        subordinate_roles = await roles_db.get_all_subordinate_roles(user_role_id)
+        
+        if not subordinate_roles:
+            return []
+            
+        subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
+        
+        # Get all users with these subordinate roles
+        subordinate_users = await user_db.get_users_by_roles(subordinate_role_ids)
+        
+        if not subordinate_users:
+            return []
+            
+        user_ids = [str(user["_id"]) for user in subordinate_users]
+        return user_ids
+    except Exception as e:
+        print(f"Error getting subordinate users: {e}")
+        return []
+
+async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, str]:
+    """
+    Get hierarchical permissions for a user in a specific module.
+    Returns permission level: "own", "junior", or "all"
+    
+    Args:
+        user_id: User ID
+        module: Module name ('warnings', 'attendance', 'leaves', 'users')
+    
+    Returns:
+        Dict with:
+        - permission_level: "own" | "junior" | "all"
+        - is_super_admin: Super admin status
+    """
+    try:
+        permissions = await get_local_user_permissions(user_id)
+        
+        # Check if user is super admin
+        is_super_admin = any(
+            is_super_admin_permission(perm)
+            for perm in permissions
+        )
+        
+        # Super admin gets "all" permission
+        if is_super_admin:
+            return {
+                "permission_level": "all",
+                "is_super_admin": True
+            }
+        
+        # Check module-specific "all" permission (page="module" with actions="all" or "*")
+        has_all_permission = any(
+            perm.get("page") == module and 
+            (perm.get("actions") == "all" or 
+             perm.get("actions") == "*" or 
+             (isinstance(perm.get("actions"), list) and ("all" in perm.get("actions", []) or "*" in perm.get("actions", []))))
+            for perm in permissions
+        )
+        
+        if has_all_permission:
+            return {
+                "permission_level": "all",
+                "is_super_admin": False
+            }
+        
+        # Check module-specific "junior" permission (page="module" with actions="junior")
+        has_junior_permission = any(
+            perm.get("page") == module and 
+            (perm.get("actions") == "junior" or
+             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            for perm in permissions
+        )
+        
+        if has_junior_permission:
+            return {
+                "permission_level": "junior",
+                "is_super_admin": False
+            }
+        
+        # Default: users can only see their own records
+        return {
+            "permission_level": "own",
+            "is_super_admin": False
+        }
+        
+    except Exception as e:
+        print(f"Error getting hierarchical permissions for {user_id} in {module}: {e}")
+        return {
+            "permission_level": "own",
+            "is_super_admin": False
+        }
+
+# Removed JWT authentication - using Query parameter instead
+
+async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
+    """Get warning-specific permissions for a user"""
+    try:
+        # Get database instances from centralized source
+        from app.database import get_database_instances
+        db_instances = get_database_instances()
+        user_db = db_instances['users']
+        
+        user = await user_db.get_user(user_id)  # Changed from get_user_by_id
+        if not user:
+            return WarningPermissions()
+        
+        role_id = user.get('role_id')
+        if not role_id:
+            return WarningPermissions()
+
+        permissions = await get_local_user_permissions(user_id)
+
+        # Check if user is super admin (wildcard permissions)
+        is_super_admin = any(
+            (is_super_admin_permission(perm)) or
+            (perm.get("page") == "global" and perm.get("actions") == "*")
+            for perm in permissions
+        )
+        
+        # Super admin gets all permissions
+        if is_super_admin:
+            return WarningPermissions(
+                can_view_own=True,
+                can_view_all=True,
+                can_add=True,
+                can_edit=True,
+                can_delete=True,
+                can_export=True,
+                can_issue_warning=True,
+                can_view_mistakes=True,
+                can_create_mistake_category=True,
+                can_edit_mistake_category=True,
+                can_delete_mistake_category=True
+            )
+        
+        # Check for warnings admin permissions
+        has_warnings_admin = any(
+            perm.get("page") == "warnings" and ("warnings_admin" in str(perm.get("actions", "")) or perm.get("actions") == "*")
+            for perm in permissions
+        )
+        
+        # Define permission mapping for warnings - updated to new permission structure
+        warning_permissions = WarningPermissions(
+            can_view_own=True,  # All users can view their own warnings
+            can_view_all=has_warnings_admin,  # Only admin can view all warnings
+            can_add=has_warnings_admin,  # Only admin can add warnings
+            can_edit=has_warnings_admin,  # Only admin can edit warnings
+            can_delete=has_warnings_admin,  # Only admin can delete warnings
+            can_export=has_warnings_admin,  # Only admin can export warnings
+            # Granular action permissions - check specific action keys on warnings page
+            can_issue_warning=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'issue' in perm.get('actions', [])) or
+                    perm.get('actions') == 'issue'
+                ) for perm in permissions
+            ),
+            can_view_mistakes=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'view_mistakes' in perm.get('actions', [])) or
+                    perm.get('actions') == 'view_mistakes'
+                ) for perm in permissions
+            ),
+            can_create_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'create_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'create_mistake'
+                ) for perm in permissions
+            ),
+            can_edit_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'edit_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'edit_mistake'
+                ) for perm in permissions
+            ),
+            can_delete_mistake_category=has_warnings_admin or any(
+                perm.get('page') == 'warnings' and (
+                    (isinstance(perm.get('actions', []), list) and 'delete_mistake' in perm.get('actions', [])) or
+                    perm.get('actions') == 'delete_mistake'
+                ) for perm in permissions
+            ),
+        )
+        
+        return warning_permissions
+    except Exception:
+        return WarningPermissions()
+
+@router.get("/permissions")
+async def get_warning_permissions(user_id: str = Query(..., description="User _id making the request")):
+    """Get warning permissions for current user"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        return {"success": True, "permissions": permissions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get permissions: {str(e)}")
+
+@router.post("/", response_model=dict)
+async def create_warning(
+    warning_data: WarningCreate,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    notifications_db: NotificationsDB = Depends(get_notifications_db)
+):
+    """Create a new warning with hierarchical permission checking"""
+    try:
+        # Get hierarchical permissions for warnings
+        permissions = await get_hierarchical_permissions(user_id, "warnings")
+        permission_level = permissions["permission_level"]
+        
+        # Check if user can create warnings at all
+        if permission_level == "own":
+            raise HTTPException(status_code=403, detail="Not authorized to create warnings")
+        
+        # Check if user can issue warning to the target employee
+        target_user_id = warning_data.issued_to
+        can_issue_to_target = False
+        
+        if permission_level == "all":
+            # Users with "all" permission can issue to anyone
+            can_issue_to_target = True
+        elif permission_level == "junior":
+            # Users with "junior" permission can issue to subordinates only
+            subordinate_user_ids = await get_subordinate_users_for_warnings(user_id)
+            if target_user_id in subordinate_user_ids:
+                can_issue_to_target = True
+        
+        if not can_issue_to_target:
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only issue warnings to your subordinates. Contact admin for other employees."
+            )
+        
+        # Get employee info to determine department
+        employee = await user_db.get_user(warning_data.issued_to)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Create warning
+        warning_dict = {
+            "warning_type": warning_data.warning_type,
+            "issued_to": warning_data.issued_to,
+            "issued_by": user_id,
+            "department_id": employee.get('department_id'),
+            "penalty_amount": warning_data.penalty_amount,
+            "warning_message": warning_data.warning_message
+        }
+        
+        created_warning = await warnings_db.create_warning(warning_dict)
+        
+        # Create notification for the user who received the warning
+        try:
+            # Get issuer name
+            issuer = await user_db.get_user(user_id)
+            issuer_name = "Unknown"
+            if issuer:
+                first_name = issuer.get('first_name', '')
+                last_name = issuer.get('last_name', '')
+                issuer_name = f"{first_name} {last_name}".strip()
+                if not issuer_name:
+                    issuer_name = issuer.get('username', 'Unknown')
+            
+            # Add a notification for the employee
+            warning_with_id = {**warning_dict, "_id": created_warning["id"], "reason": warning_dict.get("warning_message", "")}
+            await notifications_db.create_warning_notification(
+                user_id=warning_data.issued_to,
+                warning_data=warning_with_id,
+                created_by=user_id,
+                created_by_name=issuer_name
+            )
+            print(f"[DEBUG] Created warning notification for user {warning_data.issued_to}")
+        except Exception as e:
+            print(f"[ERROR] Failed to create notification: {e}")
+        
+        return {
+            "success": True,
+            "message": "Warning created successfully",
+            "warning_id": created_warning["id"]  # Changed from _id to id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create warning: {str(e)}")
+
+@router.get("/user/{user_id}", response_model=WarningListResponse)
+async def get_user_warnings(
+    user_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    requesting_user_id: str = Query(..., description="User _id making the request", alias="user_id"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get warnings issued to a specific user - permission-based visibility"""
+    try:
+        # Check user permissions
+        permissions = await get_local_user_permissions(requesting_user_id)
+
+        # Check if requesting user is super admin
+        is_super_admin = any(
+            is_super_admin_permission(perm)
+            for perm in permissions
+        )
+        
+        # Check if requesting user has warnings_admin permission
+        has_warnings_admin = any(
+            perm.get("page") == "warnings" and 
+            (perm.get("actions") == "*" or 
+             (isinstance(perm.get("actions"), list) and "*" in perm.get("actions", [])))
+            for perm in permissions
+        )
+        
+        # Check if requesting user has junior permission for hierarchical access
+        has_view_junior = any(
+            perm.get("page") == "warnings" and 
+            (perm.get("actions") == "junior" or
+             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            for perm in permissions
+        )
+        
+        # Hierarchical permission check
+        can_view_user = False
+        if user_id == requesting_user_id:
+            # Users can always view their own warnings
+            can_view_user = True
+        elif is_super_admin or has_warnings_admin:
+            # Super admin and warnings admin can view any user's warnings
+            can_view_user = True
+        elif has_view_junior:
+            # Users with junior can view subordinate warnings
+            subordinate_user_ids = await get_subordinate_users_for_warnings(requesting_user_id)
+            if user_id in subordinate_user_ids:
+                can_view_user = True
+        
+        if not can_view_user:
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only view your own warnings or subordinate warnings with proper permissions."
+            )
+        
+        # Build filter to get warnings issued to this specific user
+        # Convert user_id to ObjectId for database comparison
+        from bson import ObjectId
+        try:
+            user_object_id = ObjectId(user_id)
+        except:
+            user_object_id = user_id  # Fallback to string if conversion fails
+            
+        filter_dict = {"issued_to": user_object_id}
+        
+        # Get warnings
+        skip = (page - 1) * per_page
+        warnings = await warnings_db.get_all_warnings(filter_dict, per_page, skip)
+        
+        # Get total count
+        total = await warnings_db.get_warning_count(filter_dict)
+        
+        # Format response
+        warning_list = []
+        for warning in warnings:
+            # Extract user IDs from the warning
+            issued_to_id = warning.get("issued_to")
+            issued_by_id = warning.get("issued_by")
+            
+            # Ensure IDs are strings for user lookup
+            if issued_to_id:
+                issued_to_id = str(issued_to_id)
+            if issued_by_id:
+                issued_by_id = str(issued_by_id)
+            
+            # Look up user names
+            issued_to_name = "Unknown"
+            issued_by_name = "Unknown"
+            
+            if issued_to_id:
+                user = await user_db.get_user(issued_to_id)
+                if user:
+                    first_name = user.get("first_name", "")
+                    last_name = user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_to_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_to_name = user.get("name", user.get("username", "Unknown"))
+            
+            if issued_by_id:
+                user = await user_db.get_user(issued_by_id)
+                if user:
+                    first_name = user.get("first_name", "")
+                    last_name = user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_by_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_by_name = user.get("name", user.get("username", "Unknown"))
+            
+            # Get department name
+            department_name = "Unknown Department"
+            department_id = warning.get("department_id")
+            if department_id:
+                department_id = str(department_id)
+                department = await department_db.get_department(department_id)
+                if department:
+                    department_name = department.get("name", "Unknown Department")
+            
+            warning_response = WarningResponse(
+                id=warning["id"],
+                warning_type=warning["warning_type"],
+                issued_to=issued_to_id or "",
+                issued_to_name=issued_to_name,
+                issued_by=issued_by_id or "",
+                issued_by_name=issued_by_name,
+                department_id=str(warning.get("department_id")) if warning.get("department_id") else None,
+                department_name=department_name,
+                penalty_amount=warning["penalty_amount"],
+                warning_message=warning["warning_message"],
+                issued_date=warning.get("issued_date", warning["created_at"]),
+                created_at=warning["created_at"],
+                updated_at=warning["updated_at"],
+                is_waived=warning.get("is_waived", False),
+                waived_by=warning.get("waived_by"),
+                waived_at=warning.get("waived_at"),
+                status=warning.get("status"),
+                employee_status=warning.get("employee_status"),
+                is_acknowledged=warning.get("is_acknowledged", False),
+                acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+                employee_remark=warning.get("employee_remark"),
+            )
+            warning_list.append(warning_response)
+        
+        total_pages = (total + per_page - 1) // per_page
+        
+        return WarningListResponse(
+            warnings=warning_list,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            stats=WarningStats(
+                total_warnings=total,
+                most_frequent_warning_type="N/A",
+                most_frequent_warning_count=0,
+                total_penalties=sum(w.penalty_amount for w in warning_list),
+                employee_with_most_warnings="N/A",
+                employee_with_most_warnings_count=0
+            )
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get user warnings: {str(e)}")
+
+@router.get("/", response_model=WarningListResponse)
+async def get_warnings(
+    department_id: Optional[str] = Query(None),
+    employee_id: Optional[str] = Query(None),
+    warning_type: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    user_id: str = Query(..., description="User _id making the request"),
+    my_warnings: Optional[bool] = Query(False, description="Filter to show only warnings issued to the requesting user"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get warnings with filtering and pagination - permission-based visibility"""
+    try:
+        # Get hierarchical permissions for warnings
+        permissions = await get_hierarchical_permissions(user_id, "warnings")
+        permission_level = permissions["permission_level"]
+        
+        # Build filter based on hierarchical permissions
+        filter_dict = {}
+        
+        # Convert user_id to ObjectId for database comparison
+        from bson import ObjectId
+        try:
+            user_object_id = ObjectId(user_id)
+        except:
+            user_object_id = user_id  # Fallback to string if conversion fails
+        
+        # Apply permission-based filtering
+        if permission_level == "all":
+            # Users with "all" permission can see all warnings
+            pass  # No filter restriction
+        elif permission_level == "junior":
+            # Users with "junior" permission can see their own warnings + subordinate warnings
+            subordinate_user_ids = await get_subordinate_users_for_warnings(user_id)
+            
+            # Include user's own warnings and subordinate warnings
+            allowed_user_ids = [user_object_id] + subordinate_user_ids
+            
+            # Convert string IDs to ObjectIds for subordinates
+            allowed_object_ids = []
+            for uid in allowed_user_ids:
+                try:
+                    if isinstance(uid, str):
+                        allowed_object_ids.append(ObjectId(uid))
+                    else:
+                        allowed_object_ids.append(uid)
+                except:
+                    allowed_object_ids.append(uid)
+            
+            filter_dict["issued_to"] = {"$in": allowed_object_ids}
+        else:  # permission_level == "own"
+            # Users with "own" permission can only see their own warnings
+            filter_dict["issued_to"] = user_object_id
+        
+        # Special case: if my_warnings is True, always show warnings issued to the requesting user only
+        if my_warnings:
+            filter_dict["issued_to"] = user_object_id
+        
+        # Apply additional filters
+        if department_id:
+            filter_dict["department_id"] = department_id
+        if employee_id and not my_warnings:
+            # Only allow filtering by other employees if user has "all" or "junior" permissions
+            if permission_level in ["all", "junior"]:
+                # Convert employee_id to ObjectId for database comparison
+                try:
+                    employee_object_id = ObjectId(employee_id)
+                except:
+                    employee_object_id = employee_id  # Fallback to string if conversion fails
+                
+                # If we already have issued_to filter from permission logic, we need to intersect
+                existing_issued_to = filter_dict.get("issued_to")
+                if existing_issued_to:
+                    # If we have hierarchical permissions, check if requested employee_id is in allowed list
+                    if isinstance(existing_issued_to, dict) and "$in" in existing_issued_to:
+                        # Check if the requested employee is in the allowed list
+                        if employee_object_id in existing_issued_to["$in"]:
+                            filter_dict["issued_to"] = employee_object_id
+                        # If not in allowed list, keep the existing filter (ignore the employee_id request)
+                    else:
+                        # Simple case: only replace if it's the same user or admin
+                        if existing_issued_to == employee_object_id or permission_level == "all":
+                            filter_dict["issued_to"] = employee_object_id
+                else:
+                    # No existing filter, safe to add
+                    filter_dict["issued_to"] = employee_object_id
+        if warning_type:
+            filter_dict["warning_type"] = warning_type
+        if start_date:
+            filter_dict["start_date"] = start_date
+        if end_date:
+            filter_dict["end_date"] = end_date
+        
+        # Get warnings
+        skip = (page - 1) * per_page
+        warnings = await warnings_db.get_all_warnings(filter_dict, per_page, skip)
+        
+        # Get total count
+        total = await warnings_db.get_warning_count(filter_dict)
+        
+        # Get statistics
+        stats = await warnings_db.get_warning_statistics(filter_dict)
+        
+        # Get employee name for the employee with most warnings
+        employee_with_most_warnings_name = None
+        if stats.get("employee_with_most_warnings_id"):
+            employee = await user_db.get_user(stats["employee_with_most_warnings_id"])
+            if employee:
+                # Construct employee name from first_name and last_name
+                first_name = employee.get("first_name", "").strip()
+                last_name = employee.get("last_name", "").strip()
+                
+                if first_name and last_name:
+                    employee_with_most_warnings_name = f"{first_name} {last_name}"
+                elif first_name:
+                    employee_with_most_warnings_name = first_name
+                elif last_name:
+                    employee_with_most_warnings_name = last_name
+                else:
+                    # Fallback to username if no name fields available
+                    employee_with_most_warnings_name = employee.get("username", "Unknown")
+        
+        # Format stats for response
+        formatted_stats = {
+            "total_warnings": stats.get("total_warnings", 0),
+            "most_frequent_warning_type": stats.get("most_frequent_warning_type", "None"),
+            "most_frequent_warning_count": stats.get("most_frequent_warning_count", 0),
+            "total_penalties": stats.get("total_penalties", 0),
+            "employee_with_most_warnings": employee_with_most_warnings_name,
+            "employee_with_most_warnings_count": stats.get("employee_with_most_warnings_count", 0)
+        }
+        
+        # Format response
+        warning_list = []
+        for warning in warnings:
+            # Extract user IDs from the warning - they should be strings after conversion
+            issued_to_id = warning.get("issued_to")
+            issued_by_id = warning.get("issued_by")
+            
+            # Ensure IDs are strings for user lookup
+            if issued_to_id:
+                issued_to_id = str(issued_to_id)
+            if issued_by_id:
+                issued_by_id = str(issued_by_id)
+            
+            # Look up user names
+            issued_to_name = "Unknown"
+            issued_by_name = "Unknown"
+            
+            if issued_to_id:
+                user = await user_db.get_user(issued_to_id)
+                if user:
+                    # Construct full name from first_name and last_name
+                    first_name = user.get("first_name", "")
+                    last_name = user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_to_name = f"{first_name} {last_name}".strip()
+                    else:
+                        # Fallback to name or username if first/last names not available
+                        issued_to_name = user.get("name", user.get("username", "Unknown"))
+                else:
+                    # User not found for issued_to_id
+                    pass
+            
+            if issued_by_id:
+                user = await user_db.get_user(issued_by_id)
+                if user:
+                    # Construct full name from first_name and last_name
+                    first_name = user.get("first_name", "")
+                    last_name = user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_by_name = f"{first_name} {last_name}".strip()
+                    else:
+                        # Fallback to name or username if first/last names not available
+                        issued_by_name = user.get("name", user.get("username", "Unknown"))
+                else:
+                    # User not found for issued_by_id
+                    pass
+            
+            # Get department name
+            department_name = "Unknown Department"
+            department_id = warning.get("department_id")
+            if department_id:
+                department_id = str(department_id)
+                department = await department_db.get_department(department_id)
+                if department:
+                    department_name = department.get("name", "Unknown Department")
+            
+            warning_response = WarningResponse(
+                id=warning["id"],
+                warning_type=warning["warning_type"],
+                issued_to=issued_to_id or "",
+                issued_to_name=issued_to_name,
+                issued_by=issued_by_id or "",
+                issued_by_name=issued_by_name,
+                department_id=str(warning.get("department_id")) if warning.get("department_id") else None,
+                department_name=department_name,
+                penalty_amount=warning["penalty_amount"],
+                warning_message=warning["warning_message"],
+                issued_date=warning.get("issued_date", warning["created_at"]),
+                created_at=warning["created_at"],
+                updated_at=warning["updated_at"],
+                is_waived=warning.get("is_waived", False),
+                waived_by=warning.get("waived_by"),
+                waived_at=warning.get("waived_at"),
+                status=warning.get("status"),
+                employee_status=warning.get("employee_status"),
+                is_acknowledged=warning.get("is_acknowledged", False),
+                acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+                employee_remark=warning.get("employee_remark"),
+            )
+            warning_list.append(warning_response)
+        
+        total_pages = (total + per_page - 1) // per_page
+        
+        return WarningListResponse(
+            warnings=warning_list,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            stats=WarningStats(**formatted_stats)
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get warnings: {str(e)}")
+
+
+# ─── Warning Acknowledgment Endpoints (must be BEFORE /{warning_id} catch-all) ─
+
+@router.get("/pending-acknowledgment")
+async def get_pending_acknowledgment_warnings(
+    user_id: str = Query(..., description="User ID to fetch pending warnings for"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get all warnings issued to user that are pending acknowledgment"""
+    try:
+        warnings = await warnings_db.get_unacknowledged_warnings(user_id)
+        total_warnings = await warnings_db.get_total_warning_count(user_id)
+
+        result = []
+        for w in warnings:
+            issuer = await user_db.get_user(w.get("issued_by", ""))
+            issuer_name = "Unknown"
+            if issuer:
+                first = issuer.get("first_name", "")
+                last = issuer.get("last_name", "")
+                issuer_name = f"{first} {last}".strip() or issuer.get("username", "Unknown")
+
+            warning_number = await warnings_db.get_warning_serial_number(w["id"], user_id)
+
+            result.append({
+                "id": w["id"],
+                "warning_type": w.get("warning_type", ""),
+                "warning_message": w.get("warning_message", ""),
+                "penalty_amount": w.get("penalty_amount", 0),
+                "issued_by_name": issuer_name,
+                "issued_date": str(w.get("issued_date", "")),
+                "created_at": str(w.get("created_at", "")),
+                "warning_number": warning_number,
+                "total_warnings": total_warnings
+            })
+
+        return {"success": True, "warnings": result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pending warnings: {str(e)}")
+
+
+@router.get("/{warning_id}", response_model=WarningResponse)
+async def get_warning(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get a specific warning by ID"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+        
+        # Check permissions
+        if not permissions.can_view_all and warning["issued_to"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this warning")
+        
+        # Get user names with first_name and last_name
+        issued_to_name = "Unknown"
+        issued_by_name = "Unknown"
+        
+        issued_to_user = await user_db.get_user(warning["issued_to"])
+        if issued_to_user:
+            first_name = issued_to_user.get("first_name", "")
+            last_name = issued_to_user.get("last_name", "")
+            if first_name or last_name:
+                issued_to_name = f"{first_name} {last_name}".strip()
+            else:
+                issued_to_name = issued_to_user.get("name", issued_to_user.get("username", "Unknown"))
+        
+        issued_by_user = await user_db.get_user(warning["issued_by"])
+        if issued_by_user:
+            first_name = issued_by_user.get("first_name", "")
+            last_name = issued_by_user.get("last_name", "")
+            if first_name or last_name:
+                issued_by_name = f"{first_name} {last_name}".strip()
+            else:
+                issued_by_name = issued_by_user.get("name", issued_by_user.get("username", "Unknown"))
+        
+        # Get department name
+        department_name = "Unknown Department"
+        if warning.get("department_id"):
+            department = await department_db.get_department(warning["department_id"])
+            if department:
+                department_name = department["name"]
+        
+        return WarningResponse(
+            id=warning["id"],
+            warning_type=warning["warning_type"],
+            issued_to=warning["issued_to"],
+            issued_to_name=issued_to_name,
+            issued_by=warning["issued_by"],
+            issued_by_name=issued_by_name,
+            department_id=warning.get("department_id"),
+            department_name=department_name,
+            penalty_amount=warning["penalty_amount"],
+            warning_message=warning["warning_message"],
+            issued_date=warning.get("issued_date", warning["created_at"]),
+            created_at=warning["created_at"],
+            updated_at=warning["updated_at"],
+            is_waived=warning.get("is_waived", False),
+            waived_by=warning.get("waived_by"),
+            waived_at=warning.get("waived_at"),
+            status=warning.get("status"),
+            employee_status=warning.get("employee_status"),
+            is_acknowledged=warning.get("is_acknowledged", False),
+            acknowledged_at=str(warning.get("acknowledged_at")) if warning.get("acknowledged_at") else None,
+            employee_remark=warning.get("employee_remark"),
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get warning: {str(e)}")
+
+@router.put("/{warning_id}", response_model=dict)
+async def update_warning(
+    warning_id: str,
+    warning_data: WarningUpdate,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update a warning"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_edit:
+            raise HTTPException(status_code=403, detail="Not authorized to edit warnings")
+        
+        # Get existing warning
+        existing_warning = await warnings_db.get_warning_by_id(warning_id)
+        if not existing_warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+        
+        # Prepare update data
+        update_data = {}
+        if warning_data.warning_type is not None:
+            update_data["warning_type"] = warning_data.warning_type
+        if warning_data.penalty_amount is not None:
+            update_data["penalty_amount"] = warning_data.penalty_amount
+        if warning_data.warning_message is not None:
+            update_data["warning_message"] = warning_data.warning_message
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No data provided for update")
+        
+        # Update warning
+        success = await warnings_db.update_warning(warning_id, update_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update warning")
+        
+        return {
+            "success": True,
+            "message": "Warning updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update warning: {str(e)}")
+
+@router.delete("/{warning_id}", response_model=dict)
+async def delete_warning(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a warning"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_delete:
+            raise HTTPException(status_code=403, detail="Not authorized to delete warnings")
+        
+        # Check if warning exists
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+        
+        # Delete warning
+        success = await warnings_db.delete_warning(warning_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete warning")
+        
+        return {
+            "success": True,
+            "message": "Warning deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete warning: {str(e)}")
+
+@router.patch("/{warning_id}/waive", response_model=dict)
+async def waive_penalty(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Waive the penalty for a specific warning (admin action)"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_edit:
+            raise HTTPException(status_code=403, detail="Not authorized to waive penalties")
+
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+
+        update_data = {
+            "is_waived": True,
+            "waived_by": user_id,
+            "waived_at": get_ist_now().isoformat()
+        }
+        result = await warnings_db.update_warning(warning_id, update_data)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to waive penalty")
+
+        return {"success": True, "message": "Penalty waived successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to waive penalty: {str(e)}")
+
+@router.patch("/{warning_id}/reinstate", response_model=dict)
+async def reinstate_penalty(
+    warning_id: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Reinstate the penalty for a previously waived warning (admin action)"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_edit:
+            raise HTTPException(status_code=403, detail="Not authorized to reinstate penalties")
+
+        warning = await warnings_db.get_warning_by_id(warning_id)
+        if not warning:
+            raise HTTPException(status_code=404, detail="Warning not found")
+
+        update_data = {
+            "is_waived": False,
+            "waived_by": None,
+            "waived_at": None
+        }
+        result = await warnings_db.update_warning(warning_id, update_data)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to reinstate penalty")
+
+        return {"success": True, "message": "Penalty reinstated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reinstate penalty: {str(e)}")
+
+@router.get("/penalties/employee/{employee_id}", response_model=dict)
+async def get_employee_penalties(
+    employee_id: str,
+    month: int = Query(..., ge=1, le=12, description="Month number (1-12)"),
+    year: int = Query(..., ge=2020, description="Year"),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get active (non-waived) warning penalties for an employee in a given month/year"""
+    try:
+        from datetime import date
+        import calendar
+
+        # Date range for the month
+        first_day = datetime(year, month, 1)
+        last_day_num = calendar.monthrange(year, month)[1]
+        last_day = datetime(year, month, last_day_num, 23, 59, 59)
+
+        # Fetch all warnings for this employee issued UP TO end of selected month
+        # We do NOT filter by start_date so warnings from previous months still
+        # contribute to deductions until they are explicitly waived.
+        filters = {
+            "employee_id": employee_id,
+            "end_date": last_day.strftime("%Y-%m-%d")
+        }
+        all_warnings = await warnings_db.get_all_warnings(filters=filters, limit=500)
+
+        # Filter: only those with a penalty amount AND not waived
+        penalty_warnings = []
+        total_penalty = 0
+        for w in all_warnings:
+            amount = w.get("penalty_amount") or 0
+            try:
+                amount = float(amount)
+            except Exception:
+                amount = 0
+            if amount > 0 and not w.get("is_waived", False):
+                penalty_warnings.append({
+                    "id": w.get("id") or w.get("_id"),
+                    "warning_type": w.get("warning_type", ""),
+                    "warning_message": w.get("warning_message", ""),
+                    "penalty_amount": amount,
+                    "issued_date": w.get("issued_date", ""),
+                    "is_waived": False
+                })
+                total_penalty += amount
+
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "month": month,
+            "year": year,
+            "total_penalty": total_penalty,
+            "penalties": penalty_warnings
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get employee penalties: {str(e)}")
+
+
+@router.get("/penalties/batch", response_model=dict)
+async def get_batch_employee_penalties(
+    employee_ids: str = Query(..., description="Comma-separated employee MongoDB _id values"),
+    month: int = Query(..., ge=1, le=12, description="Month number (1-12)"),
+    year: int = Query(..., ge=2020, description="Year"),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get active (non-waived) warning penalties for multiple employees in a given month/year.
+    Returns a map of employee_id -> {total_penalty, penalties}."""
+    try:
+        import calendar as _calendar
+
+        ids = [eid.strip() for eid in employee_ids.split(',') if eid.strip()]
+        if not ids:
+            return {"success": True, "data": {}}
+
+        last_day_num = _calendar.monthrange(year, month)[1]
+        end_dt = datetime(year, month, last_day_num, 23, 59, 59)
+
+        # Build ObjectId list
+        oid_list = []
+        valid_ids = []
+        for eid in ids:
+            try:
+                oid_list.append(ObjectId(eid))
+                valid_ids.append(eid)
+            except Exception:
+                pass
+
+        if not oid_list:
+            return {"success": True, "data": {}}
+
+        # Single DB query for all employees at once
+        cursor = warnings_db.collection.find({
+            "issued_to": {"$in": oid_list},
+            "penalty_amount": {"$gt": 0},
+            "created_at": {"$lte": end_dt}
+        })
+
+        result_map: dict = {}
+        async for w in cursor:
+            # Skip waived warnings
+            if w.get("is_waived", False):
+                continue
+
+            emp_oid = w.get("issued_to")
+            emp_id_str = str(emp_oid) if emp_oid else ""
+            if not emp_id_str:
+                continue
+
+            amount = 0.0
+            try:
+                amount = float(w.get("penalty_amount", 0))
+            except Exception:
+                pass
+
+            if amount <= 0:
+                continue
+
+            if emp_id_str not in result_map:
+                result_map[emp_id_str] = {"total_penalty": 0.0, "penalties": []}
+
+            issued_date_raw = w.get("issued_date") or w.get("created_at", "")
+            issued_date_str = issued_date_raw.isoformat() if hasattr(issued_date_raw, "isoformat") else str(issued_date_raw)
+
+            result_map[emp_id_str]["total_penalty"] += amount
+            result_map[emp_id_str]["penalties"].append({
+                "id": str(w.get("_id", "")),
+                "warning_type": w.get("warning_type", ""),
+                "warning_message": w.get("warning_message", ""),
+                "penalty_amount": amount,
+                "issued_date": issued_date_str,
+                "is_waived": False
+            })
+
+        return {"success": True, "data": result_map}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get batch penalties: {str(e)}")
+
+
+@router.get("/stats/summary")
+async def get_warning_statistics(
+    department_id: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db)
+):
+    """Get warning statistics"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        
+        # Allow if user has view permission OR if user is super admin OR if user exists
+        user = await user_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=403, detail="User not found")
+            
+        # Check if user has warning view permission or is super admin
+        if not permissions.can_view_all:
+            # Allow if user exists but check if they have general permissions
+            user_permissions = await get_local_user_permissions(user_id)
+            is_super_admin = any(
+                is_super_admin_permission(perm)
+                for perm in user_permissions
+            )
+            
+            if not is_super_admin:
+                raise HTTPException(status_code=403, detail="Not authorized to view statistics")
+        
+        filter_dict = {}
+        if department_id:
+            filter_dict["department_id"] = department_id
+        if start_date:
+            filter_dict["start_date"] = start_date
+        if end_date:
+            filter_dict["end_date"] = end_date
+        
+        stats = await warnings_db.get_warning_statistics(filter_dict)
+        
+        # Get employee name for the employee with most warnings
+        employee_with_most_warnings_name = None
+        if stats.get("employee_with_most_warnings_id"):
+            employee = await user_db.get_user(stats["employee_with_most_warnings_id"])
+            if employee:
+                employee_with_most_warnings_name = employee.get("name", "Unknown")
+        
+        # Format stats for response
+        formatted_stats = {
+            "total_warnings": stats.get("total_warnings", 0),
+            "most_frequent_warning_type": stats.get("most_frequent_warning_type", "None"),
+            "most_frequent_warning_count": stats.get("most_frequent_warning_count", 0),
+            "total_penalties": stats.get("total_penalties", 0),
+            "employee_with_most_warnings": employee_with_most_warnings_name,
+            "employee_with_most_warnings_count": stats.get("employee_with_most_warnings_count", 0)
+        }
+        
+        return {
+            "success": True,
+            "stats": WarningStats(**formatted_stats)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+
+@router.get("/ranking/employees", response_model=WarningRankingResponse)
+async def get_employee_warning_ranking(
+    department_id: Optional[str] = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get employee warning ranking with permission-based filtering"""
+    try:
+        # Get user permissions
+        permissions = await get_user_warning_permissions(user_id)
+        user_permissions = await get_local_user_permissions(user_id)
+        
+        # Check if user is super admin
+        is_super_admin = any(
+            is_super_admin_permission(perm)
+            for perm in user_permissions
+        )
+        
+        # Check if user has warnings_admin permission
+        has_warnings_admin = permissions.can_view_all
+        
+        # Check if requesting user has junior permission for hierarchical access
+        has_view_junior = any(
+            perm.get("page") == "warnings" and 
+            (perm.get("actions") == "junior" or
+             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            for perm in user_permissions
+        )
+        
+        # Apply permission-based filtering
+        filter_dict = {}
+        if department_id:
+            filter_dict["department_id"] = department_id
+            
+        # Apply hierarchical permission filtering
+        if is_super_admin or has_warnings_admin:
+            # Super admin and warnings admin can see all rankings - no additional filter needed
+            pass
+        elif has_view_junior:
+            # Users with junior can see their own + subordinate rankings
+            subordinate_user_ids = await get_subordinate_users_for_warnings(user_id)
+            allowed_user_ids = [user_id] + subordinate_user_ids
+            
+            # Convert to ObjectIds for database query
+            from bson import ObjectId
+            allowed_object_ids = [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]
+            filter_dict["employee_id"] = {"$in": allowed_object_ids}
+        else:
+            # Regular users can only see their own ranking
+            from bson import ObjectId
+            try:
+                user_object_id = ObjectId(user_id)
+            except:
+                user_object_id = user_id  # Fallback to string if conversion fails
+                
+            filter_dict["employee_id"] = user_object_id  # Only show this user's ranking
+            limit = 1  # Only need to return one ranking
+        
+        rankings = await warnings_db.get_employee_warning_ranking(limit, filter_dict)
+        
+        # Format rankings with user and department names
+        formatted_rankings = []
+        for i, ranking in enumerate(rankings):
+            employee_id = str(ranking["employee_id"])
+            user = await user_db.get_user(employee_id)
+            department_name = "Unknown Department"
+            
+            # Construct employee name from first_name and last_name
+            employee_name = "Unknown"
+            if user:
+                first_name = user.get("first_name", "").strip()
+                last_name = user.get("last_name", "").strip()
+                
+                if first_name and last_name:
+                    employee_name = f"{first_name} {last_name}"
+                elif first_name:
+                    employee_name = first_name
+                elif last_name:
+                    employee_name = last_name
+                else:
+                    # Fallback to username if no name fields available
+                    employee_name = user.get("username", "Unknown")
+            
+            if user and user.get("department_id"):
+                department_id = str(user["department_id"])
+                department = await department_db.get_department(department_id)
+                if department:
+                    department_name = department.get("name", "Unknown Department")
+            
+            formatted_ranking = WarningRanking(
+                rank=i + 1,
+                employee_id=employee_id,
+                employee_name=employee_name,
+                department_name=department_name,
+                total_warnings=ranking["total_warnings"],
+                total_penalty=ranking["total_penalty"]
+            )
+            formatted_rankings.append(formatted_ranking)
+        
+        return WarningRankingResponse(rankings=formatted_rankings)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get rankings: {str(e)}")
+
+@router.post("/check-duplicate", response_model=DuplicateWarningResponse)
+async def check_duplicate_warning(
+    employee_id: str = Query(...),
+    warning_type: str = Query(...),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Check if a duplicate warning exists for an employee"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_add:
+            raise HTTPException(status_code=403, detail="Not authorized to check duplicates")
+        
+        duplicate_check = await warnings_db.check_duplicate_warning(employee_id, warning_type)
+        
+        if duplicate_check["has_duplicate"]:
+            existing_warning = duplicate_check["existing_warning"]
+            
+            # Get user names for the existing warning - convert ObjectId to string if needed
+            issued_to_id = str(existing_warning["issued_to"]) if existing_warning["issued_to"] else None
+            issued_by_id = str(existing_warning["issued_by"]) if existing_warning["issued_by"] else None
+            
+            # Construct user names from first_name and last_name
+            issued_to_name = "Unknown"
+            issued_by_name = "Unknown"
+            
+            if issued_to_id:
+                issued_to_user = await user_db.get_user(issued_to_id)
+                if issued_to_user:
+                    first_name = issued_to_user.get("first_name", "")
+                    last_name = issued_to_user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_to_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_to_name = issued_to_user.get("name", issued_to_user.get("username", "Unknown"))
+            
+            if issued_by_id:
+                issued_by_user = await user_db.get_user(issued_by_id)
+                if issued_by_user:
+                    first_name = issued_by_user.get("first_name", "")
+                    last_name = issued_by_user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_by_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_by_name = issued_by_user.get("name", issued_by_user.get("username", "Unknown"))
+            
+            # Get department name - convert ObjectId to string if needed
+            department_name = "Unknown Department"
+            if existing_warning.get("department_id"):
+                department_id = str(existing_warning["department_id"])
+                department = await department_db.get_department(department_id)
+                if department:
+                    department_name = department.get("name", "Unknown Department")
+            
+            warning_response = WarningResponse(
+                id=existing_warning["id"],  # Use id instead of _id
+                warning_type=existing_warning["warning_type"],
+                issued_to=issued_to_id,
+                issued_to_name=issued_to_user.get("name", "Unknown") if issued_to_user else "Unknown",
+                issued_by=issued_by_id,
+                issued_by_name=issued_by_user.get("name", "Unknown") if issued_by_user else "Unknown",
+                department_id=str(existing_warning["department_id"]) if existing_warning.get("department_id") else None,
+                department_name=department_name,
+                penalty_amount=existing_warning["penalty_amount"],
+                warning_message=existing_warning["warning_message"],
+                issued_date=existing_warning.get("issued_date", existing_warning["created_at"]),  # Use created_at as fallback
+                created_at=existing_warning["created_at"],
+                updated_at=existing_warning["updated_at"],
+                is_acknowledged=existing_warning.get("is_acknowledged", False),
+                acknowledged_at=str(existing_warning.get("acknowledged_at")) if existing_warning.get("acknowledged_at") else None,
+                employee_remark=existing_warning.get("employee_remark"),
+            )
+            
+            return DuplicateWarningResponse(
+                has_duplicate=True,
+                existing_warning=warning_response,
+                message=f"Employee already has a {warning_type} warning today."
+            )
+        else:
+            return DuplicateWarningResponse(
+                has_duplicate=False,
+                existing_warning=None,
+                message="No duplicate warning found."
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check duplicate: {str(e)}")
+
+@router.get("/similar-warnings/{employee_id}/{warning_type}")
+async def get_similar_warnings(
+    employee_id: str,
+    warning_type: str,
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get all warnings for the same employee with the same warning type"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        if not permissions.can_view_all and not permissions.can_view_own:
+            raise HTTPException(status_code=403, detail="Not authorized to view warnings")
+        
+        # Get all warnings for this employee with this warning type
+        warnings_list = await warnings_db.get_warnings_by_employee_and_type(employee_id, warning_type)
+        
+        # Process warnings to add user and department names
+        processed_warnings = []
+        for warning in warnings_list:
+            # Get user names
+            issued_to_id = str(warning["issued_to"]) if warning["issued_to"] else None
+            issued_by_id = str(warning["issued_by"]) if warning["issued_by"] else None
+            
+            issued_to_name = "Unknown"
+            issued_by_name = "Unknown"
+            
+            if issued_to_id:
+                issued_to_user = await user_db.get_user(issued_to_id)
+                if issued_to_user:
+                    first_name = issued_to_user.get("first_name", "")
+                    last_name = issued_to_user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_to_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_to_name = issued_to_user.get("name", issued_to_user.get("username", "Unknown"))
+            
+            if issued_by_id:
+                issued_by_user = await user_db.get_user(issued_by_id)
+                if issued_by_user:
+                    first_name = issued_by_user.get("first_name", "")
+                    last_name = issued_by_user.get("last_name", "")
+                    if first_name or last_name:
+                        issued_by_name = f"{first_name} {last_name}".strip()
+                    else:
+                        issued_by_name = issued_by_user.get("name", issued_by_user.get("username", "Unknown"))
+            
+            # Get department name
+            department_name = "Unknown Department"
+            if warning.get("department_id"):
+                department_id = str(warning["department_id"])
+                department = await department_db.get_department(department_id)
+                if department:
+                    department_name = department.get("name", "Unknown Department")
+            
+            processed_warning = {
+                "id": warning["id"],
+                "warning_type": warning["warning_type"],
+                "issued_to": issued_to_id,
+                "issued_to_name": issued_to_name,
+                "issued_by": issued_by_id,
+                "issued_by_name": issued_by_name,
+                "department_id": str(warning["department_id"]) if warning.get("department_id") else None,
+                "department_name": department_name,
+                "penalty_amount": warning["penalty_amount"],
+                "warning_message": warning.get("warning_message", ""),
+                "issued_date": warning["created_at"],
+                "created_at": warning["created_at"],
+                "updated_at": warning.get("updated_at")
+            }
+            processed_warnings.append(processed_warning)
+        
+        return {
+            "success": True,
+            "warnings": processed_warnings,
+            "total": len(processed_warnings),
+            "message": f"Found {len(processed_warnings)} warnings for {warning_type}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get similar warnings: {str(e)}")
+
+@router.get("/export/csv")
+async def export_warnings_csv(
+    department_id: Optional[str] = Query(None),
+    employee_id: Optional[str] = Query(None),
+    warning_type: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    user_id: str = Query(..., description="User _id making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Export warnings to CSV"""
+    try:
+        permissions = await get_user_warning_permissions(user_id)
+        
+        # Allow if user has export permission OR is super admin
+        user = await user_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=403, detail="User not found")
+            
+        if not permissions.can_export:
+            # Check if user is super admin
+            user_permissions = await get_local_user_permissions(user_id)
+            is_super_admin = any(
+                is_super_admin_permission(perm)
+                for perm in user_permissions
+            )
+            
+            if not is_super_admin:
+                raise HTTPException(status_code=403, detail="Not authorized to export warnings")
+        
+        filter_dict = {}
+        if department_id:
+            filter_dict["department_id"] = department_id
+        if employee_id:
+            filter_dict["issued_to"] = employee_id
+        if warning_type:
+            filter_dict["warning_type"] = warning_type
+        if start_date:
+            filter_dict["start_date"] = start_date
+        if end_date:
+            filter_dict["end_date"] = end_date
+        
+        csv_data = await warnings_db.export_warnings_csv(filter_dict)
+        
+        # Enhance CSV data with employee and department names
+        enhanced_csv_data = []
+        for row in csv_data:
+            # Create enhanced row with better column order
+            enhanced_row = {}
+            
+            # Basic warning info
+            enhanced_row['Warning ID'] = row.get('Warning ID', '')
+            enhanced_row['Warning Type'] = row.get('Warning Type', '')
+            enhanced_row['Warning Message'] = row.get('Warning Message', '')
+            enhanced_row['Penalty Amount'] = row.get('Penalty Amount', 0)
+            
+            # Employee information
+            enhanced_row['Employee ID'] = row.get('Employee ID', '')
+            if row.get('Employee ID'):
+                employee = await user_db.get_user(row['Employee ID'])
+                if employee:
+                    first_name = employee.get("first_name", "").strip()
+                    last_name = employee.get("last_name", "").strip()
+                    
+                    if first_name and last_name:
+                        enhanced_row['Employee Name'] = f"{first_name} {last_name}"
+                    elif first_name:
+                        enhanced_row['Employee Name'] = first_name
+                    elif last_name:
+                        enhanced_row['Employee Name'] = last_name
+                    else:
+                        enhanced_row['Employee Name'] = employee.get("username", "Unknown")
+                else:
+                    enhanced_row['Employee Name'] = "Unknown"
+            else:
+                enhanced_row['Employee Name'] = "Unknown"
+            
+            # Department information
+            enhanced_row['Department ID'] = row.get('Department ID', '')
+            if row.get('Department ID'):
+                department = await department_db.get_department(row['Department ID'])
+                if department:
+                    enhanced_row['Department Name'] = department.get("name", "Unknown Department")
+                else:
+                    enhanced_row['Department Name'] = "Unknown Department"
+            else:
+                enhanced_row['Department Name'] = "Unknown Department"
+            
+            # Issued by information
+            enhanced_row['Issued By ID'] = row.get('Issued By ID', '')
+            if row.get('Issued By ID'):
+                issued_by = await user_db.get_user(row['Issued By ID'])
+                if issued_by:
+                    first_name = issued_by.get("first_name", "").strip()
+                    last_name = issued_by.get("last_name", "").strip()
+                    
+                    if first_name and last_name:
+                        enhanced_row['Issued By Name'] = f"{first_name} {last_name}"
+                    elif first_name:
+                        enhanced_row['Issued By Name'] = first_name
+                    elif last_name:
+                        enhanced_row['Issued By Name'] = last_name
+                    else:
+                        enhanced_row['Issued By Name'] = issued_by.get("username", "Unknown")
+                else:
+                    enhanced_row['Issued By Name'] = "Unknown"
+            else:
+                enhanced_row['Issued By Name'] = "Unknown"
+            
+            # Date information
+            enhanced_row['Issued Date'] = row.get('Issued Date', '')
+            enhanced_row['Created At'] = row.get('Created At', '')
+            enhanced_row['Updated At'] = row.get('Updated At', '')
+            
+            enhanced_csv_data.append(enhanced_row)
+        
+        return {
+            "success": True,
+            "csv_data": enhanced_csv_data,
+            "total_records": len(enhanced_csv_data),
+            "message": "Warnings exported successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export warnings: {str(e)}")
+
+# Additional utility endpoints
+
+@router.get("/types/list")
+async def get_warning_types(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available warning types from database"""
+    try:
+        # Try to get from database first
+        warning_types = await warnings_db.get_warning_types()
+        
+        # If no types in database, return default hardcoded types
+        if not warning_types:
+            warning_types = [
+                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
+                {"value": "Late Lunch", "label": "Late Lunch", "is_active": True},
+                {"value": "Abuse", "label": "Abuse", "is_active": True},
+                {"value": "Early Leave", "label": "Early Leave", "is_active": True}
+            ]
+        
+        # Filter only active types for dropdown
+        active_types = [t for t in warning_types if t.get('is_active', True)]
+        
+        return {
+            "success": True,
+            "warning_types": active_types
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get warning types: {str(e)}")
+
+@router.post("/types")
+async def create_warning_type(
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new warning type"""
+    try:
+        # Validate required fields
+        if not type_data.get('value'):
+            raise HTTPException(status_code=400, detail="Warning type value is required")
+        
+        # Check for duplicates
+        existing_types = await warnings_db.get_warning_types()
+        if any(t.get('value') == type_data['value'] for t in existing_types):
+            raise HTTPException(status_code=400, detail=f"Warning type '{type_data['value']}' already exists")
+        
+        # Add metadata
+        type_data['created_at'] = get_ist_now().isoformat()
+        type_data['created_by'] = user_id
+        type_data['is_active'] = type_data.get('is_active', True)
+        
+        # Create in database
+        type_id = await warnings_db.create_warning_type(type_data)
+        
+        return {
+            "success": True,
+            "id": type_id,
+            "message": "Warning type created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create warning type: {str(e)}")
+
+@router.put("/types/{type_id}")
+async def update_warning_type(
+    type_id: str,
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing warning type"""
+    try:
+        # Add metadata
+        type_data['updated_at'] = get_ist_now().isoformat()
+        type_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_warning_type(type_id, type_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning type not found")
+        
+        return {
+            "success": True,
+            "message": "Warning type updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update warning type: {str(e)}")
+
+@router.delete("/types/{type_id}")
+async def delete_warning_type(
+    type_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a warning type"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_warning_type(type_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning type not found")
+        
+        return {
+            "success": True,
+            "message": "Warning type deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete warning type: {str(e)}")
+
+# Mistake Types Management Endpoints
+
+@router.get("/mistake-types/list")
+async def get_mistake_types(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available mistake types from database"""
+    try:
+        # Try to get from database first
+        mistake_types = await warnings_db.get_mistake_types()
+        
+        # If no types in database, return default hardcoded types
+        if not mistake_types:
+            mistake_types = [
+                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
+                {"value": "Abuse", "label": "Abuse", "is_active": True},
+                {"value": "Early Leave", "label": "Early Leave", "is_active": True},
+                {"value": "Unauthorized Absence", "label": "Unauthorized Absence", "is_active": True}
+            ]
+        
+        # Filter only active types for dropdown
+        active_types = [t for t in mistake_types if t.get('is_active', True)]
+        
+        return {
+            "success": True,
+            "mistake_types": active_types
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get mistake types: {str(e)}")
+
+@router.post("/mistake-types")
+async def create_mistake_type(
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new mistake type"""
+    try:
+        # Validate required fields
+        if not type_data.get('value'):
+            raise HTTPException(status_code=400, detail="Mistake type value is required")
+        
+        # Check for duplicates
+        existing_types = await warnings_db.get_mistake_types()
+        if any(t.get('value') == type_data['value'] for t in existing_types):
+            raise HTTPException(status_code=400, detail=f"Mistake type '{type_data['value']}' already exists")
+        
+        # Add metadata
+        type_data['created_at'] = get_ist_now().isoformat()
+        type_data['created_by'] = user_id
+        type_data['is_active'] = type_data.get('is_active', True)
+        
+        # Create in database
+        type_id = await warnings_db.create_mistake_type(type_data)
+        
+        return {
+            "success": True,
+            "id": type_id,
+            "message": "Mistake type created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create mistake type: {str(e)}")
+
+@router.put("/mistake-types/{type_id}")
+async def update_mistake_type(
+    type_id: str,
+    type_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing mistake type"""
+    try:
+        # Add metadata
+        type_data['updated_at'] = get_ist_now().isoformat()
+        type_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_mistake_type(type_id, type_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Mistake type not found")
+        
+        return {
+            "success": True,
+            "message": "Mistake type updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update mistake type: {str(e)}")
+
+@router.delete("/mistake-types/{type_id}")
+async def delete_mistake_type(
+    type_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a mistake type"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_mistake_type(type_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Mistake type not found")
+        
+        return {
+            "success": True,
+            "message": "Mistake type deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete mistake type: {str(e)}")
+
+# Warning Actions Management Endpoints
+
+@router.get("/warning-actions/list")
+async def get_warning_actions(
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Get list of available warning actions from database"""
+    try:
+        # Try to get from database first
+        warning_actions = await warnings_db.get_warning_actions()
+        
+        # If no actions in database, return default hardcoded actions
+        if not warning_actions:
+            warning_actions = [
+                {"value": "Verbal Warning", "label": "Verbal Warning", "is_active": True},
+                {"value": "Written Warning", "label": "Written Warning", "is_active": True},
+                {"value": "Final Warning", "label": "Final Warning", "is_active": True},
+                {"value": "Suspension", "label": "Suspension", "is_active": True}
+            ]
+        
+        # Filter only active actions for dropdown
+        active_actions = [a for a in warning_actions if a.get('is_active', True)]
+        
+        return {
+            "success": True,
+            "warning_actions": active_actions
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get warning actions: {str(e)}")
+
+@router.post("/warning-actions")
+async def create_warning_action(
+    action_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Create a new warning action"""
+    try:
+        # Validate required fields
+        if not action_data.get('value'):
+            raise HTTPException(status_code=400, detail="Warning action value is required")
+        
+        # Check for duplicates
+        existing_actions = await warnings_db.get_warning_actions()
+        if any(a.get('value') == action_data['value'] for a in existing_actions):
+            raise HTTPException(status_code=400, detail=f"Warning action '{action_data['value']}' already exists")
+        
+        # Add metadata
+        action_data['created_at'] = get_ist_now().isoformat()
+        action_data['created_by'] = user_id
+        action_data['is_active'] = action_data.get('is_active', True)
+        
+        # Create in database
+        action_id = await warnings_db.create_warning_action(action_data)
+        
+        return {
+            "success": True,
+            "id": action_id,
+            "message": "Warning action created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create warning action: {str(e)}")
+
+@router.put("/warning-actions/{action_id}")
+async def update_warning_action(
+    action_id: str,
+    action_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Update an existing warning action"""
+    try:
+        # Add metadata
+        action_data['updated_at'] = get_ist_now().isoformat()
+        action_data['updated_by'] = user_id
+        
+        # Update in database
+        success = await warnings_db.update_warning_action(action_id, action_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning action not found")
+        
+        return {
+            "success": True,
+            "message": "Warning action updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update warning action: {str(e)}")
+
+@router.delete("/warning-actions/{action_id}")
+async def delete_warning_action(
+    action_id: str,
+    user_id: str = Query(..., description="User ID making the request"),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Delete a warning action"""
+    try:
+        # Delete from database
+        success = await warnings_db.delete_warning_action(action_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning action not found")
+        
+        return {
+            "success": True,
+            "message": "Warning action deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete warning action: {str(e)}")
+
+@router.get("/employees/list")
+async def get_employees_for_warnings(
+    department_id: Optional[str] = Query(None),
+    user_id: str = Query(..., description="User _id making the request"),
+    user_db: UsersDB = Depends(get_users_db),
+    department_db: DepartmentsDB = Depends(get_departments_db)
+):
+    """Get list of employees for warning assignment"""
+    try:
+        # permissions = get_user_warning_permissions(user_id)
+        
+        # # Allow if user has add permission OR if user is super admin OR if no specific permissions but user exists
+        # user = await user_db.get_user(user_id)
+        # if not user:
+        #     raise HTTPException(status_code=403, detail="User not found")
+            
+        # # Check if user has warning add permission or is super admin
+        # if not permissions.can_add:
+        #     # Allow if user exists but check if they have general permissions
+        #     user_permissions = get_local_user_permissions(user_id)
+        #     is_super_admin = any(
+        #         is_super_admin_permission(perm)
+        #         for perm in user_permissions
+        #     )
+            
+            # if not is_super_admin:
+            #     raise HTTPException(status_code=403, detail="Not authorized to access employee list")
+        
+        # Get all users (employees) - use list_users to get all users
+        users = await user_db.list_users()
+        
+        # Alternative: try get_employees first and fallback to list_users if empty
+        employees_only = await user_db.get_employees()
+        
+        # Use all users if no employees found with the flag
+        users_to_process = employees_only if employees_only else users
+        
+        # ✅ FILTER: Only include active employees — inactive employees should not appear in warning assignment
+        users_to_process = [
+            u for u in users_to_process 
+            if u.get("employee_status", "active") != "inactive" and u.get("is_active", True) != False
+        ]
+        
+        if not users_to_process:
+            return {
+                "success": True,
+                "employees": []
+            }
+        
+        employees = []
+        for user in users_to_process:
+            # Filter by department if specified
+            if department_id and user.get("department_id") != department_id:
+                continue
+            
+            # Construct full name from first_name and last_name
+            first_name = user.get("first_name", "").strip()
+            last_name = user.get("last_name", "").strip()
+            
+            if first_name and last_name:
+                full_name = f"{first_name} {last_name}"
+            elif first_name:
+                full_name = first_name
+            elif last_name:
+                full_name = last_name
+            else:
+                # Fallback to username if no name fields available
+                full_name = user.get("username", "Unknown")
+            
+            # Get department name - convert ObjectId to string if needed
+            department_name = "Unknown Department"
+            if user.get("department_id"):
+                try:
+                    department_id_str = str(user["department_id"])
+                    department = await department_db.get_department(department_id_str)
+                    if department:
+                        department_name = department.get("name", "Unknown Department")
+                except Exception as e:
+                    # Handle any ObjectId conversion errors
+                    pass
+            
+            employees.append({
+                "id": str(user["_id"]),
+                "name": full_name,
+                "email": user.get("email", ""),
+                "department_id": str(user["department_id"]) if user.get("department_id") else None,
+                "department_name": department_name
+            })
+        
+        return {
+            "success": True,
+            "employees": employees
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get employees: {str(e)}")
+
+
+# ─── Acknowledge Warning ─────────────────────────────────────────────────────
+class AcknowledgeRequest(BaseModel):
+    employee_remark: Optional[str] = None
+
+@router.post("/{warning_id}/acknowledge")
+async def acknowledge_warning(
+    warning_id: str,
+    user_id: str = Query(..., description="User ID acknowledging the warning"),
+    body: AcknowledgeRequest = AcknowledgeRequest(),
+    warnings_db: WarningDB = Depends(get_warnings_db)
+):
+    """Mark a warning as acknowledged by the recipient"""
+    try:
+        success = await warnings_db.acknowledge_warning(warning_id, user_id, employee_remark=body.employee_remark)
+        if not success:
+            raise HTTPException(status_code=404, detail="Warning not found or already acknowledged")
+        return {"success": True, "message": "Warning acknowledged successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to acknowledge warning: {str(e)}")

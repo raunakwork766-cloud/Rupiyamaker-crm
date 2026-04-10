@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Attachments Demo (Working)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JSZip for creating zip files and FileSaver.js for downloading them -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        .attachment-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            background-color: white;
+            padding: 1.5rem;
+            transition: box-shadow 0.3s ease;
+        }
+        .attachment-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .summary-box {
+            display: none; /* Initially hidden */
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(17, 24, 39, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 40;
+            display: none; /* Initially hidden */
+            align-items: center;
+            justify-content: center;
+        }
+        .file-card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+        .file-card {
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s ease-in-out;
+        }
+        .file-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-color: #3b82f6;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 120px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 50;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -60px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <h1 class="text-2xl font-bold text-gray-800 border-b pb-4 mb-6" style="border-color: #3b82f640;">Attachments</h1>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Attachment cards will be dynamically generated here -->
+                <div class="attachment-card" data-category="CIBIL REPORT">
+                     <h2 class="text-md font-semibold text-gray-700 mb-3">1. CIBIL REPORT</h2>
+                    <div class="upload-box space-y-3">
+                        <input type="password" placeholder="Password (optional)" class="password-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <input type="file" multiple class="file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    </div>
+                    <div class="summary-box items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                        <div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><div><h3 class="font-bold text-gray-800 file-count-text"></h3><p class="text-sm text-gray-500">Ready to view or download.</p></div></div><div class="flex space-x-2 mt-2 sm:mt-0"><button class="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800">Manage</button></div>
+                    </div>
+                </div>
+                <div class="attachment-card" data-category="PASSPORT SIZE PHOTO">
+                    <h2 class="text-md font-semibold text-gray-700 mb-3">2. PASSPORT SIZE PHOTO</h2>
+                    <div class="upload-box space-y-3">
+                        <input type="password" placeholder="Password (optional)" class="password-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <input type="file" multiple class="file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    </div>
+                    <div class="summary-box items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                        <div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><div><h3 class="font-bold text-gray-800 file-count-text"></h3><p class="text-sm text-gray-500">Ready to view or download.</p></div></div><div class="flex space-x-2 mt-2 sm:mt-0"><button class="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800">Manage</button></div>
+                    </div>
+                </div>
+                <div class="attachment-card" data-category="PAN CARD"><h2 class="text-md font-semibold text-gray-700 mb-3">3. PAN CARD</h2><div class="upload-box space-y-3"><input type="password" placeholder="Password (optional)" class="password-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><input type="file" multiple class="file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"></div><div class="summary-box items-center justify-between p-4 bg-gray-50 rounded-lg border"><div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><div><h3 class="font-bold text-gray-800 file-count-text"></h3><p class="text-sm text-gray-500">Ready to view or download.</p></div></div><div class="flex space-x-2 mt-2 sm:mt-0"><button class="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800">Manage</button></div></div></div>
+                <div class="attachment-card" data-category="E-AADHAAR CARD"><h2 class="text-md font-semibold text-gray-700 mb-3">4. E-AADHAAR CARD</h2><div class="upload-box space-y-3"><input type="password" placeholder="Password (optional)" class="password-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><input type="file" multiple class="file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"></div><div class="summary-box items-center justify-between p-4 bg-gray-50 rounded-lg border"><div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><div><h3 class="font-bold text-gray-800 file-count-text"></h3><p class="text-sm text-gray-500">Ready to view or download.</p></div></div><div class="flex space-x-2 mt-2 sm:mt-0"><button class="view-manage-btn text-sm font-semibold text-blue-600 hover:text-blue-800">Manage</button></div></div></div>
+            </div>
+
+            <div class="mt-8 pt-6 border-t flex items-center justify-end space-x-3">
+                <button class="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-blue-300">Refresh Documents</button>
+                <button id="downloadAllBtn" class="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:ring-4 focus:ring-green-300 flex items-center" disabled>
+                    <span id="downloadAllText">Download All Files (0)</span>
+                    <div id="downloadAllLoader" class="loader ml-2 hidden"></div>
+                </button>
+                <button class="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300">Upload All Files</button>
+            </div>
+             <p class="text-xs text-gray-500 text-right mt-2">* Each attachment type has its own password field for secure uploads</p>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="attachmentsModal" class="modal-overlay">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl m-4 transform transition-all duration-300 ease-out scale-95 opacity-0" id="modal-panel">
+            <div class="flex items-center justify-between p-5 border-b"><div class="flex items-center space-x-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><h2 id="modalTitle" class="text-xl font-bold text-gray-800">Manage Documents</h2></div><button id="closeModalBtn" class="p-1 rounded-full hover:bg-gray-200"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div>
+            <div class="p-6 max-h-[60vh] overflow-y-auto"><div id="fileCardGrid" class="file-card-grid"></div></div>
+            <div class="p-5 border-t bg-gray-50 rounded-b-xl"><label class="block text-sm font-medium text-gray-700 mb-2">Upload More Files</label><div class="flex flex-col sm:flex-row items-center gap-3"><input id="modalFileInput" type="file" multiple class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer flex-grow"><input id="modalPasswordInput" type="password" placeholder="Password (optional)" class="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><button id="modalAddFilesBtn" class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 whitespace-nowrap">Add Files</button></div></div>
+        </div>
+    </div>
+    
+    <textarea id="copy-helper" style="position: absolute; left: -9999px;"></textarea>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- APPLICATION STATE ---
+        // This object will hold all the uploaded file data, replacing the mock data.
+        let attachmentsData = {};
+        let currentModalCategory = null;
+
+        // --- UI ELEMENTS ---
+        const modal = document.getElementById('attachmentsModal');
+        const modalPanel = document.getElementById('modal-panel');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const modalTitle = document.getElementById('modalTitle');
+        const fileCardGrid = document.getElementById('fileCardGrid');
+        const copyHelper = document.getElementById('copy-helper');
+        const modalFileInput = document.getElementById('modalFileInput');
+        const modalPasswordInput = document.getElementById('modalPasswordInput');
+        const modalAddFilesBtn = document.getElementById('modalAddFilesBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const downloadAllText = document.getElementById('downloadAllText');
+        const downloadAllLoader = document.getElementById('downloadAllLoader');
+
+        // --- CORE FUNCTIONS ---
+
+        /**
+         * Updates the UI based on the current state of attachmentsData.
+         * This function is called anytime data changes.
+         */
+        function globalUpdateUI() {
+            let totalFiles = 0;
+            document.querySelectorAll('.attachment-card').forEach(card => {
+                const category = card.dataset.category;
+                const files = attachmentsData[category] || [];
+                const uploadBox = card.querySelector('.upload-box');
+                const summaryBox = card.querySelector('.summary-box');
+                const fileCountText = card.querySelector('.file-count-text');
+
+                if (files.length > 0) {
+                    fileCountText.textContent = `${files.length} File${files.length > 1 ? 's' : ''} Uploaded`;
+                    uploadBox.style.display = 'none';
+                    summaryBox.style.display = 'flex';
+                    summaryBox.classList.add('flex-col', 'sm:flex-row');
+                } else {
+                    uploadBox.style.display = 'block';
+                    summaryBox.style.display = 'none';
+                }
+                totalFiles += files.length;
+            });
+            
+            // Update "Download All" button
+            downloadAllText.textContent = `Download All Files (${totalFiles})`;
+            downloadAllBtn.disabled = totalFiles === 0;
+        }
+
+        /**
+         * Opens and populates the modal for a specific category.
+         */
+        function openModal(category) {
+            currentModalCategory = category;
+            modalTitle.textContent = `Manage: ${category}`;
+            populateModal(category);
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                modalPanel.classList.remove('scale-95', 'opacity-0');
+                modalPanel.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        /**
+         * Fills the modal with file cards from the attachmentsData.
+         */
+        function populateModal(category) {
+            fileCardGrid.innerHTML = ''; // Clear previous files
+            const files = attachmentsData[category] || [];
+
+            if (files.length === 0) {
+                fileCardGrid.innerHTML = `<p class="text-gray-500 col-span-full text-center">No files uploaded for this category yet.</p>`;
+                return;
+            }
+            files.forEach(fileData => fileCardGrid.insertAdjacentHTML('beforeend', createFileCardHTML(fileData)));
+        }
+        
+        /**
+         * Handles file additions from any input.
+         */
+        function handleFileAdd(files, password, category) {
+             if (!attachmentsData[category]) {
+                attachmentsData[category] = [];
+            }
+            for (const file of files) {
+                 attachmentsData[category].push({
+                    id: Date.now() + Math.random(), // Unique ID for safe deletion
+                    file: file,
+                    name: file.name,
+                    size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+                    type: file.type.startsWith('image/') ? 'image' : (file.type === 'application/pdf' ? 'pdf' : 'other'),
+                    password: password || null
+                });
+            }
+        }
+
+
+        // --- EVENT LISTENERS ---
+
+        // Listen for file uploads on the main page
+        document.querySelectorAll('.file-input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const card = e.target.closest('.attachment-card');
+                const category = card.dataset.category;
+                const passwordInput = card.querySelector('.password-input');
+                const files = e.target.files;
+
+                if (files.length > 0) {
+                    handleFileAdd(files, passwordInput.value, category);
+                    passwordInput.value = '';
+                    e.target.value = ''; // Clear file input
+                    globalUpdateUI();
+                }
+            });
+        });
+
+        // Listen for "Manage" button clicks
+        document.querySelectorAll('.view-manage-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const category = e.target.closest('.attachment-card').dataset.category;
+                openModal(category);
+            });
+        });
+
+        // Listen for "Add Files" in the modal footer
+        modalAddFilesBtn.addEventListener('click', () => {
+            const files = modalFileInput.files;
+            if (files.length > 0) {
+                handleFileAdd(files, modalPasswordInput.value, currentModalCategory);
+                modalPasswordInput.value = '';
+                modalFileInput.value = '';
+                populateModal(currentModalCategory); // Repopulate to show new files
+                globalUpdateUI();
+            }
+        });
+
+        // Handle Modal Card Actions using Event Delegation
+        fileCardGrid.addEventListener('click', e => {
+            const button = e.target.closest('button');
+            if (!button) return;
+
+            const card = e.target.closest('.file-card');
+            const fileId = parseFloat(card.dataset.id);
+            const fileData = attachmentsData[currentModalCategory].find(f => f.id === fileId);
+
+            if (!fileData) return;
+
+            if (button.classList.contains('delete-btn')) {
+                attachmentsData[currentModalCategory] = attachmentsData[currentModalCategory].filter(f => f.id !== fileId);
+                card.style.transition = 'opacity 0.3s, transform 0.3s';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                setTimeout(() => {
+                    populateModal(currentModalCategory);
+                    globalUpdateUI();
+                }, 300);
+            }
+            else if (button.classList.contains('copy-password-btn')) {
+                const password = button.dataset.password;
+                const tooltip = button.querySelector('.tooltiptext');
+                copyHelper.value = password;
+                copyHelper.select();
+                document.execCommand('copy');
+                tooltip.textContent = 'Copied!';
+                setTimeout(() => { tooltip.textContent = 'Copy Password'; }, 2000);
+            }
+            else if (button.classList.contains('download-btn')) {
+                saveAs(fileData.file, fileData.name);
+            }
+            else if (button.classList.contains('view-btn')) {
+                 const fileURL = URL.createObjectURL(fileData.file);
+                 window.open(fileURL, '_blank');
+            }
+        });
+        
+        // "Download All Files" functionality
+        downloadAllBtn.addEventListener('click', async () => {
+            downloadAllText.classList.add('hidden');
+            downloadAllLoader.classList.remove('hidden');
+            downloadAllBtn.disabled = true;
+
+            const zip = new JSZip();
+            for (const category in attachmentsData) {
+                if (attachmentsData[category].length > 0) {
+                    const folder = zip.folder(category);
+                    for (const fileData of attachmentsData[category]) {
+                        folder.file(fileData.name, fileData.file);
+                    }
+                }
+            }
+
+            try {
+                const content = await zip.generateAsync({ type: "blob" });
+                saveAs(content, "CRM_Attachments.zip");
+            } catch (err) {
+                console.error("Failed to create zip file:", err);
+                alert("Error creating zip file. Please try again.");
+            } finally {
+                downloadAllText.classList.remove('hidden');
+                downloadAllLoader.classList.add('hidden');
+                downloadAllBtn.disabled = false;
+            }
+        });
+
+
+        // --- MODAL CLOSING LOGIC ---
+        const closeTheModal = () => {
+            modalPanel.classList.add('scale-95', 'opacity-0');
+            modalPanel.classList.remove('scale-100', 'opacity-100');
+            setTimeout(() => { modal.style.display = 'none'; currentModalCategory = null; }, 300);
+        };
+        closeModalBtn.addEventListener('click', closeTheModal);
+        modal.addEventListener('click', e => { if (e.target === modal) closeTheModal(); });
+
+        // --- HTML TEMPLATES ---
+        function getFileIcon(type) {
+             switch(type) {
+                case 'pdf': return `<svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg>`;
+                case 'image': return `<svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>`;
+                default: return `<svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>`;
+            }
+        }
+        function createFileCardHTML(fileData) {
+            const isProtected = !!fileData.password;
+            const passwordActions = isProtected 
+                ? `<button data-password="${fileData.password}" class="copy-password-btn flex items-center justify-center p-1.5 text-blue-600 hover:bg-blue-100 rounded-md tooltip"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m-6 4h.01M9 16h.01"></path></svg><span class="tooltiptext">Copy Password</span></button>`
+                : '';
+            
+            return `
+                <div class="file-card flex flex-col items-center p-3 text-center rounded-lg bg-white" data-id="${fileData.id}">
+                    <div class="relative">${getFileIcon(fileData.type)}${isProtected ? `<span class="absolute -top-1 -right-1 flex h-4 w-4"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span><span class="relative inline-flex rounded-full h-4 w-4 bg-yellow-500 items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path></svg></span></span>` : ''}</div>
+                    <p class="mt-2 text-sm font-semibold text-gray-800 break-all w-full">${fileData.name}</p>
+                    <p class="text-xs text-gray-500">${fileData.size}</p>
+                    <div class="w-full border-t my-2"></div>
+                    <div class="flex items-center justify-center space-x-1 w-full">
+                        <button class="view-btn flex items-center justify-center p-1.5 text-gray-500 hover:bg-gray-100 rounded-md tooltip"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg><span class="tooltiptext">View</span></button>
+                        <button class="download-btn flex items-center justify-center p-1.5 text-gray-500 hover:bg-gray-100 rounded-md tooltip"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span class="tooltiptext">Download</span></button>
+                        ${passwordActions}
+                        <button class="delete-btn flex items-center justify-center p-1.5 text-red-500 hover:bg-red-100 rounded-md tooltip"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg><span class="tooltiptext">Delete</span></button>
+                    </div>
+                </div>`;
+        }
+        
+        // Initial render on page load
+        globalUpdateUI();
+    });
+    </script>
+
+</body>
+</html>
+

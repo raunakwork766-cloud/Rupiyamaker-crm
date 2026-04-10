@@ -713,6 +713,16 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       };
       localStorage.setItem('openDropdowns', JSON.stringify(newDropdownState));
       setOpenDropdowns(newDropdownState);
+    } else {
+      // Close all dropdowns when a non-dropdown item is selected
+      const closedState = {
+        'LEAD CRM': false,
+        'Login CRM': false,
+        'HRMS': false,
+        'Warning': false
+      };
+      localStorage.setItem('openDropdowns', JSON.stringify(closedState));
+      setOpenDropdowns(closedState);
     }
     
     // ===== STEP 3: HANDLE LOAN TYPE STATE + PERSIST HIGHLIGHT =====
@@ -1078,6 +1088,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     else if (currentPath.includes('/feed') || currentPath === '/') {
       targetLabel = 'Feed';
     }
+    else if (currentPath === '/dashboard') {
+      targetLabel = 'Dashboard';
+    }
     else if (currentPath.includes('/task')) {
       targetLabel = 'Task';
     }
@@ -1253,10 +1266,20 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       shouldOpenDropdown = 'LEAD CRM';
     }
     
-    // Also check based on selectedLabel
+    // selectedLabel takes highest priority - overrides URL-based detection
     const parentDropdown = itemToParentMap[selectedLabel];
     if (parentDropdown) {
+      // Sub-item selected → open its parent dropdown
       shouldOpenDropdown = parentDropdown;
+    } else if (selectedLabel) {
+      // Regular (non-dropdown) item selected → close all dropdowns
+      setOpenDropdowns(prev => {
+        if (!Object.values(prev).some(v => v)) return prev; // Already all closed
+        const closedState = { 'LEAD CRM': false, 'Login CRM': false, 'HRMS': false, 'Warning': false };
+        localStorage.setItem('openDropdowns', JSON.stringify(closedState));
+        return closedState;
+      });
+      return; // Skip URL-based logic
     }
     
     if (shouldOpenDropdown) {
@@ -1633,7 +1656,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
                             checkPermission('knowledge_base', 'show') ||
                             checkPermission('Knowledge Base', 'show') ||
-                            checkPermission('knowledgebase', 'show')
+                            checkPermission('knowledgebase', 'show'),
+
+      // Dashboard (DSA Performance) - leads users + super admin
+      canShowDashboard: isSuperAdmin(userPermissions) ||
+                        checkPermission('dashboard', 'show') ||
+                        checkPermission('Dashboard', 'show') ||
+                        checkPermission('leads', 'show') ||
+                        checkPermission('Leads', 'show')
     };
     
     console.log('🔐 ========================================');
@@ -1736,6 +1766,17 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               selectedLabel={selectedLabel} 
               onSelect={handleSelection} 
             />
+
+            {/* Dashboard */}
+            {permissions.canShowDashboard && (
+              <MenuItem
+                icon={icons["Dashboard"]}
+                label="Dashboard"
+                isOpen={isOpen}
+                selectedLabel={selectedLabel}
+                onSelect={handleSelection}
+              />
+            )}
 
             {/* LEAD CRM Dropdown */}
             {permissions.canShowLeads && (

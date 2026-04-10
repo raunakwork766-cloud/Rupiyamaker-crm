@@ -1,0 +1,88 @@
+LOAN APPLICATION FORM
+
+Responses:- 
+
+1. Full Name
+Answer: Sivaramakrishna Kolluri
+
+2. Mobile Number
+Answer: 9010310650
+
+3. Alternate Number (Mandatory)
+Answer: 7013543759
+
+4. Personal Email
+Answer: shiva14046@gmail.com
+
+5. Work Email
+Answer: sivaramakrishna_kolluri@epam.com
+
+
+6. Mother's Name
+Answer: Kolluri Rajyam
+
+7. Marital Status
+Answer: * Unmarried 
+
+
+8. Spouse Name
+Answer: NA
+
+9. Spouse D.O.B.
+Answer: NA
+
+10. Current Address  (with flat or house number)
+Answer: Plot no 8, SLR Colony, Beside Sloka school, manneguda - 501510 Telangana, 
+
+
+11. Current Address Type
+Answer: * Rented 
+
+
+12. Documents for Current Address Proof
+Answer:  Login Through E- Aadhaar 
+
+13. Number Of Year's Living in Current Address (in years)
+Answer: 2 Years +
+
+14. Number Of Year's Living In Current City (in years)
+Answer: 5 Years +
+
+15. Permanent Address (with flat or house number)
+Answer: H No 4-78/A, BC Colony, Konijerla Mandal, Tanikella, PO: Tanikella, DIST: Khammam, Telangana - 507305
+
+16. Your Company Name
+Answer:EPAM SYSTEMS INDIA PRIVATE LIMITED
+
+17. Company Address (with pincode)
+Answer: 10th, 11th, 12th Floor, Unit 2 & 3, Salarpuria Satvva Knowledge City,
+Plot No 2, Phase 1, Survey No 83/1, Raidurga Village, Serilingampally
+Mandal,Hyderabad 500081, Telangana
+
+18. Office Landline Number
+
+**(if you don't have office landline number please provide your reporting manager FULL NAME  and  MOBILE NUMBER)**
+Answer: 02 4858 3399
+
+19. Your Designation
+Answer: Software Test Automation Engineer
+
+20. Your Department
+Answer: IT services 
+
+21. Work Experience in Current Company (in years)
+Answer: 1 Month
+
+22. Total Work Experience (in years)
+Answer: 3.5 Years
+
+MANDATORY:
+
+23. 1st Reference  (FULL NAME, MOBILE NUMBER, COMPLETE ADDRESS)
+Answer:  Gopinadh Pasupuleti
+8501018715
+Hno 13-1-57/20/5/C, plot no 102, avanthi nagar thota, mothi nagar, borabanda, hyderabad, 500018, telangana 
+
+24. 2nd Reference  (FULL NAME, MOBILE NUMBER, COMPLETE ADDRESS)
+Answer:Pravallika Byna 7330700407
+LIG 39, Backside Water tank, moosapet, bharathnagar, 500018

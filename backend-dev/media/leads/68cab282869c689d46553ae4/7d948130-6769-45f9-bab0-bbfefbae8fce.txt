@@ -1,0 +1,89 @@
+LOAN APPLICATION FORM
+
+Responses:- 
+
+1. Full Name
+Answer: Ajay Kumar Mishra 
+
+2. Mobile Number
+Answer:8517807609
+
+3. Alternate Number (Mandatory)
+Answer: 8878002164
+
+4. Personal Email
+Answer: ajmishra1602@gmail.com
+
+
+5. Work Email
+Answer: ajay.mishra@elekta.com
+
+6. Mother's Name
+Answer: Kushalawati Mishra 
+
+7. Marital Status
+Answer: * married 
+
+
+8. Spouse Name
+Answer: Aanchal Mishra 
+
+9. Spouse D.O.B.
+Answer: 03/02/2002
+
+10. Current Address  (with flat or house number)
+Answer: Villa no -82, Dharti prangan society, Jhalamand, Jodhpur, Rajasthan-342005
+
+11. Current Address Type
+Answer: * Rented 
+
+
+12. Documents for Current Address Proof
+Answer: Login through E- Aadhaar 
+
+13. Number Of Year's Living in Current Address (in years)
+Answer: 03 months 
+
+14. Number Of Year's Living In Current City (in years)
+Answer: 03 months
+
+15. Permanent Address (with flat or house number)
+Answer: 
+ govardhan colony, gole ka mandir, Gird, PO: Gwalior Residency, DIST: Gwalior, Madhya Pradesh - 474005
+
+16. Your Company Name
+Answer: Elekta Medical System India Pvt Ltd
+
+17. Company Address (with pincode)
+Answer: 
+ 12TH Floor, Vatika Professional Point, Golf Course Ext Rd, Sector 66, Gurugram, Haryana 122001
+
+18. Office Landline Number
+
+*(if you don't have office landline number please provide your reporting manager FULL NAME  and  MOBILE NUMBER)*
+Answer:  0124 493 3222
+
+19. Your Designation
+Answer: Service Engineer
+
+20. Your Department
+Answer: Service 
+
+21. Work Experience in Current Company (in years)
+Answer: 6 months 
+
+22. Total Work Experience (in years)
+Answer: 8 Years
+
+MANDATORY:
+
+23. 1st Reference  (FULL NAME, MOBILE NUMBER, COMPLETE ADDRESS)
+Answer: Somesh Chauhan 
+8770237146
+Goverdhan colony, Gole ka Mandir ,MP
+
+
+24. 2nd Reference  (FULL NAME, MOBILE NUMBER, COMPLETE ADDRESS)
+Answer: Ashish Kewat 
+ 8305806410
+Randheer colony, Gole ka Mandir gwalior( M.P)

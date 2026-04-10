@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warning Module</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .open-modal-btn {
+            background-color: #dc3545;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .open-modal-btn:hover {
+            background-color: #c82333;
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        /* Modal Container */
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            width: 95%;
+            max-width: 900px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+        }
+
+        /* Modal Header */
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 5px;
+        }
+
+        .close-btn:hover {
+            color: #000;
+        }
+
+        /* Modal Body */
+        .modal-body {
+            padding: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .required {
+            color: #dc3545;
+        }
+
+        input[type="text"], 
+        input[type="datetime-local"], 
+        input[type="number"],
+        select, 
+        textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #17a2b8;
+            border-radius: 8px;
+            font-size: 14px;
+            background-color: #f8f9fa;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus, 
+        input[type="datetime-local"]:focus, 
+        input[type="number"]:focus,
+        select:focus, 
+        textarea:focus {
+            outline: none;
+            border-color: #0d6efd;
+            background-color: white;
+        }
+
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 12px center;
+            background-repeat: no-repeat;
+            background-size: 16px;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+
+        select option {
+            padding: 10px;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .currency-input {
+            position: relative;
+        }
+
+        .currency-symbol {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            font-weight: 500;
+        }
+
+        .currency-input input {
+            padding-left: 35px;
+        }
+
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-cancel {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-cancel:hover {
+            background-color: #5a6268;
+        }
+
+        .btn-warning {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background-color: #c82333;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .modal {
+                width: 95%;
+                margin: 20px;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .modal-body {
+                padding: 15px;
+            }
+
+            .modal-footer {
+                padding: 15px;
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Warning Module</h1>
+        <br>
+        <button class="open-modal-btn" onclick="openModal()">Create Warning</button>
+        
+        <!-- Modal Overlay -->
+        <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+        
+        <!-- Modal -->
+        <div class="modal" id="warningModal">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Create Warning</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <form id="warningForm">
+                    <!-- Issue Date & Time and Issued By Row -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="datetime">Issue Date & Time</label>
+                            <input type="datetime-local" id="datetime" name="datetime" value="2025-08-31T12:51">
+                        </div>
+                        <div class="form-group">
+                            <label for="createdBy">Issued by</label>
+                            <input type="text" id="createdBy" name="createdBy" value="soheru" readonly>
+                        </div>
+                    </div>
+                    
+                    <!-- Department and Employee Row -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="department">Department</label>
+                            <select id="department" name="department">
+                                <option value="">Select Department</option>
+                                <option value="dept1234">Department 1234</option>
+                                <option value="dept5678">Department 5678</option>
+                                <option value="dept9012">Department 9012</option>
+                                <option value="dept3456">Department 3456</option>
+                                <option value="dept7890">Department 7890</option>
+                                <option value="dept2468">Department 2468</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="employee">Employee <span class="required">*</span></label>
+                            <select id="employee" name="employee" required>
+                                <option value="">Select Employee</option>
+                                <option value="emp1234">Employee 1234</option>
+                                <option value="emp5678">Employee 5678</option>
+                                <option value="emp9012">Employee 9012</option>
+                                <option value="emp3456">Employee 3456</option>
+                                <option value="emp7890">Employee 7890</option>
+                                <option value="emp2468">Employee 2468</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Mistake Type -->
+                    <div class="form-group">
+                        <label for="mistakeType">Mistake Type <span class="required">*</span></label>
+                        <select id="mistakeType" name="mistakeType" required>
+                            <option value="">Select Mistake Type</option>
+                            <option value="mistake1234">Mistake Type 1234</option>
+                            <option value="mistake5678">Mistake Type 5678</option>
+                            <option value="mistake9012">Mistake Type 9012</option>
+                            <option value="mistake3456">Mistake Type 3456</option>
+                            <option value="mistake7890">Mistake Type 7890</option>
+                            <option value="mistake2468">Mistake Type 2468</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Warning Action and Penalty Amount Row -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="warningAction">Warning Action <span class="required">*</span></label>
+                            <select id="warningAction" name="warningAction" required>
+                                <option value="">Select Warning Action</option>
+                                <option value="verbal">Verbal Warning</option>
+                                <option value="written">Written Warning</option>
+                                <option value="final">Final Warning</option>
+                                <option value="penalty">Financial Penalty</option>
+                                <option value="suspension">Suspension</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="penaltyAmount">Penalty Amount</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">₹</span>
+                                <input type="number" id="penaltyAmount" name="penaltyAmount" placeholder="Enter penalty amount" min="0" step="0.01">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Warning Message -->
+                    <div class="form-group">
+                        <label for="warningMessage">Warning Message</label>
+                        <textarea id="warningMessage" name="warningMessage" placeholder="Enter warning message..."></textarea>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button type="button" class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="issueWarning()">Issue Warning</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set current date and time on page load
+        window.onload = function() {
+            const now = new Date();
+            const datetime = now.toISOString().slice(0, 16);
+            document.getElementById('datetime').value = datetime;
+        };
+
+        // Open Modal Function
+        function openModal() {
+            document.getElementById('modalOverlay').style.display = 'block';
+            document.getElementById('warningModal').style.display = 'block';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        }
+
+        // Close Modal Function
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.getElementById('warningModal').style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore background scrolling
+        }
+
+        // Issue Warning Function
+        function issueWarning() {
+            const form = document.getElementById('warningForm');
+            const formData = new FormData(form);
+            
+            // Basic validation
+            const employee = document.getElementById('employee').value;
+            const mistakeType = document.getElementById('mistakeType').value;
+            const warningAction = document.getElementById('warningAction').value;
+            
+            if (!employee) {
+                alert('Please select an employee');
+                return;
+            }
+            
+            if (!mistakeType) {
+                alert('Please select a mistake type');
+                return;
+            }
+            
+            if (!warningAction) {
+                alert('Please select a warning action');
+                return;
+            }
+            
+            // Collect form data
+            const warningData = {
+                datetime: formData.get('datetime'),
+                issuedBy: formData.get('createdBy'),
+                department: formData.get('department'),
+                employee: formData.get('employee'),
+                mistakeType: formData.get('mistakeType'),
+                warningAction: formData.get('warningAction'),
+                penaltyAmount: formData.get('penaltyAmount'),
+                warningMessage: formData.get('warningMessage')
+            };
+            
+            console.log('Warning Data:', warningData);
+            
+            // Here you would typically send the data to a server
+            alert('Warning issued successfully!');
+            
+            // Reset form and close modal
+            form.reset();
+            closeModal();
+            
+            // Reset datetime to current time
+            const now = new Date();
+            const datetime = now.toISOString().slice(0, 16);
+            document.getElementById('datetime').value = datetime;
+        }
+
+        // Close modal when pressing Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // Prevent modal from closing when clicking inside the modal
+        document.getElementById('warningModal').addEventListener('click', function(event) {
+            event.stopPropagation();
+        });
+    </script>
+</body>
+</html>

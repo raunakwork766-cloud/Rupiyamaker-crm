@@ -320,6 +320,8 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
 
   // Reference for textarea to auto-resize
   const messageRef = useRef(null);
+  // Reference for the modal container (used for paste-to-attach)
+  const modalRef = useRef(null);
 
   // Load backend history when component mounts
   useEffect(() => {
@@ -414,6 +416,20 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
       }
     };
   }, []);
+
+  // Paste-to-attach: listen on the whole modal so Ctrl+V works from anywhere
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl) return;
+    const handler = (e) => {
+      const items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
+      const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
+      if (files.length > 0) { e.preventDefault(); processTicketAttachmentFiles(files); }
+    };
+    modalEl.addEventListener('paste', handler);
+    modalEl.focus();
+    return () => modalEl.removeEventListener('paste', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save function - debounced
   const triggerAutoSave = useCallback((updatedTicket) => {
@@ -1039,7 +1055,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   };
  
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
+    <div ref={modalRef} tabIndex={-1} className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)", outline: 'none' }}>
       <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-5xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
         <button
           className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"

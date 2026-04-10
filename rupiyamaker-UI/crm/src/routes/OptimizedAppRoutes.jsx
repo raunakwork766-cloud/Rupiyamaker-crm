@@ -61,6 +61,7 @@ const LazyRoleCompare = createLazyComponent(() => import('../components/settings
 const LazyKnowledgeBase = createLazyComponent(() => import('../components/KnowledgeBase.jsx'), 'KnowledgeBase');
 const LazyOfferLetterGenerator = createLazyComponent(() => import('../components/OfferLetterGenerator.jsx'), 'OfferLetterGenerator');
 const LazyFAQPage = createLazyComponent(() => import('../components/FAQPage.jsx'), 'FAQPage');
+const LazyDashboardPage = createLazyComponent(() => import('../components/DashboardPage.jsx'), 'DashboardPage');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
@@ -396,7 +397,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             ]}
           >
             <RouteWithSuspense 
-              component={LazyChartPage} 
+              component={LazyDashboardPage} 
               routeName="Dashboard"
               user={user}
             />
