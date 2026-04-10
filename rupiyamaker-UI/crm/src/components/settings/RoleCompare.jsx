@@ -16,6 +16,8 @@ const ACTION_LABELS = {
     assign:               'Assign to Agent',
     download_obligation:  'Download File',
     status_update:        'Update Status',
+    view_data_code:       'View Data Code',
+    rollback_login:       'Rollback Login',
     channel:              'View by Channel',
     edit:                 'Edit Record',
     settings:             'Manage Settings',
@@ -34,6 +36,7 @@ const ACTION_LABELS = {
 
 // Human-readable labels for the module group headers
 const MODULE_LABELS = {
+    dashboard:    'Dashboard',
     feeds:        'Feeds',
     'Leads CRM':  'Leads CRM',
     login:        'Login Activity',
@@ -56,10 +59,11 @@ const MODULE_LABELS = {
 };
 
 const allPermissions = {
+    'dashboard': ['show', 'own', 'junior', 'all'],
     'feeds': ['show', 'post', 'all', 'delete'],
     'Leads CRM': {
         'Create LEAD': ['show', 'add', 'reassignment_popup'],
-        'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'delete'],
+        'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'rollback_login', 'delete'],
     },
     'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
     'tasks': ['show', 'own', 'junior', 'all', 'delete'],

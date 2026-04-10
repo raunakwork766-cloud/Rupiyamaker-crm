@@ -103,14 +103,31 @@ async def get_dashboard_stats(
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        # ─── Determine which user IDs are visible based on permission_level ───
-        # own   → only the requesting user
+        # ─── Determine effective permission level from the user's ACTUAL role in DB ───
+        # This overrides the frontend-passed permission_level to prevent stale-cache issues.
+        user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_super_admin = PermissionManager.has_permission(user_permissions, "*", "*")
+
+        if is_super_admin:
+            effective_level = "all"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "all"):
+            effective_level = "all"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "junior"):
+            effective_level = "junior"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "own"):
+            effective_level = "own"
+        else:
+            # No explicit dashboard data permission in role → fall back to frontend hint, then "all"
+            effective_level = permission_level or "all"
+
+        # ─── Determine which user IDs are visible based on effective_level ───
+        # own    → only the requesting user
         # junior → requesting user + their subordinates
-        # all   → all users (default / no restriction)
+        # all    → all users (no restriction)
         allowed_user_ids: Optional[set] = None  # None means no restriction (all)
-        if permission_level == "own":
+        if effective_level == "own":
             allowed_user_ids = {user_id}
-        elif permission_level == "junior":
+        elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
             allowed_user_ids = {user_id} | set(subordinate_ids)
 
