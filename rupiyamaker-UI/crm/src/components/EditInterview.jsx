@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import InterviewComments from './InterviewComments';
