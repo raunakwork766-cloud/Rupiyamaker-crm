@@ -243,6 +243,7 @@ export default function CreateTicket({ onClose, onSubmit }) {
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
   const [showAssignPopup, setShowAssignPopup] = useState(false);
   const detailsRef = useRef(null);
+  const modalRef = useRef(null);
 
   // Effect for auto-resizing the details textarea
   useEffect(() => {
@@ -372,6 +373,20 @@ export default function CreateTicket({ onClose, onSubmit }) {
     event.target.value = '';
   };
 
+  // Native paste listener on the whole modal — so Ctrl+V works from anywhere without clicking the attachment area
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl) return;
+    const handler = (e) => {
+      const items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
+      const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
+      if (files.length > 0) { e.preventDefault(); processTicketFiles(files); }
+    };
+    modalEl.addEventListener('paste', handler);
+    modalEl.focus();
+    return () => modalEl.removeEventListener('paste', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle paste (Ctrl+V) for ticket attachments
   const handlePaste = (e) => {
     const clipboardItems = e.clipboardData?.items;
@@ -486,7 +501,7 @@ export default function CreateTicket({ onClose, onSubmit }) {
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
+    <div ref={modalRef} tabIndex={-1} className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)", outline: 'none' }}>
       <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl mx-auto space-y-2 max-h-[90vh] overflow-y-auto">
         <button
           className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"

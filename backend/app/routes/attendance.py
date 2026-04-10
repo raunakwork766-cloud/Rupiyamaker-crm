@@ -673,14 +673,16 @@ async def get_attendance_calendar(
                     chk_in = attendance_record.get("check_in_time")
                     chk_out = attendance_record.get("check_out_time")
                     was_manually_edited = attendance_record.get("edited_by") is not None
-                    if chk_in and not chk_out and status not in [-2.0, -2] and not was_manually_edited:
+                    _auto_absconding = attendance_record.get("auto_absconding", False)
+                    # Override to ABSENT only when: has check-in, no check-out, not manually
+                    # edited, and NOT already escalated to absconding by the age-based job.
+                    # If auto_absconding=True the record is legitimately absconding — keep it.
+                    if chk_in and not chk_out and not was_manually_edited and not _auto_absconding:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
-                            # Past date: no checkout = Absconding (checked in but did not check out)
-                            status = -2.0
+                            status = -1.0  # Past date: missed checkout → ABSENT
                         elif _day_date_obj == get_ist_now().date():
-                            # Today: checked in, not yet checked out = Working/IN
-                            status = 2.0
+                            status = 2.0   # Today: still working
                     
                     status_text = get_status_text(status) if status is not None else None
                     comments = attendance_record.get("comments", "")
@@ -2242,14 +2244,15 @@ async def check_in_attendance(
         
         # Get timing settings from database
         check_in_start_time = settings.get("check_in_start_time", "09:00")  # Default 9:00 AM
-        check_in_end_time = settings.get("check_in_end_time", "10:30")    # Default 10:30 AM
+        # Grace deadline: check-in up to this time = Full Day; after = Half Day
+        reporting_deadline = settings.get("reporting_deadline", "10:15")  # Default grace 10:15 AM
         check_out_start_time = settings.get("check_out_start_time", "17:00")  # Default 5:00 PM
         check_out_end_time = settings.get("check_out_end_time", "20:00")    # Default 8:00 PM
         
         # Determine if late check-in based on IST and settings
         check_in_time_obj = ist_now.time()
         start_threshold = datetime.strptime(check_in_start_time, "%H:%M").time()
-        late_threshold = datetime.strptime(check_in_end_time, "%H:%M").time()
+        late_threshold = datetime.strptime(reporting_deadline, "%H:%M").time()  # 10:15 grace cutoff
         checkout_start = datetime.strptime(check_out_start_time, "%H:%M").time()
         checkout_end = datetime.strptime(check_out_end_time, "%H:%M").time()
         
@@ -2263,13 +2266,13 @@ async def check_in_attendance(
             attendance_status = 0.5
             status_reason = "Early check-in before allowed time"
         elif check_in_time_obj <= late_threshold:
-            # On time - full day potential
+            # Within grace time (up to 10:15) — full day potential
             attendance_status = 1
             status_reason = "On-time check-in"
         elif check_in_time_obj <= checkout_start:
-            # Late but within half-day window
+            # After grace time (10:15+) but before checkout — Late check-in: Half day
             attendance_status = 0.5
-            status_reason = "Late check-in - Half day"
+            status_reason = f"Late check-in after {reporting_deadline} - Half day"
         else:
             # After check-in window but before 20:00 — half day
             attendance_status = 0.5
@@ -3816,8 +3819,11 @@ async def check_in_attendance(
         now = get_ist_now()
         check_in_time = now.strftime("%H:%M:%S")
         
-        # Determine if late (after 10:30 AM)
-        late_threshold = datetime.strptime("10:30", "%H:%M").time()
+        # Determine if late (after grace deadline from settings, default 10:15 AM)
+        settings_db_2 = SettingsDB()
+        settings_2 = await settings_db_2.get_attendance_settings()
+        grace_deadline_str = settings_2.get("reporting_deadline", "10:15")
+        late_threshold = datetime.strptime(grace_deadline_str, "%H:%M").time()
         is_late = now.time() > late_threshold
         
         # Prepare check-in data

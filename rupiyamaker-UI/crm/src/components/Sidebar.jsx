@@ -713,6 +713,16 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       };
       localStorage.setItem('openDropdowns', JSON.stringify(newDropdownState));
       setOpenDropdowns(newDropdownState);
+    } else {
+      // Close all dropdowns when a non-dropdown item is selected
+      const closedState = {
+        'LEAD CRM': false,
+        'Login CRM': false,
+        'HRMS': false,
+        'Warning': false
+      };
+      localStorage.setItem('openDropdowns', JSON.stringify(closedState));
+      setOpenDropdowns(closedState);
     }
     
     // ===== STEP 3: HANDLE LOAN TYPE STATE + PERSIST HIGHLIGHT =====
@@ -1256,10 +1266,20 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       shouldOpenDropdown = 'LEAD CRM';
     }
     
-    // Also check based on selectedLabel
+    // selectedLabel takes highest priority - overrides URL-based detection
     const parentDropdown = itemToParentMap[selectedLabel];
     if (parentDropdown) {
+      // Sub-item selected → open its parent dropdown
       shouldOpenDropdown = parentDropdown;
+    } else if (selectedLabel) {
+      // Regular (non-dropdown) item selected → close all dropdowns
+      setOpenDropdowns(prev => {
+        if (!Object.values(prev).some(v => v)) return prev; // Already all closed
+        const closedState = { 'LEAD CRM': false, 'Login CRM': false, 'HRMS': false, 'Warning': false };
+        localStorage.setItem('openDropdowns', JSON.stringify(closedState));
+        return closedState;
+      });
+      return; // Skip URL-based logic
     }
     
     if (shouldOpenDropdown) {

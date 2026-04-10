@@ -675,8 +675,11 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     lastFetchParamsRef.current = paramsKey;
 
     try {
-      // Only show loading spinner on initial load or if no cache
-      if (!cachedData || initialLoad) {
+      // Only show loading spinner when the task list is empty (first load).
+      // Background re-fetches (e.g. after saving a task) must NOT trigger the
+      // full-page spinner — that would visually "refresh" the list and lose
+      // the user's scroll position.
+      if (tasks.length === 0) {
         setLoading(true);
       }
       setError(null);

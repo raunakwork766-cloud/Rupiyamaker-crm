@@ -39,6 +39,13 @@ def _build_date_range_utc(time_filter: str, date_from: Optional[str], date_to: O
         end_ist = now_ist.replace(hour=23, minute=59, second=59, microsecond=999999)
         end = (end_ist - IST_OFFSET).replace(tzinfo=None)
 
+    elif time_filter == "tomorrow":
+        from datetime import timedelta as _td
+        tomorrow_ist = (now_ist + _td(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = (tomorrow_ist - IST_OFFSET).replace(tzinfo=None)
+        end_ist = tomorrow_ist.replace(hour=23, minute=59, second=59, microsecond=999999)
+        end = (end_ist - IST_OFFSET).replace(tzinfo=None)
+
     elif time_filter == "this_week":
         weekday = now_ist.weekday()  # Monday=0
         week_start_ist = (now_ist - timedelta(days=weekday)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -78,6 +85,7 @@ async def get_dashboard_stats(
     time_filter: str = Query("this_month", description="today|this_week|this_month|all_time|custom"),
     date_from: Optional[str] = Query(None, description="Custom start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
+    emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
     users_db: UsersDB = Depends(get_users_db),
 ):
     """Returns per-employee lead and login pipeline stats for the Dashboard page."""
@@ -113,18 +121,15 @@ async def get_dashboard_stats(
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
         # ─── Fetch all active users ───
-        # Users don't have a 'status' field; use is_active or just fetch all
+        # Filter by employee_status if requested
+        users_query = {"is_active": {"$ne": False}}
+        if emp_status in ("active", "inactive"):
+            users_query["employee_status"] = emp_status
         users_cursor = users_db.collection.find(
-            {"is_active": {"$ne": False}},
-            {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1}
+            users_query,
+            {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
         )
         all_users = await users_cursor.to_list(None)
-
-        if not all_users:
-            # Fallback: get ALL users
-            all_users = await users_db.collection.find(
-                {}, {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1}
-            ).to_list(None)
 
         if not all_users:
             return {"employees": [], "totals": {"leads": 0, "logins": 0}}
@@ -138,7 +143,7 @@ async def get_dashboard_stats(
             uid = str(u["_id"])
             full_name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("username", uid)
             dept_id = str(u["department_id"]) if u.get("department_id") else ""
-            user_map[uid] = {"name": full_name, "team": "", "dept_id": dept_id}
+            user_map[uid] = {"name": full_name, "team": "", "dept_id": dept_id, "emp_status": u.get("employee_status", "active")}
             if dept_id:
                 dept_ids_needed.add(dept_id)
 
@@ -230,6 +235,7 @@ async def get_dashboard_stats(
                 "id": uid,
                 "name": uinfo["name"],
                 "team": uinfo["team"],
+                "empStatus": uinfo.get("emp_status", "active"),
                 "totalLeads": data["totalLeads"],
                 "totalLogins": data["totalLogins"],
                 "leads": data["leads"],
@@ -261,7 +267,7 @@ async def get_dashboard_teams(
         db = users_db.db
         users = await users_db.collection.find(
             {},
-            {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1}
+            {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
         ).to_list(None)
 
         dept_ids = {str(u["department_id"]) for u in users if u.get("department_id")}
@@ -282,7 +288,7 @@ async def get_dashboard_teams(
             dept_name = dept_name_map.get(str(u.get("department_id", "")), "")
             if dept_name:
                 teams_set.add(dept_name)
-            employees_list.append({"id": uid, "name": full_name, "team": dept_name})
+            employees_list.append({"id": uid, "name": full_name, "team": dept_name, "empStatus": u.get("employee_status", "active")})
 
         employees_list.sort(key=lambda e: e["name"])
         return {"employees": employees_list, "teams": sorted(teams_set)}

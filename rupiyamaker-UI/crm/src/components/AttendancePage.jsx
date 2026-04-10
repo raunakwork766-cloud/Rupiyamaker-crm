@@ -2462,6 +2462,7 @@ export default function MonthlyAttendanceTable() {
   const [selectedEmployeeHistory, setSelectedEmployeeHistory] = useState(null)
   const [editHistoryData, setEditHistoryData] = useState([])
   const [editCounts, setEditCounts] = useState({}) // { [empId]: count } — increments on each edit
+  const [modalLoading, setModalLoading] = useState(false) // secondary loading (modal fetch) — does NOT replace full page
   const [searchQuery, setSearchQuery] = useState('')
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
@@ -3049,7 +3050,7 @@ export default function MonthlyAttendanceTable() {
     setSelectedEmployee(employee)
     setSelectedDate(day)
     setModalOpen(true)
-    setLoading(true)
+    setModalLoading(true)
     
     // Fetch detailed attendance data for this day
     try {
@@ -3085,7 +3086,7 @@ export default function MonthlyAttendanceTable() {
       console.error('Error fetching attendance detail:', error)
     }
     
-    setLoading(false)
+    setModalLoading(false)
     setSelectedDate(day)
     setModalOpen(true)
   }
@@ -3185,7 +3186,7 @@ export default function MonthlyAttendanceTable() {
     console.log('📋 [EDIT HISTORY] Opening history for employee:', employee.id, employee.name)
     
     setSelectedEmployeeHistory(employee)
-    setLoading(true)
+    setModalLoading(true)
     setEditHistoryModalOpen(true)
     
     try {
@@ -3228,7 +3229,7 @@ export default function MonthlyAttendanceTable() {
       console.error('❌ [EDIT HISTORY] Error fetching edit history:', error)
       setEditHistoryData([])
     } finally {
-      setLoading(false)
+      setModalLoading(false)
     }
   }
 
@@ -3916,7 +3917,7 @@ export default function MonthlyAttendanceTable() {
         onClose={() => setEditHistoryModalOpen(false)}
         employee={selectedEmployeeHistory}
         historyData={editHistoryData}
-        loading={loading}
+        loading={modalLoading}
       />
       </> /* end attendance tab */}
     </div>
