@@ -392,8 +392,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="dashboard" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Dashboard', action: 'show' },
-              { page: 'feeds', action: 'show' }
+              { page: 'Dashboard', action: 'show' }
             ]}
           >
             <RouteWithSuspense 

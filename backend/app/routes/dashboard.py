@@ -4,6 +4,8 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 from app.database import get_database_instances
 from app.database.Users import UsersDB
+from app.database.Roles import RolesDB
+from app.utils.permissions import PermissionManager
 from app.utils.timezone import get_ist_now
 import logging
 
@@ -18,6 +20,11 @@ router = APIRouter(
 async def get_users_db():
     db_instances = get_database_instances()
     return db_instances["users"]
+
+
+async def get_roles_db():
+    db_instances = get_database_instances()
+    return db_instances["roles"]
 
 
 def _build_date_range_utc(time_filter: str, date_from: Optional[str], date_to: Optional[str]):
@@ -86,15 +93,26 @@ async def get_dashboard_stats(
     date_from: Optional[str] = Query(None, description="Custom start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
     emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
+    permission_level: Optional[str] = Query(None, description="own|junior|all — data scope based on role permission"),
     users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Returns per-employee lead and login pipeline stats for the Dashboard page."""
     try:
-        # ─── Permission check (lenient: allow anyone logged in) ───
-        # Super admin or leads permission required; fallback allows access so UI can render
-        # Backend data is still scoped — no sensitive exposure
+        # ─── Permission check ───
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
+
+        # ─── Determine which user IDs are visible based on permission_level ───
+        # own   → only the requesting user
+        # junior → requesting user + their subordinates
+        # all   → all users (default / no restriction)
+        allowed_user_ids: Optional[set] = None  # None means no restriction (all)
+        if permission_level == "own":
+            allowed_user_ids = {user_id}
+        elif permission_level == "junior":
+            subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            allowed_user_ids = {user_id} | set(subordinate_ids)
 
         # Get raw database directly from leads_db instance
         db_instances = get_database_instances()
@@ -120,11 +138,14 @@ async def get_dashboard_stats(
             date_match_leads["created_at"] = {"$gte": start_dt, "$lte": end_dt}
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
-        # ─── Fetch all active users ───
+        # ─── Fetch users filtered by permission scope ───
         # Filter by employee_status if requested
         users_query = {"is_active": {"$ne": False}}
         if emp_status in ("active", "inactive"):
             users_query["employee_status"] = emp_status
+        # Scope to allowed users if permission_level restricts visibility
+        if allowed_user_ids is not None:
+            users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
         users_cursor = users_db.collection.find(
             users_query,
             {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}

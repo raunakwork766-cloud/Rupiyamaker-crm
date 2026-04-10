@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { buildApiUrl } from "../config/api";
+import { getUserPermissions, isSuperAdmin, hasPermission } from "../utils/permissions";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"];
@@ -172,9 +173,21 @@ const SortIcon = ({ col, sortCol, asc }) => {
 };
 
 // ─── Main Component ──────────────────────────────────────────────────────────
+// Determine dashboard permission level from stored permissions
+function getDashboardPermissionLevel() {
+  const perms = getUserPermissions();
+  if (isSuperAdmin(perms)) return "all";
+  if (hasPermission(perms, "dashboard", "all")) return "all";
+  if (hasPermission(perms, "dashboard", "junior")) return "junior";
+  if (hasPermission(perms, "dashboard", "own")) return "own";
+  // Fallback: if super admin wildcard
+  return "all";
+}
+
 export default function DashboardPage() {
   const userId = localStorage.getItem("userId") || "";
   const token = localStorage.getItem("token") || "";
+  const permissionLevel = useMemo(() => getDashboardPermissionLevel(), []);
 
   // Filter state
   const [timeFilter, setTimeFilter] = useState("today");
@@ -247,7 +260,7 @@ export default function DashboardPage() {
 
   // Build query params for API call
   const buildParams = useCallback(() => {
-    const p = new URLSearchParams({ user_id: userId, time_filter: timeFilter });
+    const p = new URLSearchParams({ user_id: userId, time_filter: timeFilter, permission_level: permissionLevel });
     if (timeFilter === "custom") {
       const [s, e] = customRange;
       if (s) p.set("date_from", s.toISOString().slice(0, 10));
@@ -256,7 +269,7 @@ export default function DashboardPage() {
     }
     if (empStatusFilter !== "all") p.set("emp_status", empStatusFilter);
     return p;
-  }, [userId, timeFilter, customRange, empStatusFilter]);
+  }, [userId, timeFilter, customRange, empStatusFilter, permissionLevel]);
 
   // Fetch teams / employees list once
   useEffect(() => {
