@@ -463,6 +463,10 @@ export default function EditInterview({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Auto-save
+  const autoSaveTimerRef = useRef(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
   
   // Reschedule state
   const [isRescheduling, setIsRescheduling] = useState(false);
@@ -548,14 +552,66 @@ export default function EditInterview({
     };
   }, []);
 
+  // Cleanup auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
+
+  // Auto-save logic
+  const performAutoSave = useCallback(async (latestInterview) => {
+    if (!latestInterview.id || latestInterview.isReadOnly) return;
+    if (!latestInterview.candidate_name || !latestInterview.mobile_number || !latestInterview.interview_date) return;
+
+    setAutoSaveStatus('saving');
+    try {
+      const payload = {
+        candidate_name: latestInterview.candidate_name,
+        mobile_number: latestInterview.mobile_number,
+        alternate_number: latestInterview.alternate_number || null,
+        gender: latestInterview.gender,
+        job_opening: latestInterview.job_opening,
+        interview_type: latestInterview.interview_type,
+        source_portal: latestInterview.source_portal,
+        city: latestInterview.city,
+        state: latestInterview.state,
+        experience_type: latestInterview.experience_type,
+        total_experience: latestInterview.total_experience,
+        old_salary: latestInterview.old_salary ? parseFloat(latestInterview.old_salary) : null,
+        offer_salary: latestInterview.offer_salary ? parseFloat(latestInterview.offer_salary) : null,
+        interview_date: buildISTDateTimeOffset(latestInterview.interview_date),
+        interview_time: latestInterview.interview_time,
+        status: latestInterview.status,
+        remark: latestInterview.remark || null
+      };
+      await onSave(latestInterview.id, payload);
+      setAutoSaveStatus('saved');
+      setTimeout(() => setAutoSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error("Auto-save failed:", err);
+      setAutoSaveStatus('error');
+      setTimeout(() => setAutoSaveStatus('idle'), 5000);
+    }
+  }, [onSave]);
+
   // Handle input changes
   const handleInputChange = (field, value) => {
     const oldValue = interview[field];
     
-    setInterview(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setInterview(prev => {
+      const updated = { ...prev, [field]: value };
+
+      // Trigger debounced auto-save
+      if (updated.id && !updated.isReadOnly) {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => {
+          performAutoSave(updated);
+        }, 1500);
+      }
+
+      return updated;
+    });
 
     // Emit event for status changes
     if (field === 'status' && oldValue !== value) {
@@ -733,7 +789,21 @@ export default function EditInterview({
         >
           ×
         </button>
-        <h2 className="text-xl font-bold text-blue-500 mb-4">EDIT INTERVIEW</h2>
+        <h2 className="text-xl font-bold text-blue-500 mb-4 flex items-center gap-3">
+          EDIT INTERVIEW
+          {autoSaveStatus === 'saving' && (
+            <span className="flex items-center gap-1 text-sm font-normal text-yellow-600">
+              <span className="inline-block w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></span>
+              Saving...
+            </span>
+          )}
+          {autoSaveStatus === 'saved' && (
+            <span className="text-sm font-normal text-green-600">✓ Saved</span>
+          )}
+          {autoSaveStatus === 'error' && (
+            <span className="text-sm font-normal text-red-500">⚠ Auto-save failed</span>
+          )}
+        </h2>
         
         <form onSubmit={handleEditSubmit} className="p-8">
           {error && (

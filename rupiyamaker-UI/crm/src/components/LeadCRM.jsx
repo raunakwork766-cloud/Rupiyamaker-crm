@@ -5629,7 +5629,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     // Handle status change from dropdown - supports hierarchical navigation and sub-status selection
     const handleStatusChange = async (rowIdx, selectedItem, isMainStatus = false) => {
         // Handle header dropdown - use selectedLead directly
-        const lead = rowIdx === 'header' ? selectedLead : filteredLeadsData[rowIdx];
+        // Use columnSortedLeads (not filteredLeadsData) so rowIdx matches the visible sorted order
+        const lead = rowIdx === 'header' ? selectedLead : columnSortedLeads[rowIdx];
         
         if (!lead) {
             message.error('Lead not found');
@@ -6186,19 +6187,18 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         return checkedRows.length === count && count > 0;
     }, [checkedRows.length, getFilteredLeadsCount]);
 
-    const handleRowClick = async (rowIdx) => {
+    const handleRowClick = async (rowIdx, leadObj) => {
         // Save scroll state BEFORE table unmounts (while tableScrollRef is still valid)
         if (tableScrollRef.current) {
             _savedLeadTableScrollTop = tableScrollRef.current.scrollTop;
             sessionStorage.setItem('leadcrm_scroll_top', String(_savedLeadTableScrollTop));
         }
         _lastClickedRowIdx = rowIdx;
-        // Also save the lead _id for robust matching even if indices shift
-        const clickedLead = getFilteredLeadByIndex(rowIdx);
-        _lastClickedLeadId = clickedLead?._id || null;
+        // Use the passed lead object directly (avoids index mismatch when sorting is applied)
+        const selectedLeadData = leadObj || getFilteredLeadByIndex(rowIdx);
+        _lastClickedLeadId = selectedLeadData?._id || null;
         // Reset obligation changes state when selecting a new lead
         setHasUnsavedObligationChanges(false);
-        const selectedLeadData = getFilteredLeadByIndex(rowIdx);
         console.log('🔍 handleRowClick - Lead clicked, ID:', selectedLeadData?._id);
         
         // Set initial data from cache immediately for responsive UI
@@ -7522,7 +7522,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                         ${lead.file_sent_to_login ? 'bg-gray-900/30' : 'bg-black'}
                                                         ${checkedRows.includes(rowIdx) ? "bg-blue-900/20" : ""}
                                                     `}
-                                                        onClick={() => !((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) && handleRowClick(rowIdx)}
+                                                        onClick={() => !((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) && handleRowClick(rowIdx, lead)}
                                                         style={{ cursor: ((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? "default" : "pointer" }}
                                                     >
                                                         {(canDeleteLeads() || isSuperAdmin()) && checkboxVisible && (
