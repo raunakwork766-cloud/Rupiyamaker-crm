@@ -128,6 +128,7 @@ export const useAppNavigation = () => {
 // Route name to path mapping
 export const ROUTES = {
   FEED: '/feed',
+  DASHBOARD: '/dashboard',
   LEAD_CRM: '/lead-crm',
   LEAD_DASHBOARD: '/lead-dashboard',
   CREATE_LEAD: '/create-lead',
@@ -157,6 +158,7 @@ export const ROUTES = {
 // Label to route mapping for sidebar
 export const LABEL_TO_ROUTE = {
   'Feed': ROUTES.FEED,
+  'Dashboard': ROUTES.DASHBOARD,
   'Lead CRM': ROUTES.LEAD_CRM,
   'LEAD CRM': ROUTES.LEAD_CRM,  // Adding uppercase variant
   'LEAD Dashboard': ROUTES.LEAD_DASHBOARD,

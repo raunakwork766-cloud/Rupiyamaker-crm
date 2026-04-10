@@ -154,6 +154,7 @@ function App() {
     // Fall back to static path mapping
     const matchingLabel = Object.entries({
       'Feed': '/feed',
+      'Dashboard': '/dashboard',
       'Lead CRM': '/lead-crm',
       'LEAD Dashboard': '/lead-dashboard',
       'Create LEAD': '/create-lead',
@@ -197,6 +198,12 @@ function App() {
 
   // Use the notification check hook to ensure notifications are checked when the app loads
   useNotificationCheck()
+
+  // Disable browser scroll restoration so history.back() (used by useModalHistory)
+  // never resets scroll position when modals close.
+  useEffect(() => {
+    try { if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'; } catch (e) {}
+  }, [])
 
   // Mobile view detection with proper state management
   useEffect(() => {
@@ -345,6 +352,7 @@ function App() {
     // Define path mappings
     const pathMappings = {
       'Feed': '/feed',
+      'Dashboard': '/dashboard',
       'Lead CRM': '/lead-crm',
       'LEAD Dashboard': '/lead-dashboard',
       'Create LEAD': '/create-lead',

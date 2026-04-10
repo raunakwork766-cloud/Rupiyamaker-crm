@@ -1078,6 +1078,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     else if (currentPath.includes('/feed') || currentPath === '/') {
       targetLabel = 'Feed';
     }
+    else if (currentPath === '/dashboard') {
+      targetLabel = 'Dashboard';
+    }
     else if (currentPath.includes('/task')) {
       targetLabel = 'Task';
     }
@@ -1633,7 +1636,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
                             checkPermission('knowledge_base', 'show') ||
                             checkPermission('Knowledge Base', 'show') ||
-                            checkPermission('knowledgebase', 'show')
+                            checkPermission('knowledgebase', 'show'),
+
+      // Dashboard (DSA Performance) - leads users + super admin
+      canShowDashboard: isSuperAdmin(userPermissions) ||
+                        checkPermission('dashboard', 'show') ||
+                        checkPermission('Dashboard', 'show') ||
+                        checkPermission('leads', 'show') ||
+                        checkPermission('Leads', 'show')
     };
     
     console.log('🔐 ========================================');
@@ -1736,6 +1746,17 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               selectedLabel={selectedLabel} 
               onSelect={handleSelection} 
             />
+
+            {/* Dashboard */}
+            {permissions.canShowDashboard && (
+              <MenuItem
+                icon={icons["Dashboard"]}
+                label="Dashboard"
+                isOpen={isOpen}
+                selectedLabel={selectedLabel}
+                onSelect={handleSelection}
+              />
+            )}
 
             {/* LEAD CRM Dropdown */}
             {permissions.canShowLeads && (

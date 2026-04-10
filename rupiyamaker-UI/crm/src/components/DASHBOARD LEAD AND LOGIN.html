@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DSA Performance Overview</title>
+    
+    <!-- Premium Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Flatpickr Custom Date UI (Premium Calendar) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
+    <style>
+        /* === WORLD-CLASS ENTERPRISE CSS === */
+        :root {
+            /* Palette */
+            --bg-body: #f1f5f9;
+            --bg-surface: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-light: #e2e8f0;
+            --border-dark: #94a3b8;
+            --border-focus: #3b82f6;
+            
+            /* Leads Zone (Blue Theme) */
+            --leads-header-bg: #1e3a8a;
+            --leads-col-bg: #f8fafc;
+            --leads-total-bg: #eff6ff;
+            
+            /* Logins Zone (Green Theme) */
+            --logins-header-bg: #064e3b;
+            --logins-col-bg: #f0fdf4;
+            --logins-total-bg: #dcfce7;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            padding: 16px;
+            font-size: 13px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+        }
+
+        .dashboard-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+        }
+
+        /* --- REDESIGNED TWO-ROW SYSTEM --- */
+        .smart-nav-root {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .smart-nav-row1, .smart-nav-row2 {
+            background-color: var(--bg-surface);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            border: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .smart-nav-row1 {
+            padding: 8px 20px; 
+            gap: 24px;
+        }
+
+        .smart-nav-row2 {
+            padding: 10px 20px; 
+            gap: 16px;
+        }
+
+        /* Left side Row 1: Time Context */
+        .time-context-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            min-width: max-content;
+            position: relative;
+        }
+
+        /* Badge-styled Time Selector */
+        .time-selector {
+            appearance: none;
+            color: #ffffff;
+            background-color: #0f172a; 
+            padding: 8px 30px 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+            cursor: pointer;
+            outline: none;
+            margin-top: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            transition: opacity 0.2s, background-color 0.2s;
+        }
+        .time-selector:hover { opacity: 0.9; }
+
+        .context-date {
+            font-size: 20px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -0.5px;
+            white-space: nowrap;
+            line-height: 1.25;
+        }
+
+        /* Flatpickr Custom Styling */
+        .flatpickr-calendar { box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; border: 1px solid var(--border-light) !important; border-radius: 12px !important; font-family: 'Inter', sans-serif !important; }
+        .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay { background: #0f172a !important; border-color: #0f172a !important; font-weight: bold; }
+        .flatpickr-day.inRange { background: #e2e8f0 !important; border-color: #e2e8f0 !important; box-shadow: none !important; }
+
+        /* Right side Row 1: KPIs */
+        .kpis-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex: 1; 
+        }
+
+        .compact-kpi {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 24px;
+            border-radius: 10px;
+            border: 1px solid;
+            flex: 1; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            transition: transform 0.2s ease;
+        }
+        .compact-kpi:hover { transform: translateY(-2px); }
+
+        .kpi-leads { background: linear-gradient(145deg, #f0f9ff 0%, #e0f2fe 100%); border-color: #bae6fd; }
+        .kpi-logins { background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%); border-color: #bbf7d0; }
+
+        .kpi-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px; background-color: #ffffff; flex-shrink: 0; }
+        .kpi-icon svg { width: 24px; height: 24px; }
+        .kpi-leads .kpi-icon { color: #0284c7; border: 1px solid #bae6fd; }
+        .kpi-logins .kpi-icon { color: #16a34a; border: 1px solid #bbf7d0; }
+
+        .kpi-data { display: flex; flex-direction: column; gap: 4px; }
+        .kpi-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; line-height: 1; }
+        .kpi-val { font-size: 26px; font-weight: 900; color: #0f172a; line-height: 1; }
+
+        /* Row 2 layout */
+        .row2-left {
+            flex: 1;
+            display: flex;
+        }
+        .row2-right {
+            flex: 1;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 24px; 
+        }
+
+        .global-search-wrapper { position: relative; width: 100%; flex: 1; min-width: 0; }
+        .global-search-wrapper svg {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        .global-search-input {
+            width: 100%;
+            padding: 9px 14px 9px 40px;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            background-color: #f8fafc;
+            color: var(--text-main);
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .global-search-input:focus, .global-search-input:hover {
+            border-color: var(--border-focus);
+            background-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Filter Items */
+        .filter-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            position: relative;
+            width: 250px; 
+        }
+
+        .filter-item label {
+            font-weight: 800;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        /* Multi Select Dropdown standard */
+        .multi-select-container { flex: 1; position: relative; min-width: 0; }
+        .multi-select-trigger {
+            padding: 8px 12px;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            background-color: #f8fafc;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s;
+            height: 36px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            user-select: none;
+        }
+        .multi-select-trigger:hover { border-color: var(--border-focus); background-color: #ffffff; }
+
+        .multi-select-dropdown {
+            position: absolute; top: 100%; left: 0; right: 0; margin-top: 6px;
+            background: #fff; border: 1px solid var(--border-light); border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 9999; display: none; flex-direction: column; max-height: 250px;
+        }
+        .multi-select-dropdown.active { display: flex; }
+        .ms-search-box { padding: 10px; border-bottom: 1px solid var(--border-light); background: #f8fafc; border-radius: 8px 8px 0 0; }
+        .ms-search-box input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 6px; font-size: 13px; outline: none; }
+        .ms-options { overflow-y: auto; padding: 4px 0; }
+        .ms-option { padding: 8px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; font-weight: 500; }
+        .ms-option:hover { background-color: #f1f5f9; color: var(--border-focus); }
+        .ms-option input[type="checkbox"] { cursor: pointer; width: 14px; height: 14px; }
+
+        /* --- FLAWLESS TABLE UI --- */
+        .table-container {
+            flex-grow: 1;
+            background-color: var(--bg-surface);
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            border: 1px solid var(--border-light);
+            overflow: auto;
+            position: relative;
+        }
+
+        .table-container::-webkit-scrollbar { width: 8px; height: 10px; }
+        .table-container::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; }
+        .table-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 8px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+
+        table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; white-space: nowrap; }
+        th, td { padding: 12px 16px; border-bottom: 1px solid var(--border-light); }
+
+        thead th { position: sticky; top: 0; z-index: 20; color: #0f172a; }
+        thead tr:nth-child(2) th { top: 45px; border-bottom: 2px solid var(--border-light); }
+
+        thead tr:nth-child(1) th.identity-header { z-index: 40; left: 0; border-right: 2px solid #0f172a; }
+        thead tr:nth-child(2) th.sh-identity:nth-child(1) { z-index: 40; left: 0; }
+        thead tr:nth-child(2) th.sh-identity:nth-child(2) { z-index: 40; left: 160px; border-right: 2px solid var(--border-dark); }
+        
+        tbody td:nth-child(1) { position: sticky; left: 0; z-index: 10; background-color: #ffffff; }
+        tbody td:nth-child(2) { position: sticky; left: 160px; z-index: 10; background-color: #ffffff; border-right: 2px solid var(--border-dark); font-weight: 700; color: #0f172a; }
+
+        .group-header { text-align: center; font-weight: 800; font-size: 14px; letter-spacing: 1px; text-transform: uppercase; padding: 14px; }
+        .identity-header { background-color: #0f172a; color: #ffffff; border-bottom: 2px solid #000000; }
+        .leads-header { background-color: var(--leads-header-bg); color: #ffffff !important; border-bottom: 2px solid #172554; }
+        .logins-header { background-color: var(--logins-header-bg); color: #ffffff !important; border-bottom: 2px solid #022c22; }
+
+        th.sub-header { font-weight: 700; font-size: 12px; cursor: pointer; user-select: none; background-color: #f8fafc; color: var(--text-muted); transition: background-color 0.2s; }
+        th.sub-header:hover { background-color: #e2e8f0; color: var(--text-main); }
+        .sort-icon { display: inline-block; margin-left: 4px; font-size: 10px; color: #94a3b8; }
+        th.sub-header.active-sort .sort-icon { color: var(--border-focus); font-weight: bold; }
+
+        .partition-border { border-left: 4px solid #475569 !important; }
+        td.leads-zone { background-color: var(--leads-col-bg); }
+        td.logins-zone { background-color: var(--logins-col-bg); }
+        
+        td.total-leads-col { background-color: var(--leads-total-bg); font-weight: 800; color: #1e3a8a; font-size: 14px; text-align: center; }
+        th.total-leads-th { background-color: #dbeafe; color: #1e40af; text-align: center; }
+        
+        td.total-logins-col { background-color: var(--logins-total-bg); font-weight: 800; color: #064e3b; font-size: 14px; text-align: center; }
+        th.total-logins-th { background-color: #d1fae5; color: #166534; text-align: center; }
+
+        tr:hover td.leads-zone { background-color: #f1f5f9; }
+        tr:hover td.logins-zone { background-color: #e6f4ea; }
+        tr:hover td:nth-child(1), tr:hover td:nth-child(2) { background-color: #f8fafc; }
+
+        td.number-cell { text-align: center; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 14px; font-weight: 600; }
+
+    </style>
+</head>
+<body>
+
+<div class="dashboard-wrapper">
+    
+    <!-- REDESIGNED TWO-ROW SMART CONTROL CENTER -->
+    <div class="smart-nav-root">
+        
+        <!-- ROW 1: TIME CONTEXT AND DYNAMIC FULL-WIDTH KPIs -->
+        <div class="smart-nav-row1">
+            <div class="time-context-group">
+                <select id="timeFilter" class="time-selector">
+                    <option value="today">Today</option>
+                    <option value="this_week">This Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="all_time">All Time</option>
+                    <option value="custom_single">Custom (Single Date)</option>
+                    <option value="custom_range">Custom (Date Range)</option>
+                </select>
+                
+                <input type="text" id="dateRangePicker" style="position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; top: 0; left: 0;">
+                
+                <div id="dynamicDateContainer" class="context-date">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+
+            <div class="kpis-group">
+                <div class="compact-kpi kpi-leads">
+                    <div class="kpi-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-lbl">Total Leads Created</span>
+                        <span class="kpi-val" id="kpiTotalLeads">0</span>
+                    </div>
+                </div>
+                <div class="compact-kpi kpi-logins">
+                    <div class="kpi-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-lbl">Total Logins Processed</span>
+                        <span class="kpi-val" id="kpiTotalLogins">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 2: SEARCH AND FILTERS -->
+        <div class="smart-nav-row2">
+            <!-- Left Half: Global Search -->
+            <div class="row2-left">
+                <div class="global-search-wrapper">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="globalSearch" class="global-search-input" placeholder="Search employee, team...">
+                </div>
+            </div>
+
+            <!-- Right Half: Team & Employee Filters -->
+            <div class="row2-right">
+                
+                <div class="filter-item">
+                    <label>Team</label>
+                    <div class="multi-select-container" id="teamSelectWrapper">
+                        <div class="multi-select-trigger" id="teamTrigger">
+                            <span id="teamTriggerText">All Teams</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                        <div class="multi-select-dropdown" id="teamDropdown">
+                            <div class="ms-search-box">
+                                <input type="text" id="teamSearch" placeholder="Search team...">
+                            </div>
+                            <div class="ms-options" id="teamOptionsList">
+                                <!-- Injected via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <label>Employee</label>
+                    <div class="multi-select-container" id="empSelectWrapper">
+                        <div class="multi-select-trigger" id="empTrigger">
+                            <span id="empTriggerText">All Employees</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                        <div class="multi-select-dropdown" id="empDropdown">
+                            <div class="ms-search-box">
+                                <input type="text" id="empSearch" placeholder="Search employee...">
+                            </div>
+                            <div class="ms-options" id="empOptionsList">
+                                <!-- Injected via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MAIN TABLE SECTION -->
+    <div class="table-container">
+        <table id="mainTable">
+            <thead>
+                <tr>
+                    <th colspan="2" class="group-header identity-header">Identity</th>
+                    <th colspan="5" class="group-header leads-header">Leads Pipeline Zone</th>
+                    <th colspan="7" class="group-header logins-header partition-border">Logins Pipeline Zone</th>
+                </tr>
+                <tr>
+                    <th class="sub-header sh-identity" data-sort="name" data-type="string" style="min-width: 160px; text-align: left;">Employee Name <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header sh-identity" data-sort="team" data-type="string" style="min-width: 100px; text-align: left;">Team <span class="sort-icon">⇅</span></th>
+
+                    <!-- Leads -->
+                    <th class="sub-header total-leads-th" data-sort="totalLeads" data-type="number">Total Leads <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="leads.ACTIVE LEADS" data-type="number" style="text-align: center;">Active Leads <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="leads.NOT A LEAD" data-type="number" style="text-align: center;">Not a Lead <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="leads.LOST BY MISTAKE" data-type="number" style="text-align: center;">Lost By Mistake <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="leads.LOST LEAD" data-type="number" style="text-align: center;">Lost Lead <span class="sort-icon">⇅</span></th>
+                    
+                    <!-- Logins -->
+                    <th class="sub-header total-logins-th partition-border" data-sort="totalLogins" data-type="number">Total Logins <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.ACTIVE LOGIN" data-type="number" style="text-align: center;">Active Login <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.APPROVED" data-type="number" style="text-align: center;">Approved <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.DISBURSED" data-type="number" style="text-align: center;">Disbursed <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.LOST BY MISTAKE" data-type="number" style="text-align: center;">Lost By Mistake <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.LOST LOGIN" data-type="number" style="text-align: center;">Lost Login <span class="sort-icon">⇅</span></th>
+                    <th class="sub-header" data-sort="logins.MULTI LOGIN DISBURSED BY US BY OTHER BANK" data-type="number" style="text-align: center;">Multi Login <span class="sort-icon">⇅</span></th>
+                </tr>
+            </thead>
+            <tbody id="mainTableBody">
+                <!-- Data injected via JS -->
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- Flatpickr JS -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+<script>
+    // === 1. DATA AND STATES ===
+    const employees = [
+        { name: "Aarav Mehta", team: "Achievers" }, { name: "Rohan Sharma", team: "Achievers" },
+        { name: "Priya Desai", team: "Achievers" }, { name: "Karan Singh", team: "Achievers" },
+        { name: "Neha Verma", team: "Achievers" }, 
+        { name: "Rakesh Patel", team: "Achievers" }, { name: "Sneha Gupta", team: "Achievers" },
+        { name: "Vishal Kumar", team: "Achievers" }, { name: "Pooja Reddy", team: "Achievers" },
+        { name: "Sanjay Dutta", team: "Achievers" },
+        
+        { name: "Vikram Rajput", team: "Warriors" }, { name: "Ananya Iyer", team: "Warriors" },
+        { name: "Suresh Pillai", team: "Warriors" }, { name: "Aditi Joshi", team: "Warriors" },
+        { name: "Rahul Kapoor", team: "Warriors" },
+        { name: "Akash Singh", team: "Warriors" }, { name: "Nandini Rao", team: "Warriors" },
+        { name: "Manish Tiwari", team: "Warriors" }, { name: "Deepak Sharma", team: "Warriors" },
+        { name: "Kajal Agarwal", team: "Warriors" }
+    ];
+
+    const uniqueTeams = [...new Set(employees.map(e => e.team))];
+
+    let currentDashboardData = [];
+    let currentSortCol = null;
+    let isAscending = true;
+    
+    // States for filtering
+    let selectedEmployees = []; 
+    let selectedTeams = [];
+
+    // === 2. HIGH-END DATE LOGIC ===
+    const daysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    function formatSingleDate(dateObj) {
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const m = monthsShort[dateObj.getMonth()];
+        const y = dateObj.getFullYear();
+        return `${daysShort[dateObj.getDay()]}, ${d} ${m} ${y}`;
+    }
+
+    function formatShortDateWithDay(dateObj) {
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const m = monthsShort[dateObj.getMonth()];
+        const y = dateObj.getFullYear();
+        return `${daysShort[dateObj.getDay()]}, ${d} ${m} ${y}`;
+    }
+
+    function updateDynamicDateUI() {
+        const timeFilter = document.getElementById('timeFilter');
+        const timeVal = timeFilter.value;
+        const container = document.getElementById('dynamicDateContainer');
+        const now = new Date(); 
+
+        if (timeVal === 'custom_single' || timeVal === 'custom_range') {
+            const isRange = timeVal === 'custom_range';
+            window.flPicker.set('mode', isRange ? 'range' : 'single');
+            window.flPicker.clear();
+            window.flPicker.open();
+            return;
+        }
+
+        if (timeVal === 'today') {
+            container.innerHTML = `<div>${formatSingleDate(now)}</div>`;
+        } 
+        else if (timeVal === 'this_week') {
+            let day = now.getDay();
+            let diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(now.setDate(diffToMonday));
+            const sunday = new Date(now.setDate(diffToMonday + 6));
+            container.innerHTML = `<div>${formatShortDateWithDay(monday)}</div><div>to ${formatShortDateWithDay(sunday)}</div>`;
+        } 
+        else if (timeVal === 'this_month') {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            container.innerHTML = `<div>${formatShortDateWithDay(firstDay)}</div><div>to ${formatShortDateWithDay(lastDay)}</div>`;
+        } 
+        else if (timeVal === 'all_time') {
+            container.innerHTML = `<div>Complete Historical View</div>`;
+        }
+    }
+
+    window.flPicker = flatpickr("#dateRangePicker", {
+        mode: "range",
+        dateFormat: "Y-m-d", 
+        showMonths: 2,
+        onClose: function(selectedDates, dateStr, instance) {
+            const timeVal = document.getElementById('timeFilter').value;
+            if(selectedDates.length > 0) {
+                const container = document.getElementById('dynamicDateContainer');
+                if (timeVal === 'custom_single' || (timeVal === 'custom_range' && selectedDates.length === 1)) {
+                    container.innerHTML = `<div>${formatSingleDate(selectedDates[0])}</div>`;
+                } else if (timeVal === 'custom_range' && selectedDates.length === 2) {
+                    container.innerHTML = `<div>${formatShortDateWithDay(selectedDates[0])}</div><div>to ${formatShortDateWithDay(selectedDates[1])}</div>`;
+                }
+                generateAndSetData();
+            } else {
+                // User cancelled or cleared
+                document.getElementById('timeFilter').value = 'today';
+                updateDynamicDateUI();
+                generateAndSetData();
+            }
+        }
+    });
+
+    document.getElementById('timeFilter').addEventListener('click', (e) => {
+        // Prevent default propagation if needed
+        e.stopPropagation();
+    });
+
+    document.getElementById('timeFilter').addEventListener('change', () => {
+        updateDynamicDateUI();
+        if (document.getElementById('timeFilter').value !== 'custom_single' && document.getElementById('timeFilter').value !== 'custom_range') {
+            generateAndSetData();
+        }
+    });
+
+    // Global Search Event
+    document.getElementById('globalSearch').addEventListener('input', () => {
+        generateAndSetData();
+    });
+
+    // === 3. MULTI-SELECT FILTER UIs ===
+    
+    // ---> Employee Filter Logic
+    const empTrigger = document.getElementById('empTrigger');
+    const empDropdown = document.getElementById('empDropdown');
+    const empSearch = document.getElementById('empSearch');
+    const empOptionsList = document.getElementById('empOptionsList');
+    const empTriggerText = document.getElementById('empTriggerText');
+
+    empTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        empDropdown.classList.toggle('active');
+        if(empDropdown.classList.contains('active')) empSearch.focus();
+    });
+
+    // ---> Team Filter Logic
+    const teamTrigger = document.getElementById('teamTrigger');
+    const teamDropdown = document.getElementById('teamDropdown');
+    const teamSearch = document.getElementById('teamSearch');
+    const teamOptionsList = document.getElementById('teamOptionsList');
+    const teamTriggerText = document.getElementById('teamTriggerText');
+
+    teamTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        teamDropdown.classList.toggle('active');
+        if(teamDropdown.classList.contains('active')) teamSearch.focus();
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', (e) => {
+        if (!document.getElementById('empSelectWrapper').contains(e.target)) empDropdown.classList.remove('active');
+        if (!document.getElementById('teamSelectWrapper').contains(e.target)) teamDropdown.classList.remove('active');
+    });
+
+    function renderEmpOptions(filterText = "") {
+        empOptionsList.innerHTML = '';
+        const allDiv = document.createElement('label');
+        allDiv.className = 'ms-option';
+        const isAllSelected = selectedEmployees.length === 0;
+        allDiv.innerHTML = `<input type="checkbox" value="all" ${isAllSelected ? 'checked' : ''}> <span style="font-weight:700;">All Employees</span>`;
+        allDiv.querySelector('input').addEventListener('change', (e) => {
+            if(e.target.checked) selectedEmployees = [];
+            updateEmpSelectUI();
+        });
+        empOptionsList.appendChild(allDiv);
+
+        employees.forEach(emp => {
+            if(emp.name.toLowerCase().includes(filterText.toLowerCase())) {
+                const optDiv = document.createElement('label');
+                optDiv.className = 'ms-option';
+                const isChecked = selectedEmployees.includes(emp.name);
+                optDiv.innerHTML = `<input type="checkbox" value="${emp.name}" ${isChecked ? 'checked' : ''}> <span>${emp.name}</span>`;
+                optDiv.querySelector('input').addEventListener('change', (e) => {
+                    if(e.target.checked) selectedEmployees.push(emp.name);
+                    else selectedEmployees = selectedEmployees.filter(n => n !== emp.name);
+                    updateEmpSelectUI();
+                });
+                empOptionsList.appendChild(optDiv);
+            }
+        });
+    }
+
+    function renderTeamOptions(filterText = "") {
+        teamOptionsList.innerHTML = '';
+        const allDiv = document.createElement('label');
+        allDiv.className = 'ms-option';
+        const isAllSelected = selectedTeams.length === 0;
+        allDiv.innerHTML = `<input type="checkbox" value="all" ${isAllSelected ? 'checked' : ''}> <span style="font-weight:700;">All Teams</span>`;
+        allDiv.querySelector('input').addEventListener('change', (e) => {
+            if(e.target.checked) selectedTeams = [];
+            updateTeamSelectUI();
+        });
+        teamOptionsList.appendChild(allDiv);
+
+        uniqueTeams.forEach(team => {
+            if(team.toLowerCase().includes(filterText.toLowerCase())) {
+                const optDiv = document.createElement('label');
+                optDiv.className = 'ms-option';
+                const isChecked = selectedTeams.includes(team);
+                optDiv.innerHTML = `<input type="checkbox" value="${team}" ${isChecked ? 'checked' : ''}> <span>${team}</span>`;
+                optDiv.querySelector('input').addEventListener('change', (e) => {
+                    if(e.target.checked) selectedTeams.push(team);
+                    else selectedTeams = selectedTeams.filter(n => n !== team);
+                    updateTeamSelectUI();
+                });
+                teamOptionsList.appendChild(optDiv);
+            }
+        });
+    }
+
+    function updateEmpSelectUI() {
+        if (selectedEmployees.length === 0) empTriggerText.innerText = "All Employees";
+        else if (selectedEmployees.length === 1) empTriggerText.innerText = selectedEmployees[0];
+        else empTriggerText.innerText = `${selectedEmployees.length} Selected`;
+        
+        renderEmpOptions(empSearch.value);
+        generateAndSetData();
+    }
+
+    function updateTeamSelectUI() {
+        if (selectedTeams.length === 0) teamTriggerText.innerText = "All Teams";
+        else if (selectedTeams.length === 1) teamTriggerText.innerText = selectedTeams[0];
+        else teamTriggerText.innerText = `${selectedTeams.length} Selected`;
+        
+        renderTeamOptions(teamSearch.value);
+        generateAndSetData();
+    }
+
+    empSearch.addEventListener('input', (e) => renderEmpOptions(e.target.value));
+    teamSearch.addEventListener('input', (e) => renderTeamOptions(e.target.value));
+    
+    renderEmpOptions();
+    renderTeamOptions();
+
+    // === 4. DATA GENERATOR ===
+    function generateAndSetData() {
+        const timeVal = document.getElementById('timeFilter').value;
+        const globalSearchVal = document.getElementById('globalSearch').value.toLowerCase();
+        
+        let multiplier = 1; 
+        if (timeVal === 'this_week') multiplier = 5;
+        if (timeVal === 'this_month') multiplier = 20;
+        if (timeVal === 'all_time') multiplier = 100;
+        if (timeVal === 'custom_single') multiplier = Math.floor(Math.random() * 5) + 1;
+        if (timeVal === 'custom_range') multiplier = Math.floor(Math.random() * 15) + 5;
+
+        let filteredEmployees = employees;
+        
+        // Block 1: Apply Team Filter
+        if (selectedTeams.length > 0) {
+            filteredEmployees = filteredEmployees.filter(e => selectedTeams.includes(e.team));
+        }
+
+        // Block 2: Apply Employee Filter
+        if (selectedEmployees.length > 0) {
+            filteredEmployees = filteredEmployees.filter(e => selectedEmployees.includes(e.name));
+        }
+
+        // Block 3: Apply Global Search Query
+        if (globalSearchVal) {
+            filteredEmployees = filteredEmployees.filter(e => 
+                e.name.toLowerCase().includes(globalSearchVal) || 
+                e.team.toLowerCase().includes(globalSearchVal)
+            );
+        }
+
+        let sumGrandTotalLeads = 0;
+        let sumGrandTotalLogins = 0;
+
+        currentDashboardData = filteredEmployees.map(emp => {
+            let empLeadsMain = { "NOT A LEAD": 0, "ACTIVE LEADS": 0, "LOST BY MISTAKE": 0, "LOST LEAD": 0 };
+            let empLoginsMain = { "ACTIVE LOGIN": 0, "APPROVED": 0, "DISBURSED": 0, "LOST BY MISTAKE": 0, "LOST LOGIN": 0, "MULTI LOGIN DISBURSED BY US BY OTHER BANK": 0 };
+
+            const populateRandom = (storage, base) => {
+                for(let key in storage) { storage[key] = Math.floor(Math.random() * base * multiplier); }
+            };
+
+            populateRandom(empLeadsMain, 5);
+            empLeadsMain["ACTIVE LEADS"] += Math.floor(Math.random() * 10 * multiplier);
+            populateRandom(empLoginsMain, 3);
+
+            let totalLeads = Object.values(empLeadsMain).reduce((a,b)=>a+b, 0);
+            let totalLogins = Object.values(empLoginsMain).reduce((a,b)=>a+b, 0);
+
+            if (totalLogins > totalLeads) {
+                empLeadsMain["ACTIVE LEADS"] += (totalLogins - totalLeads + 5);
+                totalLeads = Object.values(empLeadsMain).reduce((a,b)=>a+b, 0);
+            }
+
+            sumGrandTotalLeads += totalLeads;
+            sumGrandTotalLogins += totalLogins;
+
+            return { 
+                name: emp.name, team: emp.team, totalLeads: totalLeads, totalLogins: totalLogins,
+                leads: empLeadsMain, logins: empLoginsMain 
+            };
+        });
+
+        document.getElementById('kpiTotalLeads').innerText = sumGrandTotalLeads.toLocaleString();
+        document.getElementById('kpiTotalLogins').innerText = sumGrandTotalLogins.toLocaleString();
+
+        if (currentSortCol) applySort(); else renderMainTable();
+    }
+
+    // === 5. SORTING LOGIC ===
+    function applySort() {
+        if (!currentSortCol) return;
+        const path = currentSortCol.split('.');
+        currentDashboardData.sort((a, b) => {
+            let valA = a, valB = b;
+            for (let i = 0; i < path.length; i++) { valA = valA[path[i]]; valB = valB[path[i]]; }
+            if (typeof valA === 'string') return isAscending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            return isAscending ? (valA - valB) : (valB - valA);
+        });
+        renderMainTable();
+    }
+
+    document.querySelectorAll('th.sub-header').forEach(th => {
+        th.addEventListener('click', function() {
+            const sortKey = this.getAttribute('data-sort');
+            if (!sortKey) return;
+            if (currentSortCol === sortKey) isAscending = !isAscending;
+            else { currentSortCol = sortKey; isAscending = this.getAttribute('data-type') === 'string' ? true : false; }
+
+            document.querySelectorAll('th.sub-header').forEach(el => {
+                el.classList.remove('active-sort');
+                el.querySelector('.sort-icon').innerHTML = '⇅';
+            });
+            this.classList.add('active-sort');
+            this.querySelector('.sort-icon').innerHTML = isAscending ? '▲' : '▼';
+            applySort();
+        });
+    });
+
+    // === 6. RENDER TABLE ===
+    function renderMainTable() {
+        const mainBody = document.getElementById('mainTableBody');
+        mainBody.innerHTML = '';
+        
+        if(currentDashboardData.length === 0) {
+            mainBody.innerHTML = `<tr><td colspan="14" style="text-align:center; padding: 40px; color: #64748b; font-size: 15px;">No records found. Try adjusting criteria.</td></tr>`;
+            return;
+        }
+
+        currentDashboardData.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong style="color: #0f172a;">${row.name}</strong></td>
+                <td style="color: #0f172a; font-weight: 700;">${row.team}</td>
+                <td class="number-cell total-leads-col">${row.totalLeads}</td>
+                <td class="number-cell leads-zone" style="color: #2563eb;">${row.leads["ACTIVE LEADS"]}</td>
+                <td class="number-cell leads-zone" style="color: #64748b;">${row.leads["NOT A LEAD"]}</td>
+                <td class="number-cell leads-zone" style="color: #ef4444;">${row.leads["LOST BY MISTAKE"]}</td>
+                <td class="number-cell leads-zone" style="color: #ef4444;">${row.leads["LOST LEAD"]}</td>
+                <td class="number-cell total-logins-col partition-border">${row.totalLogins}</td>
+                <td class="number-cell logins-zone" style="color: #059669;">${row.logins["ACTIVE LOGIN"]}</td>
+                <td class="number-cell logins-zone" style="color: #15803d;">${row.logins["APPROVED"]}</td>
+                <td class="number-cell logins-zone" style="color: #065f46; font-size: 15px;">${row.logins["DISBURSED"]}</td>
+                <td class="number-cell logins-zone" style="color: #ef4444;">${row.logins["LOST BY MISTAKE"]}</td>
+                <td class="number-cell logins-zone" style="color: #ef4444;">${row.logins["LOST LOGIN"]}</td>
+                <td class="number-cell logins-zone" style="color: #64748b;">${row.logins["MULTI LOGIN DISBURSED BY US BY OTHER BANK"]}</td>
+            `;
+            mainBody.appendChild(tr);
+        });
+    }
+
+    // Initialize 
+    updateDynamicDateUI();
+    generateAndSetData();
+
+</script>
+</body>
+</html>
