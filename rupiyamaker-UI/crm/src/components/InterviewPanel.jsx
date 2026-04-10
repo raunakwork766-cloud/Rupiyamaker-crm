@@ -3491,6 +3491,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const saveTimerRef = useRef(null);
+  const dataRef = useRef(null);
   const originalRef = useRef(null);
   const [histTab, setHistTab] = useState('details');
   const [rightTab, setRightTab] = useState('interview_remark');
@@ -3539,6 +3540,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         const res = await API.interviews.getInterviewById(id);
         const d = res || candidate;
         setData(d);
+        dataRef.current = d;
         originalRef.current = JSON.parse(JSON.stringify(d));
         // Use attachments from the interview response; also fetch separately as fallback
         if (d.attachments && d.attachments.length > 0) {
@@ -3554,6 +3556,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         await loadHistoryRemarks(id);
       } catch (e) {
         setData(candidate);
+        dataRef.current = candidate;
         originalRef.current = JSON.parse(JSON.stringify(candidate));
         // Try to fetch attachments even if main load failed
         try {
@@ -3641,6 +3644,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         const tm = field === 'interview_time' ? value : (prev.interview_time || '');
         if (dt && tm) updated.date_time = `${dt}T${tm}`;
       }
+      dataRef.current = updated; // keep ref in sync with latest data
       return updated;
     });
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -3648,10 +3652,12 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   };
 
   const triggerSave = async () => {
-    if (!interviewId || !data) return;
+    const currentData = dataRef.current;
+    const currentId = currentData?._id || currentData?.id || interviewId;
+    if (!currentId || !currentData) return;
     setSaving(true);
     try {
-      const saveData = { ...data };
+      const saveData = { ...currentData };
       delete saveData._id;
       delete saveData.id;
       delete saveData.attachments;
@@ -3663,8 +3669,8 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           delete saveData[f];
         }
       });
-      await API.interviews.updateInterview(interviewId, saveData, originalRef.current);
-      originalRef.current = JSON.parse(JSON.stringify(data));
+      await API.interviews.updateInterview(currentId, saveData, originalRef.current);
+      originalRef.current = JSON.parse(JSON.stringify(currentData));
       setLastSaved(new Date());
     } catch (e) {
       console.warn('Auto-save failed:', e);

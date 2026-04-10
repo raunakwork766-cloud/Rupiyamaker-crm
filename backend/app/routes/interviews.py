@@ -206,6 +206,8 @@ class InterviewUpdate(BaseModel):
     interview_time: Optional[str] = Field(None, max_length=10)
     status: Optional[str] = Field(None, min_length=1, max_length=50)  # Allow any status value from settings
     status_remark: Optional[str] = Field(None, max_length=1000)
+    remark: Optional[str] = Field(None, max_length=2000)
+    date_time: Optional[str] = Field(None, max_length=50)
 
 class InterviewResponse(BaseModel):
     id: str = Field(alias="_id", description="Interview MongoDB ID")
