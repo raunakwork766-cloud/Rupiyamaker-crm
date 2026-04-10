@@ -2466,7 +2466,7 @@ export default function MonthlyAttendanceTable() {
   const [searchQuery, setSearchQuery] = useState('')
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
-  const [empStatusFilter, setEmpStatusFilter] = useState('all') // 'all' | 'active' | 'inactive'
+  const [empStatusFilter, setEmpStatusFilter] = useState('active') // 'all' | 'active' | 'inactive'
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [teamSearchText, setTeamSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -3267,11 +3267,17 @@ export default function MonthlyAttendanceTable() {
         try {
           const employeesResponse = await hrmsService.getAllEmployees();
           if (employeesResponse?.data) {
-            activeEmployeeIds = new Set(
-              employeesResponse.data
-                .filter(emp => emp.employee_status === 'active' || emp.is_active === true)
-                .map(emp => emp.employee_id || emp._id)
-            );
+            activeEmployeeIds = new Set();
+            employeesResponse.data
+              .filter(emp => emp.employee_status === 'active' || emp.is_active === true)
+              .forEach(emp => {
+                const empId = emp.employee_id || emp._id;
+                if (empId) {
+                  activeEmployeeIds.add(empId);
+                  activeEmployeeIds.add(String(empId));
+                  activeEmployeeIds.add(Number(empId));
+                }
+              });
             // Build salary map
             employeesResponse.data.forEach(emp => {
               const eid = emp.employee_id || emp._id;
