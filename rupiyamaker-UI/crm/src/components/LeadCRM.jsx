@@ -4052,7 +4052,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             // Special handling for assignLead column
             if (key === 'assignLead') {
                 const raw = lead.assign_report_to || lead.assignReportTo;
-                if (!raw) return '';
+                if (!raw || (Array.isArray(raw) && raw.length === 0)) return '';
+                // First try to extract names directly (handles objects with name fields)
+                const directNames = extractTLNames(raw);
+                if (directNames.length > 0) {
+                    // Some items may be IDs rather than names – resolve via idToName when possible
+                    const resolved = directNames.map(item => idToName[item] || item).filter(Boolean);
+                    return resolved.join(', ');
+                }
+                // Fallback: extract IDs and resolve to names
                 let ids = [];
                 if (Array.isArray(raw)) {
                     ids = raw.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
