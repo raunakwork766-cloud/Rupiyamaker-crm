@@ -238,9 +238,12 @@ export default function RoleCompare({ embedded = false }) {
                     if (res.ok) { rolesData = await res.json(); break; }
                 } catch (_) { /* try next */ }
             }
-            if (rolesData) setRoles(rolesData);
+            if (rolesData && Array.isArray(rolesData)) setRoles(rolesData);
             const deptsRes = await fetch(`${API_BASE_URL}/departments/?user_id=${user_id}`, { headers: authHeaders });
-            if (deptsRes.ok) setDepartments(await deptsRes.json());
+            if (deptsRes.ok) {
+                const deptsData = await deptsRes.json();
+                setDepartments(Array.isArray(deptsData) ? deptsData : []);
+            }
         } catch (e) {
             console.error('RoleCompare fetch error:', e);
         } finally {

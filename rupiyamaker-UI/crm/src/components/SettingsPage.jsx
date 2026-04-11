@@ -322,6 +322,7 @@ const SettingsPage = () => {
     const [importantQuestions, setImportantQuestions] = useState([]);
     const [mistakeTypes, setMistakeTypes] = useState([]);
     const [warningActions, setWarningActions] = useState([]);
+    const [warningTypes, setWarningTypes] = useState([]);
     
     // Attachment type filter and delete state
     const [attachmentTypeFilter, setAttachmentTypeFilter] = useState('leads');
@@ -965,36 +966,40 @@ const SettingsPage = () => {
     const loadCampaignNames = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/settings/campaign-names?user_id=${user_id}`);
-            setCampaignNames(response.data);
+            setCampaignNames(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error('Error loading campaign names:', error);
+            setCampaignNames([]);
         }
     };
 
     const loadDataCodes = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/settings/data-codes?user_id=${user_id}`);
-            setDataCodes(response.data);
+            setDataCodes(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error('Error loading data codes:', error);
+            setDataCodes([]);
         }
     };
 
     const loadBankNames = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/settings/bank-names?user_id=${user_id}`);
-            setBankNames(response.data);
+            setBankNames(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error('Error loading bank names:', error);
+            setBankNames([]);
         }
     };
 
     const loadChannelNames = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/settings/channel-names?user_id=${user_id}`);
-            setChannelNames(response.data);
+            setChannelNames(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error('Error loading channel names:', error);
+            setChannelNames([]);
         }
     };
 
@@ -1040,9 +1045,10 @@ const SettingsPage = () => {
     const loadAvailableBanks = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/settings/banks?user_id=${user_id}`);
-            setAvailableBanks(response.data);
+            setAvailableBanks(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error('Error loading banks:', error);
+            setAvailableBanks([]);
         }
     };
 
@@ -1129,11 +1135,13 @@ const SettingsPage = () => {
     const loadDepartments = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/departments?user_id=${user_id}`);
-            const departmentsData = response.data.departments || response.data;
+            const raw = response.data.departments || response.data;
+            const departmentsData = Array.isArray(raw) ? raw : [];
             console.log('Loaded departments:', departmentsData);
             setDepartments(departmentsData);
         } catch (error) {
             console.error('Error loading departments:', error);
+            setDepartments([]);
         }
     };
 
@@ -1193,12 +1201,11 @@ const SettingsPage = () => {
     const loadEmailSettings = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/otp/email-settings?user_id=${user_id}`);
-            const emailSettingsData = response.data || [];
+            const emailSettingsData = Array.isArray(response.data) ? response.data : (Array.isArray(response.data?.data) ? response.data.data : []);
             console.log('Loaded email settings:', emailSettingsData);
             setEmailSettings(emailSettingsData);
         } catch (error) {
             console.error('Error loading email settings:', error);
-            // Don't throw error, just set empty array
             setEmailSettings([]);
         }
     };
@@ -1206,12 +1213,11 @@ const SettingsPage = () => {
     const loadAdminEmails = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/otp/admin-emails?user_id=${user_id}`);
-            const adminEmailsData = response.data || [];
+            const adminEmailsData = Array.isArray(response.data) ? response.data : (Array.isArray(response.data?.data) ? response.data.data : []);
             console.log('Loaded admin emails:', adminEmailsData);
             setAdminEmails(adminEmailsData);
         } catch (error) {
             console.error('Error loading admin emails:', error);
-            // Don't throw error, just set empty array
             setAdminEmails([]);
         }
     };
@@ -1219,12 +1225,12 @@ const SettingsPage = () => {
     const loadImportantQuestions = async () => {
         try {
             const response = await axios.get(`${BASE_URL}/important-questions?user_id=${user_id}`);
-            const questionsData = response.data?.questions || response.data || [];
+            const raw = response.data?.questions || response.data;
+            const questionsData = Array.isArray(raw) ? raw : [];
             console.log('Loaded important questions:', questionsData);
             setImportantQuestions(questionsData);
         } catch (error) {
             console.error('Error loading important questions:', error);
-            // Don't throw error, just set empty array
             setImportantQuestions([]);
         }
     };
