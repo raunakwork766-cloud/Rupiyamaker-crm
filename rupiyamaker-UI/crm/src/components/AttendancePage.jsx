@@ -2466,6 +2466,8 @@ export default function MonthlyAttendanceTable() {
   const [searchQuery, setSearchQuery] = useState('')
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
+  const [empStatusFilter, setEmpStatusFilter] = useState('active') // 'all' | 'active' | 'inactive'
+  const [empStatusDropdownOpen, setEmpStatusDropdownOpen] = useState(false)
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [teamSearchText, setTeamSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -2659,57 +2661,38 @@ export default function MonthlyAttendanceTable() {
   // Legacy compatibility for the old canViewAll function
   const canViewAllRecords = () => canUserViewAll();
 
-  // Convert API response to calendar format and filter by active employees
-  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}) => {
-    if (!apiData?.employees?.length) {
-      return [];
-    }
+  // Convert API response to calendar format and merge with HRMS employees
+  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}, allHrmsEmployees = []) => {
+    console.log('🔍 Total employees from attendance API:', apiData?.employees?.length || 0);
+    console.log('🔍 Total HRMS employees:', allHrmsEmployees.length);
 
-    console.log('🔍 Total employees from API:', apiData.employees.length);
-    console.log('🔍 Active employee IDs set:', activeEmployeeIds);
-
-    const filtered = apiData.employees
+    // Process attendance API employees
+    const attendanceEmployeeIds = new Set();
+    const filtered = (apiData?.employees || [])
       .filter(employee => {
-        // Check if employee has any actual attendance records for this month
         const hasAttendance = employee.days && employee.days.some(day => {
           const status = parseFloat(day.status);
-          // Check for any actual attendance status (P, HD, LV, AB, L, WK)
-          return status === 1.0 || status === 1 || // Present
-                 status === 2.0 || status === 2 || // Working/IN (checked in today)
-                 status === 0.5 || // Half Day
-                 status === 0 || status === 0.0 || // Leave
-                 status === -2 || status === -2.0 || // Absconding
-                 day.status === "L"; // Late
+          return status === 1.0 || status === 1 ||
+                 status === 2.0 || status === 2 ||
+                 status === 0.5 ||
+                 status === 0 || status === 0.0 ||
+                 status === -2 || status === -2.0 ||
+                 day.status === "L";
         });
 
-        // STRICT FILTERING: Only if we have active employee list
         if (activeEmployeeIds && activeEmployeeIds.size > 0) {
-          // Try multiple ID formats for matching
           const empId = employee.employee_id;
-          const empIdStr = String(empId);
-          const empIdNum = Number(empId);
-          
           const isActiveEmployee = activeEmployeeIds.has(empId) || 
-                                   activeEmployeeIds.has(empIdStr) || 
-                                   activeEmployeeIds.has(empIdNum);
-          
-          // Debug log for each employee
-          console.log(`👤 ${employee.employee_name} (ID: ${empId}, type: ${typeof empId}):`, {
-            isActive: isActiveEmployee,
-            hasAttendance: hasAttendance,
-            willShow: isActiveEmployee || hasAttendance,
-            checkedIDs: [empId, empIdStr, empIdNum]
-          });
-          
-          // Show employee ONLY if:
-          // 1. They are in the active employees list, OR
-          // 2. They have attendance for this month (inactive with historical data)
+                                   activeEmployeeIds.has(String(empId)) || 
+                                   activeEmployeeIds.has(Number(empId));
           return isActiveEmployee || hasAttendance;
         }
-
-        // STRICT: If no active employee list, show ONLY those with attendance
-        console.log(`⚠️ No active employee list, filtering by attendance only. ${employee.employee_name} - hasAttendance:`, hasAttendance);
         return hasAttendance;
+      })
+      .map(employee => {
+        attendanceEmployeeIds.add(employee.employee_id);
+        attendanceEmployeeIds.add(String(employee.employee_id));
+        return employee;
       })
       .map(employee => {
       // Create a record for each employee with day status mapping
@@ -2717,6 +2700,14 @@ export default function MonthlyAttendanceTable() {
       const empId = employee.employee_id;
       const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
       
+      // Determine employee active status from HRMS employee status map
+      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+      const isActiveEmp = empStatus
+        ? (empStatus === 'active')
+        : (!activeEmployeeIds || activeEmployeeIds.size === 0
+          ? true
+          : activeEmployeeIds.has(empId) || activeEmployeeIds.has(String(empId)) || activeEmployeeIds.has(Number(empId)));
+
       const employeeRecord = {
         id: employee.employee_id,
         mongoId: employee.user_mongo_id || employee.employee_id, // MongoDB _id for history API calls
@@ -2725,7 +2716,8 @@ export default function MonthlyAttendanceTable() {
         department: employee.department_name || "Unknown Department",
         role: employee.role_name || "",
         photo: employee.employee_photo,
-        salary: empSalary
+        salary: empSalary,
+        isActive: isActiveEmp
       };
 
         // Map each day's status to the expected format
@@ -2768,8 +2760,34 @@ export default function MonthlyAttendanceTable() {
         });      return employeeRecord;
     });
     
-    console.log('✅ Filtered to', filtered.length, 'employees');
-    return filtered;
+    // Add HRMS employees that are NOT in attendance data (placeholder records)
+    const hrmsOnlyRecords = allHrmsEmployees
+      .filter(emp => {
+        const empId = emp.employee_id || emp._id;
+        return empId && !attendanceEmployeeIds.has(empId) && !attendanceEmployeeIds.has(String(empId));
+      })
+      .map(emp => {
+        const empId = emp.employee_id || emp._id;
+        const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+        const isActiveEmp = empStatus ? (empStatus === 'active') : (emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false);
+        const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
+        const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || emp.username || 'Unknown';
+        return {
+          id: empId,
+          mongoId: emp._id || empId,
+          name: empName,
+          employeeId: emp.employee_id || emp.username || `EMP-${String(empId).slice(-6)}`,
+          department: emp.department_name || "Unknown Department",
+          role: emp.designation || "",
+          photo: emp.profile_photo,
+          salary: empSalary,
+          isActive: isActiveEmp
+        };
+      });
+
+    const allRecords = [...filtered, ...hrmsOnlyRecords];
+    console.log('✅ Attendance records:', filtered.length, '+ HRMS-only:', hrmsOnlyRecords.length, '= Total:', allRecords.length);
+    return allRecords;
   };
 
   // Fetch attendance data when component mounts or month changes
@@ -2782,35 +2800,38 @@ export default function MonthlyAttendanceTable() {
       setWarningPenaltiesMap({}) // Reset warning penalties when month/year changes
       
       try {
-        // Fetch active employees list first
+        // Fetch ALL employees (active + inactive) from Employee page for status filtering
         let activeEmployeeIds = null;
         const salaryMap = {};
+        const employeeStatusMap = {};
+        let allHrmsEmployees = [];
         try {
-          const employeesResponse = await hrmsService.getAllEmployees();
+          const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
-            console.log('📊 All employees from HRMS:', employeesResponse.data.length);
+            allHrmsEmployees = employeesResponse.data;
+            console.log('📊 All employees from HRMS:', allHrmsEmployees.length);
             
-            const activeEmployees = employeesResponse.data.filter(emp => {
-              const isActive = emp.employee_status === 'active' || emp.is_active === true;
-              if (!isActive) {
-                console.log('❌ Inactive employee:', emp.first_name, emp.last_name, '- employee_id:', emp.employee_id, '- status:', emp.employee_status);
-              }
-              return isActive;
-            });
-            
-            console.log('✅ Active employees count:', activeEmployees.length);
-            
-            // Create a Set of active employee IDs for fast lookup
-            // Store in multiple formats to handle type mismatches
+            // Build employee status map for all employees
             activeEmployeeIds = new Set();
-            activeEmployees.forEach(emp => {
+            employeesResponse.data.forEach(emp => {
               const empId = emp.employee_id || emp._id;
+              const isActive = emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false;
+              const status = isActive ? 'active' : 'inactive';
               if (empId) {
-                activeEmployeeIds.add(empId);
-                activeEmployeeIds.add(String(empId));
-                activeEmployeeIds.add(Number(empId));
+                // Status map for accurate active/inactive filtering
+                employeeStatusMap[empId] = status;
+                employeeStatusMap[String(empId)] = status;
+                // Active set for backward compatibility (filtering in convertToCalendarFormat)
+                if (isActive) {
+                  activeEmployeeIds.add(empId);
+                  activeEmployeeIds.add(String(empId));
+                  activeEmployeeIds.add(Number(empId));
+                }
               }
             });
+            
+            console.log('✅ Active employees:', Array.from(activeEmployeeIds).length / 3);
+            console.log('📋 Status map entries:', Object.keys(employeeStatusMap).length / 2);
             
             // Build salary map from same employee data (no extra API call)
             employeesResponse.data.forEach(emp => {
@@ -2846,7 +2867,7 @@ export default function MonthlyAttendanceTable() {
         } catch (e) { /* use defaults */ }
         
         if (response && response.employees) {
-          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap)
+          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap, allHrmsEmployees)
 
           // Fetch leave balances for all employees in parallel
           const leaveBalanceResults = await Promise.allSettled(
@@ -3255,17 +3276,29 @@ export default function MonthlyAttendanceTable() {
     // Optionally refresh attendance data to reflect holiday changes
     if (user?.user_id && (permissions !== null || isAdmin())) {
       try {
-        // Fetch active employees list first
+        // Fetch ALL employees for status map
         let activeEmployeeIds = null;
         const salaryMap2 = {};
+        const empStatusMap2 = {};
+        let allHrmsEmps2 = [];
         try {
-          const employeesResponse = await hrmsService.getAllEmployees();
+          const employeesResponse = await hrmsService.getEmployees('all');
           if (employeesResponse?.data) {
-            activeEmployeeIds = new Set(
-              employeesResponse.data
-                .filter(emp => emp.employee_status === 'active' || emp.is_active === true)
-                .map(emp => emp.employee_id || emp._id)
-            );
+            allHrmsEmps2 = employeesResponse.data;
+            activeEmployeeIds = new Set();
+            employeesResponse.data.forEach(emp => {
+              const empId = emp.employee_id || emp._id;
+              const isActive = emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false;
+              if (empId) {
+                empStatusMap2[empId] = isActive ? 'active' : 'inactive';
+                empStatusMap2[String(empId)] = isActive ? 'active' : 'inactive';
+                if (isActive) {
+                  activeEmployeeIds.add(empId);
+                  activeEmployeeIds.add(String(empId));
+                  activeEmployeeIds.add(Number(empId));
+                }
+              }
+            });
             // Build salary map
             employeesResponse.data.forEach(emp => {
               const eid = emp.employee_id || emp._id;
@@ -3282,7 +3315,7 @@ export default function MonthlyAttendanceTable() {
 
         const response = await attendanceAPI.getCalendar(selectedYear, selectedMonth, user.user_id)
         if (response && response.employees) {
-          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2)
+          let formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap2, empStatusMap2, allHrmsEmps2)
           
           // Filter data based on user permissions
           if (!canViewAllRecords()) {
@@ -3335,9 +3368,15 @@ export default function MonthlyAttendanceTable() {
 
   // All aggregate stats — memoized so they don't recompute on every render
   const stripStats = useMemo(() => {
+    let statsData = attendanceData
+    if (empStatusFilter === 'active') {
+      statsData = attendanceData.filter(r => r.isActive !== false)
+    } else if (empStatusFilter === 'inactive') {
+      statsData = attendanceData.filter(r => r.isActive === false)
+    }
     let presentToday = 0, absentToday = 0
     let totalAbsconding = 0, totalLeave = 0, totalGraceUsed = 0, totalAttendancePct = 0
-    attendanceData.forEach(r => {
+    statsData.forEach(r => {
       if (isCurrentMonth) {
         const s = r[`day${todayDay}`]
         if (['P', 'L', 'SP', 'HD', 'WK'].includes(s)) presentToday++
@@ -3349,13 +3388,13 @@ export default function MonthlyAttendanceTable() {
       totalGraceUsed += Math.max(0, (st.graceTotal || 0) - (st.graceRemaining || 0))
       totalAttendancePct += parseFloat(st.attendancePercentage) || 0
     })
-    const avgAttendancePct = attendanceData.length > 0
-      ? (totalAttendancePct / attendanceData.length).toFixed(1)
+    const avgAttendancePct = statsData.length > 0
+      ? (totalAttendancePct / statsData.length).toFixed(1)
       : '0.0'
-    return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct }
-  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay])
+    return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount: statsData.length }
+  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay, empStatusFilter])
 
-  const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct } = stripStats
+  const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount } = stripStats
 
   // Filtered + sorted data for table — memoized
   const filteredData = useMemo(() => {
@@ -3369,6 +3408,11 @@ export default function MonthlyAttendanceTable() {
     }
     if (teamFilter) {
       data = data.filter(r => r.department === teamFilter)
+    }
+    if (empStatusFilter === 'active') {
+      data = data.filter(r => r.isActive !== false)
+    } else if (empStatusFilter === 'inactive') {
+      data = data.filter(r => r.isActive === false)
     }
     if (statusFilter !== 'all' && isCurrentMonth) {
       data = data.filter(r => {
@@ -3393,7 +3437,7 @@ export default function MonthlyAttendanceTable() {
       })
     }
     return data
-  }, [attendanceData, searchQuery, teamFilter, statusFilter, sortConfig, isCurrentMonth, todayDay])
+  }, [attendanceData, searchQuery, teamFilter, empStatusFilter, statusFilter, sortConfig, isCurrentMonth, todayDay])
 
   if (loading || (user && permissions === null && !isAdmin())) {
     return (
@@ -3536,7 +3580,7 @@ export default function MonthlyAttendanceTable() {
       <div style={{background:'#09090b',border:'1px solid #27272a',borderRadius:'10px',overflow:'hidden',display:'flex',flexWrap:'wrap',marginBottom:'16px',marginTop:'8px'}}>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
           <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Employees</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{attendanceData.length}</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{statsCount}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>{months[selectedMonth-1]} {selectedYear}</div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3553,9 +3597,9 @@ export default function MonthlyAttendanceTable() {
             {isCurrentMonth ? presentToday : '—'}
             {isCurrentMonth && <span style={{fontSize:'11px',color:'#3b82f6',display:'inline-flex',alignItems:'center',gap:'3px'}}><span className="animate-pulse" style={{width:'6px',height:'6px',borderRadius:'50%',background:'#3b82f6',display:'inline-block'}}></span>IN</span>}
           </div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {attendanceData.length} employees</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {statsCount} employees</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(presentToday/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(presentToday/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3563,7 +3607,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#e4e4e7'}}>{isCurrentMonth ? absentToday : '—'}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>no check-in recorded</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(absentToday/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(absentToday/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3571,7 +3615,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff7b00'}}>{totalLeave}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>days this month</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${attendanceData.length>0?Math.min(100,(totalLeave/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${statsCount>0?Math.min(100,(totalLeave/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3579,7 +3623,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff2a2a'}}>{totalAbsconding}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>instances this month</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${attendanceData.length>0?Math.min(100,(totalAbsconding/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${statsCount>0?Math.min(100,(totalAbsconding/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px'}}>
@@ -3663,6 +3707,37 @@ export default function MonthlyAttendanceTable() {
                       style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === teamFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === teamFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
                       onMouseEnter={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='#1f1f22' }}
                       onMouseLeave={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='transparent' }}
+                    >
+                      {opt.label}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Employee Status filter dropdown */}
+        <div style={{position:'relative',flexShrink:0,minWidth:'120px'}}>
+          <div
+            onClick={() => setEmpStatusDropdownOpen(o => !o)}
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setEmpStatusDropdownOpen(false), 160) }}
+            tabIndex={0}
+            style={{background:'#0d0d10',border:'1px solid ' + (empStatusDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 28px 7px 10px',color: empStatusFilter !== 'all' ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',userSelect:'none',position:'relative',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
+          >
+            {empStatusFilter === 'all' ? 'All Employees' : empStatusFilter === 'active' ? 'Active Only' : 'Inactive Only'}
+            <svg style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%) rotate(' + (empStatusDropdownOpen ? '180deg' : '0deg') + ')',width:'10px',height:'10px',color:'#a1a1aa',transition:'transform 0.2s',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          {empStatusDropdownOpen && (
+            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,boxShadow:'0 8px 24px rgba(0,0,0,0.7)',minWidth:'140px'}}>
+              <div style={{maxHeight:'200px',overflowY:'auto'}}>
+                {[{label:'All Employees', value:'all'}, {label:'Active Only', value:'active'}, {label:'Inactive Only', value:'inactive'}]
+                  .map(opt => (
+                    <div
+                      key={opt.value}
+                      onMouseDown={() => { setEmpStatusFilter(opt.value); setEmpStatusDropdownOpen(false) }}
+                      style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === empStatusFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === empStatusFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
+                      onMouseEnter={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='#1f1f22' }}
+                      onMouseLeave={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='transparent' }}
                     >
                       {opt.label}
                     </div>
