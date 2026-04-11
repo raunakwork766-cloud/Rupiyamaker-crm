@@ -3,9 +3,9 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { buildApiUrl } from "../config/api";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"];
-const LOGIN_STATUSES = [
+// ─── Constants (fallback only — actual values come from API) ─────────────────
+const FALLBACK_LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"];
+const FALLBACK_LOGIN_STATUSES = [
   "ACTIVE LOGIN",
   "APPROVED",
   "DISBURSED",
@@ -194,6 +194,8 @@ export default function DashboardPage() {
   const [tableData, setTableData] = useState([]);
   const [totals, setTotals] = useState({ leads: 0, logins: 0 });
   const [loading, setLoading] = useState(false);
+  const [leadStatuses, setLeadStatuses] = useState(FALLBACK_LEAD_STATUSES);
+  const [loginStatuses, setLoginStatuses] = useState(FALLBACK_LOGIN_STATUSES);
 
   // Sort state
   const [sortCol, setSortCol] = useState(null);
@@ -286,6 +288,10 @@ export default function DashboardPage() {
       });
       if (!resp.ok) throw new Error("API error");
       const data = await resp.json();
+
+      // Update dynamic statuses from API response
+      if (data.leadStatuses && data.leadStatuses.length > 0) setLeadStatuses(data.leadStatuses);
+      if (data.loginStatuses && data.loginStatuses.length > 0) setLoginStatuses(data.loginStatuses);
 
       let employees = data.employees || [];
 
@@ -816,7 +822,7 @@ export default function DashboardPage() {
                 Identity
               </th>
               <th
-                colSpan={5}
+                colSpan={1 + leadStatuses.length}
                 style={{
                   background: "#1e3a8a",
                   color: "#fff",
@@ -835,7 +841,7 @@ export default function DashboardPage() {
                 Leads Pipeline Zone
               </th>
               <th
-                colSpan={7}
+                colSpan={1 + loginStatuses.length}
                 style={{
                   background: "#064e3b",
                   color: "#fff",
@@ -889,32 +895,28 @@ export default function DashboardPage() {
                 Team
               </TH>
 
-              {/* Leads */}
+              {/* Leads — dynamic */}
               <TH col="totalLeads" style={{ background: "#dbeafe", color: "#1e40af" }}>
                 Total Leads
               </TH>
-              <TH col="leads.ACTIVE LEADS">Active Leads</TH>
-              <TH col="leads.NOT A LEAD">Not a Lead</TH>
-              <TH col="leads.LOST BY MISTAKE">Lost By Mistake</TH>
-              <TH col="leads.LOST LEAD">Lost Lead</TH>
+              {leadStatuses.map((s) => (
+                <TH key={s} col={`leads.${s}`}>{s.replace(/_/g, " ")}</TH>
+              ))}
 
-              {/* Logins */}
+              {/* Logins — dynamic */}
               <TH col="totalLogins" style={{ background: "#d1fae5", color: "#166534", borderLeft: "4px solid #475569" }}>
                 Total Logins
               </TH>
-              <TH col="logins.ACTIVE LOGIN">Active Login</TH>
-              <TH col="logins.APPROVED">Approved</TH>
-              <TH col="logins.DISBURSED">Disbursed</TH>
-              <TH col="logins.LOST BY MISTAKE">Lost By Mistake</TH>
-              <TH col="logins.LOST LOGIN">Lost Login</TH>
-              <TH col="logins.MULTI LOGIN DISBURSED BY US BY OTHER BANK">Multi Login</TH>
+              {loginStatuses.map((s) => (
+                <TH key={s} col={`logins.${s}`}>{s.replace(/_/g, " ")}</TH>
+              ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td
-                  colSpan={14}
+                  colSpan={2 + 1 + leadStatuses.length + 1 + loginStatuses.length}
                   style={{ textAlign: "center", padding: 40, color: "#64748b", fontSize: 15 }}
                 >
                   Loading...
@@ -923,7 +925,7 @@ export default function DashboardPage() {
             ) : sortedData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={14}
+                  colSpan={2 + 1 + leadStatuses.length + 1 + loginStatuses.length}
                   style={{ textAlign: "center", padding: 40, color: "#64748b", fontSize: 15 }}
                 >
                   No records found. Try adjusting criteria.
@@ -993,11 +995,10 @@ export default function DashboardPage() {
                     {row.totalLeads}
                   </Nc>
 
-                  {/* Lead Statuses */}
-                  <Nc zone="leads" style={{ color: "#2563eb" }}>{row.leads["ACTIVE LEADS"] ?? 0}</Nc>
-                  <Nc zone="leads" style={{ color: "#64748b" }}>{row.leads["NOT A LEAD"] ?? 0}</Nc>
-                  <Nc zone="leads" style={{ color: "#ef4444" }}>{row.leads["LOST BY MISTAKE"] ?? 0}</Nc>
-                  <Nc zone="leads" style={{ color: "#ef4444" }}>{row.leads["LOST LEAD"] ?? 0}</Nc>
+                  {/* Lead Statuses — dynamic */}
+                  {leadStatuses.map((s) => (
+                    <Nc key={s} zone="leads" style={{ color: "#2563eb" }}>{row.leads[s] ?? 0}</Nc>
+                  ))}
 
                   {/* Total Logins */}
                   <Nc
@@ -1007,15 +1008,10 @@ export default function DashboardPage() {
                     {row.totalLogins}
                   </Nc>
 
-                  {/* Login Statuses */}
-                  <Nc zone="logins" style={{ color: "#059669" }}>{row.logins["ACTIVE LOGIN"] ?? 0}</Nc>
-                  <Nc zone="logins" style={{ color: "#15803d" }}>{row.logins["APPROVED"] ?? 0}</Nc>
-                  <Nc zone="logins" style={{ color: "#065f46", fontSize: 15 }}>{row.logins["DISBURSED"] ?? 0}</Nc>
-                  <Nc zone="logins" style={{ color: "#ef4444" }}>{row.logins["LOST BY MISTAKE"] ?? 0}</Nc>
-                  <Nc zone="logins" style={{ color: "#ef4444" }}>{row.logins["LOST LOGIN"] ?? 0}</Nc>
-                  <Nc zone="logins" style={{ color: "#64748b" }}>
-                    {row.logins["MULTI LOGIN DISBURSED BY US BY OTHER BANK"] ?? 0}
-                  </Nc>
+                  {/* Login Statuses — dynamic */}
+                  {loginStatuses.map((s) => (
+                    <Nc key={s} zone="logins" style={{ color: "#059669" }}>{row.logins[s] ?? 0}</Nc>
+                  ))}
                 </tr>
               ))
             )}

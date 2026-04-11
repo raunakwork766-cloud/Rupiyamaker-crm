@@ -110,6 +110,39 @@ async def get_dashboard_stats(
         leads_col = raw_db["leads"]
         login_leads_col = raw_db["login_leads"]
         departments_col = raw_db["departments"]
+        statuses_col = raw_db["statuses"]
+
+        # ─── Fetch statuses dynamically from Settings ───
+        all_statuses = await statuses_col.find(
+            {}, {"name": 1, "department_ids": 1}
+        ).sort("order", 1).to_list(None)
+
+        dyn_lead_statuses = []
+        dyn_login_statuses = []
+        for s in all_statuses:
+            name = s.get("name", "").strip().upper()
+            if not name:
+                continue
+            dept = s.get("department_ids", "")
+            if isinstance(dept, list):
+                if "leads" in dept:
+                    dyn_lead_statuses.append(name)
+                if "login" in dept:
+                    dyn_login_statuses.append(name)
+            elif isinstance(dept, str):
+                dl = dept.lower()
+                if dl == "leads":
+                    dyn_lead_statuses.append(name)
+                elif dl == "login":
+                    dyn_login_statuses.append(name)
+
+        # Fallback to defaults if nothing configured
+        LEAD_STATUSES = dyn_lead_statuses if dyn_lead_statuses else ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
+        LOGIN_STATUSES = dyn_login_statuses if dyn_login_statuses else [
+            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
+            "LOST BY MISTAKE", "LOST LOGIN",
+            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
+        ]
 
         # ─── Build date range ───
         start_dt, end_dt = _build_date_range_utc(time_filter, date_from, date_to)
@@ -186,12 +219,7 @@ async def get_dashboard_stats(
         logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
         # ─── Build per-employee data ───
-        LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
-        LOGIN_STATUSES = [
-            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
-            "LOST BY MISTAKE", "LOST LOGIN",
-            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
-        ]
+        # (LEAD_STATUSES and LOGIN_STATUSES already built dynamically above)
 
         emp_data = {
             uid: {
@@ -247,7 +275,9 @@ async def get_dashboard_stats(
 
         return {
             "employees": employees,
-            "totals": {"leads": total_leads, "logins": total_logins}
+            "totals": {"leads": total_leads, "logins": total_logins},
+            "leadStatuses": LEAD_STATUSES,
+            "loginStatuses": LOGIN_STATUSES,
         }
 
     except HTTPException:
