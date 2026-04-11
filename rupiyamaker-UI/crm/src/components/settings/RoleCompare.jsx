@@ -9,6 +9,7 @@ const ACTION_LABELS = {
     own:                  'View Own',
     junior:               "View Team's",
     all:                  'View All',
+    view_assign:          'Assigned Leads',
     delete:               'Delete',
     post:                 'Post / Create',
     add:                  'Add New',
@@ -59,7 +60,7 @@ const MODULE_LABELS = {
 };
 
 const allPermissions = {
-    'dashboard': ['show', 'own', 'junior', 'all'],
+    'dashboard': ['show', 'own', 'junior', 'all', 'view_assign'],
     'feeds': ['show', 'post', 'all', 'delete'],
     'Leads CRM': {
         'Create LEAD': ['show', 'add', 'reassignment_popup'],

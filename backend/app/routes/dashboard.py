@@ -119,6 +119,8 @@ async def get_dashboard_stats(
             effective_level = "all"
         elif PermissionManager.has_permission(user_permissions, "dashboard", "junior"):
             effective_level = "junior"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "view_assign"):
+            effective_level = "view_assign"
         elif PermissionManager.has_permission(user_permissions, "dashboard", "own"):
             effective_level = "own"
         else:
@@ -128,6 +130,9 @@ async def get_dashboard_stats(
         # ─── Build allowed_user_ids set based on effective_level ───
         allowed_user_ids: Optional[set] = None  # None = no restriction (all)
         if effective_level == "own":
+            allowed_user_ids = {user_id}
+        elif effective_level == "view_assign":
+            # view_assign: show only the requesting user in the table
             allowed_user_ids = {user_id}
         elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
@@ -233,29 +238,54 @@ async def get_dashboard_stats(
 
         # ─── Aggregate LEADS created by each user ───
         # Use created_by (who entered the lead) grouped by status
-        leads_pipeline = [
-            {"$match": {**date_match_leads, "created_by": {"$in": user_ids}}},
-            {"$group": {
-                "_id": {
-                    "user_id": "$created_by",
-                    "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                },
-                "count": {"$sum": 1}
-            }}
-        ]
+        # For view_assign: use assigned_to field (who the lead is assigned to)
+        if effective_level == "view_assign":
+            leads_pipeline = [
+                {"$match": {**date_match_leads, "assigned_to": {"$in": user_ids}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$assigned_to",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
+        else:
+            leads_pipeline = [
+                {"$match": {**date_match_leads, "created_by": {"$in": user_ids}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$created_by",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
         leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
 
         # ─── Aggregate LOGIN LEADS created by each user ───
-        logins_pipeline = [
-            {"$match": {**date_match_logins, "created_by": {"$in": user_ids}}},
-            {"$group": {
-                "_id": {
-                    "user_id": "$created_by",
-                    "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                },
-                "count": {"$sum": 1}
-            }}
-        ]
+        if effective_level == "view_assign":
+            logins_pipeline = [
+                {"$match": {**date_match_logins, "assigned_to": {"$in": user_ids}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$assigned_to",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
+        else:
+            logins_pipeline = [
+                {"$match": {**date_match_logins, "created_by": {"$in": user_ids}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$created_by",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
         logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
         # ─── Build per-employee data ───

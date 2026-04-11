@@ -67,7 +67,7 @@ const RoleSettings = () => {
     // Simplified permission structure with SuperAdmin, Interview Panel, and Reports
     const allPermissions = {
         'SuperAdmin': ['*'],
-        'dashboard': ['show', 'own', 'junior', 'all'],
+        'dashboard': ['show', 'own', 'junior', 'all', 'view_assign'],
         'feeds': ['show','post', 'all', 'delete'],
         
         // Leads CRM - Section-wise permissions matching sidebar structure (2 sections only)
@@ -99,7 +99,7 @@ const RoleSettings = () => {
     const getActionLabel = (moduleName, section, action) => {
         const key = section ? (moduleName + '|' + section) : moduleName;
         const map = {
-            'dashboard': { show:'Sidebar Access', own:'Own Data Only', junior:'Own + Team Data', all:'All Data' },
+            'dashboard': { show:'Sidebar Access', own:'Own Data Only', junior:'Own + Team Data', all:'All Data', view_assign:'Assigned Leads Only' },
             'feeds': { show:'Sidebar Access', post:'Create Post', all:'Manage All', delete:'Delete' },
             'Leads CRM|Create LEAD': { show:'View Leads', add:'Add Lead', reassignment_popup:'Reassign Popup' },
             'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', view_data_code:'View Data Code', rollback_login:'Rollback Login', delete:'Delete' },
