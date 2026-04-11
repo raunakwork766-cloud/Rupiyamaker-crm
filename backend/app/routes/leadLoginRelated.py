@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 from datetime import datetime
@@ -8,6 +8,7 @@ import time
 import asyncio
 import logging
 import copy
+import uuid
 from app.database import get_database_instances
 from app.database.Leads import LeadsDB
 from app.database.Users import UsersDB
@@ -1329,7 +1330,7 @@ async def upload_login_lead_documents(
         )
     
     # Check permission
-    await check_permission(user_id, ["leads", "login"], "create", users_db, roles_db)
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
     # Create directory for this login lead's documents
     lead_media_dir = await login_leads_db.create_media_path(login_lead_id)
@@ -1428,6 +1429,241 @@ async def upload_login_lead_documents(
     )
     
     return {"uploaded_files": document_ids}
+
+
+@router.delete("/login-leads/{login_lead_id}/documents/{document_id}", response_model=Dict[str, str])
+async def delete_login_lead_document(
+    login_lead_id: str,
+    document_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete a document from a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    document = await login_leads_db.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    success = await login_leads_db.delete_document(document_id, user_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete document")
+
+    return {"message": "Document deleted successfully"}
+
+
+@router.put("/login-leads/{login_lead_id}/documents/{document_id}", response_model=Dict[str, str])
+async def update_login_lead_document(
+    login_lead_id: str,
+    document_id: str,
+    update_data: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Update document metadata (e.g. rename) for a login lead document"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    document = await login_leads_db.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    update_data["updated_at"] = get_ist_now().isoformat()
+    await login_leads_db.documents_collection.update_one(
+        {"_id": ObjectId(document_id)},
+        {"$set": update_data}
+    )
+    return {"message": "Document updated successfully"}
+
+
+
+async def view_login_lead_attachment(
+    login_lead_id: str,
+    attachment_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """View/preview an attachment from a login lead"""
+    import os, io, mimetypes, logging as _logging
+
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    document = await login_leads_db.get_document(attachment_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+
+    abs_file_path = document.get("absolute_file_path")
+    if not abs_file_path:
+        file_path = document.get("file_path", "")
+        abs_file_path = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
+
+    if not os.path.exists(abs_file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
+
+    _fname = document.get("filename", "attachment")
+    _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
+
+    stored_password = document.get("password")
+    if stored_password and _fname.lower().endswith(".pdf"):
+        try:
+            from pypdf import PdfReader, PdfWriter
+            with open(abs_file_path, "rb") as f:
+                pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                if reader.decrypt(stored_password).value > 0:
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    output = io.BytesIO()
+                    writer.write(output)
+                    output.seek(0)
+                    return StreamingResponse(output, media_type="application/pdf",
+                                             headers={"Content-Disposition": f'inline; filename="{_fname}"'})
+        except Exception as _e:
+            _logging.error(f"PDF decrypt error for login attachment {attachment_id}: {_e}")
+
+    return FileResponse(path=abs_file_path, filename=_fname, media_type=_mtype,
+                        headers={"Content-Disposition": f'inline; filename="{_fname}"'})
+
+
+@router.get("/login-leads/{login_lead_id}/attachments/{attachment_id}/download")
+async def download_login_lead_attachment(
+    login_lead_id: str,
+    attachment_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Download an attachment from a login lead"""
+    import os, io, logging as _logging
+
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    document = await login_leads_db.get_document(attachment_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+
+    abs_file_path = document.get("absolute_file_path")
+    if not abs_file_path:
+        file_path = document.get("file_path", "")
+        abs_file_path = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
+
+    if not os.path.exists(abs_file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
+
+    _fname = document.get("filename", "attachment")
+
+    stored_password = document.get("password")
+    if stored_password and _fname.lower().endswith(".pdf"):
+        try:
+            from pypdf import PdfReader, PdfWriter
+            with open(abs_file_path, "rb") as f:
+                pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                if reader.decrypt(stored_password).value > 0:
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    output = io.BytesIO()
+                    writer.write(output)
+                    output.seek(0)
+                    return StreamingResponse(output, media_type="application/octet-stream",
+                                             headers={"Content-Disposition": f'attachment; filename="{_fname}"'})
+        except Exception as _e:
+            _logging.error(f"PDF decrypt error for login attachment {attachment_id}: {_e}")
+
+    return FileResponse(path=abs_file_path, filename=_fname, media_type="application/octet-stream")
+
+
+@router.get("/login-leads/{login_lead_id}/extra-document-fields", response_model=List[Dict[str, Any]])
+async def get_login_lead_extra_document_fields(
+    login_lead_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Get extra (custom) document fields for a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    return lead.get("extra_document_fields", [])
+
+
+@router.post("/login-leads/{login_lead_id}/extra-document-fields", response_model=Dict[str, Any])
+async def add_login_lead_extra_document_field(
+    login_lead_id: str,
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Add a new extra (custom) document field to a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Field name cannot be empty")
+    field = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "category_id": body.get("category_id") or "other",
+        "created_at": get_ist_now().isoformat(),
+    }
+    await login_leads_db.collection.update_one(
+        {"_id": ObjectId(login_lead_id)},
+        {"$push": {"extra_document_fields": field}}
+    )
+    return field
+
+
+@router.delete("/login-leads/{login_lead_id}/extra-document-fields/{field_id}", response_model=Dict[str, str])
+async def delete_login_lead_extra_document_field(
+    login_lead_id: str,
+    field_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete an extra (custom) document field from a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+    await login_leads_db.collection.update_one(
+        {"_id": ObjectId(login_lead_id)},
+        {"$pull": {"extra_document_fields": {"id": field_id}}}
+    )
+    return {"message": "Deleted successfully"}
 
 
 @router.get("/login-leads/{login_lead_id}/tasks", response_model=Dict[str, Any])

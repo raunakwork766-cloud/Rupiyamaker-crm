@@ -621,56 +621,70 @@ export default function CreateTicket({ onClose, onSubmit }) {
               </select>
             </div> */}
 
-            <div className="flex flex-col items-start mt-4" onPaste={handlePaste}>
+            <div className="mt-4">
               <label className="block font-bold text-gray-700 mb-2">
-                Attachment
+                📎 Attachment
               </label>
-              <div className="flex items-center gap-3">
-                <label className="inline-flex items-center px-4 py-2 bg-cyan-500 text-white font-bold rounded-lg shadow cursor-pointer hover:bg-cyan-600 transition">
-                  Photo/PDF/Video
-                  <input
-                    type="file"
-                    accept="image/*,video/*,application/pdf"
-                    className="hidden"
-                    onChange={handleFileChange}
-                    multiple
-                  />
-                </label>
-                <span className="text-xs text-gray-400">or Ctrl+V to paste</span>
-              </div>
-              {form.attachmentName && (
-                <span className="mt-2 text-green-700 font-semibold text-sm">
-                  Uploaded: {form.attachmentName}
-                </span>
-              )}
-              {form.selectedFiles.length > 0 && (
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {form.selectedFiles.map((file, index) => (
-                    <div key={index} className="relative flex items-center space-x-2 border border-gray-200 rounded-lg p-1">
-                      {file.type.startsWith('image/') ? (
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={`Preview ${index}`}
-                          className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0 text-gray-500 text-xs text-center p-1">
-                          {file.type === 'application/pdf' ? '📄 PDF' : '🎥 Video'}
-                        </div>
-                      )}
-                      <span className="text-sm text-black break-all">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFile(index)}
-                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition leading-none"
-                        title="Remove file"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+              <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: '8px', padding: '7px 10px', background: 'linear-gradient(180deg, #fbfdff, #f4f9ff)' }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Attach files (or Ctrl+V to paste)</span>
+                  <label className="cursor-pointer" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', color: '#fff', border: 'none', padding: '5px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 800 }}>
+                    ＋ Add
+                    <input
+                      type="file"
+                      accept="image/*,video/*,application/pdf"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      multiple
+                    />
+                  </label>
                 </div>
-              )}
+                {form.selectedFiles.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {form.selectedFiles.map((file, index) => {
+                      const blobUrl = URL.createObjectURL(file);
+                      return (
+                        <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                            <span style={{ background: '#eff6ff', color: '#0284c7', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
+                              {file.name?.split('.').pop() || 'FILE'}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#334155', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{file.name}</span>
+                            <span style={{ fontSize: '10px', color: '#94a3b8', flexShrink: 0 }}>
+                              {(file.size / 1024 / 1024).toFixed(2)} MB
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                            <a
+                              href={blobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ background: '#0ea5e9', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                            >
+                              View
+                            </a>
+                            <a
+                              href={blobUrl}
+                              download={file.name}
+                              style={{ background: '#0284c7', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                            >
+                              Download
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile(index)}
+                              style={{ width: '22px', height: '22px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '12px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              title="Remove file"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Modified Assignee Section for multiple assignees */}

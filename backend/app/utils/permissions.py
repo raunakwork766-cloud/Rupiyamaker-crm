@@ -382,13 +382,20 @@ class PermissionManager:
         
         # Get all users with these subordinate roles
         subordinate_users = await users_db.get_users_by_roles(subordinate_role_ids)
-        
-        if not subordinate_users:
-            print(f"DEBUG: No users found with subordinate roles {subordinate_role_ids}")
-            return []
-            
-        user_ids = [str(user["_id"]) for user in subordinate_users]
+        user_ids = [str(u["_id"]) for u in subordinate_users] if subordinate_users else []
         print(f"DEBUG: Found {len(user_ids)} subordinate users: {user_ids}")
+
+        # ── Peer Visibility: include same-role colleagues if the role has peer_visibility=True ──
+        user_role = await roles_db.get_role(user_role_id)
+        if user_role and user_role.get("peer_visibility", False):
+            print(f"DEBUG: peer_visibility is ON for role {user_role_id}, including same-role users")
+            peer_users = await users_db.get_users_by_roles([user_role_id])
+            for peer in (peer_users or []):
+                peer_id = str(peer["_id"])
+                if peer_id != user_id and peer_id not in user_ids:
+                    user_ids.append(peer_id)
+            print(f"DEBUG: After peer visibility, total subordinate users: {len(user_ids)}")
+
         return user_ids
 
     @staticmethod

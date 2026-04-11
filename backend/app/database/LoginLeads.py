@@ -389,3 +389,32 @@ class LoginLeadsDB:
         cursor = self.documents_collection.find({"login_lead_id": login_lead_id})
         documents = await cursor.to_list(None)
         return documents
+
+    async def get_document(self, document_id: str) -> Optional[dict]:
+        """Get a single document by ID"""
+        if not ObjectId.is_valid(document_id):
+            return None
+        return await self.documents_collection.find_one({"_id": ObjectId(document_id)})
+
+    async def delete_document(self, document_id: str, user_id: str) -> bool:
+        """Delete a document and its physical file"""
+        from pathlib import Path
+        if not ObjectId.is_valid(document_id):
+            return False
+
+        document = await self.documents_collection.find_one({"_id": ObjectId(document_id)})
+        if not document:
+            return False
+
+        # Delete physical file if it exists
+        abs_path = document.get("absolute_file_path") or document.get("file_path")
+        if abs_path:
+            try:
+                p = Path(abs_path) if Path(abs_path).is_absolute() else Path.cwd() / abs_path
+                if p.exists():
+                    p.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete file {abs_path}: {e}")
+
+        result = await self.documents_collection.delete_one({"_id": ObjectId(document_id)})
+        return result.deleted_count > 0

@@ -20,6 +20,33 @@ function fmtDate(d) {
   return `${DAYS_SHORT[d.getDay()]}, ${String(d.getDate()).padStart(2, "0")} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// ─── Custom Date Input (used inside the custom date modal) ───────────────────
+const DateInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
+  <input
+    ref={ref}
+    value={value}
+    onClick={onClick}
+    onChange={() => {}}
+    placeholder={placeholder || "DD-MM-YYYY"}
+    readOnly
+    style={{
+      width: "100%",
+      padding: "11px 14px",
+      border: "1.5px solid #e2e8f0",
+      borderRadius: 8,
+      fontSize: 14,
+      fontWeight: 500,
+      color: "#0f172a",
+      fontFamily: "'Inter', sans-serif",
+      cursor: "pointer",
+      background: "#fff",
+      boxSizing: "border-box",
+      outline: "none",
+    }}
+  />
+));
+DateInput.displayName = "DateInput";
+
 // ─── Multi-Select Dropdown ────────────────────────────────────────────────────
 const MultiSelect = React.memo(function MultiSelect({ options, selected, onChange, placeholder }) {
   const [open, setOpen] = useState(false);
@@ -182,6 +209,12 @@ export default function DashboardPage() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customMode, setCustomMode] = useState("range"); // "single" | "range"
 
+  // Modal temp state (tracks selections inside modal before Apply)
+  const [modalTempRange, setModalTempRange] = useState([null, null]);
+  const [modalTempMode, setModalTempMode] = useState("range");
+  const [prevTimeFilter, setPrevTimeFilter] = useState("today");
+  const [calendarOpen, setCalendarOpen] = useState(false); // tracks if date popup inside modal is open
+
   // Filter options (loaded from API)
   const [allEmployees, setAllEmployees] = useState([]);
   const [allTeams, setAllTeams] = useState([]);
@@ -209,6 +242,8 @@ export default function DashboardPage() {
   // Close datepicker AND time-dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
+      // Don't close if the react-datepicker calendar popup itself is open
+      if (calendarOpen) return;
       const insidePicker = datePickerWrapRef.current && datePickerWrapRef.current.contains(e.target);
       const insideDropdown = timeDropdownRef.current && timeDropdownRef.current.contains(e.target);
       if (!insidePicker && !insideDropdown) {
@@ -218,7 +253,7 @@ export default function DashboardPage() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [calendarOpen]);
 
   // Derive date label for display
   const dateLabel = useMemo(() => {
@@ -247,18 +282,24 @@ export default function DashboardPage() {
     return "";
   }, [timeFilter, customRange]);
 
+  // Format date as YYYY-MM-DD using LOCAL calendar date (IST-safe — avoids toISOString UTC shift)
+  const toLocalYMD = useCallback(
+    (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    []
+  );
+
   // Build query params for API call
   const buildParams = useCallback(() => {
     const p = new URLSearchParams({ user_id: userId, time_filter: timeFilter });
     if (timeFilter === "custom") {
       const [s, e] = customRange;
-      if (s) p.set("date_from", s.toISOString().slice(0, 10));
-      if (e) p.set("date_to", e.toISOString().slice(0, 10));
-      else if (s) p.set("date_to", s.toISOString().slice(0, 10));
+      if (s) p.set("date_from", toLocalYMD(s));
+      if (e) p.set("date_to", toLocalYMD(e));
+      else if (s) p.set("date_to", toLocalYMD(s));
     }
     if (empStatusFilter !== "all") p.set("emp_status", empStatusFilter);
     return p;
-  }, [userId, timeFilter, customRange, empStatusFilter]);
+  }, [userId, timeFilter, customRange, empStatusFilter, toLocalYMD]);
 
   // Fetch teams / employees list once
   useEffect(() => {
@@ -349,7 +390,6 @@ export default function DashboardPage() {
 
   const TIME_OPTIONS = [
     { val: "today", label: "Today" },
-    { val: "tomorrow", label: "Tomorrow" },
     { val: "this_week", label: "This Week" },
     { val: "this_month", label: "This Month" },
     { val: "all_time", label: "All Time" },
@@ -358,9 +398,11 @@ export default function DashboardPage() {
   const handleTimeChange = (val) => {
     setShowTimeDropdown(false);
     if (val === "custom") {
+      setPrevTimeFilter(timeFilter === "custom" ? prevTimeFilter : timeFilter);
       setTimeFilter("custom");
-      setCustomRange([null, null]);
-      setCustomMode("range");
+      // Pre-fill modal with already-applied custom range (if any)
+      setModalTempRange(customRange[0] ? [...customRange] : [null, null]);
+      setModalTempMode(customMode);
       setShowDatePicker(true);
     } else {
       setShowDatePicker(false);
@@ -377,6 +419,29 @@ export default function DashboardPage() {
       return "Custom Date Range";
     }
     return TIME_OPTIONS.find((o) => o.val === timeFilter)?.label || "Today";
+  };
+
+  // Apply custom date modal
+  const handleApplyDateModal = () => {
+    if (modalTempMode === "single" && modalTempRange[0]) {
+      setCustomRange([modalTempRange[0], modalTempRange[0]]);
+      setCustomMode("single");
+      setShowDatePicker(false);
+    } else if (modalTempMode === "range" && modalTempRange[0] && modalTempRange[1]) {
+      setCustomRange([...modalTempRange]);
+      setCustomMode("range");
+      setShowDatePicker(false);
+    }
+    // If incomplete selection, do nothing (modal stays open)
+  };
+
+  // Cancel custom date modal
+  const handleCancelDateModal = () => {
+    setShowDatePicker(false);
+    // If no custom date was previously applied, revert to previous time filter
+    if (!customRange[0]) {
+      setTimeFilter(prevTimeFilter || "today");
+    }
   };
 
   // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -518,6 +583,81 @@ export default function DashboardPage() {
     <div style={S.wrapper}>
       {/* Google Font */}
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+      {/* react-datepicker calendar — match flatpickr clean style */}
+      <style>{`
+        .rdp-dashboard .react-datepicker {
+          font-family: 'Inter', sans-serif !important;
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 12px !important;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.12) !important;
+          overflow: hidden;
+        }
+        .rdp-dashboard .react-datepicker__header {
+          background: #fff !important;
+          border-bottom: 1px solid #f1f5f9 !important;
+          padding: 12px 0 0 !important;
+        }
+        .rdp-dashboard .react-datepicker__current-month {
+          font-size: 14px !important;
+          font-weight: 800 !important;
+          color: #0f172a !important;
+          margin-bottom: 8px;
+        }
+        .rdp-dashboard .react-datepicker__day-name {
+          font-size: 11px !important;
+          font-weight: 700 !important;
+          color: #64748b !important;
+          width: 36px !important;
+          line-height: 36px !important;
+        }
+        .rdp-dashboard .react-datepicker__day {
+          width: 36px !important;
+          line-height: 36px !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+          color: #0f172a !important;
+          border-radius: 6px !important;
+          margin: 1px !important;
+        }
+        .rdp-dashboard .react-datepicker__day:hover {
+          background: #e2e8f0 !important;
+          border-radius: 6px !important;
+        }
+        .rdp-dashboard .react-datepicker__day--selected,
+        .rdp-dashboard .react-datepicker__day--range-start,
+        .rdp-dashboard .react-datepicker__day--range-end {
+          background: #0f172a !important;
+          color: #fff !important;
+          font-weight: 700 !important;
+          border-radius: 6px !important;
+        }
+        .rdp-dashboard .react-datepicker__day--in-range,
+        .rdp-dashboard .react-datepicker__day--in-selecting-range {
+          background: #e2e8f0 !important;
+          color: #0f172a !important;
+          border-radius: 0 !important;
+        }
+        .rdp-dashboard .react-datepicker__day--keyboard-selected {
+          background: #f1f5f9 !important;
+          color: #0f172a !important;
+        }
+        .rdp-dashboard .react-datepicker__day--today {
+          font-weight: 800 !important;
+          color: #2563eb !important;
+        }
+        .rdp-dashboard .react-datepicker__day--today.react-datepicker__day--selected {
+          color: #fff !important;
+        }
+        .rdp-dashboard .react-datepicker__day--outside-month {
+          color: #94a3b8 !important;
+        }
+        .rdp-dashboard .react-datepicker__navigation--previous,
+        .rdp-dashboard .react-datepicker__navigation--next {
+          top: 14px !important;
+        }
+        .rdp-dashboard .react-datepicker__triangle { display: none !important; }
+        .rdp-dashboard .react-datepicker-popper { z-index: 9999 !important; }
+      `}</style>
 
       {/* ─── Control Rows ─── */}
       <div style={S.navRoot}>
@@ -578,90 +718,181 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Date picker popup */}
+            {/* Custom Date Modal — clean card with toggle + inputs + Cancel/Apply */}
             {showDatePicker && (
               <div
                 ref={datePickerWrapRef}
-                style={{ position: "absolute", top: 44, left: 0, zIndex: 1000, background: "#fff", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", border: "1px solid #e2e8f0", overflow: "hidden", minWidth: 300 }}
+                style={{
+                  position: "absolute",
+                  top: 52,
+                  left: 0,
+                  zIndex: 1200,
+                  background: "#fff",
+                  borderRadius: 14,
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.16), 0 4px 12px rgba(0,0,0,0.08)",
+                  border: "1px solid #e2e8f0",
+                  padding: "20px",
+                  minWidth: 310,
+                  maxWidth: 360,
+                }}
               >
-                {/* Tabs */}
-                <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0" }}>
-                  {["single", "range"].map((mode) => (
+                {/* Single Date / Date Range toggle */}
+                <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 4, marginBottom: 20, gap: 4 }}>
+                  {[
+                    { key: "single", label: "Single Date" },
+                    { key: "range", label: "Date Range" },
+                  ].map(({ key, label }) => (
                     <button
-                      key={mode}
+                      key={key}
                       onClick={() => {
-                        setCustomMode(mode);
-                        setCustomRange([null, null]);
+                        setModalTempMode(key);
+                        setModalTempRange([null, null]);
                       }}
                       style={{
                         flex: 1,
-                        padding: "10px 0",
+                        padding: "8px 0",
                         border: "none",
-                        borderBottom: customMode === mode ? "2px solid #0f172a" : "2px solid transparent",
-                        background: "transparent",
+                        borderRadius: 7,
+                        background: modalTempMode === key ? "#fff" : "transparent",
+                        boxShadow: modalTempMode === key ? "0 1px 4px rgba(0,0,0,0.12)" : "none",
                         fontFamily: "inherit",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: customMode === mode ? "#0f172a" : "#94a3b8",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: modalTempMode === key ? "#0f172a" : "#64748b",
                         cursor: "pointer",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
                         transition: "all 0.15s",
                       }}
                     >
-                      {mode === "single" ? "Single Date" : "Date Range"}
+                      {label}
                     </button>
                   ))}
                 </div>
 
-                {/* Calendar */}
-                {customMode === "single" ? (
-                  <DatePicker
-                    selected={customRange[0]}
-                    onChange={(date) => setCustomRange([date, date])}
-                    inline
-                    monthsShown={1}
-                  />
+                {/* Date input(s) */}
+                {modalTempMode === "single" ? (
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                      SELECT DATE
+                    </label>
+                    <DatePicker
+                      selected={modalTempRange[0]}
+                      onChange={(date) => setModalTempRange([date, date])}
+                      dateFormat="dd-MM-yyyy"
+                      placeholderText="DD-MM-YYYY"
+                      customInput={<DateInput />}
+                      calendarClassName="rdp-dashboard"
+                      popperPlacement="bottom-start"
+                      popperProps={{ strategy: "fixed" }}
+                      onCalendarOpen={() => setCalendarOpen(true)}
+                      onCalendarClose={() => setCalendarOpen(false)}
+                    />
+                  </div>
                 ) : (
-                  <DatePicker
-                    selectsRange
-                    startDate={customRange[0]}
-                    endDate={customRange[1]}
-                    onChange={(dates) => setCustomRange(dates)}
-                    inline
-                    monthsShown={1}
-                  />
+                  <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                        START DATE
+                      </label>
+                      <DatePicker
+                        selected={modalTempRange[0]}
+                        onChange={(date) => setModalTempRange([date, modalTempRange[1]])}
+                        selectsStart
+                        startDate={modalTempRange[0]}
+                        endDate={modalTempRange[1]}
+                        dateFormat="dd-MM-yyyy"
+                        placeholderText="DD-MM-YYYY"
+                        customInput={<DateInput />}
+                        calendarClassName="rdp-dashboard"
+                        popperPlacement="bottom-start"
+                        popperProps={{ strategy: "fixed" }}
+                        onCalendarOpen={() => setCalendarOpen(true)}
+                        onCalendarClose={() => setCalendarOpen(false)}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                        END DATE
+                      </label>
+                      <DatePicker
+                        selected={modalTempRange[1]}
+                        onChange={(date) => setModalTempRange([modalTempRange[0], date])}
+                        selectsEnd
+                        startDate={modalTempRange[0]}
+                        endDate={modalTempRange[1]}
+                        minDate={modalTempRange[0]}
+                        dateFormat="dd-MM-yyyy"
+                        placeholderText="DD-MM-YYYY"
+                        customInput={<DateInput />}
+                        calendarClassName="rdp-dashboard"
+                        popperPlacement="bottom-start"
+                        popperProps={{ strategy: "fixed" }}
+                        onCalendarOpen={() => setCalendarOpen(true)}
+                        onCalendarClose={() => setCalendarOpen(false)}
+                      />
+                    </div>
+                  </div>
                 )}
 
-                {/* Footer */}
-                <div style={{ padding: "8px 12px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                    {customMode === "single"
-                      ? customRange[0]
-                        ? customRange[0].toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-                        : "Select a date"
-                      : customRange[0] && customRange[1]
-                        ? `${customRange[0].toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} → ${customRange[1].toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
-                        : customRange[0]
-                          ? "Select end date"
-                          : "Select start date"
-                    }
-                  </span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={() => { setCustomRange([null, null]); setShowDatePicker(false); setTimeFilter("today"); }}
-                      style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#64748b" }}
-                    >Clear</button>
-                    <button
-                      onClick={() => setShowDatePicker(false)}
-                      style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: "#0f172a", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >Apply</button>
-                  </div>
+                {/* Cancel / Apply buttons */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={handleCancelDateModal}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      border: "1.5px solid #e2e8f0",
+                      borderRadius: 8,
+                      background: "#fff",
+                      color: "#475569",
+                      fontFamily: "inherit",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "border-color 0.15s",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApplyDateModal}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      border: "none",
+                      borderRadius: 8,
+                      background: "#0f172a",
+                      color: "#fff",
+                      fontFamily: "inherit",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      opacity:
+                        (modalTempMode === "single" && modalTempRange[0]) ||
+                        (modalTempMode === "range" && modalTempRange[0] && modalTempRange[1])
+                          ? 1
+                          : 0.45,
+                    }}
+                  >
+                    Apply
+                  </button>
                 </div>
               </div>
             )}
 
-            <div style={S.dateLabel}>
+            <div
+              style={{
+                ...S.dateLabel,
+                ...(timeFilter === "custom" && customRange[0] ? { cursor: "pointer" } : {}),
+              }}
+              onClick={() => {
+                if (timeFilter === "custom" && customRange[0] && !showDatePicker) {
+                  setModalTempRange([...customRange]);
+                  setModalTempMode(customMode);
+                  setShowDatePicker(true);
+                }
+              }}
+              title={timeFilter === "custom" && customRange[0] ? "Click to edit date" : undefined}
+            >
               {dateLabel.split("  →  ").map((part, i, arr) => (
                 <div key={i}>
                   {i > 0 && <span style={{ fontSize: 14, color: "#64748b" }}>→ </span>}
@@ -965,14 +1196,31 @@ export default function DashboardPage() {
                       position: "sticky",
                       left: 0,
                       zIndex: 3,
-                      background: "#fff",
+                      background: row.isAssignedView ? "#fffbeb" : "#fff",
                       fontWeight: 700,
                       color: "#0f172a",
                       minWidth: 160,
                       width: 160,
                     }}
                   >
-                    {row.name}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{row.name}</span>
+                      {row.isAssignedView && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          letterSpacing: "0.5px",
+                          color: "#92400e",
+                          background: "#fef3c7",
+                          border: "1px solid #fcd34d",
+                          borderRadius: 4,
+                          padding: "1px 5px",
+                          textTransform: "uppercase",
+                        }}>
+                          Assigned
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Team */}

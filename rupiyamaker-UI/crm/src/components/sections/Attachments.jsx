@@ -933,10 +933,15 @@ export default function Attachments({ leadId, userId }) {
   }, [currentUserId]);
 
   // Load extra document fields for this lead
-  const loadExtraDocFields = async () => {
+  const loadExtraDocFields = async (resolvedLeadData) => {
     if (!leadId || !currentUserId) return;
     try {
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`);
+      const ld = resolvedLeadData !== undefined ? resolvedLeadData : leadData;
+      const isLogin = ld && (ld.original_lead_id || ld.login_created_at);
+      const url = isLogin
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`;
+      const response = await fetch(url);
       if (response.ok) {
         const fields = await response.json();
         setExtraDocFields(fields);
@@ -951,7 +956,11 @@ export default function Attachments({ leadId, userId }) {
     if (!name) return;
     setAddingExtraDoc(true);
     try {
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`, {
+      const isLogin = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const url = isLogin
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, category_id: showAddExtraForm }),
@@ -979,7 +988,11 @@ export default function Attachments({ leadId, userId }) {
 
   const handleDeleteExtraDocField = async (fieldId, fieldName) => {
     try {
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`, {
+      const isLogin = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const url = isLogin
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`;
+      const response = await fetch(url, {
         method: 'DELETE',
       });
       if (response.ok) {
@@ -994,10 +1007,10 @@ export default function Attachments({ leadId, userId }) {
   };
 
   // Load lead data when leadId changes to determine if it's a login lead
+  // loadExtraDocFields is chained after so it knows which endpoint to use
   useEffect(() => {
     if (leadId && currentUserId) {
-      fetchLeadData();
-      loadExtraDocFields();
+      fetchLeadData().then(ld => loadExtraDocFields(ld));
     }
   }, [leadId, currentUserId]);
 
@@ -1261,7 +1274,11 @@ export default function Attachments({ leadId, userId }) {
 
   // Handle downloading a document
   const handleDownload = (docId) => {
-    window.open(`${BASE_URL}/leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`, '_blank');
+    const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+    const downloadUrl = isLoginLead
+      ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`
+      : `${BASE_URL}/leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`;
+    window.open(downloadUrl, '_blank');
     const doc = uploadedDocuments.find(d => d._id === docId);
     showNotification(`Downloading "${doc?.filename || 'document'}"...`, 'success');
   };
@@ -1279,8 +1296,13 @@ export default function Attachments({ leadId, userId }) {
 
     try {
       setIsLoading(true);
-      
-      const response = await fetch(`${BASE_URL}/leads/${leadId}/attachments/${docId}?user_id=${currentUserId}`, {
+
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const deleteUrl = isLoginLead
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents/${docId}?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/attachments/${docId}?user_id=${currentUserId}`;
+
+      const response = await fetch(deleteUrl, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1458,8 +1480,11 @@ export default function Attachments({ leadId, userId }) {
 
       for (const doc of uploadedDocuments) {
         try {
+          const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
           const response = await fetch(
-            `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
+            _isLoginForZip
+              ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
+              : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
             { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
           );
           if (response.ok) {
@@ -1475,8 +1500,11 @@ export default function Attachments({ leadId, userId }) {
         const folder = zip.folder(docType);
         for (const doc of docs) {
           try {
+            const _isLoginForZip2 = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
             const response = await fetch(
-              `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
+              _isLoginForZip2
+                ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
+                : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
               { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
             );
             if (response.ok) {
@@ -1694,14 +1722,15 @@ export default function Attachments({ leadId, userId }) {
     if (!trimmed) { setEditingFileId(null); setEditingFileName(''); return; }
     const newFilename = trimmed + ext;
     try {
-      const res = await fetch(
-        `${BASE_URL}/leads/${leadId}/documents/${docId}?user_id=${currentUserId}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: newFilename }),
-        }
-      );
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const renameUrl = isLoginLead
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents/${docId}?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}/documents/${docId}?user_id=${currentUserId}`;
+      const res = await fetch(renameUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: newFilename }),
+      });
       if (!res.ok) throw new Error('Server returned ' + res.status);
       setUploadedDocuments(prev =>
         prev.map(d => d._id === docId ? { ...d, filename: newFilename } : d)
@@ -1948,6 +1977,23 @@ export default function Attachments({ leadId, userId }) {
               }
             }
           });
+
+          // Match extra types to their stored category_id (covers custom categories and any missed DOCUMENT_CATEGORIES)
+          const allCatById = new Map([
+            ...grouped.map(g => [g.id, g]),
+            ...[...customCatMap.values()].map(g => [g.id, g]),
+          ]);
+          allDisplayTypes.forEach(t => {
+            if (matchedNames.has(t.name)) return;
+            if (t.isExtra && t.category_id) {
+              const catEntry = allCatById.get(t.category_id);
+              if (catEntry) {
+                catEntry.types.push(t);
+                matchedNames.add(t.name);
+              }
+            }
+          });
+
           customCatMap.forEach(g => grouped.push(g));
 
           // 'other' group: remaining unmatched
@@ -2142,12 +2188,17 @@ export default function Attachments({ leadId, userId }) {
                                   const ext2 = fname2.split('.').pop();
                                   const isPdf = ext2 === 'pdf';
                                   const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext2);
-                                  const downloadUrl = `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`;
+                                  const _isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+                                  const downloadUrl = _isLoginLead
+                                    ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
+                                    : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`;
+                                  const viewUrl = _isLoginLead
+                                    ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`
+                                    : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`;
                                   const docName = doc.filename || doc.file_name || 'Document';
                                   setViewerDoc({ blobUrl: null, downloadUrl, name: docName, isPdf, isImage, loading: true, error: null });
                                   try {
-                                    const res = await fetch(
-                                      `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/view?user_id=${currentUserId}`,
+                                    const res = await fetch(viewUrl,
                                       { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
                                     );
                                     if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -1147,163 +1147,94 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
                 }}
               />
             </div>
-            <div className="flex flex-col items-start mt-4" onPaste={handleAttachmentPaste}>
+            <div className="mt-4">
               <label className="block font-bold text-gray-700 mb-2">
-                Attachment
+                📎 Attachment
               </label>
-              <div className="flex items-center gap-3">
-                <label className="inline-flex items-center px-4 py-2 font-bold rounded-lg shadow transition bg-cyan-500 text-white cursor-pointer hover:bg-cyan-600">
-                  Photo/PDF/Video
-                  <input
-                    type="file"
-                    accept="image/*,video/*,application/pdf"
-                    className="hidden"
-                    onChange={handleAttachmentChange}
-                    multiple
-                  />
-                </label>
-                <span className="text-xs text-gray-400">or Ctrl+V to paste</span>
-              </div>
-              
-              {/* Display existing attachments with a clear heading */}
-              <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
-                {ticket.attachments.filter(a => a.isFromBackend).length > 0 
-                  ? "Previous Attachments" 
-                  : ""}
-              </h4>
-              
-              {/* Show previous attachments from the backend */}
-              {ticket.attachments.filter(a => a.isFromBackend).length > 0 && (
-                <div className="mt-2 grid grid-cols-2 gap-4 w-full">
-                  {ticket.attachments
-                    .filter(attachment => attachment.isFromBackend)
-                    .map((attachment, index) => (
-                    <div key={`backend-${index}`} className="flex items-center bg-gray-100 p-2 rounded-lg relative border-2 border-blue-200">
-                      {attachment.url && (attachment.url.match(/\.(jpeg|jpg|gif|png)$/i) || (attachment.mimeType && attachment.mimeType.startsWith('image/'))) ? (
-                        <img
-                          src={attachment.url}
-                          alt={`Preview ${index}`}
-                          className="w-20 h-20 object-cover rounded-lg mr-2"
-                          onError={(e) => {
-                            console.error("Image failed to load:", attachment.url);
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/80x80?text=Error";
-                          }}
-                        />
-                      ) : (
-                        <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded-lg mr-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      )}
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm text-black font-medium truncate">{attachment.name}</span>
-                        <div className="flex flex-col">
-                          <a 
-                            href={attachment.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            View
-                          </a>
-                          {attachment.uploadedAt && (
-                            <span className="text-xs text-gray-500">
-                              Uploaded: {new Date(attachment.uploadedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                            </span>
+              <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: '8px', padding: '7px 10px', background: 'linear-gradient(180deg, #fbfdff, #f4f9ff)' }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Attach files (or Ctrl+V to paste)</span>
+                  <label className="cursor-pointer" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', color: '#fff', border: 'none', padding: '5px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 800 }}>
+                    ＋ Add
+                    <input
+                      type="file"
+                      accept="image/*,video/*,application/pdf"
+                      className="hidden"
+                      onChange={handleAttachmentChange}
+                      multiple
+                    />
+                  </label>
+                </div>
+
+                {/* All attachments as rows */}
+                {ticket.attachments.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {ticket.attachments.map((attachment, index) => (
+                      <div key={attachment.id || `att-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderRadius: 8, border: attachment.isFromBackend ? '1px solid #bbf7d0' : '1px solid #bfdbfe', padding: '6px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                          <span style={{ background: attachment.isFromBackend ? '#f0fdf4' : '#eff6ff', color: attachment.isFromBackend ? '#16a34a' : '#0284c7', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
+                            {attachment.name?.split('.').pop() || 'FILE'}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#334155', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>{attachment.name}</span>
+                          {!attachment.isFromBackend && (
+                            <span style={{ fontSize: '10px', color: '#22c55e', flexShrink: 0 }}>New</span>
                           )}
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                        onClick={() => {
-                          setTicket(prev => ({
-                            ...prev,
-                            attachments: prev.attachments.filter(a => a !== attachment),
-                            removedAttachments: [...(prev.removedAttachments || []), attachment]
-                          }));
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* Show newly added attachments with a separate heading */}
-              <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
-                {ticket.attachments.filter(a => !a.isFromBackend).length > 0 
-                  ? "New Attachments" 
-                  : ""}
-              </h4>
-              
-              {/* Display newly added attachments */}
-              {ticket.attachments.filter(a => !a.isFromBackend).length > 0 ? (
-                <div className="mt-2 grid grid-cols-2 gap-4 w-full">
-                  {ticket.attachments
-                    .filter(attachment => !attachment.isFromBackend)
-                    .map((attachment, index) => (
-                    <div key={`new-${index}`} className="flex items-center bg-gray-100 p-2 rounded-lg relative border-2 border-green-200">
-                      {attachment.url && attachment.url.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                        <img
-                          src={attachment.url}
-                          alt={`Preview ${index}`}
-                          className="w-20 h-20 object-cover rounded-lg mr-2"
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/80x80?text=Error";
-                          }}
-                        />
-                      ) : (
-                        <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded-lg mr-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      )}
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm text-black font-medium truncate">{attachment.name}</span>
-                        <div className="flex flex-col">
-                          <a 
-                            href={attachment.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          {attachment.url && (
+                            <a
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ background: '#0ea5e9', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                            >
+                              View
+                            </a>
+                          )}
+                          {attachment.url && (
+                            <a
+                              href={attachment.url}
+                              download={attachment.name}
+                              style={{ background: '#0284c7', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                            >
+                              Download
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            style={{ width: '22px', height: '22px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '12px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={() => {
+                              if (attachment.isFromBackend) {
+                                setTicket(prev => ({
+                                  ...prev,
+                                  attachments: prev.attachments.filter(a => a !== attachment),
+                                  removedAttachments: [...(prev.removedAttachments || []), attachment]
+                                }));
+                              } else {
+                                setTicket(prev => ({
+                                  ...prev,
+                                  attachments: prev.attachments.filter(a => a !== attachment),
+                                  newAttachments: prev.newAttachments.filter(a => a !== attachment)
+                                }));
+                              }
+                            }}
+                            title="Remove"
                           >
-                            Preview
-                          </a>
-                          <span className="text-xs text-green-600">
-                            New file - not yet uploaded
-                          </span>
+                            ×
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                        onClick={() => {
-                          setTicket(prev => ({
-                            ...prev,
-                            attachments: prev.attachments.filter(a => a !== attachment),
-                            newAttachments: prev.newAttachments.filter(a => a !== attachment)
-                          }));
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              
-              {/* Show message when no attachments exist */}
-              {ticket.attachments.length === 0 && (
-                <div className="mt-2 p-4 bg-gray-100 rounded-lg text-gray-500 text-center w-full">
-                  No attachments available. Add some using the button above.
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+
+                {/* Show message when no attachments exist */}
+                {ticket.attachments.length === 0 && (
+                  <div style={{ padding: '10px', background: '#f8fafc', borderRadius: 6, color: '#94a3b8', textAlign: 'center', fontSize: '12px' }}>
+                    No attachments. Add files using the button above or Ctrl+V to paste.
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Modified Assignee Section for multiple assignees */}

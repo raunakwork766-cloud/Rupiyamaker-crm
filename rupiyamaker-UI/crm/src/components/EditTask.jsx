@@ -234,7 +234,8 @@ export default function EditTask({
   onClose, 
   currentUserId, 
   apiBaseUrl = API_BASE_URL,
-  onStatusChange // New prop for immediate status change notifications
+  onStatusChange, // New prop for immediate status change notifications
+  isInsideLeadContext = false // When true (inside Lead detail view), hides the Record/Lead selection field
 }) {
   // Early return if no initialTask and no onClose callback
   if (!initialTask && !onClose) {
@@ -2135,7 +2136,8 @@ export default function EditTask({
             />
           </div>
 
-          {/* Associate with Records Field - Inline Lead Dropdown */}
+          {/* Associate with Records Field - Hidden when inside Lead context (association is already implied) */}
+          {!isInsideLeadContext && (
           <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
             <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>
               {typePill.cls === 'callback' ? 'Who to call? (Target Record)' : 'Associate with Record'}
@@ -2243,169 +2245,81 @@ export default function EditTask({
               )}
             </div>
           </div>
+          )}
 
           {/* Attachment Section */}
           <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
             <label style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.5px' }}>📎 Attachments</label>
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0' }}>
-              <label style={{ display:'inline-flex', alignItems:'center', padding:'6px 14px', background:'#00aaff', color:'#fff', borderRadius:6, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                ＋ Add File
-                <input
-                  type="file"
-                  accept="image/*,video/*,application/pdf"
-                  style={{ display:'none' }}
-                  onChange={handleAttachmentChange}
-                  multiple
-                />
-              </label>
-              <span style={{ fontSize:11, color:'#94a3b8' }}>or Ctrl+V to paste</span>
-            </div>
+            <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: '8px', padding: '7px 10px', background: 'linear-gradient(180deg, #fbfdff, #f4f9ff)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+                <span style={{ fontSize:'12px', fontWeight:800, color:'#334155' }}>Attach files (or Ctrl+V to paste)</span>
+                <label style={{ display:'inline-flex', alignItems:'center', padding:'5px 11px', background:'linear-gradient(135deg, #0ea5e9, #0284c7)', color:'#fff', borderRadius:6, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  ＋ Add File
+                  <input
+                    type="file"
+                    accept="image/*,video/*,application/pdf"
+                    style={{ display:'none' }}
+                    onChange={handleAttachmentChange}
+                    multiple
+                  />
+                </label>
+              </div>
 
-            {/* Display existing attachments with a clear heading */}
-            <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
-              {(() => {
-                const backendAttachments = task.attachments.filter(a => a.isFromBackend);
-                console.log("Backend attachments filter result:", backendAttachments);
-                console.log("All attachments:", task.attachments);
-                console.log("All attachments with isFromBackend flag:", task.attachments.map(a => ({name: a.name, isFromBackend: a.isFromBackend})));
-                return backendAttachments.length > 0 ? "Previous Attachments" : "";
-              })()}
-            </h4>
-
-            {/* Show previous attachments from the backend */}
-            {task.attachments.filter(a => a.isFromBackend).length > 0 && (
-              <div className="mt-2 grid grid-cols-2 gap-4 w-full">
-                {task.attachments
-                  .filter(attachment => attachment.isFromBackend)
-                  .map((attachment, index) => (
-                    <div key={`backend-${index}`} className="flex items-center bg-gray-100 p-2 rounded-lg relative border-2 border-green-200">
-                      {attachment.url && (attachment.url.match(/\.(jpeg|jpg|gif|png)$/i) || (attachment.mimeType && attachment.mimeType.startsWith('image/'))) ? (
-                        <img
-                          src={attachment.url}
-                          alt={`Preview ${index}`}
-                          className="w-20 h-20 object-cover rounded-lg mr-2"
-                          onError={(e) => {
-                            console.error("Image failed to load:", attachment.url);
-                            console.error("Full attachment object:", attachment);
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/80x80?text=Error+Loading";
-                            // Show better error info for debugging
-                            if (attachment.url.includes('/tasks/') && attachment.url.includes('/attachments/')) {
-                              console.warn("Task attachment download endpoint failed - attachment may not have proper task_id linkage");
-                              // Try direct file path as fallback
-                              if (attachment.file_path) {
-                                const fallbackUrl = attachment.file_path.startsWith('/') 
-                                  ? `${API_BASE_URL}${attachment.file_path}`
-                                  : `${API_BASE_URL}/${attachment.file_path}`;
-                                console.log("Trying fallback URL:", fallbackUrl);
-                              }
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded-lg mr-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      )}
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm text-black font-medium truncate">{attachment.name}</span>
-                        <div className="flex flex-col">
+              {/* Show all attachments as rows */}
+              {task.attachments.length > 0 && (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {task.attachments.map((attachment, index) => (
+                    <div key={attachment.id || `att-${index}`} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, background:'#fff', borderRadius:8, border: attachment.isFromBackend ? '1px solid #bbf7d0' : '1px solid #bfdbfe', padding:'6px 10px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, flex:1, minWidth:0 }}>
+                        <span style={{ background: attachment.isFromBackend ? '#f0fdf4' : '#eff6ff', color: attachment.isFromBackend ? '#16a34a' : '#0284c7', borderRadius:'4px', padding:'2px 6px', fontSize:'10px', fontWeight:800, textTransform:'uppercase', flexShrink:0 }}>
+                          {attachment.name?.split('.').pop() || 'FILE'}
+                        </span>
+                        <span style={{ fontSize:'12px', color:'#334155', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'160px' }}>{attachment.name}</span>
+                        {!attachment.isFromBackend && (
+                          <span style={{ fontSize:'10px', color:'#22c55e', flexShrink:0 }}>New</span>
+                        )}
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                        {attachment.url && (
                           <a
                             href={attachment.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
+                            style={{ background:'#0ea5e9', color:'#fff', padding:'3px 9px', borderRadius:'5px', fontSize:'11px', fontWeight:700, textDecoration:'none', lineHeight:'1.4' }}
                           >
                             View
                           </a>
-                          {attachment.uploadedAt && (
-                            <span className="text-xs text-gray-500">
-                              Uploaded: {new Date(attachment.uploadedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                        onClick={() => handleRemoveBackendAttachment(attachment)}
-                        title="Remove attachment"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            )}
-
-            {/* Show newly added attachments with a separate heading */}
-            <h4 className="font-semibold text-gray-700 mt-4 mb-2 w-full">
-              {task.attachments.filter(a => !a.isFromBackend).length > 0
-                ? "New Attachments"
-                : ""}
-            </h4>
-
-            {/* Display newly added attachments */}
-            {task.attachments.filter(a => !a.isFromBackend).length > 0 ? (
-              <div className="mt-2 grid grid-cols-2 gap-4 w-full">
-                {task.attachments
-                  .filter(attachment => !attachment.isFromBackend)
-                  .map((attachment, index) => (
-                    <div key={`new-${index}`} className="flex items-center bg-gray-100 p-2 rounded-lg relative border-2 border-blue-200">
-                      {attachment.url && attachment.url.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                        <img
-                          src={attachment.url}
-                          alt={`Preview ${index}`}
-                          className="w-20 h-20 object-cover rounded-lg mr-2"
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/80x80?text=Error";
-                          }}
-                        />
-                      ) : (
-                        <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded-lg mr-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      )}
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm text-black font-medium truncate">{attachment.name}</span>
-                        <div className="flex flex-col">
+                        )}
+                        {attachment.url && (
                           <a
                             href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
+                            download={attachment.name}
+                            style={{ background:'#0284c7', color:'#fff', padding:'3px 9px', borderRadius:'5px', fontSize:'11px', fontWeight:700, textDecoration:'none', lineHeight:'1.4' }}
                           >
-                            Preview
+                            Download
                           </a>
-                          <span className="text-xs text-green-600">
-                            New file - not yet uploaded
-                          </span>
-                        </div>
+                        )}
+                        <button
+                          type="button"
+                          style={{ width:'22px', height:'22px', background:'#ef4444', color:'#fff', border:'none', borderRadius:'50%', fontSize:'12px', fontWeight:800, cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}
+                          onClick={() => attachment.isFromBackend ? handleRemoveBackendAttachment(attachment) : handleRemoveNewAttachment(attachment)}
+                          title="Remove"
+                        >
+                          ×
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                        onClick={() => handleRemoveNewAttachment(attachment)}
-                        title="Remove attachment"
-                      >
-                        ×
-                      </button>
                     </div>
                   ))}
-              </div>
-            ) : null}
+                </div>
+              )}
 
-            {/* Show message when no attachments exist */}
-            {task.attachments.length === 0 && (
-              <div className="mt-2 p-4 bg-gray-100 rounded-lg text-gray-500 text-center w-full">
-                No attachments available. Add some using the button above.
-              </div>
-            )}
+              {/* Show message when no attachments exist */}
+              {task.attachments.length === 0 && (
+                <div style={{ padding:'10px', background:'#f8fafc', borderRadius:6, color:'#94a3b8', textAlign:'center', fontSize:'12px' }}>
+                  No attachments. Add files using the button above or Ctrl+V to paste.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Assignee Section */}

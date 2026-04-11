@@ -869,25 +869,46 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
                   {form.attachments.map((attachment, index) => (
                     <div key={attachment.id} className="flex items-center justify-between gap-2 bg-white rounded-lg overflow-hidden" style={{ border: '1px solid #cbd5e1', padding: '6px 10px' }}>
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span style={{ background: '#eff6ff', color: '#0284c7', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                        <span style={{ background: '#eff6ff', color: '#0284c7', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>
                           {attachment.name?.split('.').pop() || 'FILE'}
                         </span>
-                        <span className="truncate" style={{ fontSize: '12px', color: '#334155', fontWeight: 700, maxWidth: '180px' }}>{attachment.name}</span>
+                        <span className="truncate" style={{ fontSize: '12px', color: '#334155', fontWeight: 700, maxWidth: '140px' }}>{attachment.name}</span>
                         {attachment.file && (
-                          <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', marginRight: '6px' }}>
+                          <span style={{ fontSize: '10px', color: '#94a3b8', flexShrink: 0 }}>
                             {(attachment.file.size / 1024 / 1024).toFixed(2)} MB
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        className="flex items-center justify-center"
-                        style={{ width: '22px', height: '22px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
-                        onClick={() => handleRemoveAttachment(attachment)}
-                        title="Remove"
-                      >
-                        ×
-                      </button>
+                      <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                        {attachment.url && (
+                          <a
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ background: '#0ea5e9', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                          >
+                            View
+                          </a>
+                        )}
+                        {attachment.url && (
+                          <a
+                            href={attachment.url}
+                            download={attachment.name}
+                            style={{ background: '#0284c7', color: '#fff', padding: '3px 9px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, textDecoration: 'none', lineHeight: '1.4' }}
+                          >
+                            Download
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className="flex items-center justify-center"
+                          style={{ width: '22px', height: '22px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '12px', fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
+                          onClick={() => handleRemoveAttachment(attachment)}
+                          title="Remove"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

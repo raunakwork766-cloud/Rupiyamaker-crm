@@ -785,6 +785,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           fullRoute = `${route}?loan_type_name=${encodeURIComponent(baseLoanTypeName)}`;
         }
         
+        // Clear logincrm_restore so navigating back to LoginCRM shows the list, not a stale lead
+        sessionStorage.removeItem('logincrm_restore');
+        
         // Navigate with the full URL (including query parameters)
         navigateToRoute(fullRoute, label);
         

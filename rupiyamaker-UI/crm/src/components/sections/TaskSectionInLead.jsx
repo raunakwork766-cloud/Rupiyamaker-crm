@@ -164,8 +164,9 @@ export default function TaskSectionInLead({ leadData }) {
             createdBy: task.creator_name || task.created_by || 'Unknown',
             status: task.status,
             subject: task.subject,
-            notes: task.notes || task.details || task.message || '', // Use notes field first, then fallback to details or message
-            message: task.notes || task.details || task.message || '', // Keep message field for backward compatibility
+            notes: task.task_details || task.notes || task.details || task.message || '', // task_details is the primary backend field
+            message: task.task_details || task.notes || task.details || task.message || '', // Keep message field for backward compatibility
+            task_details: task.task_details || '', // Pass through raw backend field for EditTask
             typeTask: task.task_type || task.type || 'TO DO',
             leadLogin: leadData.lead_number || '',
             customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
@@ -378,8 +379,9 @@ export default function TaskSectionInLead({ leadData }) {
           createdBy: task.creator_name || task.created_by || 'Unknown',
           status: task.status,
           subject: task.subject,
-          notes: task.notes || task.details || task.message || '', // Use notes field first, then fallback to details or message
-          message: task.notes || task.details || task.message || '', // Keep message field for backward compatibility
+          notes: task.task_details || task.notes || task.details || task.message || '', // task_details is the primary backend field
+          message: task.task_details || task.notes || task.details || task.message || '', // Keep message field for backward compatibility
+          task_details: task.task_details || '', // Pass through raw backend field for EditTask
           typeTask: task.task_type || task.type || 'TO DO',
           leadLogin: leadData.lead_number || '',
           customerName: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
@@ -608,10 +610,20 @@ const initialTaskForm = {
       let enhancedTask = {
         ...task,
         attachments: task.attachments || [],
-        notes: task.notes || task.message || '',
-        message: task.notes || task.message || '',
-        // Add the lead association data explicitly
-        associateWithRecords: leadData ? [`${leadData.full_name || ''} - ${leadData.company_name || 'N/A'} (${leadData.status || 'Active'})`] : []
+        notes: task.task_details || task.notes || task.message || '',
+        message: task.task_details || task.notes || task.message || '',
+        task_details: task.task_details || task.notes || task.message || '',
+        // Build a proper lead association object (not a plain string)
+        associateWithRecords: leadData ? [{
+          id: leadData._id,
+          lead_id: leadData._id,
+          name: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
+          customer_name: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
+          phone: leadData.phone || '',
+          lead_number: leadData.lead_number || '',
+          lead_login: 'Lead',
+          loan_type: leadData.loan_type || ''
+        }] : []
       };
       
       // Try to fetch full task details and attachments (separately for more robustness)
@@ -641,9 +653,12 @@ const initialTaskForm = {
           
           enhancedTask = {
             ...enhancedTask,
-            notes: fullTaskData.notes || fullTaskData.details || enhancedTask.notes || '',
-            message: fullTaskData.notes || fullTaskData.details || enhancedTask.message || '',
-            // Make sure lead association data is preserved
+            notes: fullTaskData.task_details || fullTaskData.notes || fullTaskData.details || enhancedTask.notes || '',
+            message: fullTaskData.task_details || fullTaskData.notes || fullTaskData.details || enhancedTask.message || '',
+            task_details: fullTaskData.task_details || enhancedTask.task_details || '',
+            // Merge attachments from full fetch if available
+            attachments: fullTaskData.attachments && fullTaskData.attachments.length > 0 ? fullTaskData.attachments : enhancedTask.attachments,
+            // Preserve the lead association object
             associateWithRecords: enhancedTask.associateWithRecords
           };
         } 
@@ -683,11 +698,21 @@ const initialTaskForm = {
       // Fall back to the original task data if there was an error
       const fallbackTask = {
         ...task,
-        notes: task.notes || task.message || '',
-        message: task.notes || task.message || '',
+        notes: task.task_details || task.notes || task.message || '',
+        message: task.task_details || task.notes || task.message || '',
+        task_details: task.task_details || task.notes || task.message || '',
         attachments: task.attachments || [],
-        // Still include associated records even in error case
-        associateWithRecords: leadData ? [`${leadData.full_name || ''} - ${leadData.company_name || 'N/A'} (${leadData.status || 'Active'})`] : []
+        // Build a proper lead association object even in error case
+        associateWithRecords: leadData ? [{
+          id: leadData._id,
+          lead_id: leadData._id,
+          name: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
+          customer_name: leadData.full_name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || 'Customer',
+          phone: leadData.phone || '',
+          lead_number: leadData.lead_number || '',
+          lead_login: 'Lead',
+          loan_type: leadData.loan_type || ''
+        }] : []
       };
       
       console.log('Using fallback task data:', fallbackTask);
@@ -701,13 +726,16 @@ const initialTaskForm = {
       // Check if we received the full data object or just the task data
       const updatedTask = data.taskData || data;
       
+      // Respect keepModalOpen flag (used for status-change saves that must keep modal open)
+      const keepModalOpen = updatedTask.keepModalOpen === true;
+
       // Look for attachment in different possible locations
       const attachment = updatedTask.attachment || 
                         updatedTask.newAttachment || 
                         data.attachment ||
                         null;
       
-      console.log('Handle save task with:', { updatedTask, attachment });
+      console.log('Handle save task with:', { updatedTask, attachment, keepModalOpen });
       
       // Map EditTask fields to backend expected fields
       const mappedTask = {
@@ -742,7 +770,19 @@ const initialTaskForm = {
         }
       }
       
-      setEditTask(null); // Close EditTask after saving
+      // Only close the modal if keepModalOpen is NOT set
+      // (status-change remark saves keep the modal open for review)
+      if (!keepModalOpen) {
+        setEditTask(null);
+      } else {
+        // Update editTask state with latest status/message for in-modal refresh
+        setEditTask(prev => prev ? ({
+          ...prev,
+          status: updatedTask.uiStatus || updatedTask.status || prev.status,
+          message: mappedTask.message || prev.message,
+          subject: mappedTask.subject || prev.subject,
+        }) : null);
+      }
     } catch (error) {
       console.error("Error saving task:", error);
       // Keep dialog open on error
@@ -930,6 +970,7 @@ const initialTaskForm = {
                   onClose={handleCancelEdit}
                   onSave={handleSaveTask}
                   preselectedLead={leadData}
+                  isInsideLeadContext={true}
                 />
               </Suspense>
             </div>

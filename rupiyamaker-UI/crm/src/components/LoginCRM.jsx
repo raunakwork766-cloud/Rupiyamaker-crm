@@ -632,6 +632,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             if (cleanLoanTypeName) {
                 localStorage.setItem('loginCrmCleanLoanTypeName', cleanLoanTypeName);
             }
+
+            // Reset lead detail view when user clicks a sidebar item — always show list
+            setShowLeadDetails(false);
+            setSelectedLead(null);
+            setActiveTab(0);
+            sessionStorage.removeItem('logincrm_restore');
         };
 
         // Listen for the Login CRM specific event
@@ -758,6 +764,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     // State for hierarchical dropdown navigation
     const [selectedMainStatus, setSelectedMainStatus] = useState(null); // Track which main status is selected in dropdown
     const [showMainStatuses, setShowMainStatuses] = useState(true); // Toggle between main statuses and sub-statuses view
+    const [activeCardModal, setActiveCardModal] = useState(null); // Status card overview popup
     
     // Status data from API (start with empty arrays to force API loading)
     const [allStatuses, setAllStatuses] = useState([]);
@@ -2789,6 +2796,36 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         setStatusCounts(memoizedStatusCounts);
     }, [filteredLeadsData, memoizedStatusCounts]);
 
+    // Sub-status breakdown for status card overview popup
+    const getSubStatusBreakdown = (parentKey) => {
+        const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+        const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
+        const inParent = allLeads.filter(lead => {
+            const statusVal = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
+            return statusVal.toLowerCase() === parentKey.toLowerCase();
+        });
+        const configuredSubStatuses = statusHierarchy[parentKey] || [];
+        const groups = {};
+        configuredSubStatuses.forEach(sub => { groups[sub] = { total: 0, noReview: 0, pendingMy: 0 }; });
+        groups['No Sub-Status'] = { total: 0, noReview: 0, pendingMy: 0 };
+        inParent.forEach(lead => {
+            const sub = typeof lead.sub_status === 'object' ? (lead.sub_status?.name || '') : (lead.sub_status || '');
+            const key = (sub && configuredSubStatuses.includes(sub)) ? sub : 'No Sub-Status';
+            if (!groups[key]) groups[key] = { total: 0, noReview: 0, pendingMy: 0 };
+            groups[key].total++;
+            if (!lead.last_activity_date) groups[key].noReview++;
+            const createdBy = String(lead.created_by || '').trim();
+            const assignedTo = String(lead.assigned_to || '').trim();
+            if (currentUserId && (createdBy === currentUserId || assignedTo === currentUserId)) {
+                groups[key].pendingMy++;
+            }
+        });
+        return Object.entries(groups)
+            .filter(([, cnts]) => cnts.total > 0)
+            .map(([subStatus, cnts]) => ({ subStatus, ...cnts }))
+            .sort((a, b) => b.total - a.total);
+    };
+
     // Reset pagination when filters or search term changes
     useEffect(() => {
         setDisplayedCount(INITIAL_LOAD);
@@ -4787,7 +4824,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                    <LazySection height="350px">
                      <Attachments 
                        leadId={lead._id} 
-                       userId={lead.created_by}
+                       userId={userId}
                        onContentInteraction={(isInteracting) => {
                          // Optional: Handle when user is actively interacting with attachments
                          // This could be used to prevent accidental tab switches during file operations
@@ -5171,17 +5208,73 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     </div> */}
                 </div>
                 {/* Status Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                    {statusCardConfig.map(({ key, label, icon: Icon, gradient, shadowColor }, index) => (
-                        <div key={index} className={`p-4 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor}`}>
-                            <div className="flex justify-between items-center">
-                                <Icon className="w-6 h-6 text-white" />
-                                <span className="text-xl font-bold text-white">{statusCounts[key] || 0}</span>
+                <div className="flex flex-nowrap gap-3 mb-6 overflow-x-auto pb-1">
+                    {statusCardConfig.map(({ key, label, gradient, shadowColor }, index) => (
+                        <div
+                            key={index}
+                            className={`flex-1 min-w-[130px] px-4 py-3 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
+                            onClick={() => setActiveCardModal(key)}
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm text-white font-semibold uppercase tracking-wide leading-tight">{label}</p>
+                                <span className="text-2xl font-extrabold text-white flex-shrink-0">{statusCounts[key] || 0}</span>
                             </div>
-                            <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">{label}</p>
                         </div>
                     ))}
                 </div>
+
+                {/* Status Card Overview Modal */}
+                {activeCardModal && (() => {
+                    const cardConfig = statusCardConfig.find(c => c.key === activeCardModal);
+                    const cardGradient = cardConfig ? cardConfig.gradient : 'from-blue-500 to-cyan-400';
+                    const breakdown = getSubStatusBreakdown(activeCardModal);
+                    return (
+                        <div
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70"
+                            onClick={() => setActiveCardModal(null)}
+                        >
+                            <div
+                                className="bg-[#111827] rounded-2xl shadow-2xl w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className={`bg-gradient-to-r ${cardGradient} px-5 py-4 flex items-center justify-between`}>
+                                    <span className="text-white font-bold text-base uppercase tracking-wide">{activeCardModal} Overview</span>
+                                    <button onClick={() => setActiveCardModal(null)} className="text-white hover:text-gray-200 transition">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <div className="overflow-auto flex-1">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b border-gray-700">
+                                                <th className="text-left py-3 px-5 text-gray-400 text-xs font-semibold uppercase tracking-wider">SUB-STATUS</th>
+                                                <th className="text-right py-3 px-5 text-gray-300 text-xs font-semibold uppercase tracking-wider">TOTAL</th>
+                                                <th className="text-right py-3 px-5 text-red-400 text-xs font-semibold uppercase tracking-wider">NO REVIEW</th>
+                                                <th className="text-right py-3 px-5 text-yellow-400 text-xs font-semibold uppercase tracking-wider">PENDING MY</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {breakdown.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="text-center py-10 text-gray-500 text-sm">No leads found</td>
+                                                </tr>
+                                            ) : (
+                                                breakdown.map((row, i) => (
+                                                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition">
+                                                        <td className="py-3 px-5 text-white font-bold uppercase text-sm">{row.subStatus}</td>
+                                                        <td className="py-3 px-5 text-white font-bold text-right">{row.total}</td>
+                                                        <td className="py-3 px-5 text-red-400 font-bold text-right">{row.noReview}</td>
+                                                        <td className="py-3 px-5 text-yellow-400 font-bold text-right">{row.pendingMy}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Table Section - Fixed Controls with Scrollable Table */}
                 <div className="bg-black-900 rounded-xl shadow-lg">
