@@ -199,12 +199,17 @@ async def get_dashboard_stats(
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
         # ─── Fetch users scoped by permission level ───
-        # For view_assign: we first aggregate leads/logins to find which employees
-        # created leads assigned to the current user, then fetch only those employees.
+        # For view_assign: own data + leads assigned to the user by others.
+        # Uses $or so the user always sees all their own leads/logins,
+        # plus any leads others created and assigned to them.
         if effective_level == "view_assign":
-            # Step 1: Find all leads assigned to the current user, group by created_by
+            assign_or = {"$or": [
+                {"created_by": user_id},
+                {"assigned_to": {"$in": [user_id]}}
+            ]}
+
             leads_pipeline = [
-                {"$match": {**date_match_leads, "assigned_to": {"$in": [user_id]}}},
+                {"$match": {**date_match_leads, **assign_or}},
                 {"$group": {
                     "_id": {
                         "user_id": "$created_by",
@@ -216,7 +221,7 @@ async def get_dashboard_stats(
             leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
 
             logins_pipeline = [
-                {"$match": {**date_match_logins, "assigned_to": {"$in": [user_id]}}},
+                {"$match": {**date_match_logins, **assign_or}},
                 {"$group": {
                     "_id": {
                         "user_id": "$created_by",
@@ -227,7 +232,7 @@ async def get_dashboard_stats(
             ]
             logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
-            # Step 2: Collect unique creator IDs from aggregation results
+            # Collect unique creator IDs from aggregation results
             creator_ids = set()
             for row in leads_agg:
                 cid = row["_id"]["user_id"]
@@ -244,7 +249,7 @@ async def get_dashboard_stats(
                 return {"employees": [], "totals": {"leads": 0, "logins": 0},
                         "leadStatuses": LEAD_STATUSES, "loginStatuses": LOGIN_STATUSES}
 
-            # Step 3: Fetch user details for those creators
+            # Fetch user details for creators
             users_query = {"_id": {"$in": [ObjectId(uid) for uid in creator_ids if ObjectId.is_valid(uid)]}}
             if emp_status in ("active", "inactive"):
                 users_query["employee_status"] = emp_status
@@ -382,16 +387,18 @@ async def get_dashboard_stats(
         # Sort: employees with activity first, then alphabetically
         employees.sort(key=lambda e: (-e["totalLeads"] - e["totalLogins"], e["name"]))
 
-        return {
+        result = {
             "employees": employees,
             "totals": {"leads": total_leads, "logins": total_logins},
             "leadStatuses": LEAD_STATUSES,
             "loginStatuses": LOGIN_STATUSES,
         }
+        return result
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Dashboard stats error")
         logger.error(f"Dashboard stats error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {str(e)}")
 
