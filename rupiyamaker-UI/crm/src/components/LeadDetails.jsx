@@ -852,14 +852,10 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         )}
 
                         {activeTab === 'tasks' && (
-                            <div className="p-4 bg-gradient-to-r from-[#1b2736] to-[#23243a] rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
-                                <div className="font-bold text-cyan-400 mb-2">
-                                    <TasksSection
-                                        leadId={lead._id}
-                                        userId={userId}
-                                        formatDate={formatDate}
-                                    />
-                                </div>
+                            <div className="w-full">
+                                <TasksSection
+                                    leadData={leadData}
+                                />
                             </div>
                         )}
 

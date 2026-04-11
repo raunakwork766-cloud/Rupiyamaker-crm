@@ -780,7 +780,7 @@ export default function DashboardPage() {
                 backgroundPosition: "right 10px center",
               }}
             >
-              <option value="all">All Employees</option>
+              <option value="all">All Status</option>
               <option value="active">Active Only</option>
               <option value="inactive">Inactive Only</option>
             </select>
@@ -816,7 +816,9 @@ export default function DashboardPage() {
                   borderBottom: "2px solid #000",
                   position: "sticky",
                   top: 0,
-                  zIndex: 40,
+                  left: 0,
+                  zIndex: 50,
+                  boxShadow: "2px 0 0 0 #94a3b8",
                 }}
               >
                 Identity
@@ -869,6 +871,7 @@ export default function DashboardPage() {
                 col="name"
                 style={{
                   minWidth: 160,
+                  width: 160,
                   textAlign: "left",
                   background: "#f8fafc",
                   position: "sticky",
@@ -883,6 +886,7 @@ export default function DashboardPage() {
                 col="team"
                 style={{
                   minWidth: 100,
+                  width: 100,
                   textAlign: "left",
                   background: "#f8fafc",
                   position: "sticky",
@@ -890,6 +894,7 @@ export default function DashboardPage() {
                   left: 160,
                   zIndex: 40,
                   borderRight: "2px solid #94a3b8",
+                  boxShadow: "2px 0 5px rgba(0,0,0,0.08)",
                 }}
               >
                 Team
@@ -959,11 +964,12 @@ export default function DashboardPage() {
                       borderBottom: "1px solid #e2e8f0",
                       position: "sticky",
                       left: 0,
-                      zIndex: 10,
+                      zIndex: 3,
                       background: "#fff",
                       fontWeight: 700,
                       color: "#0f172a",
                       minWidth: 160,
+                      width: 160,
                     }}
                   >
                     {row.name}
@@ -977,11 +983,14 @@ export default function DashboardPage() {
                       borderBottom: "1px solid #e2e8f0",
                       position: "sticky",
                       left: 160,
-                      zIndex: 10,
+                      zIndex: 3,
                       background: "#fff",
                       fontWeight: 700,
                       color: "#0f172a",
+                      minWidth: 100,
+                      width: 100,
                       borderRight: "2px solid #94a3b8",
+                      boxShadow: "2px 0 5px rgba(0,0,0,0.08)",
                     }}
                   >
                     {row.team}

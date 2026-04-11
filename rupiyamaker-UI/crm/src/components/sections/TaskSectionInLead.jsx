@@ -1,7 +1,106 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
-import { CheckSquare, Plus, Loader2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { message } from "antd";
-import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../../utils/dateUtils';
+import { getISTDateYMD, toISTDateYMD, getISTTimestamp, getISTToday } from '../../utils/dateUtils';
+
+const taskPageStyles = `
+  .tsl-container { padding: 20px 30px; }
+  .tsl-top-bar { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 20px; }
+  .tsl-btn-create { background-color: #00aaff; color: white; border: none; padding: 10px 24px; border-radius: 30px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(0,170,255,0.3); transition: transform 0.2s, background-color 0.2s; }
+  .tsl-btn-create:hover { transform: translateY(-1px); background-color: #0088cc; }
+  .tsl-table-header { background-color: #ffffff; border-radius: 4px; display: flex; padding: 12px 15px; align-items: center; margin-bottom: 10px; }
+  .tsl-th { color: #00aaff; font-weight: 800; font-size: 13px; text-transform: uppercase; text-align: left; flex: 1; }
+  .tsl-th.number { flex: 0 0 40px; }
+  .tsl-th.type { flex: 0 0 110px; }
+  .tsl-th.created { flex: 1.2; }
+  .tsl-th.subject { flex: 2; }
+  .tsl-th.record { flex: 1.5; }
+  .tsl-th.assigned { flex: 1.5; }
+  .tsl-th.status { flex: 0 0 90px; }
+  .tsl-th.date { flex: 1.2; }
+  .tsl-table-body { display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
+  .tsl-row { background-color: #1a1a1a; border: 1px solid #333; border-radius: 6px; display: flex; padding: 12px 15px; align-items: center; transition: background-color 0.2s, border-color 0.2s; cursor: pointer; animation: tslSlideIn 0.3s ease-out; }
+  .tsl-row:hover { background-color: #222; border-color: #444; }
+  .tsl-td { font-size: 13px; color: #ececec; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }
+  .tsl-td.number { flex: 0 0 40px; color: #888; font-weight: bold; }
+  .tsl-td.type { flex: 0 0 110px; }
+  .tsl-td.created { flex: 1.2; }
+  .tsl-td.subject { flex: 2; font-weight: 600; color: #fff; }
+  .tsl-td.record { flex: 1.5; font-weight: 600; }
+  .tsl-td.assigned { flex: 1.5; }
+  .tsl-td.status { flex: 0 0 90px; }
+  .tsl-td.date { flex: 1.2; }
+  .tsl-type-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .tsl-badge-callback { background-color: rgba(46,204,113,0.15); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3); }
+  .tsl-badge-pendency { background-color: rgba(243,156,18,0.15); color: #f39c12; border: 1px solid rgba(243,156,18,0.3); }
+  .tsl-badge-todo { background-color: rgba(0,170,255,0.15); color: #00aaff; border: 1px solid rgba(0,170,255,0.3); }
+  .tsl-status-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
+  .tsl-sts-pending { background-color: #555; }
+  .tsl-sts-complete { background-color: #2ecc71; }
+  .tsl-sts-inprogress { background-color: #f39c12; }
+  .tsl-sts-cancelled { background-color: #e74c3c; }
+  .tsl-sts-failed { background-color: #ff4757; }
+  .tsl-created-meta-col, .tsl-due-meta-col { display: flex; flex-direction: column; gap: 2px; }
+  .tsl-created-meta-name { font-weight: 600; color: #00aaff; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  .tsl-due-meta-date { font-weight: 700; color: #fff; font-size: 12px; }
+  .tsl-due-meta-time { font-size: 11px; color: #aaa; }
+  .tsl-due-overdue { color: #ff6b81; }
+  .tsl-tag-lead { background: rgba(0,170,255,0.1); color: #00aaff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
+  .tsl-record-name { color: #00aaff; font-weight: 700; }
+  .tsl-record-number { color: #94a3b8; font-size: 11px; margin-left: 6px; }
+  .tsl-empty { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 60px 20px; text-align: center; }
+  .tsl-empty p { color: #00aaff; font-size: 16px; font-weight: 700; }
+  .tsl-spinner-wrap { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 60px 20px; }
+  .tsl-spinner { width: 36px; height: 36px; border: 3px solid transparent; border-top-color: #00aaff; border-radius: 50%; animation: tslSpin 0.8s linear infinite; margin-bottom: 10px; }
+  @keyframes tslSpin { to { transform: rotate(360deg); } }
+  @keyframes tslSlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+`;
+
+function getTaskTypeBadge(typeTask) {
+  const t = (typeTask || '').toLowerCase();
+  if (t === 'call' || t === 'callback') return { cls: 'tsl-type-badge tsl-badge-callback', label: '📞 Callback' };
+  if (t === 'pendency') return { cls: 'tsl-type-badge tsl-badge-pendency', label: '⏳ Pendency' };
+  if (t === 'to-do' || t === 'todo') return { cls: 'tsl-type-badge tsl-badge-todo', label: '📝 To-Do' };
+  if (t === 'processing') return { cls: 'tsl-type-badge tsl-badge-pendency', label: '⚙️ Processing' };
+  return { cls: 'tsl-type-badge tsl-badge-todo', label: typeTask || 'Task' };
+}
+
+function getStatusBadgeCls(status) {
+  switch (status) {
+    case 'Completed': return 'tsl-sts-complete';
+    case 'In Progress': return 'tsl-sts-inprogress';
+    case 'Cancelled': return 'tsl-sts-cancelled';
+    case 'Failed': case 'FAILED': return 'tsl-sts-failed';
+    default: return 'tsl-sts-pending';
+  }
+}
+
+function formatDueDisplay(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const _ist = getISTToday();
+    const today = new Date(_ist.year, _ist.month - 1, _ist.day);
+    today.setHours(0, 0, 0, 0);
+    const td = new Date(d);
+    td.setHours(0, 0, 0, 0);
+    if (td.getTime() === today.getTime()) return 'Today';
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  } catch { return dateStr; }
+}
+
+function isTaskOverdue(task) {
+  if (['Completed', 'Cancelled', 'Failed', 'FAILED'].includes(task.status)) return false;
+  try {
+    const _ist = getISTToday();
+    const today = new Date(_ist.year, _ist.month - 1, _ist.day);
+    today.setHours(0, 0, 0, 0);
+    const td = new Date(task.date);
+    td.setHours(0, 0, 0, 0);
+    return td.getTime() < today.getTime();
+  } catch { return false; }
+}
 
 // Lazy load heavy components for better code splitting
 const CreateTask = lazy(() => import("../CreateTask"));
@@ -709,162 +808,143 @@ const initialTaskForm = {
   };
 
   return (
-    <div className="min-h-screen bg-black text-[#e4eaf5] py-10 px-4">
-      <div className="max-w-9xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl text-[#08B8EA]">
-              <CheckSquare size={32} />
-            </span>
-            <h1 className="text-2xl font-bold">Task Management</h1>
-          </div>
-          <button
-            className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
-            onClick={openCreateModal}
-          >
-            <Plus size={24} />
+    <div style={{ backgroundColor: '#000', color: '#fff' }}>
+      <style>{taskPageStyles}</style>
+      <div className="tsl-container">
+
+        {/* Top Bar — Create Task button only (no heading) */}
+        <div className="tsl-top-bar">
+          <button className="tsl-btn-create" onClick={openCreateModal}>
+            <Plus size={18} />
             Create Task
           </button>
         </div>
 
-        {/* Table Section */}
-        <div className="overflow-auto rounded-xl shadow-2xl">
-          <table className="min-w-[1000px] w-full">
-            <thead className="bg-white">
-              <tr>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  #
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Subject
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Status
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Created By
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Lead/Login
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Customer
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Assigned
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Date
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Time
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Task Type
-                </th>
-                <th className="py-3 px-4 text-lg font-extrabold text-[#03B0F5] text-center whitespace-nowrap">
-                  Message
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={11} className="bg-[#181e29] rounded-xl shadow p-8 text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <Loader2 size={24} className="animate-spin text-[#08B8EA]" />
-                      <span className="text-lg font-bold text-[#08B8EA]">Loading tasks...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={11} className="bg-[#181e29] rounded-xl shadow p-8 text-center">
-                    <div className="text-lg font-bold text-red-400">{error}</div>
-                  </td>
-                </tr>
-              ) : tasks.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={11}
-                    className="bg-[#181e29] rounded-xl shadow p-8 text-center text-lg font-bold text-[#08B8EA]"
-                  >
-                    No Tasks Found
-                  </td>
-                </tr>
-              ) : (
-                tasks.map((task, idx) => (
-                  <tr
-                    key={task.id}
-                    className="border-b-4 border-white bg-[#181e29] hover:bg-gray-800 transition cursor-pointer"
-                    onClick={() => handleRowClick(task)}
-                  >
-                    <td className="text-lg text-bold py-3 px-4 whitespace-nowrap text-center">
-                      {idx + 1}
-                    </td>
-                    <td className="text-lg py-3 px-4 whitespace-nowrap font-bold uppercase">
-                      {task.subject}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
-                      {statusPill(task.status)}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center uppercase">
-                      {task.createdBy}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center uppercase">
-                      {task.leadLogin}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap uppercase">
-                      {task.customerName}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center uppercase">
-                      {task.assign}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
-                      {task.date}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center">
-                      {task.time}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap text-center uppercase">
-                      {task.typeTask}
-                    </td>
-                    <td className="text-lg font-semibold py-3 px-4 whitespace-nowrap uppercase">
-                      {truncate(task.notes || task.message || '', 30)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Loading */}
+        {isLoading && tasks.length === 0 && (
+          <div className="tsl-spinner-wrap">
+            <div className="tsl-spinner" />
+            <p style={{ color: '#00aaff', fontSize: 15, fontWeight: 700 }}>Loading tasks...</p>
+          </div>
+        )}
 
-        {/* Render EditTask in a modal popup when a task is selected */}
+        {/* Error */}
+        {error && (
+          <div style={{ margin: '0 0 16px', padding: '14px 18px', background: '#1a0000', border: '1px solid #ff4757', borderRadius: 8 }}>
+            <p style={{ color: '#ff6b6b', margin: 0 }}>{error}</p>
+          </div>
+        )}
+
+        {/* Table */}
+        {(!isLoading || tasks.length > 0) && (
+          <div>
+            {/* Header row */}
+            <div className="tsl-table-header">
+              <div className="tsl-th number">#</div>
+              <div className="tsl-th type">TYPE</div>
+              <div className="tsl-th created">CREATED BY</div>
+              <div className="tsl-th subject">SUBJECT</div>
+              <div className="tsl-th record">RECORD / LEAD</div>
+              <div className="tsl-th assigned">ASSIGNED TO</div>
+              <div className="tsl-th status">STATUS</div>
+              <div className="tsl-th date">DUE DATE &amp; TIME</div>
+            </div>
+
+            {/* Body */}
+            <div className="tsl-table-body">
+              {tasks.length === 0 ? (
+                <div className="tsl-empty">
+                  <p>No Tasks Found</p>
+                </div>
+              ) : (
+                tasks.map((task, idx) => {
+                  const badge = getTaskTypeBadge(task.typeTask);
+                  const overdue = isTaskOverdue(task);
+                  const hasRecord = task.leadLogin && task.leadLogin !== 'N/A';
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="tsl-row"
+                      onClick={() => handleRowClick(task)}
+                    >
+                      <div className="tsl-td number">{idx + 1}</div>
+
+                      <div className="tsl-td type">
+                        <span className={badge.cls}>{badge.label}</span>
+                      </div>
+
+                      <div className="tsl-td created">
+                        <div className="tsl-created-meta-col">
+                          <span className="tsl-created-meta-name">{task.createdBy}</span>
+                        </div>
+                      </div>
+
+                      <div className="tsl-td subject">{task.subject}</div>
+
+                      <div className="tsl-td record">
+                        {hasRecord ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                            <span className="tsl-tag-lead">Lead</span>
+                            <span className="tsl-record-name">{task.customerName || 'Unknown'}</span>
+                            <span className="tsl-record-number">{task.leadLogin}</span>
+                          </span>
+                        ) : '-'}
+                      </div>
+
+                      <div className="tsl-td assigned" style={{ whiteSpace: 'normal', lineHeight: 1.6 }}>
+                        {(task.assign || 'Unassigned').split(',').map((name, i) => (
+                          <span key={i} style={{ display: 'block', fontSize: 11 }}>👤 {name.trim()}</span>
+                        ))}
+                      </div>
+
+                      <div className="tsl-td status">
+                        <span className={`tsl-status-badge ${getStatusBadgeCls(task.status)}`}>
+                          {task.status}
+                        </span>
+                      </div>
+
+                      <div className="tsl-td date">
+                        <div className="tsl-due-meta-col">
+                          <span className={`tsl-due-meta-date${overdue ? ' tsl-due-overdue' : ''}`}>
+                            {formatDueDisplay(task.date)}
+                          </span>
+                          <span className="tsl-due-meta-time">{task.time}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Edit Task Modal */}
         {editTask && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: 'blur(3px)' }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
               <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                 <EditTask
                   taskData={editTask}
                   onClose={handleCancelEdit}
                   onSave={handleSaveTask}
-                  preselectedLead={leadData} // Pass the current lead data to show as preselected
+                  preselectedLead={leadData}
                 />
               </Suspense>
             </div>
           </div>
         )}
 
-        {/* Modal Popup for Create Task */}
+        {/* Create Task Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-transparent" style={{ backdropFilter: 'blur(3px)' }}>
             <div className="w-full max-w-2xl mx-auto relative z-[9999]">
               <Suspense fallback={<div className="text-center p-4">Loading...</div>}>
                 <CreateTask
                   onClose={closeCreateModal}
                   onSave={handleCreateTaskSave}
-                  preselectedLead={leadData} // Pass the current lead data to pre-select it
+                  preselectedLead={leadData}
                 />
               </Suspense>
             </div>

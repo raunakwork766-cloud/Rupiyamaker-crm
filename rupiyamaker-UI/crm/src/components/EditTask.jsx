@@ -1022,8 +1022,11 @@ export default function EditTask({
       const associatedLead = {
         id: task.lead_id,
         lead_id: task.lead_id,
-        name: task.lead_name || task.customer_name || 'Associated Lead',
-        lead_number: task.lead_number || '',
+        name: task.lead_name || task.customer_name || task.customerName || 'Associated Lead',
+        customer_name: task.lead_name || task.customer_name || task.customerName || 'Associated Lead',
+        phone: task.phone || '',
+        lead_number: task.lead_number || (task.leadLogin && task.leadLogin !== 'N/A' ? task.leadLogin : ''),
+        lead_login: task.lead_login || task.leadLogin || 'Lead',
         loan_type: task.loan_type || ''
       };
       
@@ -1035,7 +1038,7 @@ export default function EditTask({
         }));
       }
     }
-  }, [task?.lead_id, task?.lead_name, task?.customer_name, task?.loan_type]);
+  }, [task?.lead_id, task?.lead_name, task?.customer_name, task?.customerName, task?.loan_type]);
 
   // Handle associate with records selection (similar to CreateTask)
   const handleAssociateSelect = (selectedRecords) => {
@@ -1640,6 +1643,15 @@ export default function EditTask({
     const modalEl = modalRef.current;
     if (!modalEl) return;
     const handler = (e) => {
+      // If a text input / textarea / contenteditable is focused, let the browser handle paste normally
+      const activeEl = document.activeElement;
+      const isTextInputFocused = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      );
+      if (isTextInputFocused) return; // Don't intercept — allow normal text paste
+
       const items = e.clipboardData ? Array.from(e.clipboardData.items) : [];
       const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
       if (files.length > 0) {
@@ -2179,11 +2191,13 @@ export default function EditTask({
                 }}>
                   {/* Search input */}
                   <div style={{ padding:'10px 12px', borderBottom:'1px solid #f1f5f9' }}>
+                    <style>{'.edittask-lead-search::placeholder{color:#64748b}'}</style>
                     <input
                       type="text"
+                      className="edittask-lead-search"
                       placeholder="Search by name or number..."
                       autoFocus
-                      style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #e2e8f0', borderRadius:6, fontSize:13, outline:'none', background:'#f8fafc' }}
+                      style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #e2e8f0', borderRadius:6, fontSize:13, outline:'none', background:'#f8fafc', color:'#1e293b' }}
                       value={leadSearchTerm}
                       onChange={e => handleLeadSearchChange(e.target.value)}
                     />
@@ -2218,7 +2232,7 @@ export default function EditTask({
                                 {isLogin ? 'Login' : 'Lead'}
                               </span>
                               <strong style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{lead.customer_name || lead.name}</strong>
-                              {lead.phone && <span style={{ fontSize:12, color:'#94a3b8', fontWeight:500, marginLeft:'auto' }}>{lead.phone}</span>}
+                              {lead.phone && <span style={{ fontSize:12, color:'#94a3b8', fontWeight:500, marginLeft:6 }}>{lead.phone}</span>}
                             </li>
                           );
                         })}

@@ -1287,6 +1287,10 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         createdBy: task.createdBy || 'Unknown',
         leadLogin: task.leadLogin || 'N/A',
         customerName: task.customerName || 'N/A',
+        // Provide early lead association so EditTask can display name before full load
+        lead_name: task.customerName || task.lead_name || null,
+        phone: task.phone || '',
+        lead_number: task.leadLogin && task.leadLogin !== 'N/A' ? task.leadLogin : (task.lead_number || ''),
         history: [], // Start empty, will be loaded
         comments: [], // Start empty, will be loaded
         isLoading: true // Indicate data is still loading
@@ -1368,11 +1372,18 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           if (fullTaskData.associate_with_records || fullTaskData.associateWithRecords) {
             transformedTask.associateWithRecords = fullTaskData.associate_with_records || fullTaskData.associateWithRecords;
           } else if (leadInfo) {
-            // If no explicit associate_with_records but we have lead info, create one
+            // Build a proper object (not a plain string) so EditTask can render name/phone
             const customerName = leadInfo.full_name || `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || 'Unknown';
-            const companyName = leadInfo.company_name || 'N/A';
-            const status = leadInfo.status || 'Active';
-            transformedTask.associateWithRecords = [`${customerName} - ${companyName} (${status})`];
+            transformedTask.associateWithRecords = [{
+              id: leadInfo._id || leadInfo.id || fullTaskData.lead_id,
+              lead_id: leadInfo._id || leadInfo.id || fullTaskData.lead_id,
+              name: customerName,
+              customer_name: customerName,
+              phone: leadInfo.phone || '',
+              lead_login: fullTaskData.lead_login || fullTaskData.lead_number || 'Lead',
+              lead_number: leadInfo.lead_number || fullTaskData.lead_number || '',
+              loan_type: fullTaskData.loan_type || '',
+            }];
           }
 
 
