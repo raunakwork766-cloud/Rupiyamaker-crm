@@ -132,19 +132,10 @@ async def get_dashboard_stats(
         if effective_level == "own":
             allowed_user_ids = {user_id}
         elif effective_level == "view_assign":
-            # view_assign: show all employees in the same department and count
-            # leads by assigned_to instead of created_by
-            user_doc = await users_db.get_user(user_id)
-            dept_id = user_doc.get("department_id") if user_doc else None
-            if dept_id:
-                same_dept_users = await users_db.collection.find(
-                    {"department_id": dept_id, "is_active": {"$ne": False}},
-                    {"_id": 1}
-                ).to_list(None)
-                allowed_user_ids = {str(u["_id"]) for u in same_dept_users}
-            else:
-                # Fallback to own if no department
-                allowed_user_ids = {user_id}
+            # view_assign: handled separately below — we need to discover
+            # which employees created leads that are assigned to the current user.
+            # Set allowed_user_ids to empty here; will be populated after aggregation.
+            allowed_user_ids = set()  # placeholder
         elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
             allowed_user_ids = {user_id} | set(subordinate_ids)
@@ -208,22 +199,82 @@ async def get_dashboard_stats(
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
         # ─── Fetch users scoped by permission level ───
-        users_query = {"is_active": {"$ne": False}}
-        if emp_status in ("active", "inactive"):
-            users_query["employee_status"] = emp_status
-        # Apply permission scope: own/junior → restrict to allowed_user_ids
-        if allowed_user_ids is not None:
-            users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
-        users_cursor = users_db.collection.find(
-            users_query,
-            {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
-        )
-        all_users = await users_cursor.to_list(None)
+        # For view_assign: we first aggregate leads/logins to find which employees
+        # created leads assigned to the current user, then fetch only those employees.
+        if effective_level == "view_assign":
+            # Step 1: Find all leads assigned to the current user, group by created_by
+            leads_pipeline = [
+                {"$match": {**date_match_leads, "assigned_to": {"$in": [user_id]}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$created_by",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
+            leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
 
-        if not all_users:
-            return {"employees": [], "totals": {"leads": 0, "logins": 0}}
+            logins_pipeline = [
+                {"$match": {**date_match_logins, "assigned_to": {"$in": [user_id]}}},
+                {"$group": {
+                    "_id": {
+                        "user_id": "$created_by",
+                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                    },
+                    "count": {"$sum": 1}
+                }}
+            ]
+            logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
-        user_ids = [str(u["_id"]) for u in all_users]
+            # Step 2: Collect unique creator IDs from aggregation results
+            creator_ids = set()
+            for row in leads_agg:
+                cid = row["_id"]["user_id"]
+                if cid:
+                    creator_ids.add(cid)
+            for row in logins_agg:
+                cid = row["_id"]["user_id"]
+                if cid:
+                    creator_ids.add(cid)
+            # Always include the current user
+            creator_ids.add(user_id)
+
+            if not creator_ids:
+                return {"employees": [], "totals": {"leads": 0, "logins": 0},
+                        "leadStatuses": LEAD_STATUSES, "loginStatuses": LOGIN_STATUSES}
+
+            # Step 3: Fetch user details for those creators
+            users_query = {"_id": {"$in": [ObjectId(uid) for uid in creator_ids if ObjectId.is_valid(uid)]}}
+            if emp_status in ("active", "inactive"):
+                users_query["employee_status"] = emp_status
+            all_users = await users_db.collection.find(
+                users_query,
+                {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
+            ).to_list(None)
+
+            if not all_users:
+                return {"employees": [], "totals": {"leads": 0, "logins": 0},
+                        "leadStatuses": LEAD_STATUSES, "loginStatuses": LOGIN_STATUSES}
+
+            user_ids = [str(u["_id"]) for u in all_users]
+
+        else:
+            # Normal flow: own / junior / all
+            users_query = {"is_active": {"$ne": False}}
+            if emp_status in ("active", "inactive"):
+                users_query["employee_status"] = emp_status
+            if allowed_user_ids is not None:
+                users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
+            all_users = await users_db.collection.find(
+                users_query,
+                {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
+            ).to_list(None)
+
+            if not all_users:
+                return {"employees": [], "totals": {"leads": 0, "logins": 0}}
+
+            user_ids = [str(u["_id"]) for u in all_users]
 
         # ─── Build user name & dept map ───
         dept_ids_needed = set()
@@ -248,36 +299,8 @@ async def get_dashboard_stats(
                     udata["team"] = dept_name_map.get(udata["dept_id"], "")
 
         # ─── Aggregate LEADS created by each user ───
-        # Use created_by (who entered the lead) grouped by status
-        # For view_assign: use assigned_to field (who the lead is assigned to)
-        # Note: assigned_to can be a string OR array in DB, so we handle both
-        if effective_level == "view_assign":
-            # view_assign: count leads by assigned_to (not created_by)
-            # assigned_to can be a string OR array, so normalize to array then $unwind
-            leads_pipeline = [
-                {"$match": {**date_match_leads, "assigned_to": {"$in": user_ids}}},
-                # Normalize assigned_to to array
-                {"$addFields": {
-                    "_assigned_arr": {
-                        "$cond": {
-                            "if": {"$isArray": "$assigned_to"},
-                            "then": "$assigned_to",
-                            "else": ["$assigned_to"]
-                        }
-                    }
-                }},
-                {"$unwind": "$_assigned_arr"},
-                # Only keep entries matching our user list
-                {"$match": {"_assigned_arr": {"$in": user_ids}}},
-                {"$group": {
-                    "_id": {
-                        "user_id": "$_assigned_arr",
-                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                    },
-                    "count": {"$sum": 1}
-                }}
-            ]
-        else:
+        # For view_assign: aggregation already done above during user discovery
+        if effective_level != "view_assign":
             leads_pipeline = [
                 {"$match": {**date_match_leads, "created_by": {"$in": user_ids}}},
                 {"$group": {
@@ -288,32 +311,10 @@ async def get_dashboard_stats(
                     "count": {"$sum": 1}
                 }}
             ]
-        leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
+            leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
 
         # ─── Aggregate LOGIN LEADS created by each user ───
-        if effective_level == "view_assign":
-            logins_pipeline = [
-                {"$match": {**date_match_logins, "assigned_to": {"$in": user_ids}}},
-                {"$addFields": {
-                    "_assigned_arr": {
-                        "$cond": {
-                            "if": {"$isArray": "$assigned_to"},
-                            "then": "$assigned_to",
-                            "else": ["$assigned_to"]
-                        }
-                    }
-                }},
-                {"$unwind": "$_assigned_arr"},
-                {"$match": {"_assigned_arr": {"$in": user_ids}}},
-                {"$group": {
-                    "_id": {
-                        "user_id": "$_assigned_arr",
-                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                    },
-                    "count": {"$sum": 1}
-                }}
-            ]
-        else:
+        if effective_level != "view_assign":
             logins_pipeline = [
                 {"$match": {**date_match_logins, "created_by": {"$in": user_ids}}},
                 {"$group": {
@@ -324,7 +325,7 @@ async def get_dashboard_stats(
                     "count": {"$sum": 1}
                 }}
             ]
-        logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
+            logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
         # ─── Build per-employee data ───
         # (LEAD_STATUSES and LOGIN_STATUSES already built dynamically above)
