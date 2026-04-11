@@ -132,8 +132,19 @@ async def get_dashboard_stats(
         if effective_level == "own":
             allowed_user_ids = {user_id}
         elif effective_level == "view_assign":
-            # view_assign: show only the requesting user in the table
-            allowed_user_ids = {user_id}
+            # view_assign: show all employees in the same department and count
+            # leads by assigned_to instead of created_by
+            user_doc = await users_db.get_user(user_id)
+            dept_id = user_doc.get("department_id") if user_doc else None
+            if dept_id:
+                same_dept_users = await users_db.collection.find(
+                    {"department_id": dept_id, "is_active": {"$ne": False}},
+                    {"_id": 1}
+                ).to_list(None)
+                allowed_user_ids = {str(u["_id"]) for u in same_dept_users}
+            else:
+                # Fallback to own if no department
+                allowed_user_ids = {user_id}
         elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
             allowed_user_ids = {user_id} | set(subordinate_ids)
@@ -241,14 +252,26 @@ async def get_dashboard_stats(
         # For view_assign: use assigned_to field (who the lead is assigned to)
         # Note: assigned_to can be a string OR array in DB, so we handle both
         if effective_level == "view_assign":
-            # $in matches both string and array fields in MongoDB
-            # Use $literal for group key since assigned_to might be an array
-            current_uid = user_ids[0]  # view_assign always has 1 user
+            # view_assign: count leads by assigned_to (not created_by)
+            # assigned_to can be a string OR array, so normalize to array then $unwind
             leads_pipeline = [
                 {"$match": {**date_match_leads, "assigned_to": {"$in": user_ids}}},
+                # Normalize assigned_to to array
+                {"$addFields": {
+                    "_assigned_arr": {
+                        "$cond": {
+                            "if": {"$isArray": "$assigned_to"},
+                            "then": "$assigned_to",
+                            "else": ["$assigned_to"]
+                        }
+                    }
+                }},
+                {"$unwind": "$_assigned_arr"},
+                # Only keep entries matching our user list
+                {"$match": {"_assigned_arr": {"$in": user_ids}}},
                 {"$group": {
                     "_id": {
-                        "user_id": {"$literal": current_uid},
+                        "user_id": "$_assigned_arr",
                         "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
                     },
                     "count": {"$sum": 1}
@@ -271,9 +294,20 @@ async def get_dashboard_stats(
         if effective_level == "view_assign":
             logins_pipeline = [
                 {"$match": {**date_match_logins, "assigned_to": {"$in": user_ids}}},
+                {"$addFields": {
+                    "_assigned_arr": {
+                        "$cond": {
+                            "if": {"$isArray": "$assigned_to"},
+                            "then": "$assigned_to",
+                            "else": ["$assigned_to"]
+                        }
+                    }
+                }},
+                {"$unwind": "$_assigned_arr"},
+                {"$match": {"_assigned_arr": {"$in": user_ids}}},
                 {"$group": {
                     "_id": {
-                        "user_id": {"$literal": current_uid},
+                        "user_id": "$_assigned_arr",
                         "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
                     },
                     "count": {"$sum": 1}
@@ -353,7 +387,7 @@ async def get_dashboard_stats(
             "leadStatuses": LEAD_STATUSES,
             "loginStatuses": LOGIN_STATUSES,
         }
-
+        
     except HTTPException:
         raise
     except Exception as e:
