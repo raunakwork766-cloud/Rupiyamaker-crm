@@ -4040,7 +4040,36 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const LEAD_NUMERIC_KEYS = ['totalIncome', 'finalEligibility', 'financial_details.total_bt_pos', 'financial_details.cibil_score'];
     const columnSortedLeads = useMemo(() => {
         if (!filteredLeadsData || !sortConfig.key) return filteredLeadsData;
+        // Build id→name map for assignLead sorting
+        const idToName = {};
+        if (Array.isArray(employees)) {
+            employees.forEach(emp => {
+                const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).forEach(id => { idToName[String(id)] = empName; });
+            });
+        }
         const getValue = (lead, key) => {
+            // Special handling for assignLead column
+            if (key === 'assignLead') {
+                const raw = lead.assign_report_to || lead.assignReportTo;
+                if (!raw) return '';
+                let ids = [];
+                if (Array.isArray(raw)) {
+                    ids = raw.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                } else if (typeof raw === 'string') {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            ids = parsed.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                        } else {
+                            ids = [raw.trim()];
+                        }
+                    } catch {
+                        ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+                return ids.map(id => idToName[id] || id).filter(Boolean).join(', ');
+            }
             // Special handling for fields stored in dynamic_fields with fallbacks
             if (key === 'totalIncome') {
                 return lead.dynamic_fields?.eligibility_details?.totalIncome
@@ -4093,7 +4122,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [filteredLeadsData, sortConfig]);
+    }, [filteredLeadsData, sortConfig, employees]);
 
     // Pagination: Slice columnSortedLeads to show limited leads with "Show More" functionality
     const displayedLeads = useMemo(() => {
