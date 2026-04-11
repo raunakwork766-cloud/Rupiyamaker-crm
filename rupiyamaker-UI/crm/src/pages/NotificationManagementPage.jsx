@@ -391,34 +391,43 @@ const NotificationManagementPage = () => {
     }
   };
 
-  // Fetch users/employees from API
+  // Fetch users/employees from API — uses tasks/users-for-assignment which filters inactive at DB level
   const fetchEmployees = async () => {
     try {
-      console.log('👥 Fetching employees from:', `${API_BASE_URL}/users`);
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const userId = getUserId();
+      const url = `${API_BASE_URL}/tasks/users-for-assignment?user_id=${userId}`;
+      const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
         },
       });
 
-      console.log('👥 Users API response status:', response.status);
       if (response.ok) {
         const data = await response.json();
-        console.log('👥 Users API response data:', data);
-        // Handle both array response or object with users array
-        const userList = Array.isArray(data) ? data : (data.users || []);
-        // Filter out inactive employees
-        const activeUsers = userList.filter(user => 
-          user.employee_status === 'active' || 
-          user.is_active === true || 
-          user.employee_status === undefined
-        );
-        console.log('👥 Processed users list (active only):', activeUsers);
-        setEmployees(activeUsers);
+        // Response is { users: [...] } — each user has user_id, first_name, last_name, etc.
+        const rawList = Array.isArray(data) ? data : (data.users || []);
+        // Normalise shape so rest of the page works as before (_id, first_name, last_name expected)
+        const userList = rawList.map(u => ({
+          ...u,
+          _id: u.user_id || u._id || u.id,
+          first_name: u.first_name || '',
+          last_name: u.last_name || '',
+          name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+          // Already filtered by backend, but keep safety net
+          employee_status: u.employee_status || 'active',
+          is_active: u.is_active !== false,
+        })).filter(u => u.employee_status !== 'inactive' && u.is_active !== false);
+        setEmployees(userList);
       } else {
-        console.error("Failed to fetch employees:", response.statusText);
-        const errorText = await response.text();
-        console.error("Users API error details:", errorText);
+        // Fallback: hit /users but still exclude inactive
+        const fallbackResp = await fetch(`${API_BASE_URL}/users`, {
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (fallbackResp.ok) {
+          const data = await fallbackResp.json();
+          const rawList = Array.isArray(data) ? data : (data.users || []);
+          setEmployees(rawList.filter(u => u.employee_status !== 'inactive' && u.is_active !== false));
+        }
       }
     } catch (error) {
       console.error("Error fetching employees:", error);

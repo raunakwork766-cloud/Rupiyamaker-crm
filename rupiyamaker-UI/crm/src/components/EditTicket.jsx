@@ -23,7 +23,7 @@ function AssignPopup({ onClose, onSelect }) {
           // Extract user names and IDs from the response
           const usersList = response.users.map(user => ({
             id: user.user_id || user._id || user.id,
-            name: user.name || user.username || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+            name: (`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.name || user.username || user.full_name || '',
             email: user.email || '',
             role: user.role || '',
             designation: user.designation || user.role || user.job_title || ''
@@ -35,7 +35,7 @@ function AssignPopup({ onClose, onSelect }) {
           // Fallback: Handle direct array response
           const usersList = response.map(user => ({
             id: user.user_id || user._id || user.id,
-            name: user.name || user.username || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+            name: (`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.name || user.username || user.full_name || '',
             email: user.email || '',
             role: user.role || '',
             designation: user.designation || user.role || user.job_title || ''
@@ -52,7 +52,7 @@ function AssignPopup({ onClose, onSelect }) {
           if (fallbackResponse && Array.isArray(fallbackResponse)) {
             const usersList = fallbackResponse.map(user => ({
               id: user._id || user.id,
-              name: user.name || user.username || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+              name: (`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.name || user.username || user.full_name || '',
               email: user.email || '',
               role: user.role || '',
               designation: user.designation || user.role || user.job_title || ''
@@ -302,7 +302,7 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   const [ticket, setTicket] = useState(formatTicketForUI(initialTicket));
   const [isOpen, setIsOpen] = useState(true);
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
-  const [showComments, setShowComments] = useState(true);
+  const [showComments, setShowComments] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showAssignPopup, setShowAssignPopup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);

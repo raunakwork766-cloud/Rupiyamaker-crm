@@ -49,13 +49,15 @@ function AssignPopup({ onClose, onSelect }) {
         try {
           const fallbackResponse = await API.users.getUsers();
           if (fallbackResponse && Array.isArray(fallbackResponse)) {
-            const usersList = fallbackResponse.map(user => ({
-              id: user._id || user.id,
-              name: (`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.name || user.username || user.full_name || '',
-              email: user.email || '',
-              role: user.role || '',
-              designation: user.designation || user.role || user.job_title || ''
-            }));
+            const usersList = fallbackResponse
+              .filter(user => user.employee_status !== 'inactive' && user.is_active !== false)
+              .map(user => ({
+                id: user._id || user.id,
+                name: (`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.name || user.username || user.full_name || '',
+                email: user.email || '',
+                role: user.role || '',
+                designation: user.designation || user.role || user.job_title || ''
+              }));
             setUsers(usersList.filter(user => user.name));
           }
         } catch (fallbackError) {

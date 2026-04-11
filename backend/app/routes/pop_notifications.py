@@ -58,7 +58,10 @@ async def count_target_users(notification_data: dict, users_db: UsersDB) -> int:
         
         if target_type == "all":
             # Count all active users
-            active_users = await users_db.list_users({"status": {"$ne": "inactive"}})
+            active_users = await users_db.list_users({
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False}
+            })
             return len(active_users)
             
         elif target_type == "individual":
@@ -71,7 +74,7 @@ async def count_target_users(notification_data: dict, users_db: UsersDB) -> int:
             active_count = 0
             for user_id in target_employees:
                 user = await users_db.get_user(user_id)
-                if user and user.get("status") != "inactive":
+                if user and user.get("employee_status") != "inactive" and user.get("is_active", True) is not False:
                     active_count += 1
             return active_count
             
@@ -83,7 +86,8 @@ async def count_target_users(notification_data: dict, users_db: UsersDB) -> int:
             
             # Count active users in target departments
             query = {
-                "status": {"$ne": "inactive"},
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False},
                 "$or": [
                     {"department_id": {"$in": target_departments}},
                     {"department": {"$in": target_departments}}
@@ -439,14 +443,15 @@ async def get_notification_history(
                 target_users = []
                 for user_id in target_employees:
                     user = await users_db.get_user(user_id)
-                    if user and user.get("status") != "inactive":
+                    if user and user.get("employee_status") != "inactive" and user.get("is_active", True) is not False:
                         target_users.append(user)
             elif target_type == "department":
                 # Get users in target departments
                 target_departments = history.get("target_departments", [])
                 if target_departments:
                     query = {
-                        "status": {"$ne": "inactive"},
+                        "employee_status": {"$ne": "inactive"},
+                        "is_active": {"$ne": False},
                         "$or": [
                             {"department_id": {"$in": target_departments}},
                             {"department": {"$in": target_departments}}

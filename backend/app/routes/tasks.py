@@ -847,15 +847,16 @@ async def get_users_for_assignment(
         for perm in user_permissions
     )
     
-    # Get all users — ONLY active employees (inactive employees should not appear in assignment dropdowns)
-    all_users = await users_db.list_users()
+    # Get ONLY active employees — inactive employees must not appear in assignment dropdowns
+    all_users = await users_db.list_users({
+        "employee_status": {"$ne": "inactive"},
+        "is_active": {"$ne": False}
+    })
     available_users = []
     
     for user_obj in all_users:
-        # ✅ FILTER: Skip inactive employees — they should not appear in assignment dropdowns
-        employee_status = user_obj.get("employee_status", "active")
-        is_active = user_obj.get("is_active", True)
-        if employee_status == "inactive" or is_active == False:
+        # Double-check: skip any that slipped through (e.g. missing field edge cases)
+        if not user_obj.get("is_active", True) or user_obj.get("employee_status") == "inactive":
             continue
         
         # Get user's role

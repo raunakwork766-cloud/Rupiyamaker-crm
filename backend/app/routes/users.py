@@ -124,9 +124,12 @@ async def list_users(
             print(f"⚡ Cache HIT - Users returned in {response_time:.2f}ms")
             return cached_result
         
-        # If no user_id provided, return all users (for backward compatibility)
+        # If no user_id provided, return active-only users (inactive employees must never appear in dropdowns)
         if not user_id:
-            filter_dict = {}
+            filter_dict = {
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False}
+            }
             if role_id:
                 filter_dict["role_id"] = role_id
             if department_id:
@@ -146,8 +149,11 @@ async def list_users(
         permissions = await get_hierarchical_permissions(user_id, "employees")
         permission_level = permissions["permission_level"]
         
-        # Build filter based on permissions
-        filter_dict = {}
+        # Build filter based on permissions — always exclude inactive employees
+        filter_dict = {
+            "employee_status": {"$ne": "inactive"},
+            "is_active": {"$ne": False}
+        }
         if role_id:
             filter_dict["role_id"] = role_id
         if department_id:

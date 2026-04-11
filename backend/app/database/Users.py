@@ -216,7 +216,7 @@ class UsersDB:
             
     async def get_active_users(self) -> List[dict]:
         """
-        Get all active users (not disabled)
+        Get all active users (not disabled, not inactive employee status)
         
         Returns:
             List[dict]: List of active users
@@ -224,7 +224,11 @@ class UsersDB:
         try:
             logger.info("Fetching active users")
             users = []
-            async for user in self.collection.find({"is_disabled": {"$ne": True}}):
+            async for user in self.collection.find({
+                "is_disabled": {"$ne": True},
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False}
+            }):
                 users.append(user)
             logger.info(f"Found {len(users)} active users")
             # Convert ObjectId to string
