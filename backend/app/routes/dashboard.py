@@ -239,12 +239,16 @@ async def get_dashboard_stats(
         # ─── Aggregate LEADS created by each user ───
         # Use created_by (who entered the lead) grouped by status
         # For view_assign: use assigned_to field (who the lead is assigned to)
+        # Note: assigned_to can be a string OR array in DB, so we handle both
         if effective_level == "view_assign":
+            # $in matches both string and array fields in MongoDB
+            # Use $literal for group key since assigned_to might be an array
+            current_uid = user_ids[0]  # view_assign always has 1 user
             leads_pipeline = [
                 {"$match": {**date_match_leads, "assigned_to": {"$in": user_ids}}},
                 {"$group": {
                     "_id": {
-                        "user_id": "$assigned_to",
+                        "user_id": {"$literal": current_uid},
                         "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
                     },
                     "count": {"$sum": 1}
@@ -269,7 +273,7 @@ async def get_dashboard_stats(
                 {"$match": {**date_match_logins, "assigned_to": {"$in": user_ids}}},
                 {"$group": {
                     "_id": {
-                        "user_id": "$assigned_to",
+                        "user_id": {"$literal": current_uid},
                         "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
                     },
                     "count": {"$sum": 1}
