@@ -3368,9 +3368,15 @@ export default function MonthlyAttendanceTable() {
 
   // All aggregate stats — memoized so they don't recompute on every render
   const stripStats = useMemo(() => {
+    let statsData = attendanceData
+    if (empStatusFilter === 'active') {
+      statsData = attendanceData.filter(r => r.isActive !== false)
+    } else if (empStatusFilter === 'inactive') {
+      statsData = attendanceData.filter(r => r.isActive === false)
+    }
     let presentToday = 0, absentToday = 0
     let totalAbsconding = 0, totalLeave = 0, totalGraceUsed = 0, totalAttendancePct = 0
-    attendanceData.forEach(r => {
+    statsData.forEach(r => {
       if (isCurrentMonth) {
         const s = r[`day${todayDay}`]
         if (['P', 'L', 'SP', 'HD', 'WK'].includes(s)) presentToday++
@@ -3382,13 +3388,13 @@ export default function MonthlyAttendanceTable() {
       totalGraceUsed += Math.max(0, (st.graceTotal || 0) - (st.graceRemaining || 0))
       totalAttendancePct += parseFloat(st.attendancePercentage) || 0
     })
-    const avgAttendancePct = attendanceData.length > 0
-      ? (totalAttendancePct / attendanceData.length).toFixed(1)
+    const avgAttendancePct = statsData.length > 0
+      ? (totalAttendancePct / statsData.length).toFixed(1)
       : '0.0'
-    return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct }
-  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay])
+    return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount: statsData.length }
+  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay, empStatusFilter])
 
-  const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct } = stripStats
+  const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount } = stripStats
 
   // Filtered + sorted data for table — memoized
   const filteredData = useMemo(() => {
@@ -3574,7 +3580,7 @@ export default function MonthlyAttendanceTable() {
       <div style={{background:'#09090b',border:'1px solid #27272a',borderRadius:'10px',overflow:'hidden',display:'flex',flexWrap:'wrap',marginBottom:'16px',marginTop:'8px'}}>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
           <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Employees</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{attendanceData.length}</div>
+          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{statsCount}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>{months[selectedMonth-1]} {selectedYear}</div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3591,9 +3597,9 @@ export default function MonthlyAttendanceTable() {
             {isCurrentMonth ? presentToday : '—'}
             {isCurrentMonth && <span style={{fontSize:'11px',color:'#3b82f6',display:'inline-flex',alignItems:'center',gap:'3px'}}><span className="animate-pulse" style={{width:'6px',height:'6px',borderRadius:'50%',background:'#3b82f6',display:'inline-block'}}></span>IN</span>}
           </div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {attendanceData.length} employees</div>
+          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {statsCount} employees</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(presentToday/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(presentToday/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3601,7 +3607,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#e4e4e7'}}>{isCurrentMonth ? absentToday : '—'}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>no check-in recorded</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${attendanceData.length>0&&isCurrentMonth?Math.min(100,(absentToday/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(absentToday/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3609,7 +3615,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff7b00'}}>{totalLeave}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>days this month</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${attendanceData.length>0?Math.min(100,(totalLeave/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${statsCount>0?Math.min(100,(totalLeave/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
@@ -3617,7 +3623,7 @@ export default function MonthlyAttendanceTable() {
           <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff2a2a'}}>{totalAbsconding}</div>
           <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>instances this month</div>
           <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${attendanceData.length>0?Math.min(100,(totalAbsconding/attendanceData.length)*100):0}%`}}></div>
+            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${statsCount>0?Math.min(100,(totalAbsconding/statsCount)*100):0}%`}}></div>
           </div>
         </div>
         <div style={{flex:'1 1 110px',padding:'10px 14px'}}>

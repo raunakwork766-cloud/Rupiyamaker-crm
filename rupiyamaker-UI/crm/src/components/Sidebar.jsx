@@ -1658,10 +1658,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('Knowledge Base', 'show') ||
                             checkPermission('knowledgebase', 'show'),
 
-      // Dashboard - only users with explicit dashboard.show permission (or super admin)
+      // Dashboard (DSA Performance) - leads users + super admin
       canShowDashboard: isSuperAdmin(userPermissions) ||
                         checkPermission('dashboard', 'show') ||
-                        checkPermission('Dashboard', 'show')
+                        checkPermission('Dashboard', 'show') ||
+                        checkPermission('leads', 'show') ||
+                        checkPermission('Leads', 'show')
     };
     
     console.log('🔐 ========================================');

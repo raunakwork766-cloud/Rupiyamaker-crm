@@ -93,20 +93,25 @@ async def get_dashboard_stats(
     date_from: Optional[str] = Query(None, description="Custom start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
     emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
-    permission_level: Optional[str] = Query(None, description="own|junior|all — data scope based on role permission"),
+    permission_level: Optional[str] = Query(None, description="hint from frontend; backend re-derives from DB role"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Returns per-employee lead and login pipeline stats for the Dashboard page."""
     try:
-        # ─── Permission check ───
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
         # ─── Determine effective permission level from the user's ACTUAL role in DB ───
-        # This overrides the frontend-passed permission_level to prevent stale-cache issues.
+        # Always derive from DB so stale frontend cache can never bypass restrictions.
         user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
-        is_super_admin = PermissionManager.has_permission(user_permissions, "*", "*")
+        is_super_admin = any(
+            p.get("page") == "*" and (
+                p.get("actions") == "*" or
+                (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
+            )
+            for p in user_permissions
+        ) if user_permissions else False
 
         if is_super_admin:
             effective_level = "all"
@@ -117,19 +122,17 @@ async def get_dashboard_stats(
         elif PermissionManager.has_permission(user_permissions, "dashboard", "own"):
             effective_level = "own"
         else:
-            # No explicit dashboard data permission in role → fall back to frontend hint, then "all"
+            # No explicit dashboard data permission → fallback to frontend hint or "all"
             effective_level = permission_level or "all"
 
-        # ─── Determine which user IDs are visible based on effective_level ───
-        # own    → only the requesting user
-        # junior → requesting user + their subordinates
-        # all    → all users (no restriction)
-        allowed_user_ids: Optional[set] = None  # None means no restriction (all)
+        # ─── Build allowed_user_ids set based on effective_level ───
+        allowed_user_ids: Optional[set] = None  # None = no restriction (all)
         if effective_level == "own":
             allowed_user_ids = {user_id}
         elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
             allowed_user_ids = {user_id} | set(subordinate_ids)
+        # effective_level == "all" → allowed_user_ids stays None (fetch everyone)
 
         # Get raw database directly from leads_db instance
         db_instances = get_database_instances()
@@ -145,6 +148,39 @@ async def get_dashboard_stats(
         leads_col = raw_db["leads"]
         login_leads_col = raw_db["login_leads"]
         departments_col = raw_db["departments"]
+        statuses_col = raw_db["statuses"]
+
+        # ─── Fetch statuses dynamically from Settings ───
+        all_statuses = await statuses_col.find(
+            {}, {"name": 1, "department_ids": 1}
+        ).sort("order", 1).to_list(None)
+
+        dyn_lead_statuses = []
+        dyn_login_statuses = []
+        for s in all_statuses:
+            name = s.get("name", "").strip().upper()
+            if not name:
+                continue
+            dept = s.get("department_ids", "")
+            if isinstance(dept, list):
+                if "leads" in dept:
+                    dyn_lead_statuses.append(name)
+                if "login" in dept:
+                    dyn_login_statuses.append(name)
+            elif isinstance(dept, str):
+                dl = dept.lower()
+                if dl == "leads":
+                    dyn_lead_statuses.append(name)
+                elif dl == "login":
+                    dyn_login_statuses.append(name)
+
+        # Fallback to defaults if nothing configured
+        LEAD_STATUSES = dyn_lead_statuses if dyn_lead_statuses else ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
+        LOGIN_STATUSES = dyn_login_statuses if dyn_login_statuses else [
+            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
+            "LOST BY MISTAKE", "LOST LOGIN",
+            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
+        ]
 
         # ─── Build date range ───
         start_dt, end_dt = _build_date_range_utc(time_filter, date_from, date_to)
@@ -155,12 +191,11 @@ async def get_dashboard_stats(
             date_match_leads["created_at"] = {"$gte": start_dt, "$lte": end_dt}
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
-        # ─── Fetch users filtered by permission scope ───
-        # Filter by employee_status if requested
+        # ─── Fetch users scoped by permission level ───
         users_query = {"is_active": {"$ne": False}}
         if emp_status in ("active", "inactive"):
             users_query["employee_status"] = emp_status
-        # Scope to allowed users if permission_level restricts visibility
+        # Apply permission scope: own/junior → restrict to allowed_user_ids
         if allowed_user_ids is not None:
             users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
         users_cursor = users_db.collection.find(
@@ -224,12 +259,7 @@ async def get_dashboard_stats(
         logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
         # ─── Build per-employee data ───
-        LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
-        LOGIN_STATUSES = [
-            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
-            "LOST BY MISTAKE", "LOST LOGIN",
-            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
-        ]
+        # (LEAD_STATUSES and LOGIN_STATUSES already built dynamically above)
 
         emp_data = {
             uid: {
@@ -285,7 +315,9 @@ async def get_dashboard_stats(
 
         return {
             "employees": employees,
-            "totals": {"leads": total_leads, "logins": total_logins}
+            "totals": {"leads": total_leads, "logins": total_logins},
+            "leadStatuses": LEAD_STATUSES,
+            "loginStatuses": LOGIN_STATUSES,
         }
 
     except HTTPException:

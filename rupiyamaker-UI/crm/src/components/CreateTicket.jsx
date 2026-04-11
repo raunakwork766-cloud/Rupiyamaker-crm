@@ -405,6 +405,19 @@ export default function CreateTicket({ onClose, onSubmit }) {
     }
   };
 
+  // Function to remove a file from selectedFiles
+  const handleRemoveFile = (indexToRemove) => {
+    setForm(prev => {
+      const newFiles = prev.selectedFiles.filter((_, i) => i !== indexToRemove);
+      return {
+        ...prev,
+        selectedFiles: newFiles,
+        attachment: newFiles.length > 0 ? newFiles[0] : null,
+        attachmentName: newFiles.length > 0 ? newFiles[0].name : ""
+      };
+    });
+  };
+
   // Function to remove an assignee
   const handleRemoveAssignee = (nameToRemove) => {
     setForm((prevForm) => ({
@@ -631,13 +644,27 @@ export default function CreateTicket({ onClose, onSubmit }) {
               {form.selectedFiles.length > 0 && (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {form.selectedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={`Preview ${index}`}
-                        className="w-20 h-20 object-cover rounded-lg"
-                      />
-                      <span className="text-sm text-black">{file.name}</span>
+                    <div key={index} className="relative flex items-center space-x-2 border border-gray-200 rounded-lg p-1">
+                      {file.type.startsWith('image/') ? (
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`Preview ${index}`}
+                          className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0 text-gray-500 text-xs text-center p-1">
+                          {file.type === 'application/pdf' ? '📄 PDF' : '🎥 Video'}
+                        </div>
+                      )}
+                      <span className="text-sm text-black break-all">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(index)}
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition leading-none"
+                        title="Remove file"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
