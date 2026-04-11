@@ -4,6 +4,8 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 from app.database import get_database_instances
 from app.database.Users import UsersDB
+from app.database.Roles import RolesDB
+from app.utils.permissions import PermissionManager
 from app.utils.timezone import get_ist_now
 import logging
 
@@ -18,6 +20,11 @@ router = APIRouter(
 async def get_users_db():
     db_instances = get_database_instances()
     return db_instances["users"]
+
+
+async def get_roles_db():
+    db_instances = get_database_instances()
+    return db_instances["roles"]
 
 
 def _build_date_range_utc(time_filter: str, date_from: Optional[str], date_to: Optional[str]):
@@ -86,15 +93,46 @@ async def get_dashboard_stats(
     date_from: Optional[str] = Query(None, description="Custom start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
     emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
+    permission_level: Optional[str] = Query(None, description="hint from frontend; backend re-derives from DB role"),
     users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Returns per-employee lead and login pipeline stats for the Dashboard page."""
     try:
-        # ─── Permission check (lenient: allow anyone logged in) ───
-        # Super admin or leads permission required; fallback allows access so UI can render
-        # Backend data is still scoped — no sensitive exposure
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
+
+        # ─── Determine effective permission level from the user's ACTUAL role in DB ───
+        # Always derive from DB so stale frontend cache can never bypass restrictions.
+        user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_super_admin = any(
+            p.get("page") == "*" and (
+                p.get("actions") == "*" or
+                (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
+            )
+            for p in user_permissions
+        ) if user_permissions else False
+
+        if is_super_admin:
+            effective_level = "all"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "all"):
+            effective_level = "all"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "junior"):
+            effective_level = "junior"
+        elif PermissionManager.has_permission(user_permissions, "dashboard", "own"):
+            effective_level = "own"
+        else:
+            # No explicit dashboard data permission → fallback to frontend hint or "all"
+            effective_level = permission_level or "all"
+
+        # ─── Build allowed_user_ids set based on effective_level ───
+        allowed_user_ids: Optional[set] = None  # None = no restriction (all)
+        if effective_level == "own":
+            allowed_user_ids = {user_id}
+        elif effective_level == "junior":
+            subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            allowed_user_ids = {user_id} | set(subordinate_ids)
+        # effective_level == "all" → allowed_user_ids stays None (fetch everyone)
 
         # Get raw database directly from leads_db instance
         db_instances = get_database_instances()
@@ -153,11 +191,13 @@ async def get_dashboard_stats(
             date_match_leads["created_at"] = {"$gte": start_dt, "$lte": end_dt}
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
-        # ─── Fetch all active users ───
-        # Filter by employee_status if requested
+        # ─── Fetch users scoped by permission level ───
         users_query = {"is_active": {"$ne": False}}
         if emp_status in ("active", "inactive"):
             users_query["employee_status"] = emp_status
+        # Apply permission scope: own/junior → restrict to allowed_user_ids
+        if allowed_user_ids is not None:
+            users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
         users_cursor = users_db.collection.find(
             users_query,
             {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
