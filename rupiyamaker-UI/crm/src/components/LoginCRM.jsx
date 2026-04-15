@@ -1322,9 +1322,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
-        if (selectedStatus !== 'all') {
-            filtered = filtered.filter(lead => lead.status === selectedStatus);
-        }
+        // NOTE: do NOT filter by selectedStatus here — card counts must always show totals for each status
 
         // Apply filter options with same logic as main filtering
         if (searchTerm) {
@@ -2642,9 +2640,17 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
-        // Filter by status
+        // Filter by status (case-insensitive, handles Approve/Approved etc.)
         if (selectedStatus !== 'all') {
-            filtered = filtered.filter(lead => lead.status === selectedStatus);
+            filtered = filtered.filter(lead => {
+                const ls = (typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '')).toLowerCase();
+                const ss = selectedStatus.toLowerCase();
+                if (ls === ss) return true;
+                if (ss === 'approve' && ls === 'approved') return true;
+                if (ss === 'disbursed' && ls === 'disbursement') return true;
+                if (ss === 'lost login' && (ls === 'lost leads' || ls === 'lost lead')) return true;
+                return false;
+            });
         }
 
         // Filter by search term
@@ -2936,8 +2942,13 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
         const allLeads = Array.isArray(leads) ? leads : [];
         const inParent = allLeads.filter(lead => {
-            const statusVal = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
-            return statusVal.toLowerCase() === parentKey.toLowerCase();
+            const statusVal = (typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '')).toLowerCase();
+            const pk = parentKey.toLowerCase();
+            if (statusVal === pk) return true;
+            if (pk === 'approve' && statusVal === 'approved') return true;
+            if (pk === 'disbursed' && statusVal === 'disbursement') return true;
+            if (pk === 'lost login' && (statusVal === 'lost leads' || statusVal === 'lost lead')) return true;
+            return false;
         });
         const configuredSubStatuses = statusHierarchy[parentKey] || [];
         const groups = {};
