@@ -107,7 +107,8 @@ export default function CommentSection({ leadData }) {
         lead_id: leadData._id,
         content: comment,
         note_type: "remark",
-        created_by: userId
+        created_by: userId,
+        creator_name: currentUser.name
       };
       
       const response = await fetch(apiUrl, {
