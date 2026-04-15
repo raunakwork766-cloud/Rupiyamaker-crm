@@ -1325,8 +1325,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         // NOTE: do NOT filter by selectedStatus here — card counts must always show totals for each status
 
         // Apply filter options with same logic as main filtering
-        if (searchTerm) {
-            const searchLower = searchTerm.toLowerCase();
+        if (debouncedSearchTerm) {
+            const searchLower = debouncedSearchTerm.toLowerCase();
             filtered = filtered.filter(lead =>
                 (lead.name && lead.name.toLowerCase().includes(searchLower)) ||
                 (lead.phone && lead.phone.toString().includes(searchLower)) ||
@@ -1509,7 +1509,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         });
 
         return counts;
-    }, [leads, selectedLoanType, selectedStatus, searchTerm, filterOptions, filterRevision]);
+    }, [leads, selectedLoanType, selectedStatus, debouncedSearchTerm, filterOptions, filterRevision]);
 
     const [operationsForm] = Form.useForm();
     const [assignmentForm] = Form.useForm();
