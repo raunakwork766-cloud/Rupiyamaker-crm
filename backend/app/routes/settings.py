@@ -2478,11 +2478,17 @@ async def upsert_leave_approval_route(
     body: Dict[str, Any] = Body(...),
     user_id: str = Query(..., description="ID of the user making the request"),
     settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Create or update leave approval routing for a role.
     Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
     """
     try:
+        # Check if user has leave_setting permission
+        has_perm = await check_permission(user_id, "leaves", "leave_setting", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to manage leave settings")
         role_id = body.get("role_id")
         role_name = body.get("role_name", "")
         approver_ids = body.get("approver_ids", [])
@@ -2514,9 +2520,15 @@ async def delete_leave_approval_route(
     role_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
     settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Delete approval route for a role"""
     try:
+        # Check if user has leave_setting permission
+        has_perm = await check_permission(user_id, "leaves", "leave_setting", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to manage leave settings")
         deleted = await settings_db.delete_leave_approval_route(role_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Route not found for this role")

@@ -253,6 +253,45 @@
   cursor: not-allowed;
 }
 
+/* Chrome autofill override — prevents white background from hiding eye icon */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover,
+.form-input:-webkit-autofill:focus,
+.form-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #1e1e2e inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: white;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Password Toggle Button */
+.password-toggle-btn {
+  position: absolute;
+  right: 14px;
+  background: rgba(30, 30, 46, 0.85);
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: color 0.2s ease, background 0.2s ease;
+  border-radius: 6px;
+}
+
+.password-toggle-btn:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(102, 126, 234, 0.25);
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid rgba(102, 126, 234, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Login Button */
 .login-button {
   width: 100%;

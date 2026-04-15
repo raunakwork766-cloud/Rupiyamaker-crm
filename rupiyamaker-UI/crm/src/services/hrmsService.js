@@ -109,7 +109,18 @@ const getUserId = () => {
 export const hrmsService = {
     // Get all employees - simple wrapper for getEmployees with no filters
     getAllEmployees: async () => {
-        return await hrmsService.getEmployees();
+        // Fetch ALL employees including inactive for the employee management page
+        const userId = getUserId();
+        try {
+            const response = await api.get(`/users?user_id=${userId}&include_all=true`);
+            return {
+                data: Array.isArray(response) ? response : [],
+                success: true
+            };
+        } catch (error) {
+            console.error('Error fetching all employees:', error);
+            throw error;
+        }
     },
 
     // Fetch all employees with optional filters using the working users endpoint

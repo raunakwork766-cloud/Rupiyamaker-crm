@@ -162,7 +162,8 @@ const NotificationManagementPage = () => {
 
       const notificationPermissions = {
         view: hasPermission(userPermissions, 'notification', 'view') || hasPermission(userPermissions, 'Notification', 'view'),
-        send: hasPermission(userPermissions, 'notification', 'send') || hasPermission(userPermissions, 'Notification', 'send'),
+        send: hasPermission(userPermissions, 'notification', 'send') || hasPermission(userPermissions, 'Notification', 'send') ||
+              hasPermission(userPermissions, 'notification', 'create') || hasPermission(userPermissions, 'Notification', 'create'),
         delete: hasPermission(userPermissions, 'notification', 'delete') || hasPermission(userPermissions, 'Notification', 'delete')
       };
 

@@ -533,6 +533,16 @@ class LeadsDB:
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
         
+        # CRITICAL GUARD: Never allow created_at to be overwritten via update operations
+        # created_at must always reflect the original lead creation time
+        if "created_at" in update_data:
+            original_created_at = current_lead.get("created_at")
+            if original_created_at:
+                logger.warning(f"⚠️ Attempt to modify created_at blocked — preserving original: {original_created_at}")
+                update_data["created_at"] = original_created_at
+            else:
+                del update_data["created_at"]
+        
         # CRITICAL FIX: Handle dynamic_fields with deep copy to preserve nested structures
         if "dynamic_fields" not in update_data:
             # No dynamic_fields in update - preserve entire current dynamic_fields with DEEP COPY

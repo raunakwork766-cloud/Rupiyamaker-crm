@@ -338,10 +338,35 @@ async def send_lead_to_login_department(
     # Check if login lead already exists for this original lead
     existing_login_lead = await login_leads_db.get_login_lead_by_original_id(lead_id)
     if existing_login_lead:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A login lead already exists for this lead. Use update operations instead."
-        )
+        # Login lead already exists (likely re-send after rollback)
+        # Just re-mark the original lead as sent to login without creating a new login lead
+        # This preserves login CRM data while allowing re-send after rollback
+        existing_login_lead_id = str(existing_login_lead.get("_id", ""))
+        re_update_data = {
+            "file_sent_to_login": True,
+            "login_department_sent_date": get_ist_now().isoformat(),
+            "login_department_sent_by": user_id,
+            "login_lead_id": existing_login_lead_id,
+            "updated_at": get_ist_now().isoformat()
+        }
+        success = await leads_db.update_lead(lead_id, re_update_data, user_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to re-mark lead as sent to login"
+            )
+        # Invalidate cache
+        try:
+            await invalidate_cache_pattern("login-department-leads*")
+        except Exception:
+            pass
+        return {
+            "message": "Lead re-sent to login department successfully (existing login lead preserved)",
+            "lead_id": lead_id,
+            "login_lead_id": existing_login_lead_id,
+            "info": "Login lead already existed from previous send. Original lead re-marked as sent to login.",
+            "obligation_data_preserved": True
+        }
     
     # Create a complete copy of the lead data for the login department
     # ⚡ CRITICAL FIX: Use convert_object_id to properly convert ALL nested BSON objects
@@ -2041,8 +2066,8 @@ async def get_hierarchical_permissions(user_id: str, module: str = "login") -> D
         has_junior = False
         
         for perm in permissions:
-            # Check both login and leads modules
-            if perm.get("page") in [module, "leads"]:
+            # Only check the specific module (login) - do NOT bleed leads permissions into login
+            if perm.get("page") == module:
                 actions = perm.get("actions", [])
                 if isinstance(actions, str):
                     actions = [actions]

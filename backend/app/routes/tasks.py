@@ -1762,6 +1762,7 @@ async def update_task(
         # Remove remark from update_data — it's only for history, not stored on the task
         update_data.pop("remark", None)
         old_status = task.get("status")
+        user_object_id = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
         if task_update.status == TaskStatus.COMPLETED and task.get("status") != TaskStatus.COMPLETED:
             update_data["completed_at"] = get_ist_now()
             update_data["completed_by"] = user_object_id

@@ -4,7 +4,7 @@ import {
     message,
     Modal
 } from 'antd';
-import { PlusOutlined, UserOutlined, ExclamationCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, UserOutlined, ExclamationCircleOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
 import { Search, Filter, User, Building, Calendar, Clock, Users, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import EmployeeForm from '../components/hrms/EmployeeFormNew';
 import StatusModal from '../components/hrms/StatusModal';
@@ -29,6 +29,7 @@ import {
 
 import hrmsService from '../services/hrmsService';
 import { getMediaUrl, getProfilePictureUrlWithCacheBusting } from '../utils/mediaUtils';
+import OrgChartView from '../components/hrms/OrgChartView';
 
 const { confirm } = Modal;
 
@@ -215,6 +216,7 @@ if (typeof document !== 'undefined') {
 const AllEmployees = () => {
     const [activeTab, setActiveTab] = useTabWithHistory('status', 'active', { localStorageKey: 'allEmployeesTab' });
     const [employees, setEmployees] = useState([]);
+    const [employeeCounts, setEmployeeCounts] = useState({ active: 0, inactive: 0 });
     const [searchTerm, setSearchTerm] = useState('');
 
     // Filter popup states (matching LeadCRM structure) - Enhanced for multiple selections
@@ -341,15 +343,16 @@ const AllEmployees = () => {
     };
 
     // Simplified permission checking using new 3-type system
-    const permissionLevel = getPermissionLevel('users');
+    const permissionLevel = getPermissionLevel('employees');
     const currentUserId = getCurrentUserId();
 
     // Permission check functions  
-    const canUserViewAll = () => canViewAll('users');
-    const canUserViewJunior = () => canViewJunior('users');
-    const canUserCreate = () => canCreate('users');
-    const canUserEdit = (recordOwnerId) => canEdit('users', recordOwnerId);
-    const canUserDelete = (recordOwnerId) => canDelete('users', recordOwnerId);
+    const canUserViewAll = () => canViewAll('employees');
+    const canUserViewJunior = () => canViewJunior('employees');
+    const canUserCreate = () => canCreate('employees');
+    const canUserEdit = (recordOwnerId) => canEdit('employees', recordOwnerId);
+    const canUserDelete = (recordOwnerId) => canDelete('employees', recordOwnerId);
+    const canResetPassword = () => hasPermission(getUserPermissions(), 'employees', 'reset_password');
 
     // Debug permissions
     const debugPerms = {
@@ -358,13 +361,13 @@ const AllEmployees = () => {
         canEdit: canUserEdit()
     };
 
-    // FORCE ENABLE FOR TESTING - Remove this later
-    const canEditEmployees = true; // Temporarily force to true for testing
-    // const canEditEmployees = canUserEdit() || canUserViewJunior() || canUserViewAll(); // Original line
+    const canEditEmployees = canUserEdit() || canUserViewJunior() || canUserViewAll();
 
-    // Load employees based on active tab
+    // Load employees based on active tab (skip for chart view — OrgChartView fetches its own data)
     useEffect(() => {
-        fetchEmployees();
+        if (activeTab !== 'chart') {
+            fetchEmployees();
+        }
     }, [activeTab]);
 
     // Load departments and roles on component mount
@@ -505,6 +508,11 @@ const AllEmployees = () => {
                 return aId - bId;
             });
 
+            // Always update counts from full dataset regardless of which tab is active
+            setEmployeeCounts({
+                active: allEmployeesProcessed.filter(e => e.employee_status === 'active').length,
+                inactive: allEmployeesProcessed.filter(e => e.employee_status === 'inactive').length,
+            });
             setEmployees(sortedEmployees);
         } catch (error) {
             console.error('❌ Error fetching employees:', error);
@@ -1592,47 +1600,111 @@ const AllEmployees = () => {
                             {/* Left side - Tabs */}
                             <div style={{
                                 display: 'flex',
-                                background: 'black',
-                                borderRadius: '8px',
-                                overflow: 'hidden'
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: '#111827',
+                                borderRadius: '10px',
+                                padding: '4px',
+                                border: '1px solid #1f2937'
                             }}>
+                                {/* Active Employees Tab */}
                                 <button
                                     onClick={() => handleTabChange('active')}
                                     style={{
-                                        textAlign: 'center',
-                                        padding: '0.75rem 2rem',
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '7px 16px',
                                         cursor: 'pointer',
-                                        color: activeTab === 'active' ? '#fff' : '#58a6ff',
-                                        background: activeTab === 'active' ? '#58a6ff' : 'black',
+                                        color: activeTab === 'active' ? '#fff' : '#6b7280',
+                                        background: activeTab === 'active' ? '#2563eb' : 'transparent',
                                         border: 'none',
-                                        fontSize: '1rem',
-                                        transition: 'background 0.2s ease',
-                                        whiteSpace: 'nowrap'
+                                        borderRadius: '7px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: activeTab === 'active' ? 600 : 400,
+                                        transition: 'all 0.2s ease',
+                                        whiteSpace: 'nowrap',
+                                        boxShadow: activeTab === 'active' ? '0 1px 4px rgba(37,99,235,0.4)' : 'none',
                                     }}
                                     className={`tab ${activeTab === 'active' ? 'active' : ''}`}
                                 >
-                                    Active Employees
+                                    ✓ Active Employees
+                                    <span style={{
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                        minWidth: '22px', height: '22px', padding: '0 6px',
+                                        borderRadius: '11px',
+                                        fontSize: '0.75rem', fontWeight: 700,
+                                        background: activeTab === 'active' ? 'rgba(255,255,255,0.2)' : '#1f2937',
+                                        color: activeTab === 'active' ? '#fff' : '#9ca3af',
+                                    }}>
+                                        {employeeCounts.active}
+                                    </span>
                                 </button>
+
+                                {/* Inactive Employees Tab */}
                                 <button
                                     onClick={() => handleTabChange('inactive')}
                                     style={{
-                                        textAlign: 'center',
-                                        padding: '0.75rem 2rem',
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '7px 16px',
                                         cursor: 'pointer',
-                                        color: activeTab === 'inactive' ? '#fff' : '#58a6ff',
-                                        background: activeTab === 'inactive' ? '#58a6ff' : 'black',
+                                        color: activeTab === 'inactive' ? '#fff' : '#6b7280',
+                                        background: activeTab === 'inactive' ? '#dc2626' : 'transparent',
                                         border: 'none',
-                                        fontSize: '1rem',
-                                        transition: 'background 0.2s ease',
-                                        whiteSpace: 'nowrap'
+                                        borderRadius: '7px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: activeTab === 'inactive' ? 600 : 400,
+                                        transition: 'all 0.2s ease',
+                                        whiteSpace: 'nowrap',
+                                        boxShadow: activeTab === 'inactive' ? '0 1px 4px rgba(220,38,38,0.4)' : 'none',
                                     }}
                                     className={`tab ${activeTab === 'inactive' ? 'active' : ''}`}
                                 >
-                                    Inactive Employees
+                                    ✕ Inactive Employees
+                                    <span style={{
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                        minWidth: '22px', height: '22px', padding: '0 6px',
+                                        borderRadius: '11px',
+                                        fontSize: '0.75rem', fontWeight: 700,
+                                        background: activeTab === 'inactive' ? 'rgba(255,255,255,0.2)' : '#1f2937',
+                                        color: activeTab === 'inactive' ? '#fff' : '#9ca3af',
+                                    }}>
+                                        {employeeCounts.inactive}
+                                    </span>
+                                </button>
+
+                                {/* Org Chart Tab */}
+                                <button
+                                    onClick={() => handleTabChange('chart')}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '7px',
+                                        padding: '7px 16px',
+                                        cursor: 'pointer',
+                                        color: activeTab === 'chart' ? '#fff' : '#6b7280',
+                                        background: activeTab === 'chart' ? '#6366f1' : 'transparent',
+                                        border: 'none',
+                                        borderRadius: '7px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: activeTab === 'chart' ? 600 : 400,
+                                        transition: 'all 0.2s ease',
+                                        whiteSpace: 'nowrap',
+                                        boxShadow: activeTab === 'chart' ? '0 1px 4px rgba(99,102,241,0.4)' : 'none',
+                                    }}
+                                    className={`tab ${activeTab === 'chart' ? 'active' : ''}`}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <rect x="3" y="3" width="6" height="6" rx="1"/>
+                                        <rect x="15" y="3" width="6" height="6" rx="1"/>
+                                        <rect x="9" y="15" width="6" height="6" rx="1"/>
+                                        <line x1="6" y1="9" x2="6" y2="12"/>
+                                        <line x1="18" y1="9" x2="18" y2="12"/>
+                                        <line x1="6" y1="12" x2="18" y2="12"/>
+                                        <line x1="12" y1="12" x2="12" y2="15"/>
+                                    </svg>
+                                    Org Chart
                                 </button>
                             </div>
 
-                            {/* Right side - Filter and Search (matching LeadCRM) */}
+                            {/* Right side - Filter and Search (matching LeadCRM) — hidden on chart view */}
+                            {activeTab !== 'chart' && (
                             <div className="flex items-center gap-3">
                                 {/* Filter Button (matching LeadCRM) */}
                                 <button
@@ -1699,11 +1771,13 @@ const AllEmployees = () => {
                                     )}
                                 </div>
                             </div>
+                            )}
                         </div>
 
-
-
-                        {loading ? (
+                        {/* ── Chart View Tab ── */}
+                        {activeTab === 'chart' ? (
+                            <OrgChartView />
+                        ) : loading ? (
                             <div className="text-center py-20" style={{ background: 'black', color: '#c9d1d9' }}>
                                 <div className="flex items-center justify-center gap-3">
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -2059,11 +2133,26 @@ const AllEmployees = () => {
                                                             </label>
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                            <div className="flex items-center gap-2">
+                                                            {canResetPassword() && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handlePasswordManagement(employee);
+                                                                    }}
+                                                                    className="rounded-full p-2 transition-all duration-200 flex items-center justify-center text-yellow-500 hover:text-yellow-700 hover:bg-yellow-50"
+                                                                    style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)' }}
+                                                                    title="Reset Password"
+                                                                >
+                                                                    <KeyOutlined style={{ fontSize: '16px' }} />
+                                                                </button>
+                                                            )}
                                                             {(() => {
                                                                 const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
                                                                 const isSuperAdmin = employee.role_id === SUPER_ADMIN_ROLE_ID;
 
-                                                                return (
+                                                                return canUserDelete(employee._id) ? (
                                                                     <button
                                                                         onClick={(e) => {
                                                                             console.log('🗑️ Delete button clicked!', employee);
@@ -2090,8 +2179,9 @@ const AllEmployees = () => {
                                                                     >
                                                                         <DeleteOutlined style={{ fontSize: '16px' }} />
                                                                     </button>
-                                                                );
+                                                                ) : null;
                                                             })()}
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 );

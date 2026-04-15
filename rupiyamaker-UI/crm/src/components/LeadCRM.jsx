@@ -339,10 +339,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     
     const getCacheKeys = (loanType) => {
         const loanTypeKey = loanType || getCurrentLoanType();
+        const userIdKey = localStorage.getItem('userId') || 'anonymous';
         return {
-            LEADS: `leads_cache_v2_${loanTypeKey}`,  // v2 with loan type specific
+            LEADS: `leads_cache_v2_${userIdKey}_${loanTypeKey}`,  // v2 with user + loan type specific
             LOAN_TYPES: 'loan_types_cache_v1',
-            TIMESTAMP: `leads_cache_timestamp_${loanTypeKey}`  // Separate timestamp per loan type
+            TIMESTAMP: `leads_cache_timestamp_${userIdKey}_${loanTypeKey}`  // Separate timestamp per user+loan type
         };
     };
     
@@ -463,6 +464,30 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             return true;
         }
 
+        // All page keys that count as a "leads" page (including PLOD sub-pages)
+        const LEADS_PAGES = ['leads', 'Leads', 'leads.pl_&_odd_leads', 'leads.pl_odd_leads',
+            'leads_pl_&_odd_leads', 'leads_pl_odd_leads'];
+
+        // Aliases: new permission names map to old ones for backward compatibility
+        const actionAliases = {
+            'all': ['all', 'view_all'],
+            'junior': ['junior', 'view_team'],
+            'view_all': ['view_all', 'all'],
+            'view_team': ['view_team', 'junior'],
+        };
+        const permAliases = actionAliases[permission] || [permission];
+
+        // Helper: check if an actions value contains the permission (or its alias)
+        const actionsMatch = (actions) => {
+            if (actions === '*') return true;
+            if (typeof actions === 'string') return permAliases.includes(actions);
+            if (Array.isArray(actions)) {
+                if (actions.includes('*')) return true;
+                return permAliases.some(a => actions.includes(a));
+            }
+            return false;
+        };
+
         // Check for permissions array with objects (new permission format)
         if (Array.isArray(permissions)) {
 
@@ -470,42 +495,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 // Skip invalid permission entries
                 if (!perm || !perm.page) continue;
 
-                // Check if this is a leads permission entry
-                if (perm.page === 'Leads' || perm.page === 'leads') {
+                // Check if this is a leads or PLOD leads permission entry
+                if (LEADS_PAGES.includes(perm.page)) {
 
-                    // Check if actions is a wildcard
-                    if (perm.actions === '*') {
-                        return true;
-                    }
+                    if (perm.actions === '*') return true;
 
-                    // Check if actions is an array containing the permission or show (special case)
-                    if (Array.isArray(perm.actions)) {
-                        // Handle 'show' permission - if requesting 'show' or if they have show + any view permission
-                        if (permission === 'show' && perm.actions.includes('show')) {
-                            return true;
-                        }
+                    if (actionsMatch(perm.actions)) return true;
 
-                        // Check for wildcard in actions array
-                        if (perm.actions.includes('*')) {
-                            return true;
-                        }
-
-                        // Check for specific permission
-                        if (perm.actions.includes(permission)) {
-                            return true;
-                        }
-
-                        // Special case - if asking for a view permission and they have any view permission
-                        if ((permission === 'own' || permission === 'view_other' ||
-                            permission === 'all' || permission === 'junior') &&
-                            (perm.actions.includes('own') || perm.actions.includes('view_other') ||
-                                perm.actions.includes('all') || perm.actions.includes('junior'))) {
-                            return true;
-                        }
-                    }
-
-                    // Check if actions is a string matching the permission
-                    if (typeof perm.actions === 'string' && perm.actions === permission) {
+                    // show permission special case - if requesting 'show'
+                    if (permission === 'show' && Array.isArray(perm.actions) && perm.actions.includes('show')) {
                         return true;
                     }
                 }
@@ -553,8 +551,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const canAssignLeads = () => hasLeadsPermission('assign');
     const canViewOwnLeads = () => hasLeadsPermission('own');
     const canViewOtherLeads = () => hasLeadsPermission('view_other');
-    const canViewAllLeads = () => hasLeadsPermission('all');
-    const canViewJuniorLeads = () => hasLeadsPermission('junior');
+    const canViewAllLeads = () => hasLeadsPermission('all') || hasLeadsPermission('view_all');
+    const canViewJuniorLeads = () => hasLeadsPermission('junior') || hasLeadsPermission('view_team');
     const canDeleteLeads = () => {
         // 🔒 PERMISSION-BASED CHECK: Only show SELECT button if user has delete permission
         // This respects Settings → Roles and Permissions configuration
@@ -585,101 +583,144 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     // Super Admin always gets this. For others, explicit rollback_login action is required.
     const canRollbackLoginStatus = () => {
         try {
-            // Super admin check first
-            if (isSuperAdmin()) return true;
+            const raw = localStorage.getItem('userPermissions');
+            if (!raw) return false;
+            const userPermissions = JSON.parse(raw);
 
-            // Check from user object in localStorage
-            const userData = localStorage.getItem('user');
-            if (userData) {
-                const user = JSON.parse(userData);
-                if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-                    const found = user.role.permissions.some(p => {
-                        const pageMatches = ['leads', 'Leads', 'leads.pl_&_odd_leads', 'leads.pl_odd_leads',
-                            'leads_pl_&_odd_leads', 'leads_pl_odd_leads'].includes(p.page);
-                        const actions = Array.isArray(p.actions) ? p.actions : [];
-                        return pageMatches && actions.includes('rollback_login');
-                    });
-                    if (found) return true;
+            // Super admin checks (object format)
+            if (userPermissions?.['*'] === '*') return true;
+            if (userPermissions?.pages === '*' && userPermissions?.actions === '*') return true;
+            if (userPermissions?.Global === '*' || userPermissions?.global === '*') return true;
+
+            // Object format: check leads.pl_&_odd_leads key
+            const plOddEntry = userPermissions?.['leads.pl_&_odd_leads'] || userPermissions?.['leads.pl_odd_leads'];
+            if (plOddEntry) {
+                if (plOddEntry === '*') return true;
+                if (plOddEntry?.rollback_login === true) return true;
+            }
+
+            // Array format
+            if (Array.isArray(userPermissions)) {
+                if (userPermissions.some(p => p.page === '*' && (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*'))))) return true;
+                const plOdd = userPermissions.find(p =>
+                    p.page === 'leads.pl_&_odd_leads' ||
+                    p.page === 'leads.pl_odd_leads' ||
+                    p.page === 'leads_pl_&_odd_leads' ||
+                    p.page === 'leads_pl_odd_leads'
+                );
+                if (plOdd && plOdd.actions) {
+                    const actions = Array.isArray(plOdd.actions) ? plOdd.actions : [plOdd.actions];
+                    if (actions.includes('*') || actions.includes('rollback_login')) return true;
                 }
             }
-            // Check from permissions state
-            if (Array.isArray(permissions)) {
-                return permissions.some(p => {
-                    const pageMatches = ['leads', 'Leads', 'leads.pl_&_odd_leads', 'leads.pl_odd_leads',
-                        'leads_pl_&_odd_leads', 'leads_pl_odd_leads'].includes(p.page);
-                    const actions = Array.isArray(p.actions) ? p.actions : [];
-                    return pageMatches && actions.includes('rollback_login');
-                });
-            }
+
+            return false;
         } catch (e) {}
         return false;
     };
 
-    const canUpdateStatus = () => {
-        // 🔒 PERMISSION-BASED CHECK: Only allow status updates if user has status_update permission
-        // This respects Settings → Roles and Permissions configuration
-        
-        console.log('🔍 canUpdateStatus CALLED');
-        
+    const canDownloadObligation = () => {
         try {
-            // Get user data from localStorage
-            const userData = localStorage.getItem('user');
-            if (userData) {
-                const user = JSON.parse(userData);
-                
-                // Check if super admin
-                if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) {
-                    console.log('✅ User is Super Admin - can update status');
-                    return true;
-                }
-                
-                // Check nested format: leads.pl_&_odd_leads or leads.pl_odd_leads
-                if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-                    const plOddPermission = user.role.permissions.find(p => 
-                        p.page === 'leads.pl_&_odd_leads' || 
-                        p.page === 'leads.pl_odd_leads' ||
-                        p.page === 'leads_pl_&_odd_leads' ||
-                        p.page === 'leads_pl_odd_leads'
-                    );
-                    
-                    if (plOddPermission && plOddPermission.actions) {
-                        const actions = Array.isArray(plOddPermission.actions) ? 
-                            plOddPermission.actions : [plOddPermission.actions];
-                        
-                        const hasStatusUpdate = actions.includes('status_update') || actions.includes('status');
-                        
-                        console.log('🔍 PL & ODD LEADS status permission check:', {
-                            page: plOddPermission.page,
-                            actions: actions,
-                            hasStatusUpdate: hasStatusUpdate
-                        });
-                        
-                        if (hasStatusUpdate) {
-                            console.log('✅ User has STATUS UPDATE permission');
-                            return true;
-                        }
-                    }
-                    
-                    // Check for general leads permission (backward compatibility)
-                    const leadsPermission = user.role.permissions.find(p => p.page === 'leads' || p.page === 'Leads');
-                    if (leadsPermission && leadsPermission.actions) {
-                        const actions = Array.isArray(leadsPermission.actions) ? 
-                            leadsPermission.actions : [leadsPermission.actions];
-                        
-                        const hasStatusUpdate = actions.includes('status_update') || actions.includes('status');
-                        
-                        if (hasStatusUpdate) {
-                            console.log('✅ User has STATUS UPDATE permission (unified format)');
-                            return true;
-                        }
-                    }
+            const raw = localStorage.getItem('userPermissions');
+            if (!raw) return false;
+            const userPermissions = JSON.parse(raw);
+
+            // Super admin checks
+            if (userPermissions?.['*'] === '*') return true;
+            if (userPermissions?.pages === '*' && userPermissions?.actions === '*') return true;
+            if (userPermissions?.Global === '*' || userPermissions?.global === '*') return true;
+
+            // Object format: check leads.pl_&_odd_leads key
+            const plOddEntry = userPermissions?.['leads.pl_&_odd_leads'] || userPermissions?.['leads.pl_odd_leads'];
+            if (plOddEntry) {
+                if (plOddEntry === '*') return true;
+                if (plOddEntry?.download_obligation === true) return true;
+            }
+
+            // Array format
+            if (Array.isArray(userPermissions)) {
+                if (userPermissions.some(p => p.page === '*' && (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*'))))) return true;
+                const plOdd = userPermissions.find(p =>
+                    p.page === 'leads.pl_&_odd_leads' ||
+                    p.page === 'leads.pl_odd_leads' ||
+                    p.page === 'leads_pl_&_odd_leads' ||
+                    p.page === 'leads_pl_odd_leads'
+                );
+                if (plOdd && plOdd.actions) {
+                    const actions = Array.isArray(plOdd.actions) ? plOdd.actions : [plOdd.actions];
+                    if (actions.includes('*') || actions.includes('download_obligation')) return true;
                 }
             }
-            
-            console.log('❌ User does NOT have STATUS UPDATE permission');
+
             return false;
         } catch (error) {
-            console.error('❌ Error checking status update permission:', error);
+            return false;
+        }
+    };
+
+    const canUpdateStatus = () => {
+        try {
+            // Helper: check array-format permissions for status_change on pl_odd_leads page
+            const checkArrayPerms = (permsArray) => {
+                if (!Array.isArray(permsArray)) return false;
+                // Super admin wildcard
+                if (permsArray.some(p => p.page === '*' && (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*'))))) return true;
+                // Explicit status_change on leads.pl_odd_leads (or variant spelling)
+                const plOdd = permsArray.find(p =>
+                    p.page === 'leads.pl_&_odd_leads' ||
+                    p.page === 'leads.pl_odd_leads' ||
+                    p.page === 'leads_pl_&_odd_leads' ||
+                    p.page === 'leads_pl_odd_leads'
+                );
+                if (plOdd && Array.isArray(plOdd.actions)) {
+                    return plOdd.actions.includes('status_change') || plOdd.actions.includes('*');
+                }
+                return false;
+            };
+
+            // Helper: check object-format permissions for status_change
+            const checkObjectPerms = (permsObj) => {
+                if (!permsObj || typeof permsObj !== 'object' || Array.isArray(permsObj)) return false;
+                // Super admin wildcards
+                if (permsObj['*'] === '*') return true;
+                if (permsObj['Global'] === '*' || permsObj['global'] === '*') return true;
+                // Explicit status_change on pl_odd_leads
+                const plOdd = permsObj['leads.pl_&_odd_leads'] || permsObj['leads.pl_odd_leads'];
+                if (!plOdd) return false;
+                if (plOdd === '*') return true;
+                if (typeof plOdd === 'object') return plOdd.status_change === true;
+                return false;
+            };
+
+            // 1. Check React permissions state (may be array or object)
+            if (Array.isArray(permissions)) {
+                if (checkArrayPerms(permissions)) {
+                    console.log('✅ canUpdateStatus: true via permissions state (array)');
+                    return true;
+                }
+            } else if (permissions && typeof permissions === 'object') {
+                if (checkObjectPerms(permissions)) {
+                    console.log('✅ canUpdateStatus: true via permissions state (object)');
+                    return true;
+                }
+            }
+
+            // 2. Check localStorage userPermissions as fallback
+            const raw = localStorage.getItem('userPermissions');
+            if (!raw) return false;
+            const stored = JSON.parse(raw);
+
+            if (Array.isArray(stored)) {
+                const result = checkArrayPerms(stored);
+                console.log('canUpdateStatus via localStorage (array):', result, stored);
+                return result;
+            } else {
+                const result = checkObjectPerms(stored);
+                console.log('canUpdateStatus via localStorage (object):', result, stored);
+                return result;
+            }
+        } catch (error) {
+            console.error('canUpdateStatus error:', error);
             return false;
         }
     };
@@ -1891,6 +1932,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Helper functions
     async function handleSelectedLeadFieldChange(field, value, skipSuccessMessage = false) {
+
+        // Block status/sub_status changes without proper permission
+        if ((field === 'status' || field === 'sub_status') && !canUpdateStatus() && !canRollbackLoginStatus()) {
+            message.error('You do not have permission to change lead status');
+            return;
+        }
 
         // Update local state immediately for responsive UI
         setSelectedLead(prev => {
@@ -4695,118 +4742,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 };
             }).filter(Boolean); // Remove null entries
             
-            // ✅ TEAM LEADER FILTERING: Filter leads for team leaders
-            // A team leader should only see:
-            // 1. Leads created by them (created_by matches userId)
-            // 2. Leads where they are assigned as TL (assigned_tl, AssignReprtsTo, etc.)
-            let finalLeads = processedLeads;
-            
-            // Check if user has "all" permission - if they do, skip team leader filtering
-            const hasAllPermission = hasLeadsPermission('all');
-            
-            // Check if user is a team leader (you can also check from permissions/role)
-            const userDesignation = localStorage.getItem('userDesignation')?.toLowerCase() || '';
-            const isTeamLeader = userDesignation.includes('team leader') || userDesignation.includes('tl');
-            
-            // DEBUG: Add console logging to track permission status
-            console.log('DEBUG LeadCRM: Permission check results:', {
-                hasAllPermission,
-                isTeamLeader,
-                userDesignation,
-                userId,
-                totalLeads: processedLeads.length,
-                permissionsObj: permissions
-            });
-            
-            // Only apply team leader filtering if user doesn't have "all" permission
-            if (isTeamLeader && !hasAllPermission) {
-                console.log('DEBUG LeadCRM: Applying team leader filtering (no all permission)');
-            } else if (isTeamLeader && hasAllPermission) {
-                console.log('DEBUG LeadCRM: Skipping team leader filtering - user has ALL permission');
-            } else {
-                console.log('DEBUG LeadCRM: No team leader filtering needed - not a team leader');
-            }
-            
-            if (isTeamLeader && !hasAllPermission) {
-                // Get both userId and employee_id for matching
-                const employeeId = localStorage.getItem('employee_id') || localStorage.getItem('employeeId');
-                
-                let creatorCount = 0;
-                let assignedCount = 0;
-                
-                finalLeads = processedLeads.filter(lead => {
-                    // Check if user created this lead
-                    const isCreator = lead.created_by === userId || lead.creator_id === userId || lead.user_id === userId;
-                    
-                    if (isCreator) {
-                        creatorCount++;
-                    }
-                    
-                    // Check if user is assigned as TL to this lead
-                    // Check multiple field names used throughout the app
-                    const tlData = lead.assign_report_to || lead.AssignReprtsTo || lead.assignReportTo || lead.assigned_tl || lead.team_leader || lead.tl;
-                    let isAssignedTL = false;
-                    
-                    if (tlData) {
-                        if (Array.isArray(tlData)) {
-                            // Check if userId or employeeId is in the array
-                            isAssignedTL = tlData.some(tl => {
-                                if (typeof tl === 'string') {
-                                    return tl === userId || tl === employeeId;
-                                } else if (typeof tl === 'object' && tl !== null) {
-                                    return tl.user_id === userId || 
-                                           tl._id === userId || 
-                                           tl.id === userId ||
-                                           tl.employee_id === employeeId ||
-                                           tl.employeeId === employeeId;
-                                }
-                                return false;
-                            });
-                        } else if (typeof tlData === 'string') {
-                            console.log(`  - String data: "${tlData}"`);
-                            // Handle JSON string or direct ID
-                            try {
-                                const parsed = JSON.parse(tlData);
-                                console.log(`  - Parsed JSON:`, parsed);
-                                if (Array.isArray(parsed)) {
-                                    isAssignedTL = parsed.some(tl => 
-                                        (typeof tl === 'object' && (
-                                            tl.user_id === userId || 
-                                            tl._id === userId || 
-                                            tl.id === userId ||
-                                            tl.employee_id === employeeId ||
-                                            tl.employeeId === employeeId
-                                        )) ||
-                                        tl === userId ||
-                                        tl === employeeId
-                                    );
-                                } else if (typeof parsed === 'object') {
-                                    isAssignedTL = parsed.user_id === userId || 
-                                                  parsed._id === userId || 
-                                                  parsed.id === userId ||
-                                                  parsed.employee_id === employeeId ||
-                                                  parsed.employeeId === employeeId;
-                                }
-                            } catch (e) {
-                                // Not JSON, treat as direct ID
-                                isAssignedTL = tlData === userId || tlData === employeeId;
-                            }
-                        } else if (typeof tlData === 'object' && tlData !== null) {
-                            isAssignedTL = tlData.user_id === userId || 
-                                          tlData._id === userId || 
-                                          tlData.id === userId ||
-                                          tlData.employee_id === employeeId ||
-                                          tlData.employeeId === employeeId;
-                        }
-                        
-                        if (isAssignedTL) {
-                            assignedCount++;
-                        }
-                    }
-                    
-                    return isCreator || isAssignedTL;
-                });
-            }
+            // Backend handles all permission-based filtering.
+            // The backend get_lead_visibility_filter already enforces view_team/own/all permissions.
+            // No client-side designation-based filtering here — that was bypassing permissions.
+            const finalLeads = processedLeads;
             
             // No pagination - set all leads at once
             setHasMoreLeads(false);
@@ -5249,10 +5188,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
         if (leadsToDelete.length === 0) return;
 
-        if (!window.confirm(`Are you sure you want to delete ${leadsToDelete.length} selected lead(s)?`)) {
-            return;
-        }
-
         let successCount = 0;
         let errorCount = 0;
         const errors = [];
@@ -5338,12 +5273,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 isLeadCreator: isLeadCreator
             });
             
-            // Show confirmation dialog with lead info
-            const leadName = leadToDelete?.name || leadToDelete?.customer_name || leadToDelete?.first_name + ' ' + leadToDelete?.last_name || 'Unknown Lead';
-            if (!window.confirm(`Are you sure you want to delete the lead for "${leadName}"?\n\nLead ID: ${leadId}\nThis action cannot be undone.`)) {
-                return { success: false, cancelled: true };
-            }
-
             // First, verify backend permissions by checking user permissions endpoint
             console.log('🔍 Verifying backend permissions for delete operation...');
             try {
@@ -5580,6 +5509,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const handleStatusDropdownClick = (rowIdx, event) => {
         event.stopPropagation(); // Prevent row click from opening lead details
 
+        // Permission check - only allow if user has status_change permission or rollback_login permission
+        if (!canUpdateStatus() && !canRollbackLoginStatus()) {
+            message.error('You do not have permission to change status');
+            return;
+        }
+
         // If clicking the same dropdown, close it
         if (showStatusDropdown === rowIdx) {
             handleCloseStatusDropdown();
@@ -5665,6 +5600,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Handle status change from dropdown - supports hierarchical navigation and sub-status selection
     const handleStatusChange = async (rowIdx, selectedItem, isMainStatus = false) => {
+        // Permission check - block status change if user doesn't have permission
+        if (!canUpdateStatus() && !canRollbackLoginStatus()) {
+            message.error('You do not have permission to change status');
+            return;
+        }
+
         // Handle header dropdown - use selectedLead directly
         // Use columnSortedLeads (not filteredLeadsData) so rowIdx matches the visible sorted order
         const lead = rowIdx === 'header' ? selectedLead : columnSortedLeads[rowIdx];
@@ -5901,6 +5842,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Helper function for direct status updates (without sub-status)
     const updateDirectLeadStatus = async (leadId, statusValue, subStatusValue = null) => {
+        // Permission check - block status update if user doesn't have permission
+        if (!canUpdateStatus() && !canRollbackLoginStatus()) {
+            message.error('You do not have permission to change status');
+            return;
+        }
 
         try {
             // Find the lead to check its current status
@@ -5988,6 +5934,20 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 
                 // Update filteredLeads to refresh the table display
                 setFilteredLeads(allLeadsUpdated);
+
+                // Update selectedLead if this lead is currently open in detail view
+                if (selectedLead && selectedLead._id === leadId) {
+                    setSelectedLead(prev => ({
+                        ...prev,
+                        status: statusValue,
+                        parent_status: parentStatus,
+                        ...(subStatusValue && { sub_status: subStatusValue }),
+                        file_sent_to_login: shouldSetFileSentToLogin,
+                        ...(currentLeadIsNotALead && !isNotALeadStatus(statusValue, subStatusValue) && { 
+                            created_at: updateData.created_at 
+                        })
+                    }));
+                }
 
                 // Immediately update status counts to reflect the change
                 // Status counts will update automatically via memoized statusCounts
@@ -6902,8 +6862,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             {tab.label}
                         </button>
                     ))}
-                    {/* Download button — shown in tab row when OBLIGATION tab is active */}
-                    {activeTab === 1 && obligationDownloadFn && (
+                    {/* Download button — shown in tab row when OBLIGATION tab is active, only if user has download_obligation permission */}
+                    {activeTab === 1 && obligationDownloadFn && canDownloadObligation() && (
                         <button
                             type="button"
                             onClick={obligationDownloadFn}

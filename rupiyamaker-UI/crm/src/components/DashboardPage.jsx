@@ -207,11 +207,11 @@ export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState("today");
   const [customRange, setCustomRange] = useState([null, null]);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [customMode, setCustomMode] = useState("range"); // "single" | "range"
+  const [customMode, setCustomMode] = useState("single"); // "single" | "range"
 
   // Modal temp state (tracks selections inside modal before Apply)
   const [modalTempRange, setModalTempRange] = useState([null, null]);
-  const [modalTempMode, setModalTempMode] = useState("range");
+  const [modalTempMode, setModalTempMode] = useState("single");
   const [prevTimeFilter, setPrevTimeFilter] = useState("today");
   const [calendarOpen, setCalendarOpen] = useState(false); // tracks if date popup inside modal is open
 
@@ -301,19 +301,9 @@ export default function DashboardPage() {
     return p;
   }, [userId, timeFilter, customRange, empStatusFilter, toLocalYMD]);
 
-  // Fetch teams / employees list once
-  useEffect(() => {
-    if (!userId) return;
-    fetch(buildApiUrl(`/dashboard/teams?user_id=${userId}`), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        setAllTeams(data.teams || []);
-        setAllEmployees(data.employees || []);
-      })
-      .catch(() => {});
-  }, [userId, token]);
+  // Teams/employees are derived entirely from /stats response — no separate API call needed.
+  // This ensures dropdown filters only show teams/employees that have actual lead/login data
+  // within the user's permission scope and selected time period.
 
   // Fetch stats whenever filters change
   const fetchStats = useCallback(async () => {
@@ -334,7 +324,18 @@ export default function DashboardPage() {
       if (data.leadStatuses && data.leadStatuses.length > 0) setLeadStatuses(data.leadStatuses);
       if (data.loginStatuses && data.loginStatuses.length > 0) setLoginStatuses(data.loginStatuses);
 
-      let employees = data.employees || [];
+      const allEmps = data.employees || [];
+
+      // Backend already filters out zero-data users.
+      // Derive dropdown options directly from the response (all have data > 0).
+      const freshTeams = [...new Set(
+        allEmps.map((e) => e.team).filter(Boolean)
+      )].sort();
+      setAllTeams(freshTeams);
+      setAllEmployees(allEmps.slice().sort((a, b) => a.name.localeCompare(b.name)));
+
+      // allEmps already contains only users with leads/logins > 0
+      let employees = allEmps;
 
       // Apply team filter client-side (API already supports but we also do it here for UX)
       if (selectedTeams.length > 0)
@@ -974,7 +975,7 @@ export default function DashboardPage() {
               options={allTeams}
               selected={selectedTeams}
               onChange={setSelectedTeams}
-              placeholder="All Teams"
+              placeholder={allTeams.length ? `All Teams (${allTeams.length})` : "All Teams"}
             />
           </div>
 
@@ -984,7 +985,7 @@ export default function DashboardPage() {
               options={allEmployees.map((e) => e.name)}
               selected={selectedEmployees}
               onChange={setSelectedEmployees}
-              placeholder="All Employees"
+              placeholder={allEmployees.length ? `All Employees (${allEmployees.length})` : "All Employees"}
             />
           </div>
 

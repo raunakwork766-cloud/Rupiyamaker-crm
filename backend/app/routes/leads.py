@@ -2168,24 +2168,31 @@ async def update_lead(
             #     )
     else:
         # Standard permission check for regular updates
+        # Check if this update includes a status/sub_status change
         try:
-            pass
-            # await check_permission(user_id, "leads", "create", users_db, roles_db)
-        except HTTPException:
-            # If the user doesn't have direct lead edit permission, check if they're a super admin
+            update_fields = lead_update.dict(exclude_unset=True) if hasattr(lead_update, 'dict') else {}
+            is_status_update = 'status' in update_fields or 'sub_status' in update_fields
+        except Exception:
+            is_status_update = False
+
+        if is_status_update:
+            # Check if user has status_change permission on leads.pl_&_odd_leads
             is_super_admin = any(
                 (is_super_admin_permission(perm)) or
-                (perm.get("page") == "*" and isinstance(perm.get("actions"), list) and "*" in perm.get("actions", [])) or
-                (perm.get("page") == "any" and perm.get("actions") == "*") or
-                (perm.get("page") == "admin" and perm.get("actions") == "*")
+                (perm.get("page") == "*" and (perm.get("actions") == "*" or (isinstance(perm.get("actions"), list) and "*" in perm.get("actions", []))))
                 for perm in permissions
             )
-            
-            # if not is_super_admin:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_403_FORBIDDEN,
-            #         detail="You don't have permission to edit leads"
-            #     )
+            if not is_super_admin:
+                has_status_permission = any(
+                    (perm.get("page") in ("leads.pl_&_odd_leads", "leads.pl_odd_leads", "leads")) and
+                    ("status_change" in (perm.get("actions") or []) or "*" in (perm.get("actions") or []))
+                    for perm in permissions
+                )
+                if not has_status_permission:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You don't have permission to change lead status"
+                    )
     
     # Validate department if changing
     if lead_update.department_id:

@@ -334,13 +334,9 @@ async def send_lead_to_login_department(
             detail=f"Lead with ID {lead_id} not found"
         )
     
-    # Check if login lead already exists for this original lead
-    existing_login_lead = await login_leads_db.get_login_lead_by_original_id(lead_id)
-    if existing_login_lead:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A login lead already exists for this lead. Use update operations instead."
-        )
+    # Allow multiple login leads from the same original lead (re-send after rollback)
+    # Each "Send to Login" creates a BRAND NEW login lead with latest data
+    # Old login leads in Login CRM remain untouched
     
     # Create a complete copy of the lead data for the login department
     # ⚡ CRITICAL FIX: Use convert_object_id to properly convert ALL nested BSON objects

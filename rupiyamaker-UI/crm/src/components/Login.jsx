@@ -14,6 +14,7 @@ const Login = ({ onLogin }) => {
     const [otpRequired, setOtpRequired] = useState(false);
     const [otpGenerated, setOtpGenerated] = useState(false);
     const [userId, setUserId] = useState(null);
+    const [showPassword, setShowPassword] = useState(false);
 
     // 🔔 Show displaced-session / forced-logout message from sessionStorage
     useEffect(() => {
@@ -84,11 +85,20 @@ const Login = ({ onLogin }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!formData.identifier || !formData.password) {
-            setError('Please fill in all fields');
+        // Read directly from DOM for Chrome autofill compatibility
+        const form = e.target;
+        const identifierInput = form.querySelector('input[name="identifier"]');
+        const passwordInput = form.querySelector('input[name="password"]');
+        const identifier = formData.identifier || identifierInput?.value || '';
+        const password = formData.password || passwordInput?.value || '';
+
+        if (!identifier || !password) {
+            setError('Please enter your username and password.');
             return;
         }
 
+        // Ensure showPassword is off when submitting
+        setShowPassword(false);
         setLoading(true);
         setError('');
 
@@ -99,8 +109,8 @@ const Login = ({ onLogin }) => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    username_or_email: formData.identifier,
-                    password: formData.password,
+                    username_or_email: identifier,
+                    password: password,
                     otp_code: otpRequired ? formData.otpCode : undefined
                 })
             });
@@ -142,52 +152,41 @@ const Login = ({ onLogin }) => {
             const data = await response.json();
 
             if (response.ok) {
-                // Store user data in localStorage similar to HTML version
+                // 🔒 Clear old localStorage before storing new login data to prevent quota exceeded
+                try {
+                    localStorage.clear();
+                } catch (e) {
+                    // If clear fails too, try removing items one by one
+                    try {
+                        const keysToRemove = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            keysToRemove.push(localStorage.key(i));
+                        }
+                        keysToRemove.forEach(k => localStorage.removeItem(k));
+                    } catch (e2) {
+                        console.error('Could not clear localStorage:', e2);
+                    }
+                }
+
+                // Store essential user data in localStorage
                 localStorage.setItem('userId', data.user._id || data.user.id);
-                localStorage.setItem('user_id', data.user._id || data.user.id); // Also store as user_id for compatibility
+                localStorage.setItem('user_id', data.user._id || data.user.id);
                 localStorage.setItem('userName', `${data.user.first_name} ${data.user.last_name}`);
                 localStorage.setItem('userUsername', data.user.username);
-                localStorage.setItem('userEmail', data.user.email);
+                localStorage.setItem('userEmail', data.user.email || '');
                 localStorage.setItem('userRole', data.role?.name || 'user');
                 localStorage.setItem('department_id', data.user?.department_id || 'default_department_id');
                 localStorage.setItem('department_name', data.department?.name || 'General');
                 localStorage.setItem('designation_name', data.designation?.name || 'Employee');
-                localStorage.setItem('token', data.token || 'authenticated'); // Store token separately
-                // 🔑 Store session token for single-session enforcement
+                localStorage.setItem('token', data.token || 'authenticated');
                 if (data.session_token) {
                   localStorage.setItem('sessionToken', data.session_token);
                 }
-                localStorage.setItem('userProfilePhoto', data.user.profile_photo || ''); // Store profile photo
-                localStorage.setItem('profile_photo', data.user.profile_photo || ''); // Store for navbar compatibility
+                localStorage.setItem('userProfilePhoto', data.user.profile_photo || '');
+                localStorage.setItem('profile_photo', data.user.profile_photo || '');
                 
-                // Store employee_id if available in response
                 if (data.user.employee_id) {
                   localStorage.setItem('employee_id', data.user.employee_id);
-                  console.log('✅ Stored employee_id:', data.user.employee_id);
-                }
-                
-                // Also store full user object for comprehensive access
-                localStorage.setItem('user', JSON.stringify({
-                  _id: data.user._id || data.user.id,
-                  id: data.user._id || data.user.id,
-                  employee_id: data.user.employee_id,
-                  first_name: data.user.first_name,
-                  last_name: data.user.last_name,
-                  name: `${data.user.first_name} ${data.user.last_name}`,
-                  username: data.user.username,
-                  email: data.user.email,
-                  profile_photo: data.user.profile_photo,
-                  department_id: data.user.department_id,
-                  department: data.department?.name || 'General',
-                  designation: data.designation?.name || 'Employee',
-                  role: data.role?.name || 'user'
-                }));
-                console.log('✅ Stored full user object in localStorage');
-                console.log('📋 Login response data.user:', data.user);
-                
-                // Use utility function to update profile photo and trigger navbar refresh
-                if (data.user.profile_photo) {
-                  updateProfilePhotoInStorage(data.user.profile_photo);
                 }
 
                 // Format permissions from backend format to frontend format
@@ -302,11 +301,10 @@ const Login = ({ onLogin }) => {
 
                 // Store permissions in localStorage
                 localStorage.setItem('userPermissions', JSON.stringify(permissions));
-                console.log('Stored permissions:', permissions);
 
-                // Also store for React compatibility
+                // Store compact user object (single source, no duplicates)
                 const userData = {
-                    id: data.user._id || data.user.id, // Add id field for consistency
+                    id: data.user._id || data.user.id,
                     _id: data.user._id || data.user.id,
                     user_id: data.user._id || data.user.id,
                     first_name: data.user.first_name,
@@ -315,29 +313,31 @@ const Login = ({ onLogin }) => {
                     employee_id: data.user.employee_id || data.user.emp_id || data.user.code,
                     email: data.user.email,
                     username: data.user.username,
-                    profile_photo: data.user.profile_photo, // Add profile photo
-                    role: data.role,
-                    department: data.department,
+                    profile_photo: data.user.profile_photo,
+                    role: data.role ? { _id: data.role._id, name: data.role.name } : null,
+                    department: data.department ? { _id: data.department._id, name: data.department.name } : null,
                     designation: data.designation,
                     department_id: data.department?._id || data.department?.id || data.user?.department_id || 'default_department_id',
                     designation_id: data.designation?._id || data.designation?.id || data.user?.designation_id,
-                    permissions: permissions, // Store the formatted permissions here too
                     token: data.token || 'authenticated',
                     is_super_admin: data.role?.name === 'Super Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b',
                     is_admin: data.role?.name === 'Super Admin' || data.role?.name === 'Admin' || data.user?.role_id === '685292be8d7cdc3a71c4829b'
                 };
-                localStorage.setItem('userData', JSON.stringify(userData));
-                localStorage.setItem('user', JSON.stringify(userData)); // Also store as 'user' for navbar compatibility
+                const userDataStr = JSON.stringify(userData);
+                localStorage.setItem('userData', userDataStr);
+                localStorage.setItem('user', userDataStr);
                 localStorage.setItem('isAuthenticated', 'true');
                 
-                // Store employee_id separately for easy access
                 if (userData.employee_id) {
                     localStorage.setItem('employee_id', userData.employee_id);
                 }
-                
-                // Store userName for easy access
                 if (userData.name) {
                     localStorage.setItem('userName', userData.name);
+                }
+                
+                // Update profile photo in storage for navbar
+                if (data.user.profile_photo) {
+                    updateProfilePhotoInStorage(data.user.profile_photo);
                 }
 
                 // Call the onLogin callback to update parent component
@@ -377,22 +377,56 @@ const Login = ({ onLogin }) => {
                 }
                 setError(errorMessage);
             } else {
-                // Handle other error responses
-                let errorMessage = 'Login failed. Please check your credentials.';
+                // Handle other error responses with precise, user-friendly messages
+                let errorMessage = 'Login failed. Please try again.';
                 if (data.detail) {
-                    if (typeof data.detail === 'string') {
-                        errorMessage = data.detail;
-                    } else if (Array.isArray(data.detail)) {
-                        errorMessage = data.detail.map(err => err.msg || 'Validation error').join(', ');
-                    } else if (typeof data.detail === 'object') {
-                        errorMessage = data.detail.message || JSON.stringify(data.detail);
+                    const detail = typeof data.detail === 'string' ? data.detail
+                        : Array.isArray(data.detail) ? data.detail.map(err => err.msg || '').join(', ')
+                        : data.detail.message || '';
+
+                    // Precise error codes from backend
+                    if (detail === 'USERNAME_NOT_FOUND') {
+                        const enteredId = identifier.includes('@') ? 'email' : 'username';
+                        errorMessage = `No account found with this ${enteredId}. Please check and try again.`;
+                    } else if (detail === 'WRONG_PASSWORD') {
+                        errorMessage = 'Incorrect password. Please check and try again.';
+                    } else if (detail === 'ACCOUNT_INACTIVE') {
+                        errorMessage = 'Your account is inactive. Please contact your administrator.';
+                    } else if (detail === 'LOGIN_DISABLED') {
+                        errorMessage = 'Login access is turned OFF for your account. Please contact your administrator.';
+                    }
+                    // Legacy messages (fallback for older backend versions)
+                    else if (detail.toLowerCase().includes('invalid username') || detail.toLowerCase().includes('invalid password') || detail.toLowerCase().includes('invalid credentials')) {
+                        errorMessage = 'Wrong username or password. Please check and try again.';
+                    } else if (detail.toLowerCase().includes('inactive')) {
+                        errorMessage = 'Your account is inactive. Please contact your administrator.';
+                    } else if (detail.toLowerCase().includes('login access') || detail.toLowerCase().includes('disabled')) {
+                        errorMessage = 'Login access is turned OFF for your account. Please contact your administrator.';
+                    } else if (detail.toLowerCase().includes('session')) {
+                        errorMessage = 'Your session has ended. Please login again.';
+                    } else if (detail) {
+                        errorMessage = detail;
                     }
                 }
                 setError(errorMessage);
             }
         } catch (error) {
             console.error('Login error:', error);
-            setError('Connection error. Please check if the server is running.');
+            // Simple, clear error messages for users
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                setError('Server is not responding. Please wait a moment and try again.');
+            } else if (error.name === 'SyntaxError') {
+                setError('Server error. Please try again in a moment.');
+            } else if (error.message?.includes('quota') || error.message?.includes('storage') || error.message?.includes('setItem')) {
+                // localStorage quota exceeded — clear and retry
+                try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                } catch (e) { /* ignore */ }
+                setError('Browser storage was full. It has been cleared — please click Sign In again.');
+            } else {
+                setError('Something went wrong. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
@@ -443,6 +477,7 @@ const Login = ({ onLogin }) => {
                                 value={formData.identifier}
                                 onChange={handleChange}
                                 className="form-input"
+                                autoComplete="username"
                                 disabled={loading}
                             />
                         </div>
@@ -452,14 +487,35 @@ const Login = ({ onLogin }) => {
                         <div className="input-container">
                             <i className="input-icon">🔒</i>
                             <input
-                                type="password"
+                                type={showPassword ? 'text' : 'password'}
                                 name="password"
                                 placeholder="Password"
                                 value={formData.password}
                                 onChange={handleChange}
                                 className="form-input"
+                                style={{ paddingRight: '48px' }}
+                                autoComplete="current-password"
                                 disabled={loading}
                             />
+                            <button
+                                type="button"
+                                className="password-toggle-btn"
+                                onClick={() => setShowPassword(!showPassword)}
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                tabIndex={-1}
+                            >
+                                {showPassword ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                        <line x1="1" y1="1" x2="23" y2="23"/>
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                )}
+                            </button>
                         </div>
                     </div>
 

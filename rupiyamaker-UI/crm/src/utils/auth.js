@@ -122,9 +122,7 @@ export const isAuthenticated = () => {
  * Clear authentication data from localStorage
  */
 export const clearAuthData = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('userData');
-  localStorage.removeItem('isAuthenticated');
+  localStorage.clear();
 };
 
 /**

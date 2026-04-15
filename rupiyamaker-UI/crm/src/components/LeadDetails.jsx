@@ -736,6 +736,13 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         leadData={leadData}
                                         canEdit={!effectiveReadOnly}
                                         onUpdate={(updated) => {
+                                            // If file_sent_to_login is being set, backend already handled the update
+                                            // via send-to-login-department endpoint — only update local state, no extra PUT
+                                            if (updated.file_sent_to_login !== undefined && !updated.question_responses && !updated.important_questions_validated) {
+                                                setLeadData(prev => ({ ...prev, ...updated }));
+                                                if (onLeadUpdate) onLeadUpdate({ ...leadData, ...updated });
+                                                return;
+                                            }
                                             updateLead(updated);
                                             if (updated.question_responses) {
                                                 updateLead({ question_responses: updated.question_responses });

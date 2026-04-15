@@ -243,9 +243,25 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
             }
           };
 
-          // Store backup in localStorage
-          localStorage.setItem(`loginTransferBackup_${lead._id}`, JSON.stringify(transferBackup));
-          console.log('🔒 Transfer backup created');
+          // Store backup in localStorage (with quota safety)
+          try {
+            // Clean up any old transfer backups first to free space
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith('loginTransferBackup_') && key !== `loginTransferBackup_${lead._id}`) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+            // Also clean up legacy sentToLoginLeads array if it exists
+            localStorage.removeItem('sentToLoginLeads');
+
+            localStorage.setItem(`loginTransferBackup_${lead._id}`, JSON.stringify(transferBackup));
+            console.log('🔒 Transfer backup created');
+          } catch (storageErr) {
+            console.warn('⚠️ Could not store transfer backup (storage full), continuing without backup');
+          }
 
           // Step 4: Save enhanced data using multiple methods
           const savePromises = [];
@@ -513,14 +529,11 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
         } catch (verifyError) {
           console.error('❌ Post-transfer verification error:', verifyError);
         }
+        // Clean up backup after successful verification
+        try {
+          localStorage.removeItem(`loginTransferBackup_${lead._id}`);
+        } catch (e) { /* ignore */ }
       }, 3000); // Verify after 3 seconds
-      
-      // Update lead status in local storage to track which leads have been sent to login
-      const sentLeads = JSON.parse(localStorage.getItem('sentToLoginLeads') || '[]');
-      if (!sentLeads.includes(lead._id)) {
-        sentLeads.push(lead._id);
-        localStorage.setItem('sentToLoginLeads', JSON.stringify(sentLeads));
-      }
       
       // Update lead data with file_sent_to_login flag and department/user info
       if (onUpdate) {

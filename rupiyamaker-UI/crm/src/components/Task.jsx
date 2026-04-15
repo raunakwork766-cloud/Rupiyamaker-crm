@@ -539,8 +539,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         create: hasPermission(userPermissions, 'tasks', 'create') || hasPermission(userPermissions, 'Tasks', 'create'),
         edit_others: hasPermission(userPermissions, 'tasks', 'edit_others') || hasPermission(userPermissions, 'Tasks', 'edit_others'),
         delete: hasPermission(userPermissions, 'tasks', 'delete') || hasPermission(userPermissions, 'Tasks', 'delete'),
-        junior: hasPermission(userPermissions, 'tasks', 'junior') || hasPermission(userPermissions, 'Tasks', 'junior'),
-        all: hasPermission(userPermissions, 'tasks', 'all') || hasPermission(userPermissions, 'Tasks', 'all')
+        junior: hasPermission(userPermissions, 'tasks', 'junior') || hasPermission(userPermissions, 'tasks', 'view_team') || hasPermission(userPermissions, 'Tasks', 'junior') || hasPermission(userPermissions, 'Tasks', 'view_team'),
+        all: hasPermission(userPermissions, 'tasks', 'all') || hasPermission(userPermissions, 'tasks', 'view_all') || hasPermission(userPermissions, 'Tasks', 'all') || hasPermission(userPermissions, 'Tasks', 'view_all')
       };
 
       if (userPermissions?.tasks === "*" || userPermissions?.Tasks === "*" ||

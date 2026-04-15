@@ -578,9 +578,9 @@ function useCreateLeadLogic() {
   const [reassignmentActionLoading, setReassignmentActionLoading] = useState({});
   const [buttonAnimations, setButtonAnimations] = useState({});
   
-  // Permission state - check if user has permission to create/add leads
-  const [hasAddLeadPermission, setHasAddLeadPermission] = useState(true); // Default to true to avoid flickering
+  // Permission state
   const [hasReassignmentPopupPermission, setHasReassignmentPopupPermission] = useState(true); // Default to true to avoid flickering
+  const [hasDuplicateLeadPermission, setHasDuplicateLeadPermission] = useState(true); // Default to true to avoid flickering
 
   // Utility function to trigger button animation
   const animateButton = useCallback((buttonId) => {
@@ -590,19 +590,6 @@ function useCreateLeadLogic() {
     }, 200);
   }, []);
   
-  // Check user's add lead permission on component mount
-  useEffect(() => {
-    console.log('🔐 Checking user ADD lead permission on component mount...');
-    const hasPermission = checkUserHasAddLeadPermission();
-    setHasAddLeadPermission(hasPermission);
-    
-    if (!hasPermission) {
-      console.warn('⚠️ User does NOT have permission to create leads');
-    } else {
-      console.log('✅ User has permission to create leads');
-    }
-  }, []);
-
   // Check user's reassignment popup permission on component mount
   useEffect(() => {
     console.log('🔐 Checking user REASSIGNMENT POPUP permission on component mount...');
@@ -614,6 +601,12 @@ function useCreateLeadLogic() {
     } else {
       console.log('✅ User has permission to view reassignment popup');
     }
+  }, []);
+
+  // Check user's duplicate lead permission on component mount
+  useEffect(() => {
+    const hasPerm = checkUserHasDuplicateLeadPermission();
+    setHasDuplicateLeadPermission(hasPerm);
   }, []);
 
   // Load essential data first, then background data
@@ -2392,28 +2385,6 @@ const handleMobileNumberChange = (e) => {
   // Updated handleSubmit function with comprehensive error handling and validation
   // This function ensures both Lead Info and Obligation section data are properly combined and sent to the API
   const handleSubmit = async (statusOverride) => {
-    // CRITICAL: Check if user has permission to create/add leads
-    console.log('🔒 Checking CREATE LEAD permission before submission...');
-    
-    if (!checkUserHasAddLeadPermission()) {
-      // User does NOT have permission to create leads
-      console.error('❌ PERMISSION DENIED: User does not have permission to create leads');
-      
-      // Show modal/alert to user
-      alert(
-        "🚫 PERMISSION DENIED\n\n" +
-        "You do not have permission to create leads.\n\n" +
-        "The 'Add' permission is required in the 'Create LEAD' section.\n\n" +
-        "Please contact your administrator to request access."
-      );
-      
-      // Stop loading state
-      setCreateLeadLoading(false);
-      return; // Exit function - do not proceed with lead creation
-    }
-    
-    console.log('✅ Permission check passed - user can create leads');
-
     // ── Duplicate lead guard ──────────────────────────────────────────────────
     // If the phone-check already found a lead in the system, block creation and
     // tell the employee to use the Reassignment flow instead.
@@ -3022,8 +2993,8 @@ const handleMobileNumberChange = (e) => {
     // Background loading states
     backgroundDataLoaded, bankListLoaded, companyDataLoaded, assignableUsersLoaded,
     // Permission state
-    hasAddLeadPermission,
-    hasReassignmentPopupPermission
+    hasReassignmentPopupPermission,
+    hasDuplicateLeadPermission
   };
 }
 
@@ -3443,127 +3414,6 @@ export const checkReassignmentPermissions = (rawPermissions) => {
   }
 };
 
-/**
- * Check if user has permission to create/add leads
- * Checks for "add" action in leads.create_lead or general leads permissions
- */
-export const checkUserHasAddLeadPermission = () => {
-  try {
-    console.log('🔍 Checking if user has ADD lead permission...');
-    
-    // First check if user is super admin - super admins can do everything
-    if (checkUserIsSuperAdmin()) {
-      console.log('✅ User is Super Admin - has ADD permission');
-      return true;
-    }
-    
-    // Get user data from localStorage (contains role and permissions)
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        console.log('🔍 Checking ADD permission for user:', {
-          userName: user.name,
-          roleName: user.role?.name,
-          permissions: user.role?.permissions
-        });
-        
-        // Check if user has super admin role
-        if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) {
-          console.log('✅ User has super admin role - has ADD permission');
-          return true;
-        }
-        
-        // Check the permissions array in user's role
-        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-          // Check for nested leads.create_lead permission with "add" action
-          const createLeadPermission = user.role.permissions.find(p => 
-            p.page === 'leads.create_lead' || p.page === 'leads_create_lead'
-          );
-          
-          if (createLeadPermission && createLeadPermission.actions) {
-            const actions = Array.isArray(createLeadPermission.actions) ? 
-              createLeadPermission.actions : [createLeadPermission.actions];
-            
-            const hasAddAction = actions.includes('add');
-            console.log('🔍 Nested leads.create_lead permission check:', {
-              page: createLeadPermission.page,
-              actions: actions,
-              hasAddAction: hasAddAction
-            });
-            
-            if (hasAddAction) {
-              console.log('✅ User has ADD permission (nested format)');
-              return true;
-            }
-          }
-          
-          // Check for general leads permission with "add" action (backward compatibility)
-          const leadsPermission = user.role.permissions.find(p => p.page === 'leads');
-          if (leadsPermission && leadsPermission.actions) {
-            const actions = Array.isArray(leadsPermission.actions) ? 
-              leadsPermission.actions : [leadsPermission.actions];
-            
-            const hasAddAction = actions.includes('add');
-            console.log('🔍 General leads permission check:', {
-              leadsActions: actions,
-              hasAddAction: hasAddAction
-            });
-            
-            if (hasAddAction) {
-              console.log('✅ User has ADD permission (unified format)');
-              return true;
-            }
-          }
-        }
-      } catch (e) {
-        console.error('❌ Error parsing user data:', e);
-      }
-    }
-    
-    // Fallback: Check userPermissions in localStorage (alternative format)
-    const userPermissions = localStorage.getItem('userPermissions');
-    if (userPermissions) {
-      try {
-        const permissions = JSON.parse(userPermissions);
-        
-        // Check for wildcard permissions
-        if (permissions['*'] === '*' || 
-            permissions.leads === '*' || 
-            permissions.Leads === '*') {
-          console.log('✅ User has wildcard permission - has ADD');
-          return true;
-        }
-        
-        // Check for add in leads permissions
-        if (permissions.leads && Array.isArray(permissions.leads)) {
-          if (permissions.leads.includes('add')) {
-            console.log('✅ User has ADD in leads array');
-            return true;
-          }
-        }
-        
-        // Check for nested format
-        if (permissions['leads.create_lead'] && Array.isArray(permissions['leads.create_lead'])) {
-          if (permissions['leads.create_lead'].includes('add')) {
-            console.log('✅ User has ADD in leads.create_lead array');
-            return true;
-          }
-        }
-      } catch (e) {
-        console.error('❌ Error parsing userPermissions:', e);
-      }
-    }
-    
-    console.log('❌ User does NOT have ADD lead permission');
-    return false;
-    
-  } catch (error) {
-    console.error('❌ Error in checkUserHasAddLeadPermission:', error);
-    return false;
-  }
-};
-
 // Function to check if user has reassignment popup permission
 const checkUserHasReassignmentPopupPermission = () => {
   try {
@@ -3678,6 +3528,50 @@ const checkUserHasReassignmentPopupPermission = () => {
     
   } catch (error) {
     console.error('❌ Error in checkUserHasReassignmentPopupPermission:', error);
+    return false;
+  }
+};
+
+// Function to check if user has duplicate_lead permission
+const checkUserHasDuplicateLeadPermission = () => {
+  try {
+    if (checkUserIsSuperAdmin()) return true;
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) return true;
+        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+          const createLeadPerm = user.role.permissions.find(p =>
+            p.page === 'leads.create_lead' || p.page === 'leads_create_lead'
+          );
+          if (createLeadPerm?.actions) {
+            const actions = Array.isArray(createLeadPerm.actions) ? createLeadPerm.actions : [createLeadPerm.actions];
+            if (actions.includes('duplicate_lead')) return true;
+          }
+          const leadsPerm = user.role.permissions.find(p => p.page === 'leads');
+          if (leadsPerm?.actions) {
+            const actions = Array.isArray(leadsPerm.actions) ? leadsPerm.actions : [leadsPerm.actions];
+            if (actions.includes('duplicate_lead')) return true;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    const userPermissions = localStorage.getItem('userPermissions');
+    if (userPermissions) {
+      try {
+        const permissions = JSON.parse(userPermissions);
+        if (permissions['*'] === '*' || permissions.leads === '*' || permissions.Leads === '*') return true;
+        if (permissions['leads.create_lead'] && Array.isArray(permissions['leads.create_lead'])) {
+          if (permissions['leads.create_lead'].includes('duplicate_lead')) return true;
+        }
+        if (permissions.leads && Array.isArray(permissions.leads)) {
+          if (permissions.leads.includes('duplicate_lead')) return true;
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return false;
+  } catch (error) {
     return false;
   }
 };
@@ -4691,9 +4585,16 @@ function CreateLead() {
     // Background loading states
     backgroundDataLoaded, bankListLoaded, companyDataLoaded, assignableUsersLoaded,
     // Permission state
-    hasAddLeadPermission,
-    hasReassignmentPopupPermission
+    hasReassignmentPopupPermission,
+    hasDuplicateLeadPermission
   } = useCreateLeadLogic();
+
+  const dataCodeDropdownRef = useRef(null);
+  const assignDropdownRef = useRef(null);
+  const sourceDropdownRef = useRef(null);
+  const [assignDropdownSearch, setAssignDropdownSearch] = useState("");
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState("");
 
   const isAssignedLeadReadOnly = Boolean(
     showLeadForm && (
@@ -4729,6 +4630,45 @@ function CreateLead() {
       setShowAssignPopup(false);
     }
   }, [isAssignedLeadReadOnly, showAssignPopup, setShowAssignPopup]);
+
+  // Close Data Code dropdown on outside click
+  useEffect(() => {
+    if (!showDataCodePopup) return;
+    const handler = (e) => {
+      if (dataCodeDropdownRef.current && !dataCodeDropdownRef.current.contains(e.target)) {
+        setShowDataCodePopup(false);
+        setDataCodePopupSearch("");
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showDataCodePopup]);
+
+  // Close Assign Lead dropdown on outside click
+  useEffect(() => {
+    if (!showAssignPopup) return;
+    const handler = (e) => {
+      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target)) {
+        setShowAssignPopup(false);
+        setAssignDropdownSearch("");
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAssignPopup]);
+
+  // Close Source Name dropdown on outside click
+  useEffect(() => {
+    if (!showSourceDropdown) return;
+    const handler = (e) => {
+      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(e.target)) {
+        setShowSourceDropdown(false);
+        setSourceSearch("");
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSourceDropdown]);
 
   // Silent close — clears duplicate panel without alert or clearing mobile number
   const handleDuplicatePanelClose = () => {
@@ -5065,6 +5005,7 @@ function CreateLead() {
                     </div>
 
                     {/* ─── LEADS TABLE ─── */}
+                    {hasDuplicateLeadPermission ? (
                     <div className="border-b border-neutral-700">
                     {/* Table */}
                     <div className="overflow-x-auto">
@@ -5676,6 +5617,11 @@ function CreateLead() {
                     )}
 
                     </div>
+                    ) : (
+                      <div className="px-5 py-4 text-center text-yellow-400/60 text-xs italic">
+                        You do not have permission to view duplicate lead details.
+                      </div>
+                    )}
 
                   </div>
                 );
@@ -5731,24 +5677,60 @@ function CreateLead() {
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>SOURCE NAME <span className="text-red-500">*</span></label>
-                      <div className="relative w-full">
-                        <select
-                          className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold appearance-none cursor-pointer focus:outline-none focus:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
-                          value={campaignName}
-                          onChange={(e) => {
-                            setCampaignName(e.target.value);
-                            if (formValidationErrors.campaignName) setFormValidationErrors(prev => ({ ...prev, campaignName: false }));
-                          }}
-                          disabled={loadingSettings}
+                      <div ref={sourceDropdownRef} className="relative w-full">
+                        <div
+                          className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                          onClick={() => !loadingSettings && setShowSourceDropdown(prev => !prev)}
                         >
-                          <option value="">Select Source</option>
-                          {campaignNames.map(c => (
-                            <option key={c.name} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          <span className={campaignName ? 'text-green-600 font-bold' : 'text-gray-400 font-normal text-sm'}>
+                            {campaignName || 'Select Source'}
+                          </span>
+                          <div className="ml-auto flex-shrink-0">
+                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showSourceDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </div>
                         </div>
+                        {showSourceDropdown && !loadingSettings && (
+                          <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                            <div className="p-2 border-b border-gray-100">
+                              <div className="relative">
+                                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                                  placeholder="Search source..."
+                                  value={sourceSearch}
+                                  onChange={e => setSourceSearch(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-52 overflow-y-auto">
+                              {[{ name: '' }, ...campaignNames]
+                                .filter(c => c.name === '' || (c.name || '').toLowerCase().includes(sourceSearch.toLowerCase()))
+                                .map(c => (
+                                  <div
+                                    key={c.name || '__empty__'}
+                                    onClick={() => {
+                                      setCampaignName(c.name);
+                                      if (formValidationErrors.campaignName) setFormValidationErrors(prev => ({ ...prev, campaignName: false }));
+                                      setShowSourceDropdown(false);
+                                      setSourceSearch("");
+                                    }}
+                                    className={`px-3 py-2.5 cursor-pointer text-sm transition-colors ${
+                                      campaignName === c.name ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'
+                                    } ${!c.name ? 'text-gray-400 italic' : 'font-medium'}`}
+                                  >
+                                    {c.name || 'Select Source'}
+                                  </div>
+                                ))
+                              }
+                              {campaignNames.filter(c => (c.name || '').toLowerCase().includes(sourceSearch.toLowerCase())).length === 0 && sourceSearch && (
+                                <div className="text-center py-5 text-gray-400 text-sm">No results for "{sourceSearch}"</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         {showValidationErrors && formValidationErrors.campaignName && (
                           <p className="text-red-500 text-xs mt-1">Source Name is required</p>
                         )}
@@ -5756,26 +5738,76 @@ function CreateLead() {
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>DATA CODE</label>
-                      <div
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
-                        onClick={() => !loadingSettings && setShowDataCodePopup(true)}
-                      >
-                        {selectedDataCodes.length === 0 && (
-                          <span className="text-gray-400 font-normal text-sm">Click to select data code(s)</span>
-                        )}
-                        {selectedDataCodes.map(code => (
-                          <div key={code} className="flex items-center gap-1.5 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
-                            <span>{code}</span>
-                            <button
-                              type="button"
-                              className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-colors text-xs font-bold"
-                              onClick={(e) => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}
-                            >×</button>
+                      <div ref={dataCodeDropdownRef} className="relative w-full">
+                        <div
+                          className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
+                          onClick={() => !loadingSettings && setShowDataCodePopup(prev => !prev)}
+                        >
+                          {selectedDataCodes.length === 0 && (
+                            <span className="text-gray-400 font-normal text-sm">Click to select data code(s)</span>
+                          )}
+                          {selectedDataCodes.map(code => (
+                            <div key={code} className="flex items-center gap-1.5 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                              <span>{code}</span>
+                              <button
+                                type="button"
+                                className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-colors text-xs font-bold"
+                                onClick={(e) => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}
+                              >×</button>
+                            </div>
+                          ))}
+                          <div className="ml-auto flex-shrink-0">
+                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showDataCodePopup ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           </div>
-                        ))}
-                        <div className="ml-auto flex-shrink-0">
-                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                         </div>
+                        {showDataCodePopup && (
+                          <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                            <div className="p-2 border-b border-gray-100">
+                              <div className="relative">
+                                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                                  placeholder="Search data codes..."
+                                  value={dataCodePopupSearch}
+                                  onChange={e => setDataCodePopupSearch(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-52 overflow-y-auto">
+                              {dataCodes.filter(d =>
+                                !selectedDataCodes.includes(d.name) &&
+                                (d.name || '').toLowerCase().includes((dataCodePopupSearch || '').toLowerCase())
+                              ).length > 0 ? (
+                                dataCodes.filter(d =>
+                                  !selectedDataCodes.includes(d.name) &&
+                                  (d.name || '').toLowerCase().includes((dataCodePopupSearch || '').toLowerCase())
+                                ).map(d => (
+                                  <div
+                                    key={d.name}
+                                    onClick={() => { setSelectedDataCodes(prev => [...prev, d.name]); }}
+                                    className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] text-black transition-colors"
+                                  >
+                                    <div className="w-4 h-4 rounded border-2 border-gray-400 bg-white flex-shrink-0"></div>
+                                    <span className="text-sm font-medium">{d.name}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-center py-5 text-gray-400 text-sm">
+                                  {dataCodePopupSearch ? `No results for "${dataCodePopupSearch}"` : (selectedDataCodes.length > 0 ? 'All data codes selected' : 'No data codes available')}
+                                </div>
+                              )}
+                            </div>
+                            {selectedDataCodes.length > 0 && (
+                              <div className="px-3 py-2 border-t border-gray-100 flex justify-between items-center">
+                                <span className="text-xs text-gray-400">{selectedDataCodes.length} selected</span>
+                                <button type="button" onClick={() => setSelectedDataCodes([])} className="text-xs text-red-400 hover:text-red-600 font-medium">Clear all</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -5827,35 +5859,91 @@ function CreateLead() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ASSIGNED LEAD <span className="text-red-500">*</span></label>
-                      <div
-                        className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
-                        onClick={() => {
-                          if (!isAssignedLeadReadOnly) {
-                            setShowAssignPopup(true);
-                          }
-                        }}
-                      >
-                        {assignedTo.length === 0 && (
-                          <span className="text-gray-400 font-normal text-sm">Don't Select Team manager</span>
-                        )}
-                        {assignedTo.map((assignee) => {
-                          const displayName = typeof assignee === 'object' ? assignee.name : assignee;
-                          const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
-                          return (
-                            <div key={uniqueKey} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
-                              <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
-                                {displayName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                      <div ref={assignDropdownRef} className="relative w-full">
+                        <div
+                          className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-[#0097a7]'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
+                          onClick={() => { if (!isAssignedLeadReadOnly) setShowAssignPopup(prev => !prev); }}
+                        >
+                          {assignedTo.length === 0 && (
+                            <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
+                          )}
+                          {assignedTo.map((assignee) => {
+                            const displayName = typeof assignee === 'object' ? assignee.name : assignee;
+                            const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
+                            return (
+                              <div key={uniqueKey} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                                <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                                  {displayName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                                </div>
+                                <span className="text-xs font-bold">{displayName}</span>
+                                {!isAssignedLeadReadOnly && (
+                                  <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
+                                )}
                               </div>
-                              <span className="text-xs font-bold">{displayName}</span>
-                              {!isAssignedLeadReadOnly && (
-                                <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
-                              )}
+                            );
+                          })}
+                          <div className="ml-auto flex-shrink-0">
+                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showAssignPopup ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </div>
+                        </div>
+                        {showAssignPopup && !isAssignedLeadReadOnly && (() => {
+                          const assignedIds = assignedTo.map(a => typeof a === 'object' ? a.id : a);
+                          const availableForAssign = [
+                            { id: 'none', name: 'None' },
+                            ...(assignableUsers || []).map(u => ({
+                              id: u.id || u._id || u.user_id,
+                              name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || '',
+                              designation: u.designation || '',
+                            }))
+                          ].filter(u => !assignedIds.includes(u.id));
+                          const filteredForAssign = availableForAssign.filter(u =>
+                            !assignDropdownSearch ||
+                            u.name.toLowerCase().includes(assignDropdownSearch.toLowerCase()) ||
+                            (u.designation || '').toLowerCase().includes(assignDropdownSearch.toLowerCase())
+                          );
+                          return (
+                            <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                              <div className="p-2 border-b border-gray-100">
+                                <div className="relative">
+                                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                                    placeholder="Search by name or designation..."
+                                    value={assignDropdownSearch}
+                                    onChange={e => setAssignDropdownSearch(e.target.value.toUpperCase())}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                </div>
+                              </div>
+                              <div className="max-h-52 overflow-y-auto">
+                                {filteredForAssign.length > 0 ? filteredForAssign.map(u => (
+                                  <div
+                                    key={u.id}
+                                    className="group flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
+                                    onClick={(e) => { e.stopPropagation(); handleAddAssignee(u); if (formValidationErrors.assignedTo) setFormValidationErrors(prev => ({ ...prev, assignedTo: false })); }}
+                                  >
+                                    <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                                      {u.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?'}
+                                    </div>
+                                    <div className="flex flex-col flex-grow min-w-0">
+                                      <span className="text-sm font-medium text-black truncate">{u.name}</span>
+                                      {u.designation && u.id !== 'none' && (
+                                        <span className="text-xs text-gray-500 truncate">{u.designation}</span>
+                                      )}
+                                    </div>
+                                    <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
+                                  </div>
+                                )) : (
+                                  <div className="text-center py-5 text-gray-400 text-sm">
+                                    {assignDropdownSearch ? 'No matching users found' : 'No users available'}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
-                        })}
-                        {assignedTo.length > 0 && !isAssignedLeadReadOnly && (
-                          <button type="button" className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm" onClick={(e) => { e.stopPropagation(); setShowAssignPopup(true); }}>+</button>
-                        )}
+                        })()}
                       </div>
                       {showValidationErrors && formValidationErrors.assignedTo && (
                         <p className="text-red-500 text-xs mt-1">Please select an assignee</p>
@@ -5889,22 +5977,19 @@ function CreateLead() {
                       type="button"
                       id="createLeadBtn"
                       className={`px-6 py-2.5 font-bold text-white rounded-lg transition-all duration-300 transform ${
-                        createLeadLoading || !hasAddLeadPermission
+                        createLeadLoading
                           ? "bg-gray-400 cursor-not-allowed opacity-75"
                           : "bg-[#00bcd4] hover:bg-[#0097a7] hover:scale-105 active:scale-95 shadow-lg"
                       } ${buttonAnimations.createLeadBtn ? 'animate-pulse scale-95' : ''}`}
                       onClick={() => {
-                        if (!hasAddLeadPermission) return;
                         if (!validateFormFields()) { setShowValidationErrors(true); return; }
                         setShowStatusPopup(true);
                       }}
-                      disabled={createLeadLoading || !hasAddLeadPermission}
-                      title={!hasAddLeadPermission ? "🚫 No permission to create leads" : "Click to create lead"}
+                      disabled={createLeadLoading}
+                      title="Click to create lead"
                     >
                       {createLeadLoading ? (
                         <><i className="fas fa-spinner fa-spin mr-2"></i>Creating...</>
-                      ) : !hasAddLeadPermission ? (
-                        <>🚫 No Permission</>
                       ) : (
                         <>🚀 Create Lead</>
                       )}
@@ -5985,309 +6070,7 @@ function CreateLead() {
         document.body
       )}
 
-      {/* DataCodePopup component */}
-      {showDataCodePopup && (
-        <DataCodePopup
-          onClose={() => { setShowDataCodePopup(false); setDataCodePopupSearch(""); }}
-          dataCodes={dataCodes}
-          selectedDataCodes={selectedDataCodes}
-          onToggle={(code) => setSelectedDataCodes(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code])}
-          onClearAll={() => setSelectedDataCodes([])}
-          search={dataCodePopupSearch}
-          onSearchChange={setDataCodePopupSearch}
-        />
-      )}
-
-      {/* AssignPopup component */}
-      {showAssignPopup && !isAssignedLeadReadOnly && (
-        <AssignPopup
-          onClose={() => {
-
-            setShowAssignPopup(false);
-          }}
-          onSelect={(user) => {
-
-            handleAddAssignee(user);
-            setShowAssignPopup(false);
-          }}
-          assignableUsers={assignableUsers}
-        />
-      )}
     </>
-  );
-}
-
-// AssignPopup component
-function AssignPopup({ onClose, onSelect, assignableUsers = [] }) { 
-  const [assigneeName, setAssigneeName] = useState("");
-
-  // Use the assignableUsers from API, fallback to dummy data if empty
-  const dummyAssignees = [
-  ];
-
-  // Create a list of users with both ID and name from API data, or use dummy data
-  const availableUsers = React.useMemo(() => [
-    { id: 'none', name: 'None' }, // Add "None" option at the top
-    ...(assignableUsers.length > 0
-      ? assignableUsers.map(user => ({
-        id: user.id || user._id || user.user_id,
-        name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.id,
-        designation: user.designation || 'No Designation',
-        department_name: user.department_name || 'Unknown Department',
-        displayName: `${user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.id} (${user.designation || 'No Designation'}) - ${user.department_name || 'Unknown Department'}`
-      }))
-      : dummyAssignees)
-  ], [assignableUsers]);
-
-  const [filteredAssignees, setFilteredAssignees] = useState(availableUsers);
-
-  useEffect(() => {
-    // If assigneeName is empty, show all available users
-    if (assigneeName.trim() === "") {
-      setFilteredAssignees(availableUsers);
-    } else {
-      // Otherwise, filter based on input (search name, designation, and department)
-      setFilteredAssignees(
-        availableUsers.filter((user) =>
-          (user.name || '').toLowerCase().includes(assigneeName.toLowerCase()) ||
-          (user.designation || '').toLowerCase().includes(assigneeName.toLowerCase()) ||
-          (user.department_name || '').toLowerCase().includes(assigneeName.toLowerCase())
-        )
-      );
-    }
-  }, [assigneeName, availableUsers]);
-
-  const handleAssign = () => {
-    if (assigneeName) {
-      // Find the user object that matches the typed name
-      const selectedUser = availableUsers.find(user =>
-        (user.name || '').toLowerCase() === assigneeName.toLowerCase()
-      );
-      if (selectedUser) {
-        onSelect(selectedUser);
-      } else {
-        // If no exact match found, create a user object with the typed name
-        onSelect({ id: assigneeName.toLowerCase().replace(/\s+/g, '_'), name: assigneeName });
-      }
-    }
-    // Optionally, clear the input after assigning
-    setAssigneeName("");
-    onClose(); // Close the popup after assigning
-  };
-
-  const selectAssignee = (selectedUser) => {
-    if (selectedUser.id === 'none') {
-      // Handle "None" selection - could clear assignments or handle differently
-      setAssigneeName("None");
-      onSelect(selectedUser); // Pass the "None" selection to parent
-    } else {
-      setAssigneeName(selectedUser.name); // Set the selected name in the input
-      onSelect(selectedUser); // Pass the selected user object to the parent
-    }
-    onClose(); // Close the popup
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black bg-opacity-50"
-      style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        right: 0, 
-        bottom: 0, 
-        zIndex: 99999,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)' // Dark semi-transparent overlay - made darker for visibility
-      }}
-    >
-      <div className="bg-white p-6 rounded-2xl shadow-2xl w-[90%] max-w-md mx-auto relative"
-           style={{ backgroundColor: 'white', zIndex: 99999 }}>
-        
-        <div className="flex items-center mb-4 bg-white p-3 rounded-t-xl">
-          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <h3 className="font-bold text-lg text-black">Select Assignee</h3>
-            
-          </div>
-        </div>
-
-        <div className="mb-4 bg-white p-3 rounded-md">
-          <label className="block font-bold text-gray-700 mb-2">
-            Assign to
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 border border-cyan-400 rounded text-black font-bold"
-              value={assigneeName}
-              onChange={(e) => setAssigneeName(e.target.value.toUpperCase())}
-              placeholder="Search by name, designation, or department"
-            />
-            {assigneeName && (
-              <button
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
-                onClick={() => setAssigneeName("")}
-                type="button"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Always show the list, filtered or full */}
-        <ul className="space-y-2 max-h-60 overflow-y-auto mb-4 border rounded-lg bg-white">
-          {filteredAssignees.length > 0 ? (
-            filteredAssignees.map((user) => (
-              <li
-                key={user.id || user.name}
-                className="p-3 border-b last:border-b-0 cursor-pointer text-black transition hover:bg-gray-100 flex items-center"
-                onClick={() => selectAssignee(user)}
-              >
-                {/* Profile icon with initials or avatar */}
-                <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 flex-shrink-0">
-                  {user.name.split(' ')
-                    .map(part => part[0])
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase()}
-                </div>
-                <div className="flex flex-col flex-grow">
-                  <span className="font-medium">{user.name}</span>
-                  {user.designation && user.id !== 'none' && (
-                    <span className="text-sm text-gray-600">{user.designation}</span>
-                  )}
-                  {user.department_name && user.id !== 'none'}
-                </div>
-              </li>
-            ))
-          ) : (
-            assigneeName.trim() !== "" && ( // Only show "No results" if user typed something and no results
-              <li className="p-3 text-gray-500 text-center">No matching assignees found.</li>
-            )
-          )}
-        </ul>
-
-        <div className="flex justify-end gap-4 mt-4 bg-white p-3 rounded-b-xl">
-          <button
-            className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition"
-            onClick={handleAssign}
-          >
-            Assign
-          </button>
-          <button
-            className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-        </div>
-
-        <button
-          className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// DataCodePopup — multi-select popup for Data Code field in Create Lead form
-function DataCodePopup({ onClose, dataCodes, selectedDataCodes, onToggle, onClearAll, search, onSearchChange }) {
-  const filtered = dataCodes.filter(d => (d.name || '').toLowerCase().includes((search || '').toLowerCase()));
-  return (
-    <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white p-6 rounded-2xl shadow-2xl w-[90%] max-w-md mx-auto relative"
-        style={{ zIndex: 99999 }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center mb-4">
-          <div className="w-10 h-10 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-3 flex-shrink-0">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-          </div>
-          <div>
-            <h3 className="font-bold text-lg text-black">Select Data Code</h3>
-            <p className="text-sm text-gray-500">{selectedDataCodes.length} selected</p>
-          </div>
-          <button onClick={onClose} className="ml-auto w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-          </button>
-        </div>
-        {/* Search */}
-        <input
-          type="text"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 text-black focus:outline-none focus:border-[#03B0F5]"
-          placeholder="Search data codes..."
-          value={search}
-          onChange={e => onSearchChange(e.target.value)}
-          autoFocus
-        />
-        {/* List */}
-        <div className="max-h-64 overflow-y-auto space-y-1">
-          {filtered.length > 0 ? filtered.map(d => {
-            const isSelected = selectedDataCodes.includes(d.name);
-            return (
-              <div
-                key={d.name}
-                onClick={() => onToggle(d.name)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                  isSelected ? 'bg-[#03B0F5] text-white' : 'hover:bg-gray-100 text-black'
-                }`}
-              >
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                  isSelected ? 'border-white bg-white' : 'border-gray-400 bg-white'
-                }`}>
-                  {isSelected && (
-                    <svg className="w-3 h-3 text-[#03B0F5]" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-                <span className="font-medium">{d.name}</span>
-              </div>
-            );
-          }) : (
-            <div className="text-center py-6 text-gray-400 text-sm">
-              {search ? `No results for "${search}"` : 'No data codes available'}
-            </div>
-          )}
-        </div>
-        {/* Footer */}
-        <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-          <button
-            onClick={onClearAll}
-            className="text-sm text-gray-400 hover:text-red-500 transition-colors"
-          >
-            Clear all
-          </button>
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-[#03B0F5] text-white rounded-lg font-bold hover:bg-[#0299d4] transition-colors"
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

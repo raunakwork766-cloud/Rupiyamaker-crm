@@ -13,6 +13,7 @@ import DuplicateInterviewModal from './DuplicateInterviewModal';
 import API, { interviewSettingsAPI } from '../services/api';
 import { formatDate as formatDateUtil, formatDateTime, calculateAge, toISTDateYMD, getISTDateYMD, getCurrentISTDate, getISTToday } from '../utils/dateUtils';
 import { hasPermission, getUserPermissions, isSuperAdmin as utilIsSuperAdmin } from '../utils/permissions';
+import { fetchFreshPermissions } from '../utils/immediatePermissionRefresh';
 import InterviewSettings from './InterviewSettings';
 
 // API base URL - Use proxy in development
@@ -225,28 +226,38 @@ const InterviewPanel = () => {
     const userPermissions = getUserPermissions();
     
     console.log('🔍 checkInterviewPermissions - userPermissions:', userPermissions);
-    console.log('🔍 checkInterviewPermissions - isSuperAdmin():', isSuperAdmin());
+    
+    // Use the utility-based super admin check (permission-based, NOT string matching)
+    const isAdmin = utilIsSuperAdmin(userPermissions);
+    console.log('🔍 checkInterviewPermissions - isAdmin:', isAdmin);
     
     // If super admin, grant all permissions
-    if (isSuperAdmin()) {
+    if (isAdmin) {
       console.log('✅ Super Admin detected - granting all permissions');
       return {
         can_view_all: true,
+        can_view_team: true,
         can_delete: true,
         can_add: true,
-        can_edit: true
+        can_edit: true,
+        can_settings: true
       };
     }
     
     // Use hasPermission utility which handles both array and object formats
+    const hasShowPerm = hasPermission(userPermissions, 'interview', 'show');
     const hasDeletePerm = hasPermission(userPermissions, 'interview', 'delete');
-    const hasAllPerm = hasPermission(userPermissions, 'interview', 'all');
+    const hasAllPerm = hasPermission(userPermissions, 'interview', 'view_all');
+    const hasTeamPerm = hasPermission(userPermissions, 'interview', 'view_team');
+    const hasSettingsPerm = hasPermission(userPermissions, 'interview', 'interview_setting');
 
     const calculatedPermissions = {
       can_view_all: hasAllPerm,
-      can_delete: hasDeletePerm || hasAllPerm,
-      can_add: true, // Default to true for now
-      can_edit: true  // Default to true for now
+      can_view_team: hasTeamPerm,
+      can_delete: hasDeletePerm,
+      can_add: hasShowPerm || hasAllPerm || hasTeamPerm,
+      can_edit: hasShowPerm || hasAllPerm || hasTeamPerm,
+      can_settings: hasSettingsPerm
     };
 
     console.log('📋 Calculated Permissions:', calculatedPermissions);
@@ -299,35 +310,30 @@ const InterviewPanel = () => {
 
   // Tab persistence is now handled by useTabWithHistory hook
 
-  // Load permissions on mount (like Tickets/Warnings)
+  // Load permissions on mount — always fetch fresh from backend to avoid stale localStorage
   useEffect(() => {
-    console.log('📋 ============ LOADING INTERVIEW PERMISSIONS ============');
-    console.log('📋 localStorage.userPermissions:', localStorage.getItem('userPermissions'));
-    console.log('📋 localStorage.designation:', localStorage.getItem('designation'));
-    console.log('📋 localStorage.roleName:', localStorage.getItem('roleName'));
-    console.log('📋 localStorage.userId:', localStorage.getItem('userId'));
-    
-    const userPermissions = checkInterviewPermissions();
-    
-    console.log('📋 Checked Permissions Result:', userPermissions);
-    
-    // If user is admin, force can_delete to true
-    if (isSuperAdmin()) {
-      console.log('🔑 User is Super Admin - Granting all permissions');
-      userPermissions.can_delete = true;
-      userPermissions.can_view_all = true;
-      userPermissions.can_add = true;
-      userPermissions.can_edit = true;
-    }
-    
-    console.log('📋 ============ FINAL PERMISSIONS SET ============');
-    console.log('📋 can_delete:', userPermissions.can_delete);
-    console.log('📋 can_view_all:', userPermissions.can_view_all);
-    console.log('📋 can_add:', userPermissions.can_add);
-    console.log('📋 can_edit:', userPermissions.can_edit);
-    console.log('📋 ================================================');
-    
-    setPermissions(userPermissions);
+    const loadPermissions = async () => {
+      // First set from localStorage (instant)
+      const cached = checkInterviewPermissions();
+      setPermissions(cached);
+
+      // Then fetch fresh from backend and override
+      try {
+        const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+        if (userId) {
+          const fresh = await fetchFreshPermissions(userId);
+          if (fresh) {
+            localStorage.setItem('userPermissions', JSON.stringify(fresh));
+            const updated = checkInterviewPermissions();
+            setPermissions(updated);
+          }
+        }
+      } catch (e) {
+        // If fetch fails, keep using cached
+        console.warn('Could not refresh permissions from backend:', e);
+      }
+    };
+    loadPermissions();
   }, []);
 
   // Listen for permission changes (like Tickets/Warnings)
@@ -335,19 +341,7 @@ const InterviewPanel = () => {
     const handlePermissionUpdate = () => {
       console.log('🔄 Interviews - Permissions updated, reloading...');
       const userPermissions = checkInterviewPermissions();
-      
       console.log('📋 Reloaded Permissions:', userPermissions);
-      
-      // If user is admin, force can_delete to true
-      if (isSuperAdmin()) {
-        console.log('🔑 User is Super Admin - Granting all permissions');
-        userPermissions.can_delete = true;
-        userPermissions.can_view_all = true;
-        userPermissions.can_add = true;
-        userPermissions.can_edit = true;
-      }
-      
-      console.log('📋 Final Reloaded Permissions:', userPermissions);
       setPermissions(userPermissions);
     };
     
@@ -372,8 +366,8 @@ const InterviewPanel = () => {
   const canAccessSettings = () => {
     const userPermissions = getUserPermissions();
     
-    // Check for specific interview settings permission
-    const hasSpecificPermission = hasPermission(userPermissions, 'interview', 'settings');
+    // Check for specific interview settings permission (supports both old 'settings' and new 'interview_setting' action names)
+    const hasSpecificPermission = hasPermission(userPermissions, 'interview', 'settings') || hasPermission(userPermissions, 'interview', 'interview_setting');
     
     // Check for superadmin permission (page "*" and actions "*")
     const hasSuperAdminPermission = hasPermission(userPermissions, '*', '*');
@@ -2168,7 +2162,7 @@ const InterviewPanel = () => {
           {/* SELECT / BULK DELETE controls */}
           {activeTab !== 'dashboard' && (
             <div className="flex items-center gap-2">
-              {(permissions.can_delete || isSuperAdmin()) && !checkboxVisible && (
+              {permissions.can_delete && !checkboxVisible && (
                 <button
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-blue-500 transition text-sm"
                   onClick={handleShowCheckboxes}
@@ -2176,7 +2170,7 @@ const InterviewPanel = () => {
                   Select
                 </button>
               )}
-              {(permissions.can_delete || isSuperAdmin()) && checkboxVisible && (
+              {permissions.can_delete && checkboxVisible && (
                 <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
                   <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
                     <input
@@ -2209,7 +2203,7 @@ const InterviewPanel = () => {
 
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">
-            {canAccessSettings() && (
+            {permissions.can_settings && (
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
@@ -2217,12 +2211,14 @@ const InterviewPanel = () => {
                 <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
               </button>
             )}
+            {permissions.can_add && (
             <button
               onClick={handleCreateInterview}
               className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-900/20"
             >
               <Plus size={14} /> Create Interview
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -2515,7 +2511,7 @@ const InterviewPanel = () => {
           onSaved={() => loadInterviews()}
           jobOpeningOptions={jobOpeningOptions}
           sourcePortalOptions={sourcePortalOptions}
-          canEditContactNumbers={isSuperAdmin()}
+          canEditContactNumbers={permissions.can_view_all || utilIsSuperAdmin(getUserPermissions())}
         />
       )}
 

@@ -229,6 +229,36 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [campaignSearchTerm, setCampaignSearchTerm] = useState('');
   const [dataCodeSearchTerm, setDataCodeSearchTerm] = useState('');
+  const [showAssignInlineDropdown, setShowAssignInlineDropdown] = useState(false);
+  const [assignInlineSearch, setAssignInlineSearch] = useState('');
+  const campaignDropdownRef = useRef(null);
+  const assignInlineDropdownRef = useRef(null);
+
+  // Close Campaign/Source dropdown on outside click
+  useEffect(() => {
+    if (!showCampaignDropdown) return;
+    const handler = (e) => {
+      if (campaignDropdownRef.current && !campaignDropdownRef.current.contains(e.target)) {
+        setShowCampaignDropdown(false);
+        setCampaignSearchTerm('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showCampaignDropdown]);
+
+  // Close Assign Lead inline dropdown on outside click
+  useEffect(() => {
+    if (!showAssignInlineDropdown) return;
+    const handler = (e) => {
+      if (assignInlineDropdownRef.current && !assignInlineDropdownRef.current.contains(e.target)) {
+        setShowAssignInlineDropdown(false);
+        setAssignInlineSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAssignInlineDropdown]);
   
   // Helper function to safely extract field values from lead data
   const extractFieldValue = (fieldName) => {
@@ -1816,42 +1846,92 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           </div>
 
           {/* Date and Time Field */}
-          <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
-            {isUserSuperAdmin ? (
-              <input
-                type="datetime-local"
-                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
-                value={fields.createdDate ? (() => {
-                  const date = new Date(fields.createdDate);
-                  if (isNaN(date.getTime())) return '';
-                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
-                })() : ''}
-                onChange={e => {
-                  if (!e.target.value) return;
-                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                  const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                  handleChange('createdDate', utcISO);
-                }}
-                onBlur={e => {
-                  if (!e.target.value) return;
-                  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                  const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                  handleBlur('createdDate', utcISO);
-                }}
-                title="Super Admin can edit lead creation date & time (IST)"
-              />
-            ) : (
-              <input
-                className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-                value={lead?.created_at ? formatDateTimeIST(lead.created_at) : 'N/A'}
-                readOnly={true}
-                placeholder="Date & Time (Read-only)"
-                title="Lead creation date and time (IST) — only Super Admin can edit"
-              />
-            )}
-          </div>
+          {(() => {
+            const isLoginLead = !!(lead?.original_lead_id || lead?.login_created_at);
+            // Helper to format date with AM/PM in IST
+            const formatAMPM = (dateStr) => {
+              if (!dateStr) return 'N/A';
+              try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return 'N/A';
+                const IST_TZ = 'Asia/Kolkata';
+                const day = date.toLocaleString('en-IN', { timeZone: IST_TZ, day: '2-digit' });
+                const month = date.toLocaleString('en-IN', { timeZone: IST_TZ, month: '2-digit' });
+                const year = date.toLocaleString('en-IN', { timeZone: IST_TZ, year: 'numeric' });
+                const time = date.toLocaleString('en-US', { timeZone: IST_TZ, hour: 'numeric', minute: '2-digit', hour12: true });
+                return `${day}-${month}-${year}  ${time}`;
+              } catch {
+                return 'N/A';
+              }
+            };
+
+            if (isLoginLead) {
+              // Login CRM: show when file was sent to Login Department — always read-only
+              const loginDate = lead?.login_date || lead?.login_created_at;
+              return (
+                <div className="flex flex-col gap-2">
+                  <label className={labelClass} style={labelStyle}>LOGIN DATE & TIME</label>
+                  <input
+                    className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                    value={formatAMPM(loginDate)}
+                    readOnly={true}
+                    placeholder="Login date and time"
+                    title="Date & time when file was sent to Login Department (IST)"
+                  />
+                </div>
+              );
+            }
+
+            // Lead CRM: show original lead creation date
+            return (
+              <div className="flex flex-col gap-2">
+                <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
+                {isUserSuperAdmin ? (
+                  <div className="relative">
+                    <input
+                      type="datetime-local"
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                      id="createdDate_hidden_picker"
+                      value={fields.createdDate ? (() => {
+                        const date = new Date(fields.createdDate);
+                        if (isNaN(date.getTime())) return '';
+                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                        return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
+                      })() : ''}
+                      onChange={e => {
+                        if (!e.target.value) return;
+                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                        const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                        handleChange('createdDate', utcISO);
+                      }}
+                      onBlur={e => {
+                        if (!e.target.value) return;
+                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                        const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                        handleBlur('createdDate', utcISO);
+                      }}
+                    />
+                    <input
+                      type="text"
+                      className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer"
+                      value={formatAMPM(fields.createdDate)}
+                      readOnly={true}
+                      onClick={() => document.getElementById('createdDate_hidden_picker')?.showPicker()}
+                      title="Super Admin can edit lead creation date & time (IST)"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                    value={formatAMPM(lead?.created_at)}
+                    readOnly={true}
+                    placeholder="Date & Time (Read-only)"
+                    title="Lead creation date and time (IST) — only Super Admin can edit"
+                  />
+                )}
+              </div>
+            );
+          })()}
 
           {/* Created By Field */}
           <div className="flex flex-col gap-2">
@@ -1983,44 +2063,46 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           </div>
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>SOURCE NAME</label>
-            <div className="relative w-full dropdown-container">
+            <div ref={campaignDropdownRef} className="relative w-full">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                 onClick={() => {
                   if (canEdit) {
-                    // Close all other dropdowns first
                     setShowProductDropdown(false);
                     setShowDataCodeDropdown(false);
-                    // Then toggle this dropdown
-                    setShowCampaignDropdown(!showCampaignDropdown);
+                    setShowCampaignDropdown(prev => !prev);
                   }
                 }}
               >
-                <span>{fields.campaignName || "Select Campaign"}</span>
-                <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
-                </svg>
+                <span className={fields.campaignName ? 'text-green-600 font-bold' : 'text-gray-400 font-normal text-sm'}>
+                  {fields.campaignName || 'Select Source'}
+                </span>
+                <div className="ml-auto flex-shrink-0">
+                  <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showCampaignDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
               </div>
               {showCampaignDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
-                      placeholder="Search campaigns..."
-                      value={campaignSearchTerm}
-                      onChange={(e) => setCampaignSearchTerm(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="relative">
+                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                      <input
+                        autoFocus
+                        type="text"
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                        placeholder="Search source..."
+                        value={campaignSearchTerm}
+                        onChange={e => setCampaignSearchTerm(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </div>
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-52 overflow-y-auto">
                     {getFilteredCampaigns().length > 0 ? (
                       getFilteredCampaigns().map(campaign => (
                         <div
                           key={campaign._id}
-                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          className={`px-3 py-2.5 cursor-pointer text-sm font-medium transition-colors ${fields.campaignName === campaign.name ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'}`}
                           onClick={() => {
                             handleChange("campaignName", campaign.name);
                             handleBlur("campaignName", campaign.name);
@@ -2032,7 +2114,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                         </div>
                       ))
                     ) : (
-                      <div className="px-4 py-2 text-sm text-gray-500">No campaigns found</div>
+                      <div className="text-center py-5 text-gray-400 text-sm">
+                        {campaignSearchTerm ? `No results for "${campaignSearchTerm}"` : 'No sources available'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2261,82 +2345,92 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           </div>
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>ASSIGNED Lead</label>
-            <div className="relative w-full dropdown-container">
+            <div ref={assignInlineDropdownRef} className="relative w-full">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${canEditAssignedLead ? 'bg-white cursor-pointer' : 'bg-gray-100 cursor-not-allowed'}`}
-                onClick={() => {
-                  if (canEditAssignedLead) {
-                    setShowAssignReportToPopup(true);
-                  }
-                }}
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 ${canEditAssignedLead ? 'bg-white cursor-pointer hover:border-[#0097a7]' : 'bg-gray-100 cursor-not-allowed'}`}
+                onClick={() => { if (canEditAssignedLead) setShowAssignInlineDropdown(prev => !prev); }}
               >
                 {assignReportTo.length === 0 && (
-                  <span className="text-gray-400">Don't select Team Manager</span>
+                  <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
                 )}
-
                 {assignReportTo.map((assignee) => {
                   const displayName = typeof assignee === 'object' ? assignee.name : assignee;
                   const uniqueKey = typeof assignee === 'object' ? assignee.id || assignee.name : assignee;
                   return (
-                    <div
-                      key={uniqueKey}
-                      className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm"
-                    >
-                      {/* Profile icon with initials */}
+                    <div key={uniqueKey} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
                       <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
-                        {displayName.split(' ')
-                          .map(part => part[0])
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()}
+                        {displayName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
-                      <span className="text-xs">{displayName}</span>
+                      <span className="text-xs font-bold">{displayName}</span>
                       {canEditAssignedLead && (
-                        <button
-                          type="button"
-                          className="text-white hover:text-red-200 ml-1 text-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveAssignReportTo(assignee);
-                          }}
-                        >
-                          ×
-                        </button>
+                        <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignReportTo(assignee); }}>×</button>
                       )}
                     </div>
                   );
                 })}
-
-                {/* Add button */}
-                {assignReportTo.length > 0 && canEditAssignedLead && (
-                  <button
-                    type="button"
-                    className="w-6 h-6 rounded-full bg-[#03B0F5] hover:bg-cyan-700 text-white flex items-center justify-center text-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowAssignReportToPopup(true);
-                    }}
-                  >
-                    +
-                  </button>
-                )}
+                <div className="ml-auto flex-shrink-0">
+                  <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showAssignInlineDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
               </div>
+              {showAssignInlineDropdown && canEditAssignedLead && (() => {
+                const assignedIds = assignReportTo.map(a => typeof a === 'object' ? a.id : a);
+                const available = assignableUsers
+                  .filter(u => !assignedIds.includes(u.id || u._id || u.user_id))
+                  .map(u => ({
+                    id: u.id || u._id || u.user_id,
+                    name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || '',
+                    designation: u.designation || '',
+                  }));
+                const filtered = available.filter(u =>
+                  !assignInlineSearch ||
+                  u.name.toLowerCase().includes(assignInlineSearch.toLowerCase()) ||
+                  (u.designation || '').toLowerCase().includes(assignInlineSearch.toLowerCase())
+                );
+                return (
+                  <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="relative">
+                        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        <input
+                          autoFocus
+                          type="text"
+                          className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                          placeholder="Search by name or designation..."
+                          value={assignInlineSearch}
+                          onChange={e => setAssignInlineSearch(e.target.value.toUpperCase())}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filtered.length > 0 ? filtered.map(u => (
+                        <div
+                          key={u.id}
+                          className="group flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
+                          onClick={(e) => { e.stopPropagation(); handleAddAssignReportTo(u); }}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                            {u.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?'}
+                          </div>
+                          <div className="flex flex-col flex-grow min-w-0">
+                            <span className="text-sm font-medium text-black truncate">{u.name}</span>
+                            {u.designation && <span className="text-xs text-gray-500 truncate">{u.designation}</span>}
+                          </div>
+                          <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
+                        </div>
+                      )) : (
+                        <div className="text-center py-5 text-gray-400 text-sm">
+                          {assignInlineSearch ? 'No matching users found' : 'No users available'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       </div>
-      
-      {/* AssignPopup component for Assigned TL field */}
-      {showAssignReportToPopup && canEditAssignedLead && (
-        <AssignPopup
-          onClose={() => setShowAssignReportToPopup(false)}
-          onSelect={(user) => {
-            handleAddAssignReportTo(user);
-            setShowAssignReportToPopup(false);
-          }}
-          assignableUsers={assignableUsers}
-        />
-      )}
     </div>
   );
 }

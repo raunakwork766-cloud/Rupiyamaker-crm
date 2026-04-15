@@ -140,12 +140,12 @@ async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, s
                 "is_super_admin": True
             }
         
-        # Check module-specific "all" permission (page="module" with actions="all" or "*")
+        # Check module-specific "all" permission (page="module" with actions="all"/"view_all"/"*")
         has_all_permission = any(
             perm.get("page") == module and 
-            (perm.get("actions") == "all" or 
-             perm.get("actions") == "*" or 
-             (isinstance(perm.get("actions"), list) and ("all" in perm.get("actions", []) or "*" in perm.get("actions", []))))
+            (perm.get("actions") in ("all", "view_all", "*") or 
+             (isinstance(perm.get("actions"), list) and any(
+                 a in ("all", "view_all", "*") for a in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -155,11 +155,12 @@ async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, s
                 "is_super_admin": False
             }
         
-        # Check module-specific "junior" permission (page="module" with actions="junior")
+        # Check module-specific "junior" permission (page="module" with actions="junior"/"view_team")
         has_junior_permission = any(
             perm.get("page") == module and 
-            (perm.get("actions") == "junior" or
-             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            (perm.get("actions") in ("junior", "view_team") or
+             (isinstance(perm.get("actions"), list) and any(
+                 a in ("junior", "view_team") for a in perm.get("actions", []))))
             for perm in permissions
         )
         

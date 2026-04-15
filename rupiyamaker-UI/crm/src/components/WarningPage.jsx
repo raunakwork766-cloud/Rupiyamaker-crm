@@ -438,10 +438,11 @@ const WarningPage = memo(() => {
       can_export: canUserViewJunior(), // Junior and All can export
       permission_level: permLevel, // Store the permission level for use elsewhere
       // Granular warning action permissions
-      can_issue_warning: canIssueWarning(),
-      can_view_mistakes: canViewMistakeDirectory(),
-      can_create_mistake_category: canCreateMistakeCategory(),
-      can_edit_mistake_category: canEditMistakeCategory(),
+      can_issue_warning: canIssueWarning() || hasStrictWarningsAction('warning_setting'),
+      can_view_mistakes: canViewMistakeDirectory() || hasStrictWarningsAction('warning_setting'),
+      can_warning_setting: hasStrictWarningsAction('warning_setting'),
+      can_create_mistake_category: canCreateMistakeCategory() || hasStrictWarningsAction('warning_setting'),
+      can_edit_mistake_category: canEditMistakeCategory() || hasStrictWarningsAction('warning_setting'),
       can_delete_mistake_category: canDeleteMistakeCategory(),
     };
     
@@ -1861,8 +1862,8 @@ const WarningPage = memo(() => {
 
               {/* Contextual Action Buttons */}
               <div className="flex flex-wrap gap-3">
-                {/* Show Issue Warning button on warnings tabs — hide on Mistakes Directory tab */}
-                {permissions.can_issue_warning && !(selectedTab === 1 && (isSuperAdmin() || permissions.can_view_mistakes)) && (
+                {/* Show Issue Warning button whenever user has permission */}
+                {permissions.can_issue_warning && (
                   <button
                     className="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
                     onClick={openAddDialog}

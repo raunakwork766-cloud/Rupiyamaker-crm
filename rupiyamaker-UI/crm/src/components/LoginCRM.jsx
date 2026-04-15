@@ -262,16 +262,22 @@ const getLeadField = (lead, fieldName) => {
             }
             return lead.salary || lead.monthly_income || '';
 
-        case 'total_income':
-            // Check financial_details for total_income first, then monthly_income
-            if (lead.dynamic_fields?.financial_details?.total_income) {
-                return lead.dynamic_fields.financial_details.total_income;
-            }
-            if (lead.dynamic_fields?.financial_details?.monthly_income) {
-                return lead.dynamic_fields.financial_details.monthly_income;
-            }
-            // Fallback to direct fields
+        case 'total_income': {
+            // If an explicit pre-computed total_income is stored, use it
+            const fin = lead.dynamic_fields?.financial_details || lead.dynamic_details?.financial_details || {};
+            if (fin.total_income) return fin.total_income;
+
+            // Calculate actual total = monthly_income + partner_salary + yearly_bonus/bonus_division
+            const monthlyIncome  = parseFloat(fin.monthly_income)  || 0;
+            const partnerSalary  = parseFloat(fin.partner_salary)   || 0;
+            const yearlyBonus    = parseFloat(fin.yearly_bonus)     || 0;
+            const bonusDivision  = parseFloat(fin.bonus_division)   || 12;
+            const computed = monthlyIncome + partnerSalary + (yearlyBonus / bonusDivision);
+            if (computed > 0) return computed;
+
+            // Fallback to direct top-level fields (backend maps monthly_income → lead.salary)
             return lead.total_income || lead.salary || lead.monthly_income || '';
+        }
 
         case 'cibil_score':
             // Check financial_details for cibil_score
@@ -541,10 +547,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const canShowLogin = () => hasLoginPermission('show');
     const canViewOwnLogin = () => hasLoginPermission('own');
     const canViewOtherLogin = () => hasLoginPermission('view_other');
-    const canViewAllLogin = () => hasLoginPermission('all');
+    const canViewAllLogin = () => hasLoginPermission('all') || hasLoginPermission('view_all');
     const canDeleteLogin = () => hasLoginPermission('delete');
-    const canViewJuniorLogin = () => hasLoginPermission('junior');
+    const canViewJuniorLogin = () => hasLoginPermission('junior') || hasLoginPermission('view_team');
     const canEditLogin = () => hasLoginPermission('edit');
+    // Can see team-level data (requires view_team or higher login permission)
+    const canViewTeamData = () => isUserSuperAdmin || canViewJuniorLogin() || canViewAllLogin();
     
     // Check if user is super admin (has page * and action * permissions)
     const checkSuperAdmin = (perms) => {
@@ -1411,18 +1419,11 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             let incomeMatch = true;
             if (filterOptions.incomeRangeFrom || filterOptions.incomeRangeTo) {
                 // Use the same logic as the table column: total_income first, then salary
-                const totalIncome = getLeadField(lead, 'total_income') || getLeadField(lead, 'salary');
-                const leadIncome = parseFloat(totalIncome) || 0;
-                
-                const minIncome = filterOptions.incomeRangeFrom ? parseFloat(filterOptions.incomeRangeFrom) : 0;
-                const maxIncome = filterOptions.incomeRangeTo ? parseFloat(filterOptions.incomeRangeTo) : Infinity;
-                
-                // Debug logging for income filter
-                if (leadIncome > 0) {
-                    console.log(`💰 Income Filter - Lead: ${lead.customer_name || 'Unknown'}, Income: ${leadIncome}, Range: ${minIncome}-${maxIncome}, Match: ${leadIncome >= minIncome && leadIncome <= maxIncome}`);
-                }
-                
-                // Apply income range filter
+                const rawIncome = getLeadField(lead, 'total_income') || getLeadField(lead, 'salary');
+                // Strip commas/currency symbols before parsing (e.g. "50,000" → 50000)
+                const leadIncome = parseFloat(String(rawIncome || '').replace(/[^\d.-]/g, '')) || 0;
+                const minIncome = filterOptions.incomeRangeFrom ? parseFloat(String(filterOptions.incomeRangeFrom).replace(/[^\d.-]/g, '')) : 0;
+                const maxIncome = filterOptions.incomeRangeTo ? parseFloat(String(filterOptions.incomeRangeTo).replace(/[^\d.-]/g, '')) : Infinity;
                 incomeMatch = leadIncome >= minIncome && leadIncome <= maxIncome;
             }
 
@@ -1846,11 +1847,15 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             
             // Batch 3: Nice-to-have data (1000ms delay)
             setTimeout(async () => {
-                await Promise.all([
+                const batch3 = [
                     fetchImportantQuestions(),
                     fetchLoginDepartmentUsers(),
-                    fetchTeams()
-                ]).catch(err => console.warn('Batch 3 error:', err));
+                ];
+                // Only fetch teams if user has view_team/junior/all permission
+                if (canViewTeamData()) {
+                    batch3.push(fetchTeams());
+                }
+                await Promise.all(batch3).catch(err => console.warn('Batch 3 error:', err));
             }, 1000);
         }
     }, [leads.length, loading]);
@@ -2678,24 +2683,98 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
-        // Apply additional filter options (date ranges, etc.)
-        if (Object.values(filterOptions).some(option => option)) {
-            filtered = filtered.filter(lead => {
-                const leadDate = new Date(lead.login_date);
-                
-                // Date filters
-                if (filterOptions.dateFrom && filterOptions.dateTo) {
-                    const fromDate = new Date(filterOptions.dateFrom);
-                    const toDate = new Date(filterOptions.dateTo);
-                    if (leadDate < fromDate || leadDate > toDate) {
-                        return false;
-                    }
+        // Apply complete filter options (mirrors memoizedStatusCounts logic)
+        filtered = filtered.filter(lead => {
+            const leadDate = new Date(lead.login_date);
+
+            // Date range filter – each bound is independent
+            let dateInRange = true;
+            if (filterOptions.dateFrom && filterOptions.dateFrom.trim() !== '') {
+                const dateFrom = new Date(filterOptions.dateFrom);
+                dateInRange = dateInRange && leadDate >= dateFrom;
+            }
+            if (filterOptions.dateTo && filterOptions.dateTo.trim() !== '') {
+                const dateTo = new Date(filterOptions.dateTo);
+                dateInRange = dateInRange && leadDate <= dateTo;
+            }
+
+            // Enhanced combined status filtering (fileSentToLogin + selectedStatuses)
+            const hasFileSentToLoginFilter = filterOptions.fileSentToLogin;
+            const hasStatusFilters = filterOptions.selectedStatuses && filterOptions.selectedStatuses.length > 0;
+
+            let statusMatch = true;
+            if (hasFileSentToLoginFilter || hasStatusFilters) {
+                let matches = false;
+
+                if (hasFileSentToLoginFilter && lead.file_sent_to_login === true) {
+                    matches = true;
                 }
 
-                // Other filters...
-                return true;
-            });
-        }
+                if (hasStatusFilters) {
+                    const statusValue = typeof lead.status === 'object' ? (lead.status.name || 'Unknown') : (lead.status || 'Unknown');
+                    const subStatusValue = typeof lead.sub_status === 'object' ? (lead.sub_status.name || '') : (lead.sub_status || '');
+
+                    const statusMatches = filterOptions.selectedStatuses.some(sel => {
+                        if (sel === 'File sent to login') {
+                            return lead.file_sent_to_login === true;
+                        } else {
+                            return sel === statusValue || sel === subStatusValue;
+                        }
+                    });
+
+                    if (statusMatches) matches = true;
+                }
+
+                statusMatch = matches;
+            } else {
+                statusMatch = (!filterOptions.leadStatus || lead.status === filterOptions.leadStatus);
+            }
+
+            // Disbursement date filter
+            let disbursementDateMatch = true;
+            if (filterOptions.disbursementDateFrom || filterOptions.disbursementDateTo) {
+                const disbursementDate = lead.disbursement_date ? new Date(lead.disbursement_date) : null;
+
+                if (disbursementDate) {
+                    if (filterOptions.disbursementDateFrom && filterOptions.disbursementDateFrom.trim() !== '') {
+                        const dateFrom = new Date(filterOptions.disbursementDateFrom);
+                        disbursementDateMatch = disbursementDateMatch && disbursementDate >= dateFrom;
+                    }
+                    if (filterOptions.disbursementDateTo && filterOptions.disbursementDateTo.trim() !== '') {
+                        const dateTo = new Date(filterOptions.disbursementDateTo);
+                        dateTo.setHours(23, 59, 59, 999);
+                        disbursementDateMatch = disbursementDateMatch && disbursementDate <= dateTo;
+                    }
+                } else {
+                    disbursementDateMatch = false;
+                }
+            }
+
+            // Array-based filters
+            const teamMatch = (!filterOptions.teamName?.length || filterOptions.teamName.includes(lead.team_name));
+            const campaignMatch = (!filterOptions.campaignName?.length || filterOptions.campaignName.includes(lead.operations_channel_name));
+            const createdByMatch = (!filterOptions.createdBy?.length || filterOptions.createdBy.includes(lead.creator_name));
+            const loginDepartmentMatch = (!filterOptions.loginDepartment?.length ||
+                filterOptions.loginDepartment.includes(lead.creator_name) ||
+                filterOptions.loginDepartment.includes(lead.department_name) ||
+                filterOptions.loginDepartment.includes(lead.team_name));
+            const channelMatch = (!filterOptions.channelName?.length || filterOptions.channelName.includes(lead.channel_name || lead.campaign_name));
+
+            // Income range filter
+            let incomeMatch = true;
+            if (filterOptions.incomeRangeFrom || filterOptions.incomeRangeTo) {
+                const rawIncome = getLeadField(lead, 'total_income') || getLeadField(lead, 'salary');
+                // Strip commas/currency symbols before parsing (e.g. "50,000" → 50000)
+                const leadIncome = parseFloat(String(rawIncome || '').replace(/[^\d.-]/g, '')) || 0;
+                const minIncome = filterOptions.incomeRangeFrom ? parseFloat(String(filterOptions.incomeRangeFrom).replace(/[^\d.-]/g, '')) : 0;
+                const maxIncome = filterOptions.incomeRangeTo ? parseFloat(String(filterOptions.incomeRangeTo).replace(/[^\d.-]/g, '')) : Infinity;
+                incomeMatch = leadIncome >= minIncome && leadIncome <= maxIncome;
+            }
+
+            return statusMatch && dateInRange && disbursementDateMatch &&
+                teamMatch && campaignMatch && createdByMatch &&
+                loginDepartmentMatch && channelMatch && incomeMatch;
+        });
 
         // Assign TL filter – matches assign_report_to IDs against selected TL names
         if (filterOptions.assignedTL && filterOptions.assignedTL.length > 0) {
@@ -2750,15 +2829,71 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
+        // Duplicate leads filter
+        if (filterOptions.checkDuplicateLeads) {
+            const normalizePhone = (phone) => {
+                if (!phone) return null;
+                const normalized = phone.toString().replace(/\D/g, '');
+                return normalized.length >= 10 ? normalized : null;
+            };
+
+            const phoneMap = new Map();
+            filtered.forEach(lead => {
+                const allPhones = [
+                    normalizePhone(lead.mobile_number),
+                    normalizePhone(lead.phone),
+                    normalizePhone(lead.alternative_phone),
+                    normalizePhone(lead.alt_phone_number)
+                ].filter(p => p !== null);
+
+                [...new Set(allPhones)].forEach(phone => {
+                    if (!phoneMap.has(phone)) phoneMap.set(phone, []);
+                    phoneMap.get(phone).push(lead);
+                });
+            });
+
+            const duplicatePhones = new Set();
+            phoneMap.forEach((leads, phone) => {
+                if (leads.length > 1) duplicatePhones.add(phone);
+            });
+
+            if (duplicatePhones.size === 0) {
+                filtered = [];
+            } else {
+                filtered = filtered.filter(lead => {
+                    const allPhones = [
+                        normalizePhone(lead.mobile_number),
+                        normalizePhone(lead.phone),
+                        normalizePhone(lead.alternative_phone),
+                        normalizePhone(lead.alt_phone_number)
+                    ].filter(p => p !== null);
+
+                    return [...new Set(allPhones)].some(phone => duplicatePhones.has(phone));
+                });
+            }
+        }
+
         return filtered;
     }, [leads, selectedLoanType, selectedStatus, debouncedSearchTerm, filterOptions, filterRevision, employees]);
 
     // Column-sorted leads: apply sortConfig on top of filteredLeadsData
     const LOGIN_NUMERIC_KEYS = ['total_income', 'foir_eligibility', 'loan_amount', 'net_disbursement_amount'];
     const columnSortedLeads = useMemo(() => {
-        if (!filteredLeadsData || !sortConfig.key) return filteredLeadsData;
+        // Apply incomeSortOrder from filter panel if set (takes lower priority than column header sort)
+        const baseData = filteredLeadsData;
+        if (!baseData) return baseData;
+
+        if (filterOptions.incomeSortOrder && !sortConfig.key) {
+            return [...baseData].sort((a, b) => {
+                const aIncome = parseFloat(String(getLeadField(a, 'total_income') || getLeadField(a, 'salary') || '').replace(/[^\d.-]/g, '')) || 0;
+                const bIncome = parseFloat(String(getLeadField(b, 'total_income') || getLeadField(b, 'salary') || '').replace(/[^\d.-]/g, '')) || 0;
+                return filterOptions.incomeSortOrder === 'asc' ? aIncome - bIncome : bIncome - aIncome;
+            });
+        }
+
+        if (!sortConfig.key) return baseData;
         const isNumeric = LOGIN_NUMERIC_KEYS.includes(sortConfig.key);
-        return [...filteredLeadsData].sort((a, b) => {
+        return [...baseData].sort((a, b) => {
             let aVal = a[sortConfig.key] ?? '';
             let bVal = b[sortConfig.key] ?? '';
             if (typeof aVal === 'object') aVal = aVal?.name ?? '';
@@ -2774,7 +2909,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [filteredLeadsData, sortConfig]);
+    }, [filteredLeadsData, sortConfig, filterOptions.incomeSortOrder]);
 
     // Pagination: Slice columnSortedLeads to show limited leads with "Show More" functionality
     const displayedLeads = useMemo(() => {
@@ -4404,7 +4539,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             tenure_given: record.operations_tenure_given,
                             cashback_to_customer: record.operations_cashback_to_customer,
                             net_disbursement_amount: getLeadField(record, 'net_disbursement_amount'),
-                            disbursement_date: record.operations_disbursement_date ? dayjs(record.operations_disbursement_date) : null
+                            disbursement_date: (record.disbursement_date || record.operations_disbursement_date) ? dayjs(record.disbursement_date || record.operations_disbursement_date) : null
                         });
                     }}
                 >
@@ -4467,12 +4602,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             render: (_, record) => getLeadField(record, 'creator_name') || '-',
             width: 120
         },
-        {
+        ...(canViewTeamData() ? [{
             title: 'TEAM NAME',
             key: 'team_name',
             render: (_, record) => getLeadField(record, 'team_name') || '-',
             width: 120
-        },
+        }] : []),
         {
             title: 'CUSTOMER NAME',
             key: 'customer_name',
@@ -4967,32 +5102,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 <span className="text-orange-400 text-sm font-medium">Pending changes</span>
                             </div>
                         )}
-                        {/* Refresh button */}
-                        <button
-                            onClick={() => handleLeadClick(selectedLead)}
-                            className="flex items-center gap-1 px-3 py-1 bg-blue-600/20 rounded-full border border-blue-500/50 hover:bg-blue-600/30 transition-colors"
-                            title="Refresh lead data"
-                        >
-                            <RefreshCw className="w-3 h-3 text-blue-400" />
-                            <span className="text-blue-400 text-sm font-medium">Refresh</span>
-                        </button>
                     </div>
                     <div className="ml-auto flex items-center gap-3">
-                        {/* Copy Lead Button - Direct copy, no modal */}
-                        {selectedLead && (
-                            <button 
-                                className="copy-lead-button bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
-                                onClick={() => {
-                                    console.log('Copy Lead button clicked!');
-                                    // Immediate test message to verify message system works
-                                    message.success('🚀 Copy process started...', 2);
-                                    handleDirectCopyLead();
-                                }}
-                            >
-                                <Copy className="mr-2 h-4 w-4" /> COPY THIS LEAD
-                            </button>
-                        )}
-                        
                         {/* File received indicator - only show when file_sent_to_login is true */}
                         {selectedLead?.file_sent_to_login && (
                             <div className="flex items-center gap-2 px-3 py-1 bg-green-600/20 rounded-full border border-green-500/50">
@@ -5502,7 +5613,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                     {[
                                         { label: 'LOGIN DATE', key: 'login_date' },
                                         { label: 'CREATED BY', key: 'creator_name' },
-                                        { label: 'TEAM NAME', key: 'team_name' },
+                                        ...(canViewTeamData() ? [{ label: 'TEAM NAME', key: 'team_name' }] : []),
                                         { label: 'CUSTOMER NAME', key: 'customer_name' },
                                         { label: 'STATUS', key: null },
                                         { label: 'TOTAL INCOME', key: 'total_income' },
@@ -5614,7 +5725,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             <td className="text-left py-3 px-4 text-sm font-bold whitespace-nowrap">
                                              <span className="text-sm font-bold text-wrap">{getLeadField(lead, 'creator_name') || '-'}</span>
                                             </td>
+                                            {canViewTeamData() && (
                                             <td className="text-left py-3 px-4 text-sm font-bold whitespace-nowrap">{lead.team_name || '-'}</td>
+                                            )}
                                             <td className="text-left py-3 px-4 text-sm font-bold whitespace-wrap">{lead.customer_name || '-'}</td>
                                             <td
                                                 className="text-left py-3 px-4 text-md whitespace-nowrap relative"
@@ -6267,6 +6380,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             )}
                                         </div>
                                     </button>
+                                    {canViewTeamData() && (
                                     <button
                                         onClick={() => setSelectedFilterCategory('team')}
                                         className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
@@ -6287,6 +6401,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             )}
                                         </div>
                                     </button>
+                                    )}
                                     <button
                                         onClick={() => setSelectedFilterCategory('assignedTL')}
                                         className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
@@ -6584,7 +6699,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                     </div>
                                 )}
                                 
-                                {selectedFilterCategory === 'team' && (
+                                {selectedFilterCategory === 'team' && canViewTeamData() && (
                                     <div>
                                         <h3 className="text-base font-medium text-gray-300 mb-4">Team Name</h3>
                                         

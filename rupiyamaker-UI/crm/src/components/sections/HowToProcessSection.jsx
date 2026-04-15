@@ -36,6 +36,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   // Search terms for dropdowns
   const [bankSearchTerm, setBankSearchTerm] = useState('');
   const [loanTypeSearchTerm, setLoanTypeSearchTerm] = useState('');
+  const [showCaseTypeDropdown, setShowCaseTypeDropdown] = useState(false);
+  const [caseTypeSearchTerm, setCaseTypeSearchTerm] = useState('');
 
   // Focus state for required tenure field
   const [isTenureFocused, setIsTenureFocused] = useState(false);
@@ -232,8 +234,10 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       if (!event.target.closest('.dropdown-container')) {
         setShowBankDropdown(false);
         setShowLoanTypeDropdown(false);
+        setShowCaseTypeDropdown(false);
         setBankSearchTerm('');
         setLoanTypeSearchTerm('');
+        setCaseTypeSearchTerm('');
       }
     };
 
@@ -607,11 +611,12 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 onClick={() => {
                   if (canEdit) {
                     setShowLoanTypeDropdown(false);
+                    setShowCaseTypeDropdown(false);
                     setShowBankDropdown(!showBankDropdown);
                   }
                 }}
               >
-                <span>{fields.processingBank || "Select Bank"}</span>
+                <span className="text-black font-bold">{fields.processingBank || <span className="text-gray-400 font-normal">Select Bank</span>}</span>
                 <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
                 </svg>
@@ -621,7 +626,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                   <div className="p-3 border-b border-gray-200">
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search banks..."
                       value={bankSearchTerm}
                       onChange={(e) => setBankSearchTerm(e.target.value)}
@@ -633,7 +638,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                       getFilteredBanks().map((bank, index) => (
                         <div
                           key={index}
-                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          className={`px-4 py-2 text-sm font-medium text-black cursor-pointer hover:bg-[#e0f7fa] ${
+                            fields.processingBank === bank ? 'bg-[#03B0F5] text-white font-bold' : ''
+                          }`}
                           onClick={() => {
                             handleChange("processingBank", bank);
                             handleBlur("processingBank", bank);
@@ -664,11 +671,12 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 onClick={() => {
                   if (canEdit) {
                     setShowBankDropdown(false);
+                    setShowCaseTypeDropdown(false);
                     setShowLoanTypeDropdown(!showLoanTypeDropdown);
                   }
                 }}
               >
-                <span>{selectedLoanType?.name || "Select Loan Type"}</span>
+                <span className="text-black font-bold">{selectedLoanType?.name || <span className="text-gray-400 font-normal">Select Loan Type</span>}</span>
                 <svg className="w-4 h-4 text-[#00bcd4]" fill="none" stroke="currentColor" viewBox="0 0 20 20">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
                 </svg>
@@ -678,7 +686,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                   <div className="p-3 border-b border-gray-200">
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search loan types..."
                       value={loanTypeSearchTerm}
                       onChange={(e) => setLoanTypeSearchTerm(e.target.value)}
@@ -690,7 +698,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                       getFilteredLoanTypes().map((loanType) => (
                         <div
                           key={loanType._id}
-                          className="px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer"
+                          className={`px-4 py-2 text-sm font-medium text-black cursor-pointer hover:bg-[#e0f7fa] ${
+                            selectedLoanType?._id === loanType._id ? 'bg-[#03B0F5] text-white font-bold' : ''
+                          }`}
                           onClick={() => {
                             handleLoanTypeChange(loanType._id);
                             setShowLoanTypeDropdown(false);
@@ -712,21 +722,64 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           {/* Case Type */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>CASE TYPE</label>
-            <select
-              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] appearance-none bg-[url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300bcd4' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")] bg-no-repeat bg-[right_12px_center] bg-[length:16px] pr-10 ${
-                !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              value={fields.caseType}
-              onChange={e => canEdit && handleChange("caseType", e.target.value)}
-              onBlur={e => canEdit && handleBlur("caseType", e.target.value)}
-              disabled={!canEdit}
-            >
-              <option value="" className="text-[#10b981] bg-[#f0f9ff]">Select Case Type</option>
-              <option value="FRESH ONLY">FRESH ONLY</option>
-              <option value="BT ONLY">BT ONLY</option>
-              <option value="BT+TOP UP">BT+TOP UP</option>
-              <option value="INTERNAL TOP UP">INTERNAL TOP UP</option>
-            </select>
+            <div className="relative dropdown-container">
+              <div
+                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+                onClick={() => {
+                  if (canEdit) {
+                    setShowBankDropdown(false);
+                    setShowLoanTypeDropdown(false);
+                    setShowCaseTypeDropdown(!showCaseTypeDropdown);
+                  }
+                }}
+              >
+                <span className="text-black font-bold">{fields.caseType || <span className="text-gray-400 font-normal">Select Case Type</span>}</span>
+                <svg className={`w-4 h-4 text-[#00bcd4] transition-transform duration-200 ${showCaseTypeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 8 4 4 4-4"/>
+                </svg>
+              </div>
+              {showCaseTypeDropdown && canEdit && (
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
+                  <div className="p-3 border-b border-gray-200">
+                    <input
+                      type="text"
+                      autoFocus
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
+                      placeholder="Search case types..."
+                      value={caseTypeSearchTerm}
+                      onChange={(e) => setCaseTypeSearchTerm(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP']
+                      .filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase()))
+                      .map((ct) => (
+                        <div
+                          key={ct}
+                          className={`px-4 py-2 text-sm font-medium text-black cursor-pointer hover:bg-[#e0f7fa] ${
+                            fields.caseType === ct ? 'bg-[#03B0F5] text-white font-bold' : ''
+                          }`}
+                          onClick={() => {
+                            handleChange('caseType', ct);
+                            handleBlur('caseType', ct);
+                            setShowCaseTypeDropdown(false);
+                            setCaseTypeSearchTerm('');
+                          }}
+                        >
+                          {ct}
+                        </div>
+                      ))
+                    }
+                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP'].filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-2 text-sm text-gray-500">No case types found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

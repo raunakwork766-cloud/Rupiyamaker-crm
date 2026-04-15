@@ -169,6 +169,15 @@ class LoginLeadsDB:
         update_data['updated_at'] = get_ist_now()
         update_data['last_updated_by'] = user_id
         
+        # CRITICAL GUARD: Never allow created_at or login_created_at to be overwritten
+        for protected_field in ('created_at', 'login_created_at', 'login_date'):
+            if protected_field in update_data:
+                original_value = current_lead.get(protected_field)
+                if original_value:
+                    update_data[protected_field] = original_value
+                else:
+                    del update_data[protected_field]
+        
         # CRITICAL FIX: Use MongoDB dot notation for nested fields (process_data, dynamic_fields)
         # This preserves other fields when updating only specific nested fields
         mongodb_update = {}

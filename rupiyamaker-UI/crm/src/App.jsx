@@ -516,22 +516,14 @@ function App() {
 
   const handleLogout = () => {
     // Stop session monitoring before clearing data
-    // console.log('User logging out - stopping session monitoring')
     sessionMonitor.stop()
     
     // Clear profile photo using utility function
     clearProfilePhotoFromStorage()
     
-    localStorage.removeItem('userData')
-    localStorage.removeItem('isAuthenticated')
-    localStorage.removeItem('token') // Clear the token
-    localStorage.removeItem('userId')
-    localStorage.removeItem('user_id')
-    localStorage.removeItem('userPermissions')
-    localStorage.removeItem('profile_photo') // Clear profile photo
-    localStorage.removeItem('userProfilePhoto') // Clear legacy profile photo key
-    localStorage.removeItem('user') // Clear user object
-    localStorage.removeItem('sessionToken') // Clear single-session token
+    // Clear ALL localStorage to prevent quota exceeded on next login
+    localStorage.clear()
+    
     setUser(null)
     setIsAuthenticated(false)
     navigate('/login')

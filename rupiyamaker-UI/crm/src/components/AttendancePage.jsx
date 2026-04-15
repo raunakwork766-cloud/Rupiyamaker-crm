@@ -1879,9 +1879,10 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       return true;
     }
     
-    // STRICT CHECK: User must have explicit 'update' action in attendance permissions
+    // STRICT CHECK: User must have explicit 'update_attendance' (or 'update') action in attendance permissions
     // Uses hasPermission which handles both object and array permission formats
-    const result = hasPermission(userPermissions, 'attendance', 'update');
+    const result = hasPermission(userPermissions, 'attendance', 'update_attendance') ||
+                   hasPermission(userPermissions, 'attendance', 'update');
     console.log('🔒 hasEditPermission: hasPermission result =', result);
     return result;
   };
@@ -2631,7 +2632,8 @@ export default function MonthlyAttendanceTable() {
   const canShowLeaveManagement = (() => {
     const userPermissions = getUserPermissions();
     if (isSuperAdmin(userPermissions)) return true;
-    return hasPermission(userPermissions, 'leave_management', 'show') ||
+    return hasPermission(userPermissions, 'attendance', 'leave_management') ||
+           hasPermission(userPermissions, 'leave_management', 'show') ||
            hasPermission(userPermissions, 'leaves', 'show');
   })();
   

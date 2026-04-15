@@ -361,6 +361,10 @@ class LeadUpdate(BaseModel):
     importantquestion: Optional[Dict[str, Any]] = None  # Added for backward compatibility
     important_questions_validated: Optional[bool] = None  # Added for validation status
     updated_by: Optional[str] = None  # Added for tracking updates
+    file_sent_to_login: Optional[bool] = None  # Track login department send status (rollback sets to False)
+    parent_status: Optional[str] = None  # Parent status for status card grouping
+    login_department_sent_date: Optional[str] = None  # Date when sent to login department
+    login_department_sent_by: Optional[str] = None  # User who sent to login department
     
     class Config:
         extra = 'ignore'  # Ignore extra fields that aren't defined

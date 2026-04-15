@@ -4,6 +4,8 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 from app.database import get_database_instances
 from app.database.Users import UsersDB
+from app.database.Roles import RolesDB
+from app.utils.permissions import PermissionManager
 from app.utils.timezone import get_ist_now
 import logging
 
@@ -18,6 +20,11 @@ router = APIRouter(
 async def get_users_db():
     db_instances = get_database_instances()
     return db_instances["users"]
+
+
+async def get_roles_db():
+    db_instances = get_database_instances()
+    return db_instances["roles"]
 
 
 def _build_date_range_utc(time_filter: str, date_from: Optional[str], date_to: Optional[str]):
@@ -221,7 +228,7 @@ async def get_dashboard_stats(
                 if status in emp_data[uid]["logins"]:
                     emp_data[uid]["logins"][status] += count
 
-        # ─── Build response — only include employees who have at least 1 lead/login OR always include all ───
+        # ─── Build response — ONLY include employees who have at least 1 lead OR 1 login ───
         employees = []
         total_leads = 0
         total_logins = 0
@@ -229,6 +236,9 @@ async def get_dashboard_stats(
         for uid in user_ids:
             uinfo = user_map.get(uid, {"name": uid, "team": ""})
             data = emp_data[uid]
+            # Skip users with zero leads AND zero logins
+            if data["totalLeads"] == 0 and data["totalLogins"] == 0:
+                continue
             total_leads += data["totalLeads"]
             total_logins += data["totalLogins"]
             employees.append({
@@ -261,12 +271,50 @@ async def get_dashboard_stats(
 async def get_dashboard_teams(
     user_id: str = Query(..., description="ID of the requesting user"),
     users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Returns distinct teams (departments) and employee list for filter dropdowns."""
+    """Returns distinct teams (departments) and employee list for filter dropdowns, scoped by permissions."""
     try:
+        if not user_id or not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id")
+
+        # ─── Determine effective permission scope ───
+        user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_super_admin = any(
+            p.get("page") == "*" and (
+                p.get("actions") == "*" or
+                (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
+            )
+            for p in user_permissions
+        ) if user_permissions else False
+
+        if is_super_admin:
+            effective_level = "all"
+        elif (PermissionManager.has_permission(user_permissions, "dashboard", "all") or
+              PermissionManager.has_permission(user_permissions, "leads", "all") or
+              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "all")):
+            effective_level = "all"
+        elif (PermissionManager.has_permission(user_permissions, "dashboard", "junior") or
+              PermissionManager.has_permission(user_permissions, "leads", "junior") or
+              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "junior")):
+            effective_level = "junior"
+        else:
+            effective_level = "own"
+
+        allowed_user_ids: Optional[set] = None
+        if effective_level == "own":
+            allowed_user_ids = {user_id}
+        elif effective_level == "junior":
+            subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            allowed_user_ids = {user_id} | set(subordinate_ids)
+
         db = users_db.db
+        users_query: dict = {}
+        if allowed_user_ids is not None:
+            users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
+
         users = await users_db.collection.find(
-            {},
+            users_query,
             {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
         ).to_list(None)
 

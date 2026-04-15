@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import TaskSchedulePicker, { getNearestTimeSlot } from "./TaskSchedulePicker";
 import API from '../services/api';
 import { formatDateTime, formatDate } from '../utils/dateUtils';
@@ -207,6 +208,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
   const [assignSearchTerm, setAssignSearchTerm] = useState('');
   const assignDropdownRef = useRef(null);
+  const assignTriggerRef = useRef(null);
+  const [assignDropdownPos, setAssignDropdownPos] = useState({});
   const [showDaysSelector, setShowDaysSelector] = useState(false);
   const messageRef = useRef(null);
   const modalRef = useRef(null);
@@ -217,20 +220,33 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   const [recordSearchResults, setRecordSearchResults] = useState([]);
   const [loadingRecordSearch, setLoadingRecordSearch] = useState(false);
   const recordDropdownRef = useRef(null);
+  const recordTriggerRef = useRef(null);
+  const [recordDropdownPos, setRecordDropdownPos] = useState({});
 
-  // Close dropdowns on outside click
+  // Helper: compute fixed dropdown position based on trigger rect
+  const calcDropdownPos = (triggerEl, dropdownHeight = 280) => {
+    const rect = triggerEl.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < dropdownHeight && rect.top > spaceBelow;
+    return openUp
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width, zIndex: 9999 }
+      : { position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 9999 };
+  };
+
+  // Close dropdowns on outside click — portals render in body so use data-attributes
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (recordDropdownRef.current && !recordDropdownRef.current.contains(e.target)) {
-        setShowRecordDropdown(false);
-      }
-      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target)) {
-        setShowAssignDropdown(false);
-      }
+      const inRecordTrigger = recordTriggerRef.current && recordTriggerRef.current.contains(e.target);
+      const inRecordPortal = e.target.closest('[data-portal="record-dropdown"]');
+      if (!inRecordTrigger && !inRecordPortal) setShowRecordDropdown(false);
+
+      const inAssignTrigger = assignTriggerRef.current && assignTriggerRef.current.contains(e.target);
+      const inAssignPortal = e.target.closest('[data-portal="assign-dropdown"]');
+      if (!inAssignTrigger && !inAssignPortal) setShowAssignDropdown(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [])
 
   // Search leads when search term changes (debounced)
   useEffect(() => {
@@ -665,8 +681,11 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
                 }}
                 onClick={() => {
                   if (isLeadPreselected) return;
-                  setShowRecordDropdown(!showRecordDropdown);
+                  if (showRecordDropdown) { setShowRecordDropdown(false); return; }
+                  if (recordTriggerRef.current) setRecordDropdownPos(calcDropdownPos(recordTriggerRef.current, 260));
+                  setShowRecordDropdown(true);
                 }}
+                ref={recordTriggerRef}
                 disabled={isLeadPreselected}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
@@ -698,18 +717,14 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </button>
 
-              {/* Dropdown Menu */}
-              {showRecordDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  left: 0,
-                  width: '100%',
+              {/* Dropdown Menu — rendered in body via portal to escape backdrop-filter stacking context */}
+              {showRecordDropdown && createPortal(
+                <div data-portal="record-dropdown" style={{
+                  ...recordDropdownPos,
                   background: '#fff',
                   border: '1.5px solid #cbd5e1',
                   borderRadius: '10px',
                   boxShadow: '0 15px 30px rgba(15,23,42,0.12)',
-                  zIndex: 50,
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
@@ -764,7 +779,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
                       </li>
                     )}
                   </ul>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
             {isLeadPreselected && (
@@ -936,80 +952,114 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
             <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">
               Assigned To
             </label>
-            <div ref={assignDropdownRef} style={{ position: 'relative' }}>
-              <div className="flex flex-wrap items-center gap-2 bg-white" style={{ border: '1.5px solid #94a3b8', borderRadius: '8px', padding: '6px 12px', minHeight: '42px', cursor: 'text' }} onClick={() => { setShowAssignDropdown(true); }}>
-                {form.assignedTo.map((assignee, index) => {
+            <div ref={assignDropdownRef} className="relative w-full">
+              {/* Trigger */}
+              <div
+                ref={assignTriggerRef}
+                className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-white min-h-[44px] flex flex-wrap gap-2 items-center cursor-pointer hover:border-[#0097a7] transition-all duration-300"
+                onClick={() => {
+                  if (showAssignDropdown) return;
+                  if (assignTriggerRef.current) setAssignDropdownPos(calcDropdownPos(assignTriggerRef.current, 300));
+                  setShowAssignDropdown(true);
+                }}
+              >
+                {form.assignedTo.length === 0 && (
+                  <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
+                )}
+                {form.assignedTo.map((assignee) => {
                   const userName = assignee?.first_name && assignee?.last_name
                     ? `${assignee.first_name} ${assignee.last_name}`.trim()
                     : assignee?.name || assignee;
                   const userId = assignee?.user_id || assignee?.id || assignee;
                   return (
-                    <div
-                      key={userId}
-                      className="inline-flex items-center gap-1.5"
-                      style={{ backgroundColor: '#eef2f6', border: '1px solid #d1d9e6', color: '#334155', padding: '4px 10px 4px 6px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}
-                    >
-                      <div className="flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#00aaff', color: 'white', width: '22px', height: '22px', borderRadius: '50%', fontSize: '10px', fontWeight: 800 }}>
-                        {userName.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase()}
+                    <div key={userId} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                      <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                        {userName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
-                      <span>{userName}</span>
+                      <span className="text-xs font-bold">{userName}</span>
                       <button
                         type="button"
-                        className="ml-1 hover:text-red-500 transition"
-                        style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none' }}
+                        className="text-white hover:text-red-200 ml-1 text-sm"
                         onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}
-                      >
-                        ×
-                      </button>
+                      >×</button>
                     </div>
                   );
                 })}
-                <input
-                  type="text"
-                  placeholder={form.assignedTo.length === 0 ? 'Search & add assignee...' : '+ Add more'}
-                  value={assignSearchTerm}
-                  onChange={(e) => { setAssignSearchTerm(e.target.value); setShowAssignDropdown(true); }}
-                  onFocus={() => setShowAssignDropdown(true)}
-                  style={{ border: 'none', outline: 'none', fontSize: '12px', color: '#475569', background: 'transparent', minWidth: '120px', flex: 1 }}
-                />
-              </div>
-              {showAssignDropdown && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1.5px solid #94a3b8', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: '200px', overflowY: 'auto' }}>
-                  {loadingUsers ? (
-                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>Loading users...</div>
-                  ) : (() => {
-                    const alreadySelected = new Set(form.assignedTo.map(a => String(a?.user_id || a?.id || a?.name || a)));
-                    const filtered = users.filter(u => {
-                      const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim();
-                      const uid = String(u.id || u.user_id || '');
-                      if (alreadySelected.has(uid) || alreadySelected.has(name)) return false;
-                      if (!assignSearchTerm.trim()) return true;
-                      return name.toLowerCase().includes(assignSearchTerm.toLowerCase());
-                    });
-                    return filtered.length === 0 ? (
-                      <div style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>No users found</div>
-                    ) : filtered.map(user => {
-                      const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
-                      return (
-                        <div
-                          key={user.id || user.user_id}
-                          onMouseDown={(e) => { e.preventDefault(); handleAddAssignee(user); setAssignSearchTerm(''); setShowAssignDropdown(false); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#00aaff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
-                            {name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{name}</div>
-                            {user.designation && <div style={{ fontSize: 11, color: '#64748b' }}>{user.designation}</div>}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                <div className="ml-auto flex-shrink-0">
+                  <svg className={`w-4 h-4 text-[#00bcd4] transition-transform duration-200 ${showAssignDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
+              </div>
+
+              {showAssignDropdown && createPortal(
+                <div
+                  data-portal="assign-dropdown"
+                  style={{ ...assignDropdownPos, background: '#fff', border: '2px solid #00bcd4', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden' }}
+                >
+                  {/* Search */}
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="relative">
+                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        autoFocus
+                        type="text"
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                        placeholder="Search by name or designation..."
+                        value={assignSearchTerm}
+                        onChange={e => setAssignSearchTerm(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  {/* List */}
+                  <div className="max-h-52 overflow-y-auto">
+                    {loadingUsers ? (
+                      <div className="text-center py-5 text-gray-400 text-sm">Loading users...</div>
+                    ) : (() => {
+                      const alreadySelected = new Set(form.assignedTo.map(a => String(a?.user_id || a?.id || a?.name || a)));
+                      const filtered = users.filter(u => {
+                        const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim();
+                        const uid = String(u.id || u.user_id || '');
+                        if (alreadySelected.has(uid) || alreadySelected.has(name)) return false;
+                        if (!assignSearchTerm.trim()) return true;
+                        return (
+                          name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
+                          (u.designation || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
+                        );
+                      });
+                      return filtered.length === 0 ? (
+                        <div className="text-center py-5 text-gray-400 text-sm">
+                          {assignSearchTerm ? 'No matching users found' : 'No users available'}
+                        </div>
+                      ) : filtered.map(user => {
+                        const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                        return (
+                          <div
+                            key={user.id || user.user_id}
+                            className="group flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => { handleAddAssignee(user); setAssignSearchTerm(''); }}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                              {name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?'}
+                            </div>
+                            <div className="flex flex-col flex-grow min-w-0">
+                              <span className="text-sm font-medium text-black truncate">{name}</span>
+                              {user.designation && (
+                                <span className="text-xs text-gray-500 truncate">{user.designation}</span>
+                              )}
+                            </div>
+                            <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>,
+                document.body
               )}
             </div>
           </div>

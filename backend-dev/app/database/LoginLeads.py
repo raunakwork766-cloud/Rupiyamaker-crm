@@ -274,8 +274,11 @@ class LoginLeadsDB:
         return await self.collection.count_documents(query)
     
     async def get_login_lead_by_original_id(self, original_lead_id: str) -> Optional[dict]:
-        """Get a login lead by its original lead ID"""
-        return await self.collection.find_one({"original_lead_id": original_lead_id})
+        """Get the LATEST login lead by its original lead ID (sorted by creation, newest first)"""
+        return await self.collection.find_one(
+            {"original_lead_id": original_lead_id},
+            sort=[("_id", -1)]  # Latest first (_id encodes creation time in MongoDB)
+        )
     
     async def add_note(self, note_data: dict) -> str:
         """Add a note to a login lead"""

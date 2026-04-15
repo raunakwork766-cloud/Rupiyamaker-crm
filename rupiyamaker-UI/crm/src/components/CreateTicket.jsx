@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import { formatDateTime } from '../utils/dateUtils';
@@ -243,9 +244,62 @@ export default function CreateTicket({ onClose, onSubmit }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
   const [currentDateTime, setCurrentDateTime] = useState(getCurrentDateTimeString());
-  const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
+  const [assignDropdownPos, setAssignDropdownPos] = useState({});
+  const assignTriggerRef = useRef(null);
   const detailsRef = useRef(null);
   const modalRef = useRef(null);
+
+  const [ticketUsers, setTicketUsers] = useState([]);
+  const [loadingTicketUsers, setLoadingTicketUsers] = useState(false);
+
+  // Helper: compute fixed dropdown position based on trigger rect
+  const calcDropdownPos = (triggerEl, dropdownHeight = 300) => {
+    const rect = triggerEl.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < dropdownHeight && rect.top > spaceBelow;
+    return openUp
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width, zIndex: 9999 }
+      : { position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 9999 };
+  };
+
+  // Close assign dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      const inTrigger = assignTriggerRef.current && assignTriggerRef.current.contains(e.target);
+      const inPortal = e.target.closest('[data-portal="ticket-assign-dropdown"]');
+      if (!inTrigger && !inPortal) setShowAssignDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch users for assignment
+  useEffect(() => {
+    const fetchTicketUsers = async () => {
+      setLoadingTicketUsers(true);
+      try {
+        const response = await API.tasks.getUsersForAssignment();
+        let list = [];
+        if (response && response.users && Array.isArray(response.users)) {
+          list = response.users
+            .filter(u => u.employee_status === 'active' || u.is_active === true || u.employee_status === undefined)
+            .map(u => ({
+              id: u.user_id || u.id,
+              name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+              designation: u.role || u.designation || '',
+            }));
+        }
+        setTicketUsers(list);
+      } catch (err) {
+        console.error('Error fetching ticket users:', err);
+      } finally {
+        setLoadingTicketUsers(false);
+      }
+    };
+    fetchTicketUsers();
+  }, []);
 
   // Effect for auto-resizing the details textarea
   useEffect(() => {
@@ -687,51 +741,101 @@ export default function CreateTicket({ onClose, onSubmit }) {
               </div>
             </div>
 
-            {/* Modified Assignee Section for multiple assignees */}
+            {/* Assignee Section */}
             <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">
-                Assignee
-              </label>
-              <div className="flex flex-wrap items-center gap-2 border border-cyan-400 rounded-md bg-white p-1 pr-2 min-h-[42px]">
-                {/* Display all assigned names as pills */}
+              <label className="block font-bold text-gray-700 mb-1">Assignee</label>
+              <div
+                ref={assignTriggerRef}
+                className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-white min-h-[44px] flex flex-wrap gap-2 items-center cursor-pointer hover:border-[#0097a7] transition-all duration-300"
+                onClick={() => {
+                  if (showAssignDropdown) return;
+                  if (assignTriggerRef.current) setAssignDropdownPos(calcDropdownPos(assignTriggerRef.current, 300));
+                  setShowAssignDropdown(true);
+                }}
+              >
+                {form.assignedTo.length === 0 && (
+                  <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
+                )}
                 {form.assignedTo.map((assignee, index) => {
-                  // Get name based on whether assignee is a string or object
                   const assigneeName = typeof assignee === 'string' ? assignee : assignee.name;
-                  
                   return (
-                    <div
-                      key={index} // Using index as key since we might have duplicate names
-                      className="bg-blue-100 text-blue-800 py-1 px-3 rounded-md flex items-center"
-                    >
-                      {/* Profile icon with initials */}
-                      <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center mr-2 text-xs flex-shrink-0">
-                        {assigneeName.split(' ')
-                          .map(part => part[0])
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()}
+                    <div key={index} className="flex items-center gap-2 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
+                      <div className="w-5 h-5 rounded-full bg-white text-[#03B0F5] flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                        {assigneeName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
-                      <span>{assigneeName}</span>
-                      <button
-                        type="button"
-                        className="ml-2 text-blue-500 hover:text-blue-700"
-                        onClick={() => handleRemoveAssignee(assigneeName)}
-                      >
-                        ×
-                      </button>
+                      <span className="text-xs font-bold">{assigneeName}</span>
+                      <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assigneeName); }}>×</button>
                     </div>
                   );
                 })}
-                <button
-                  type="button"
-                  className="text-blue-600 font-medium hover:text-blue-800 ml-auto" // Pushed to the right
-                  onClick={() => setShowAssignPopup(true)}
-                >
-                  + Add more
-                </button>
+                <div className="ml-auto flex-shrink-0">
+                  <svg className={`w-4 h-4 text-[#00bcd4] transition-transform duration-200 ${showAssignDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
               </div>
+
+              {showAssignDropdown && createPortal(
+                <div
+                  data-portal="ticket-assign-dropdown"
+                  style={{ ...assignDropdownPos, background: '#fff', border: '2px solid #00bcd4', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden' }}
+                >
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="relative">
+                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        autoFocus
+                        type="text"
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                        placeholder="Search by name or designation..."
+                        value={assignSearchTerm}
+                        onChange={e => setAssignSearchTerm(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto">
+                    {loadingTicketUsers ? (
+                      <div className="text-center py-5 text-gray-400 text-sm">Loading users...</div>
+                    ) : (() => {
+                      const alreadySelected = new Set(form.assignedTo.map(a => typeof a === 'string' ? a : a.name));
+                      const filtered = ticketUsers.filter(u => {
+                        if (alreadySelected.has(u.name)) return false;
+                        if (!assignSearchTerm.trim()) return true;
+                        return (
+                          u.name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
+                          (u.designation || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
+                        );
+                      });
+                      return filtered.length === 0 ? (
+                        <div className="text-center py-5 text-gray-400 text-sm">
+                          {assignSearchTerm ? 'No matching users found' : 'No users available'}
+                        </div>
+                      ) : filtered.map(user => (
+                        <div
+                          key={user.id}
+                          className="group flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { handleAddAssignee(user); setAssignSearchTerm(''); }}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                            {user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?'}
+                          </div>
+                          <div className="flex flex-col flex-grow min-w-0">
+                            <span className="text-sm font-medium text-black truncate">{user.name}</span>
+                            {user.designation && <span className="text-xs text-gray-500 truncate">{user.designation}</span>}
+                          </div>
+                          <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>,
+                document.body
+              )}
             </div>
-            {/* End of Modified Assignee Section */}
 
             <div className="flex gap-4 mt-6">
               <button
@@ -750,17 +854,6 @@ export default function CreateTicket({ onClose, onSubmit }) {
             </div>
           </form>
       </div>
-      
-      {/* Assign Popup */}
-      {showAssignPopup && (
-        <AssignPopup
-          onClose={() => setShowAssignPopup(false)}
-          onSelect={(user) => {
-            handleAddAssignee(user);
-            setShowAssignPopup(false);
-          }}
-        />
-      )}
     </div>
   );
 }

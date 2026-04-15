@@ -101,6 +101,7 @@ async def list_users(
     department_id: Optional[str] = None,
     team_id: Optional[str] = None,
     is_active: Optional[bool] = None,
+    include_all: Optional[bool] = Query(None, description="If true, return ALL employees including inactive (for employee management page)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """⚡ OPTIMIZED: List users with hierarchical permission filtering and caching"""
@@ -114,7 +115,7 @@ async def list_users(
         print(f"GET /users - Listing users (requested by user: {user_id})")
         
         # ⚡ STEP 1: Generate cache key
-        filters_str = f"{user_id}|{role_id}|{department_id}|{team_id}|{is_active}"
+        filters_str = f"{user_id}|{role_id}|{department_id}|{team_id}|{is_active}|{include_all}"
         cache_key = f"users_list:{hashlib.md5(filters_str.encode()).hexdigest()}"
         
         # ⚡ STEP 2: Try cache first (10-second TTL for user lists)
@@ -138,6 +139,9 @@ async def list_users(
                 filter_dict["team_id"] = team_id
             if is_active is not None:
                 filter_dict["is_active"] = is_active
+                # If explicitly requesting inactive users, remove the status exclusion filter
+                if is_active is False:
+                    filter_dict.pop("employee_status", None)
             
             users = await users_db.list_users(filter_dict)
             converted_users = [convert_object_id(user) for user in users]
@@ -149,11 +153,11 @@ async def list_users(
         permissions = await get_hierarchical_permissions(user_id, "employees")
         permission_level = permissions["permission_level"]
         
-        # Build filter based on permissions — always exclude inactive employees
-        filter_dict = {
-            "employee_status": {"$ne": "inactive"},
-            "is_active": {"$ne": False}
-        }
+        # Build filter based on permissions — exclude inactive employees by default
+        filter_dict = {}
+        if not include_all:
+            filter_dict["employee_status"] = {"$ne": "inactive"}
+            filter_dict["is_active"] = {"$ne": False}
         if role_id:
             filter_dict["role_id"] = role_id
         if department_id:
@@ -162,6 +166,9 @@ async def list_users(
             filter_dict["team_id"] = team_id
         if is_active is not None:
             filter_dict["is_active"] = is_active
+            # If explicitly requesting inactive users, remove the status exclusion filter
+            if is_active is False:
+                filter_dict.pop("employee_status", None)
         
         # Apply hierarchical filtering based on permission level
         if permission_level == "all":
@@ -447,15 +454,14 @@ async def login(
     if not user_lookup:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username/email or password"
+            detail="USERNAME_NOT_FOUND"
         )
 
     # Step 2: Check account status BEFORE verifying password (gives specific 403 errors)
-    # Previously these checks were dead code because authenticate_user returned None first
     if not user_lookup.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is inactive. Please contact the administrator."
+            detail="ACCOUNT_INACTIVE"
         )
 
     # 🔒 CRITICAL: Check employee status for HRMS employees
@@ -464,14 +470,14 @@ async def login(
         if employee_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account is inactive. Please contact the administrator."
+                detail="ACCOUNT_INACTIVE"
             )
 
     # Check if login is enabled for this user (default is True if not set)
     if not user_lookup.get("login_enabled", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Login access is disabled for your account. Please contact the administrator."
+            detail="LOGIN_DISABLED"
         )
 
     # Step 3: Now verify the password
@@ -483,7 +489,7 @@ async def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username/email or password"
+            detail="WRONG_PASSWORD"
         )
     
     # 🔒 CRITICAL: Check if user's session was invalidated (for offline logout)
@@ -565,10 +571,40 @@ async def login(
     # Convert ObjectId to string
     user_dict = convert_object_id(user)
     
+    # 🔒 SECURITY + PERFORMANCE: Only send necessary fields in login response
+    # This prevents localStorage quota exceeded errors on the frontend
+    login_user_fields = [
+        '_id', 'first_name', 'last_name', 'username', 'email', 'phone',
+        'role_id', 'department_id', 'team_id', 'employee_id',
+        'is_active', 'login_enabled', 'is_employee', 'employee_status',
+        'otp_required', 'profile_photo', 'designation',
+        'crm_access', 'onboarding_status'
+    ]
+    user_dict = {k: user_dict.get(k) for k in login_user_fields if k in user_dict}
+    
+    # Send only essential role info (name + id), permissions sent separately
+    role_info = None
+    if role:
+        role_converted = convert_object_id(role)
+        role_info = {
+            '_id': role_converted.get('_id'),
+            'name': role_converted.get('name'),
+            'reporting_id': role_converted.get('reporting_id')
+        }
+    
+    # Send only essential department info
+    dept_info = None
+    if department:
+        dept_converted = convert_object_id(department)
+        dept_info = {
+            '_id': dept_converted.get('_id'),
+            'name': dept_converted.get('name')
+        }
+    
     return {
         "user": user_dict,
-        "role": convert_object_id(role) if role else None,
-        "department": convert_object_id(department) if department else None,
+        "role": role_info,
+        "department": dept_info,
         "designation": designation if designation else None,
         "permissions": role_permissions,
         "otp_verified": otp_required,  # Indicates if OTP was required and verified

@@ -32,7 +32,10 @@ import {
   canEdit, 
   canDelete,
   getPermissionDisplayText,
-  getCurrentUserId
+  getCurrentUserId,
+  hasPermission,
+  getUserPermissions,
+  isSuperAdmin as isSuperAdminCheck
 } from '../utils/permissions';
 
 // API base URL - Use proxy in development
@@ -286,6 +289,8 @@ const LeavesPage = () => {
     leave_admin: canUserViewAll(),
     leaves_create: canUserCreate(),
     leaves_delete: canDelete('leaves'), // Use proper permission function for leaves delete
+    leaves_select: hasPermission(getUserPermissions(), 'leaves', 'select') || canDelete('leaves'), // select action
+    leave_setting: isSuperAdminCheck(getUserPermissions()) || canUserViewAll() || hasPermission(getUserPermissions(), 'leaves', 'leave_setting'), // settings button
     can_view_all: canUserViewAll(),
     can_approve_reject: isSuperAdmin() || canUserViewJunior() || canUserViewAll(), // Super admin, junior and all can approve/reject
     is_super_admin: isSuperAdmin(),
@@ -379,6 +384,8 @@ const LeavesPage = () => {
       leave_admin: canViewAllLeaves,
       leaves_create: canUserCreate(),
       leaves_delete: canDelete('leaves'), // Use proper permission function for leaves delete
+      leaves_select: hasPermission(getUserPermissions(), 'leaves', 'select') || canDelete('leaves'),
+      leave_setting: isSuperAdminUser || hasPermission(getUserPermissions(), 'leaves', 'leave_setting'),
       can_view_all: canViewAllLeaves,
       can_approve_reject: canApproveReject,
       is_super_admin: isSuperAdminUser,
@@ -480,6 +487,12 @@ const LeavesPage = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          throw new Error(errorData.detail || 'You don\'t have permission to delete this leave');
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.detail || 'You can only delete pending leave applications');
+        }
         throw new Error(`Failed to delete leave: ${response.status} - ${errorData.detail || 'Unknown error'}`);
       }
 
@@ -639,7 +652,9 @@ const LeavesPage = () => {
           leaves_own: perms.can_view_own,
           leave_admin: perms.can_approve_reject,
           leaves_create: perms.can_create,
-          leaves_delete: canDelete('leaves'), // Use proper permission function for leaves delete
+          leaves_delete: canDelete('leaves'),
+          leaves_select: hasPermission(getUserPermissions(), 'leaves', 'select') || canDelete('leaves'),
+          leave_setting: perms.is_super_admin || hasPermission(getUserPermissions(), 'leaves', 'leave_setting'),
           can_view_all: perms.can_view_all,
           can_approve_reject: perms.can_approve_reject,
           is_super_admin: perms.is_super_admin
@@ -654,7 +669,9 @@ const LeavesPage = () => {
           leaves_own: true,
           leave_admin: false,
           leaves_create: true,
-          leaves_delete: canDelete('leaves'), // Use proper permission function for leaves delete
+          leaves_delete: canDelete('leaves'),
+          leaves_select: false,
+          leave_setting: false,
           can_view_all: false,
           can_approve_reject: false,
           is_super_admin: false
@@ -668,7 +685,9 @@ const LeavesPage = () => {
         leaves_own: true,
         leave_admin: false,
         leaves_create: true,
-        leaves_delete: canDelete('leaves'), // Use proper permission function for leaves delete
+        leaves_delete: canDelete('leaves'),
+        leaves_select: false,
+        leave_setting: false,
         can_view_all: false,
         can_approve_reject: false,
         is_super_admin: false
@@ -1161,6 +1180,8 @@ const LeavesPage = () => {
         checkUserPermissions();
         // Ensure myApprovers is loaded (needed for fallback when leave has no approvers array)
         if (myApprovers.length === 0) fetchMyApprovers();
+      } else if (response.status === 403) {
+        showSnackbar('You don\'t have permission to view this leave', 'error');
       } else {
         throw new Error('Failed to fetch leave details');
       }
@@ -1283,7 +1304,7 @@ const LeavesPage = () => {
        
         <div className="flex items-center gap-2">
           {/* Select Button Controls */}
-          {permissions.leaves_delete && (
+          {(permissions.leaves_delete || permissions.leaves_select) && (
             <div className="flex items-center gap-3">
               {!showCheckboxes ? (
                 <button
@@ -1335,7 +1356,7 @@ const LeavesPage = () => {
               <Plus className="mr-2 h-4 w-4" /> APPLY LEAVE
             </button>
           )}
-          {(permissions.is_super_admin || permissions.can_view_all) && (
+          {(permissions.leave_setting) && (
             <button
               onClick={handleOpenSettings}
               className="bg-gradient-to-b from-orange-400 to-orange-600 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-orange-600 hover:to-orange-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"

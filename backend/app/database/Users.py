@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
 import logging
+import re
 import bcrypt
 from app.utils.password_encryption import password_encryptor
 from app.config import Config
@@ -150,14 +151,16 @@ class UsersDB:
         return user
         
     async def get_user_by_username(self, username: str) -> Optional[dict]:
-        """Get a user by username"""
-        return await self.collection.find_one({"username": username})
+        """Get a user by username (case-insensitive)"""
+        escaped = re.escape(username)
+        return await self.collection.find_one({"username": {"$regex": f"^{escaped}$", "$options": "i"}})
         
     async def get_user_by_email(self, email: str) -> Optional[dict]:
-        """Get a user by email"""
+        """Get a user by email (case-insensitive)"""
         if not email:  # Handle None or empty email
             return None
-        return await self.collection.find_one({"email": email})
+        escaped = re.escape(email)
+        return await self.collection.find_one({"email": {"$regex": f"^{escaped}$", "$options": "i"}})
         
     async def get_user_by_phone(self, phone: str) -> Optional[dict]:
         """Get a user by phone number"""

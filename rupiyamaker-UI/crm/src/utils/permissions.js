@@ -106,19 +106,19 @@ export const getPermissionLevel = (module, userPermissions = null) => {
   
   // Handle object format permissions (newer format)
   if (typeof userPermissions === 'object' && !Array.isArray(userPermissions)) {
-    const modulePermissions = userPermissions[module];
+    const modulePermissions = userPermissions[module] || userPermissions[module.toLowerCase()] || userPermissions[module.charAt(0).toUpperCase() + module.slice(1)];
     
     if (!modulePermissions) {
       return "own"; // Default if no permission found
     }
     
-    // Check for "all" permission
-    if (modulePermissions.all === true) {
+    // Check for "all" permission (supports both old "all" and new "view_all" action names)
+    if (modulePermissions.all === true || modulePermissions.view_all === true) {
       return "all";
     }
     
-    // Check for "junior" permission
-    if (modulePermissions.junior === true) {
+    // Check for "junior" permission (supports both old "junior" and new "view_team" action names)
+    if (modulePermissions.junior === true || modulePermissions.view_team === true) {
       return "junior";
     }
     
@@ -134,7 +134,7 @@ export const getPermissionLevel = (module, userPermissions = null) => {
   // Handle array format permissions (legacy format)
   if (Array.isArray(userPermissions)) {
     // Look for module-specific permissions
-    const modulePermission = userPermissions.find(perm => perm.page === module);
+    const modulePermission = userPermissions.find(perm => perm.page === module || perm.page?.toLowerCase() === module.toLowerCase());
     
     if (!modulePermission) {
       return "own"; // Default if no permission found
@@ -142,16 +142,18 @@ export const getPermissionLevel = (module, userPermissions = null) => {
     
     const actions = modulePermission.actions;
     
-    // Check for "all" permission
+    // Check for "all" permission (supports both old "all" and new "view_all" action names)
     if (actions === "all" || 
+        actions === "view_all" ||
         actions === "*" ||
-        (Array.isArray(actions) && (actions.includes("all") || actions.includes("*")))) {
+        (Array.isArray(actions) && (actions.includes("all") || actions.includes("view_all") || actions.includes("*")))) {
       return "all";
     }
     
-    // Check for "junior" permission
+    // Check for "junior" permission (supports both old "junior" and new "view_team" action names)
     if (actions === "junior" ||
-        (Array.isArray(actions) && actions.includes("junior"))) {
+        actions === "view_team" ||
+        (Array.isArray(actions) && (actions.includes("junior") || actions.includes("view_team")))) {
       return "junior";
     }
   }
@@ -860,8 +862,9 @@ export const canEditEmployees = (userPermissions) => {
     return true;
   }
   
-  // Check for employees_edit permission
-  return hasPermission(userPermissions, 'employees', 'all') || hasPermission(userPermissions, 'employees', 'junior');
+  // Check for employees edit permission (supports both old and new action names)
+  return hasPermission(userPermissions, 'employees', 'view_all') || hasPermission(userPermissions, 'employees', 'all') ||
+         hasPermission(userPermissions, 'employees', 'view_team') || hasPermission(userPermissions, 'employees', 'junior');
 };
 
 /**

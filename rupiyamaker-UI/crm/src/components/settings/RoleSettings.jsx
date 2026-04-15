@@ -21,11 +21,9 @@ const RoleSettings = () => {
     
     // Initialize all permission modules as collapsed by default
     const [collapsedPermissions, setCollapsedPermissions] = useState(new Set([
-        'SuperAdmin', 'feeds', 'login', 'tasks', 'tickets', 'hrms', 
-        'leaves', 'attendance', 'warnings', 'apps', 
-        'settings', 'interview', 'reports',
-        'dialer_report', 'offer_letter', 'leave_management',
-        'notification', 'knowledge_base', 'employees', 'dashboard'
+        'SuperAdmin', 'feeds', 'dashboard', 'login', 'tasks', 'tickets',
+        'warnings', 'interview', 'employees', 'leaves', 'attendance',
+        'dialer_report', 'offer_letter', 'apps', 'notification', 'reports', 'settings'
     ]));
 
     // Role Field Config Modal states
@@ -61,37 +59,35 @@ const RoleSettings = () => {
         description: '',
         department_id: null,
         reporting_id: null,
+        peer_visibility: false,
         permissions: []
     });
 
-    // Simplified permission structure with SuperAdmin, Interview Panel, and Reports
+    // Permission structure — order matches sidebar/user-specified order
     const allPermissions = {
         'SuperAdmin': ['*'],
-        'dashboard': ['show', 'own', 'junior', 'all'],
-        'feeds': ['show','post', 'all', 'delete'],
-        
-        // Leads CRM - Section-wise permissions matching sidebar structure (2 sections only)
+        'feeds': ['show', 'post', 'delete'],
+        'dashboard': ['show'],
+
+        // Leads CRM - Section-wise permissions
         'Leads CRM': {
-            'Create LEAD': ['show', 'add', 'reassignment_popup'],
-            'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'rollback_login', 'delete'],
+            'Create LEAD': ['show', 'duplicate_lead'],
+            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
         },
-        
-        'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
-        'tasks': ['show', 'own', 'junior', 'all', 'delete'],
-        'tickets': ['show', 'own', 'junior', 'all', 'delete'],
-        'warnings': ['show', 'own', 'junior', 'all', 'delete', 'issue', 'view_mistakes', 'create_mistake', 'edit_mistake', 'delete_mistake'],
-        'interview': ['show', 'junior', 'all', 'settings', 'delete'],
-        'hrms': ['show', ],
-        'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
-        'leaves': ['show', 'own', 'junior', 'all', 'delete'],
-        'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
+
+        'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
+        'tasks': ['show', 'view_team', 'view_all', 'delete'],
+        'tickets': ['show', 'view_team', 'view_all', 'delete'],
+        'warnings': ['show', 'view_team', 'view_all', 'warning_setting', 'delete', 'delete_mistake'],
+        'interview': ['show', 'view_team', 'view_all', 'interview_setting', 'delete'],
+        'employees': ['show', 'view_team', 'view_all', 'reset_password', 'lock_role', 'delete'],
+        'leaves': ['show', 'view_team', 'view_all', 'leave_setting', 'delete'],
+        'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance'],
         'dialer_report': ['show'],
         'offer_letter': ['show'],
-        'leave_management': ['show'],
-        'apps': ['show', 'manage'],
-        "notification":['show', 'delete', 'send'],
+        'apps': ['show', 'create_app', 'edit_app', 'share_app'],
+        'notification': ['show', 'create', 'delete'],
         'reports': ['show'],
-        'knowledge_base': ['show'],
         'settings': ['show'],
     };
 
@@ -99,27 +95,24 @@ const RoleSettings = () => {
     const getActionLabel = (moduleName, section, action) => {
         const key = section ? (moduleName + '|' + section) : moduleName;
         const map = {
-            'dashboard': { show:'Sidebar Access', own:'Own Data Only', junior:'Own + Team Data', all:'All Data' },
-            'feeds': { show:'Sidebar Access', post:'Create Post', all:'Manage All', delete:'Delete' },
-            'Leads CRM|Create LEAD': { show:'View Leads', add:'Add Lead', reassignment_popup:'Reassign Popup' },
-            'Leads CRM|PL & ODD LEADS': { show:'View Leads', own:'Own Leads', junior:'Junior Leads', all:'All Leads', assign:'Assign Lead', download_obligation:'Download', status_update:'Update Status', view_data_code:'View Data Code', rollback_login:'Rollback Login', delete:'Delete' },
-            'login': { show:'Sidebar', own:'Own Logins', junior:'Junior Logins', all:'All Logins', channel:'Channel', edit:'Edit', delete:'Delete' },
-            'tasks': { show:'Sidebar', own:'My Tab Only', junior:'Others Tab (Junior)', all:'All Tab', delete:'Delete' },
-            'tickets': { show:'Sidebar', own:'Own Tickets', junior:'Junior Tickets', all:'All Tickets', delete:'Delete' },
-            'warnings': { show:'Sidebar', own:'Own Warnings', junior:'Junior Warnings', all:'All Warnings', delete:'Delete Warning', issue:'Issue Warning', view_mistakes:'View Mistake Directory', create_mistake:'Create Mistake Category', edit_mistake:'Edit Mistake Category', delete_mistake:'Delete Mistake Category' },
-            'interview': { show:'Sidebar', junior:'Junior Panel', all:'All Interviews', settings:'Settings', delete:'Delete' },
-            'hrms': { show:'Sidebar Access' },
-            'employees': { show:'Sidebar', password:'Change Password', junior:'Junior Employees', all:'All Employees', role:'Role Field Config', delete:'Delete' },
-            'leaves': { show:'Sidebar', own:'Own Leaves', junior:'Junior Leaves', all:'All Leaves', delete:'Delete' },
-            'attendance': { show:'Sidebar', own:'Own Attendance', junior:'Junior Attendance', all:'All Attendance', update:'Update Attendance', delete:'Delete' },
-            'dialer_report': { show:'View Dialer Report' },
-            'offer_letter': { show:'Sidebar Access' },
-            'leave_management': { show:'Show Leave Management Tab' },
-            'apps': { show:'Sidebar', manage:'Manage Apps' },
-            'notification': { show:'View', delete:'Delete', send:'Send Notification' },
-            'reports': { show:'Access Reports' },
-            'knowledge_base': { show:'Sidebar Access' },
-            'settings': { show:'Access Settings' },
+            'feeds': { show:'Show in Sidebar', post:'Create Feed', delete:'Delete Feed' },
+            'dashboard': { show:'Show in Sidebar' },
+            'Leads CRM|Create LEAD': { show:'Show in Sidebar', duplicate_lead:'Duplicate Lead' },
+            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', delete:'Delete' },
+            'login': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', channel:'View Channel Name', edit:'Edit Data', delete:'Delete' },
+            'tasks': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
+            'tickets': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
+            'warnings': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', warning_setting:'Warning Setting', delete:'Delete', delete_mistake:'Delete Mistake Category' },
+            'interview': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', interview_setting:'Interview Setting', delete:'Delete' },
+            'employees': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', reset_password:'Reset Password', lock_role:'Lock Role', delete:'Delete' },
+            'leaves': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', leave_setting:'Leave Setting', delete:'Delete' },
+            'attendance': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', leave_management:'Leave Management', update_attendance:'Update Attendance' },
+            'dialer_report': { show:'Show in Sidebar' },
+            'offer_letter': { show:'Show in Sidebar' },
+            'apps': { show:'Show in Sidebar', create_app:'Create App', edit_app:'Edit App', share_app:'Share App' },
+            'notification': { show:'Show in Sidebar', create:'Create Announcement', delete:'Delete' },
+            'reports': { show:'Show in Sidebar' },
+            'settings': { show:'Show in Sidebar' },
         };
         return (map[key] && map[key][action]) || action;
     };
@@ -164,19 +157,28 @@ const RoleSettings = () => {
     const permissionDescriptions = {
         '*': '⭐ Super Admin - Complete system access with all permissions',
         'show': '👁️ Show - Can see the module in navigation menu',
-        'own': '👤 Own Only - Can only manage their own records',
-        'junior': '🔸 Manager Level - Can manage subordinate records + own',
-        'all': '🔑 Admin Level - Can manage all records',
-        'settings': '⚙️ Settings - Can manage module settings and configurations',
+        'view_team': '🔸 View Team - Can view subordinate/team records',
+        'view_all': '🔑 View All - Can view all records system-wide',
         'delete': '🗑️ Delete - Can delete records in this module',
-        'add': '➕ Add - Can create new records',
-        'edit': '✏️ Edit - Can modify existing records',
-        'assign': '👥 Assign - Can assign records to other users',
-        'reassignment_popup': '🔄 Reassignment Popup - Can view and interact with reassignment popup window',
-        'download_obligation': '📥 Download - Can download obligation documents',
-        'status_update': '🔄 Status Update - Can update record status',
+        'edit': '✏️ Edit Data - Can modify existing records',
+        'duplicate_lead': '🔄 Duplicate Lead - Can handle duplicate lead actions',
         'view_data_code': '🏷️ View Data Code - Can see the Data Code field in lead details',
-        'view_other': '👀 View Others - Can view other users records (deprecated)'
+        'status_change': '🔄 Status Change - Can update record status',
+        'rollback_login': '↩️ Roll Back Login - Can rollback login actions',
+        'download_obligation': '📥 Download Obligation - Can download obligation documents',
+        'channel': '📺 View Channel Name - Can see channel information',
+        'warning_setting': '⚙️ Warning Setting - Can manage warning configurations',
+        'interview_setting': '⚙️ Interview Setting - Can manage interview configurations',
+        'reset_password': '🔑 Reset Password - Can reset employee passwords',
+        'lock_role': '🔒 Lock Role - Can lock/unlock employee roles',
+        'leave_setting': '⚙️ Leave Setting - Can manage leave configurations',
+        'leave_management': '📋 Leave Management - Can manage team leave',
+        'update_attendance': '📝 Update Attendance - Can update attendance records',
+        'create_app': '➕ Create App - Can create new apps',
+        'edit_app': '✏️ Edit App - Can edit existing apps',
+        'share_app': '🔗 Share App - Can share apps',
+        'create': '➕ Create - Can create new records',
+        'post': '📝 Create Feed/Post',
     };
 
     useEffect(() => {
@@ -872,8 +874,14 @@ const RoleSettings = () => {
                             if (!permissionsObj[nestedKey]) {
                                 permissionsObj[nestedKey] = [];
                             }
-                            const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
-                            permissionsObj[nestedKey] = [...(permissionsObj[nestedKey] || []), ...actions];
+                            const rawActions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                            // Normalize legacy action names so UI checkboxes reflect DB state correctly
+                            const actions = rawActions.map(a => {
+                                if (a === 'junior') return 'view_team';
+                                if (a === 'all') return 'view_all';
+                                return a;
+                            });
+                            permissionsObj[nestedKey] = [...new Set([...(permissionsObj[nestedKey] || []), ...actions])];
                             
                             console.log(`🔍 DEBUG: Loaded nested permission "${nestedKey}" with ${actions.length} actions:`, actions);
                         }
@@ -886,7 +894,12 @@ const RoleSettings = () => {
                         
                         // Distribute actions to appropriate sections based on their type
                         const createActions = actions.filter(a => ['show', 'add', 'edit', 'delete'].includes(a));
-                        const viewActions = actions.filter(a => ['show', 'own', 'junior', 'all'].includes(a));
+                        const viewActionsRaw = actions.filter(a => ['show', 'own', 'junior', 'all', 'view_team', 'view_all'].includes(a));
+                        const viewActions = viewActionsRaw.map(a => {
+                            if (a === 'junior') return 'view_team';
+                            if (a === 'all') return 'view_all';
+                            return a;
+                        });
                         const otherActions = actions.filter(a => ['assign', 'download_obligation', 'status_update', 'view_data_code', 'delete'].includes(a));
                         
                         // If we have create-type actions, add to Create LEAD section
@@ -925,7 +938,16 @@ const RoleSettings = () => {
                         if (!permissionsObj[perm.page]) {
                             permissionsObj[perm.page] = [];
                         }
-                        const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                        let actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                        // Normalize old interview action names to new names
+                        if (perm.page === 'interview') {
+                            actions = actions.map(a => {
+                                if (a === 'settings') return 'interview_setting';
+                                if (a === 'junior') return 'view_team';
+                                if (a === 'all') return 'view_all';
+                                return a;
+                            });
+                        }
                         permissionsObj[perm.page] = [...(permissionsObj[perm.page] || []), ...actions];
                     }
                 });
@@ -944,6 +966,7 @@ const RoleSettings = () => {
                 description: role.description || '',
                 department_id: role.department_id || null,
                 reporting_ids: reportingIds,  // Changed from reporting_id to reporting_ids (array)
+                peer_visibility: role.peer_visibility || false,
                 permissions: permissionsObj
             });
         } else {
@@ -952,6 +975,7 @@ const RoleSettings = () => {
                 description: '',
                 department_id: null,
                 reporting_ids: [],  // Changed from reporting_id to reporting_ids (array)
+                peer_visibility: false,
                 permissions: {}
             });
         }
@@ -972,7 +996,7 @@ const RoleSettings = () => {
     const closeModal = () => {
         setIsModalVisible(false);
         setEditingRole(null);
-        setFormData({ name: '', description: '', department_id: null, reporting_ids: [], permissions: {} });  // Changed from reporting_id to reporting_ids
+        setFormData({ name: '', description: '', department_id: null, reporting_ids: [], peer_visibility: false, permissions: {} });  // Changed from reporting_id to reporting_ids
         // Reset hierarchical navigation states
         setShowMainDepartments(true);
         setSelectedMainDepartment(null);
@@ -3571,11 +3595,6 @@ const RoleSettings = () => {
 
     const treeData = React.useMemo(() => buildTree(roles), [roles]);
 
-    const totalPermissions = Object.values(allPermissions).flat().length;
-    const selectedPermissions = Object.values(formData.permissions).flat().length;
-    const allSelected = selectedPermissions === totalPermissions;
-    const someSelected = selectedPermissions > 0 && selectedPermissions < totalPermissions;
-
     return (
         <div style={{
             width: '100%',
@@ -4080,6 +4099,24 @@ const RoleSettings = () => {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Peer Visibility Toggle */}
+                            <div className="mt-4 rounded-lg border border-gray-600 bg-gray-700/50 p-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({...formData, peer_visibility: !formData.peer_visibility})}
+                                    className="w-full flex items-center justify-between gap-3"
+                                >
+                                    <div className="text-left">
+                                        <div className="text-sm font-semibold text-white">Peer Visibility</div>
+                                        <div className="text-xs text-gray-400 mt-0.5">Same-role members can see each other's data (leads, logins, dashboard)</div>
+                                    </div>
+                                    <div style={{width:'44px',height:'24px',borderRadius:'12px',background:formData.peer_visibility?'#6366f1':'#4b5563',position:'relative',transition:'background 0.2s',flexShrink:0}}>
+                                        <div style={{position:'absolute',top:'3px',left:formData.peer_visibility?'22px':'3px',width:'18px',height:'18px',borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}></div>
+                                    </div>
+                                </button>
+                            </div>
+
                             <div className="flex justify-end space-x-4 mt-8">
                                 <button type="button" onClick={closeModal} className="px-5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold transition-colors">Cancel</button>
                                 <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors">Save</button>
@@ -4182,7 +4219,7 @@ const RoleSettings = () => {
                         </div>
                         <form onSubmit={handleSubmit} className="flex flex-1 overflow-hidden">
                             {/* Left Pane: Form Fields */}
-                            <div style={{width:'380px',flexShrink:0,overflowY:'auto',borderRight:'2px solid #e5e7eb',display:'flex',flexDirection:'column'}}>
+                            <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column'}}>
                             <div className="m-4 bg-gray-800 rounded-xl border border-gray-700 p-5">
                             <div className="grid grid-cols-1 gap-4 mb-4">
                                 <div>
@@ -4473,6 +4510,24 @@ const RoleSettings = () => {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Peer Visibility Toggle */}
+                            <div className="m-4 rounded-lg border border-gray-600 bg-gray-700/50 p-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({...formData, peer_visibility: !formData.peer_visibility})}
+                                    className="w-full flex items-center justify-between gap-3"
+                                >
+                                    <div className="text-left">
+                                        <div className="text-sm font-semibold text-white">Peer Visibility</div>
+                                        <div className="text-xs text-gray-400 mt-0.5">Same-role members can see each other's data (leads, logins, dashboard)</div>
+                                    </div>
+                                    <div style={{width:'44px',height:'24px',borderRadius:'12px',background:formData.peer_visibility?'#6366f1':'#4b5563',position:'relative',transition:'background 0.2s',flexShrink:0}}>
+                                        <div style={{position:'absolute',top:'3px',left:formData.peer_visibility?'22px':'3px',width:'18px',height:'18px',borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}></div>
+                                    </div>
+                                </button>
+                            </div>
+
                             </div>
                             {/* Left pane footer */}
                             <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 flex gap-3 p-4 shrink-0">
@@ -4480,194 +4535,6 @@ const RoleSettings = () => {
                                 <button type="submit" className="flex-1 px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{background:'linear-gradient(135deg,#000 0%,#333 100%)'}} onMouseEnter={e=>e.currentTarget.style.opacity='0.85'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>💾 Save</button>
                             </div>
                             </div>{/* /left-pane */}
-                            {/* Right Pane: Permissions - same dark style as main list */}
-                            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#000'}}>
-
-                                {/* Header bar */}
-                                <div style={{flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 20px',background:'#000',borderBottom:'3px solid #fff'}}>
-                                    <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                        <span style={{color:'#fff',fontWeight:'700',fontSize:'0.85rem',textTransform:'uppercase',letterSpacing:'1.5px'}}>PERMISSIONS</span>
-                                    </div>
-                                    <div style={{display:'flex',alignItems:'center',gap:'16px'}}>
-                                        {/* Super Admin toggle */}
-                                        <div onClick={()=>handlePermissionChange('SuperAdmin','*',!formData.permissions.SuperAdmin)}
-                                            style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',userSelect:'none',padding:'6px 12px',borderRadius:'8px',border:formData.permissions.SuperAdmin?'1px solid #f59e0b':'1px solid #444',background:formData.permissions.SuperAdmin?'rgba(245,158,11,0.15)':'rgba(255,255,255,0.05)',transition:'all 0.2s'}}
-                                        >
-                                            <div style={{width:'36px',height:'20px',borderRadius:'10px',background:formData.permissions.SuperAdmin?'#f59e0b':'#444',position:'relative',transition:'background 0.2s',flexShrink:0}}>
-                                                <div style={{position:'absolute',top:'2px',left:formData.permissions.SuperAdmin?'18px':'2px',width:'16px',height:'16px',borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}></div>
-                                            </div>
-                                            <span style={{color:formData.permissions.SuperAdmin?'#ffd700':'#888',fontSize:'0.75rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap'}}>Super Admin</span>
-                                        </div>
-                                        <span style={{background:'#fff',color:'#000',fontWeight:'800',fontSize:'0.75rem',padding:'4px 12px',borderRadius:'20px',whiteSpace:'nowrap'}}>
-                                            {Object.entries(formData.permissions).filter(([k,v])=>k!=='employees.role_field_roles'&&(Array.isArray(v)?v.length>0:v===true)).reduce((s,[k,v])=>s+(Array.isArray(v)?v.length:1),0)} active
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* SuperAdmin active banner */}
-                                {formData.permissions.SuperAdmin && (
-                                    <div style={{flexShrink:0,padding:'16px 20px',background:'rgba(245,158,11,0.1)',borderBottom:'1px solid rgba(245,158,11,0.3)',display:'flex',alignItems:'center',gap:'12px'}}>
-                                        <span style={{fontSize:'1.5rem'}}>⭐</span>
-                                        <div>
-                                            <p style={{color:'#ffd700',fontWeight:'700',margin:0,fontSize:'0.875rem'}}>Super Administrator Active</p>
-                                            <p style={{color:'#92400e',margin:0,fontSize:'0.75rem',marginTop:'2px'}}>All permissions granted automatically</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Permission table - horizontal scroll, dark themed */}
-                                {!formData.permissions.SuperAdmin && (
-                                <div style={{flex:1,overflowX:'auto',overflowY:'auto',borderBottom:'3px solid #fff'}}>
-                                    <table style={{borderCollapse:'collapse',tableLayout:'auto',minWidth:'max-content',fontSize:'0.875rem'}}>
-                                        <thead style={{position:'sticky',top:0,zIndex:5}}>
-                                            {/* Row 1: module group headers */}
-                                            <tr>
-                                                <th style={{padding:'10px 16px',background:'#000',color:'#fff',fontWeight:'700',fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'1px',borderRight:'3px solid #ffd700',whiteSpace:'nowrap',minWidth:'200px',textAlign:'left',position:'sticky',left:0,zIndex:6}}>
-                                                    MODULE
-                                                </th>
-                                                {permissionModules.map((mod,idx)=>{
-                                                    const allSel = (()=>{
-                                                        let key;
-                                                        if(mod.isNested){const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');key=dm+'.'+ds;}
-                                                        else key=mod.originalModule;
-                                                        const p=formData.permissions[key]||[];
-                                                        return p.length===mod.actions.length&&mod.actions.length>0;
-                                                    })();
-                                                    return(
-                                                        <th key={mod.label} colSpan={mod.actions.length}
-                                                            onClick={()=>{
-                                                                let key;
-                                                                if(mod.isNested){const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');key=dm+'.'+ds;}
-                                                                else key=mod.originalModule;
-                                                                handleModuleToggle(key,!allSel);
-                                                            }}
-                                                            style={{padding:'8px 6px',textAlign:'center',fontWeight:'800',fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.5px',color:'#ffd700',background:idx%2===0?'#000':'#0d0d0d',borderLeft:idx>0?'2px solid #ffd700':'none',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}
-                                                            title="Click to toggle all"
-                                                        >
-                                                            {mod.label}
-                                                        </th>
-                                                    );
-                                                })}
-                                            </tr>
-                                            {/* Row 2: action names */}
-                                            <tr>
-                                                <th style={{padding:'6px 16px',background:'#111',borderRight:'3px solid #ffd700',color:'#888',fontSize:'0.65rem',textTransform:'uppercase',position:'sticky',left:0,zIndex:6}}></th>
-                                                {permissionModules.map((mod,mIdx)=>
-                                                    mod.actions.map((action,aIdx)=>{
-                                                        return(
-                                                        <th key={mod.label+action} style={{padding:'5px 8px',textAlign:'center',fontWeight:'600',fontSize:'0.68rem',color:'#aaa',background:mIdx%2===0?'#111':'#0a0a0a',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',borderTop:'1px solid #333',whiteSpace:'nowrap',minWidth:'80px'}}>
-                                                            {getActionLabel(mod.originalModule,mod.section,action)}
-                                                        </th>
-                                                        );
-                                                    })
-                                                )}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td style={{padding:'10px 16px',background:'#000',borderRight:'3px solid #ffd700',position:'sticky',left:0,zIndex:2,whiteSpace:'nowrap',verticalAlign:'middle'}}>
-                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'0.85rem',textTransform:'uppercase',letterSpacing:'1px',lineHeight:1}}>{formData.name||'—'}</div>
-                                                    <div style={{color:'#555',fontSize:'0.65rem',marginTop:'4px',fontStyle:'italic'}}>Click ✓/— to toggle</div>
-                                                </td>
-                                                {permissionModules.map((mod,mIdx)=>
-                                                    mod.actions.map((action,aIdx)=>{
-                                                        let enabled=false, key=mod.originalModule;
-                                                        if(mod.isNested){
-                                                            const dm=mod.originalModule==='Leads CRM'?'leads':mod.originalModule.toLowerCase();
-                                                            const ds=mod.section.toLowerCase().replace(/ & /g,'_').replace(/ /g,'_');
-                                                            key=dm+'.'+ds;
-                                                            enabled=(formData.permissions[key]||[]).includes(action);
-                                                        } else if(mod.originalModule==='employees'&&action==='role'){
-                                                            const isChecked=(formData.permissions['employees']||[]).includes('role');
-                                                            const selRoleIds=formData.permissions['employees.role_field_roles']||[];
-                                                            return(
-                                                                <td key={mod.label+action} style={{padding:'8px',textAlign:'center',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',background:isChecked?'rgba(0,200,81,0.12)':'#000',minWidth:'60px',verticalAlign:'middle'}}>
-                                                                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px'}}>
-                                                                        <span onClick={()=>handlePermissionChange('employees','role',!isChecked)} style={{fontSize:'22px',fontWeight:'900',cursor:'pointer',color:isChecked?'#00c851':'#333',lineHeight:1}}>{isChecked?'✓':'—'}</span>
-                                                                        {isChecked&&<button type="button" onClick={()=>setRoleFieldModal(true)} style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:selRoleIds.length>0?'#92400e':'#333',color:selRoleIds.length>0?'#fbbf24':'#aaa',border:`1px solid ${selRoleIds.length>0?'#f59e0b':'#555'}`,cursor:'pointer',whiteSpace:'nowrap',fontWeight:700}}>🔒 {selRoleIds.length}</button>}
-                                                                    </div>
-                                                                </td>
-                                                            );
-                                                        } else {
-                                                            enabled=(formData.permissions[mod.originalModule]||[]).includes(action);
-                                                        }
-                                                        return(
-                                                            <td key={mod.label+action}
-                                                                onClick={()=>handlePermissionChange(key,action,!enabled)}
-                                                                style={{padding:'8px',textAlign:'center',cursor:'pointer',borderLeft:aIdx===0&&mIdx>0?'2px solid #ffd700':'1px solid #222',background:enabled?'rgba(0,200,81,0.12)':'#000',minWidth:'60px',transition:'background 0.1s'}}
-                                                                onMouseEnter={e=>{if(!enabled)e.currentTarget.style.background='rgba(255,255,255,0.06)';}}
-                                                                onMouseLeave={e=>{e.currentTarget.style.background=enabled?'rgba(0,200,81,0.12)':'#000';}}
-                                                            >
-                                                                <span style={{fontSize:'22px',fontWeight:'900',color:enabled?'#00c851':'#333',lineHeight:1}}>{enabled?'✓':'—'}</span>
-                                                            </td>
-                                                        );
-                                                    })
-                                                )}
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                )}
-
-                                {roleFieldModal && (
-                                    <div style={{position:'fixed',inset:0,background:'#000c',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}
-                                        onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}}>
-                                        <div style={{background:'#111',border:'2px solid #f59e0b',borderRadius:'14px',width:'100%',maxWidth:'460px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 16px 64px #000e'}}
-                                            onClick={e=>e.stopPropagation()}>
-
-                                            {/* Header */}
-                                            <div style={{padding:'18px 22px 12px',borderBottom:'1px solid #222'}}>
-                                                <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
-                                                    <span style={{fontSize:'22px'}}>🔒</span>
-                                                    <div style={{flex:1}}>
-                                                        <h3 style={{color:'#f59e0b',margin:0,fontSize:'1rem',fontWeight:800}}>Lock Roles</h3>
-                                                        <p style={{color:'#666',margin:0,fontSize:'11px'}}>for <strong style={{color:'#ccc'}}>{formData.name}</strong></p>
-                                                    </div>
-                                                    <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'transparent',border:'none',color:'#555',fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
-                                                </div>
-                                                <p style={{color:'#666',fontSize:'11px',margin:'4px 0 10px',lineHeight:'1.5'}}>Selected roles will be <strong style={{color:'#f59e0b'}}>hidden</strong> from the Role dropdown in Employee forms, and employees with those roles <strong style={{color:'#f59e0b'}}>won't be visible</strong> to users of this role.</p>
-                                                <input type="text" placeholder="Search roles to lock…" value={roleFieldSearch} onChange={e=>setRoleFieldSearch(e.target.value)} autoFocus
-                                                    style={{width:'100%',background:'#000',border:'1px solid #333',color:'#fff',padding:'6px 12px',borderRadius:'7px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
-                                            </div>
-
-                                            {/* Role list */}
-                                            <div style={{flex:1,overflowY:'auto',padding:'6px 0'}}>
-                                                {roles.filter(r=>r.name?.toLowerCase().includes(roleFieldSearch.toLowerCase())).map(r=>{
-                                                    const rid=r._id||r.id;
-                                                    const locked=(formData.permissions['employees.role_field_roles']||[]).includes(rid);
-                                                    return(
-                                                        <div key={rid} onClick={()=>handleRoleFieldRoleToggle(rid)}
-                                                            style={{display:'flex',alignItems:'center',gap:'12px',padding:'9px 20px',cursor:'pointer',background:locked?'#200d00':'transparent',borderLeft:locked?'3px solid #f59e0b':'3px solid transparent',transition:'background 0.15s'}}
-                                                            onMouseEnter={e=>{if(!locked)e.currentTarget.style.background='#1a1a1a';}}
-                                                            onMouseLeave={e=>{if(!locked)e.currentTarget.style.background='transparent';}}>
-                                                            <div style={{width:'17px',height:'17px',border:`2px solid ${locked?'#f59e0b':'#444'}`,borderRadius:'4px',background:locked?'#f59e0b':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                                                                {locked&&<span style={{color:'#000',fontSize:'11px',fontWeight:900}}>✓</span>}
-                                                            </div>
-                                                            <span style={{color:locked?'#fff':'#bbb',fontSize:'13px',fontWeight:locked?700:400}}>{r.name}</span>
-                                                            {r.permissions?.some(p=>p.page==='*')&&<span style={{background:'#ffd700',color:'#000',fontSize:'8px',fontWeight:800,padding:'1px 5px',borderRadius:'3px'}}>SA</span>}
-                                                            {locked&&<span style={{marginLeft:'auto',fontSize:'13px'}}>🔒</span>}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            {/* Footer */}
-                                            <div style={{padding:'14px 22px',borderTop:'1px solid #222',display:'flex',alignItems:'center',gap:'10px'}}>
-                                                <span style={{color:'#666',fontSize:'12px',flex:1}}>
-                                                    {(formData.permissions['employees.role_field_roles']||[]).length>0
-                                                        ?<><strong style={{color:'#f59e0b'}}>{(formData.permissions['employees.role_field_roles']||[]).length}</strong> role(s) locked</>
-                                                        :'No roles locked'}
-                                                </span>
-                                                <button type="button" onClick={()=>setFormData({...formData,permissions:{...formData.permissions,'employees.role_field_roles':[]}})} style={{background:'transparent',border:'1px solid #4b1414',color:'#f87171',padding:'7px 14px',borderRadius:'7px',cursor:'pointer',fontSize:'12px',fontWeight:600}}>Clear All</button>
-                                                <button type="button" onClick={()=>{setRoleFieldModal(false);setRoleFieldSearch('');}} style={{background:'#f59e0b',border:'2px solid #f59e0b',color:'#000',padding:'7px 20px',borderRadius:'7px',cursor:'pointer',fontWeight:800,fontSize:'12px'}}
-                                                    onMouseEnter={e=>{e.currentTarget.style.background='#d97706';e.currentTarget.style.borderColor='#d97706';}}
-                                                    onMouseLeave={e=>{e.currentTarget.style.background='#f59e0b';e.currentTarget.style.borderColor='#f59e0b';}}>🔒 Save</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>{/* /right-pane */}
                         </form>
                 </div>
             )}

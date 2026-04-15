@@ -6,82 +6,71 @@ const API_BASE_URL = '/api';
 // Human-readable labels for action keys shown in column headers
 const ACTION_LABELS = {
     show:                 'Show in Sidebar',
-    own:                  'View Own',
-    junior:               "View Team's",
-    all:                  'View All',
-    view_assign:          'Assigned Leads',
     delete:               'Delete',
-    post:                 'Post / Create',
-    add:                  'Add New',
-    reassignment_popup:   'Reassign Popup',
-    assign:               'Assign to Agent',
-    download_obligation:  'Download File',
-    status_update:        'Update Status',
+    post:                 'Create Feed',
+    duplicate_lead:       'Duplicate Lead',
+    view_team:            'View Team',
+    view_all:             'View All',
     view_data_code:       'View Data Code',
-    rollback_login:       'Rollback Login',
-    channel:              'View by Channel',
-    edit:                 'Edit Record',
-    settings:             'Manage Settings',
-    password:             'Reset Password',
-    role:                 'Lock Role',
-    update:               'Mark Update',
-    manage:               'Install / Manage',
-    send:                 'Send Notification',
-    // Warnings granular actions
-    issue:                'Issue Warning',
-    view_mistakes:        'View Mistake Dir',
-    create_mistake:       'Create Mistake Cat',
-    edit_mistake:         'Edit Mistake Cat',
-    delete_mistake:       'Delete Mistake Cat',
+    status_change:        'Status Change',
+    rollback_login:       'Roll Back Login',
+    download_obligation:  'Download Obligation',
+    channel:              'View Channel Name',
+    edit:                 'Edit Data',
+    warning_setting:      'Warning Setting',
+    interview_setting:    'Interview Setting',
+    reset_password:       'Reset Password',
+    lock_role:            'Lock Role',
+    leave_setting:        'Leave Setting',
+    leave_management:     'Leave Management',
+    update_attendance:    'Update Attendance',
+    create_app:           'Create App',
+    edit_app:             'Edit App',
+    share_app:            'Share App',
+    create:               'Create Announcement',
 };
 
 // Human-readable labels for the module group headers
 const MODULE_LABELS = {
-    dashboard:    'Dashboard',
-    feeds:        'Feeds',
-    'Leads CRM':  'Leads CRM',
-    login:        'Login Activity',
-    tasks:        'Tasks',
-    tickets:      'Tickets',
-    warnings:     'Warnings',
-    interview:    'Interview',
-    hrms:         'HRMS',
-    employees:    'Employees',
-    leaves:       'Leaves',
-    attendance:       'Attendance',
-    dialer_report:   'Dialer Report',
-    offer_letter:    'Offer Letter',
-    leave_management:'Leave Management',
+    feeds:           'Feed',
+    dashboard:       'Dashboard',
+    'Leads CRM':     'Lead CRM',
+    login:           'Login CRM PLOD',
+    tasks:           'Task',
+    tickets:         'Tickets',
+    warnings:        'Warnings',
+    interview:       'Interview',
+    employees:       'HRMS Employee',
+    leaves:          'HRMS Leave',
+    attendance:      'HRMS Attendance',
+    dialer_report:   'HRMS Dialer Report',
+    offer_letter:    'HRMS Offer Letter',
     apps:            'Apps',
-    notification:    'Notifications',
-    reports:         'Reports',
-    knowledge_base:  'Knowledge Base',
-    settings:        'Settings',
+    notification:    'Announcement',
+    reports:         'Report',
+    settings:        'Setting',
 };
 
 const allPermissions = {
-    'dashboard': ['show', 'own', 'junior', 'all', 'view_assign'],
-    'feeds': ['show', 'post', 'all', 'delete'],
+    'feeds': ['show', 'post', 'delete'],
+    'dashboard': ['show'],
     'Leads CRM': {
-        'Create LEAD': ['show', 'add', 'reassignment_popup'],
-        'PL & ODD LEADS': ['show', 'own', 'junior', 'all', 'assign', 'download_obligation', 'status_update', 'view_data_code', 'rollback_login', 'delete'],
+        'Create LEAD': ['show', 'duplicate_lead'],
+        'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
     },
-    'login': ['show', 'own', 'junior', 'all', 'channel', 'edit', 'delete'],
-    'tasks': ['show', 'own', 'junior', 'all', 'delete'],
-    'tickets': ['show', 'own', 'junior', 'all', 'delete'],
-    'warnings': ['show', 'own', 'junior', 'all', 'delete', 'issue', 'view_mistakes', 'create_mistake', 'edit_mistake', 'delete_mistake'],
-    'interview': ['show', 'junior', 'all', 'settings', 'delete'],
-    'hrms': ['show'],
-    'employees': ['show', 'password', 'junior', 'all', 'role', 'delete'],
-    'leaves': ['show', 'own', 'junior', 'all', 'delete'],
-    'attendance': ['show', 'own', 'junior', 'all', 'update', 'delete'],
+    'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
+    'tasks': ['show', 'view_team', 'view_all', 'delete'],
+    'tickets': ['show', 'view_team', 'view_all', 'delete'],
+    'warnings': ['show', 'view_team', 'view_all', 'warning_setting', 'delete', 'delete_mistake'],
+    'interview': ['show', 'view_team', 'view_all', 'interview_setting', 'delete'],
+    'employees': ['show', 'view_team', 'view_all', 'reset_password', 'lock_role', 'delete'],
+    'leaves': ['show', 'view_team', 'view_all', 'leave_setting', 'delete'],
+    'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance'],
     'dialer_report': ['show'],
     'offer_letter': ['show'],
-    'leave_management': ['show'],
-    'apps': ['show', 'manage'],
-    'notification': ['show', 'delete', 'send'],
+    'apps': ['show', 'create_app', 'edit_app', 'share_app'],
+    'notification': ['show', 'create', 'delete'],
     'reports': ['show'],
-    'knowledge_base': ['show'],
     'settings': ['show'],
 };
 
@@ -193,7 +182,7 @@ export default function RoleCompare({ embedded = false }) {
     const [sortAsc, setSortAsc] = useState(true);
     const [saving, setSaving] = useState(new Set());
     const [toast, setToast] = useState(null);
-    const [lockRolesModal, setLockRolesModal] = useState(null); // { roleId, roleName, selectedIds, searchTxt }
+    const [lockRolesModal, setLockRolesModal] = useState(null); // { roleId, roleName, selectedIds, searchTxt, mod, hasLockPermission }
     const [compareFilter, setCompareFilter] = useState([]);
     const [compareOpen, setCompareOpen] = useState(false);
     const [compareSearch, setCompareSearch] = useState('');
@@ -321,17 +310,30 @@ export default function RoleCompare({ embedded = false }) {
     }, [roles, saveRole]);
 
     const togglePermission = useCallback((roleId, mod, action) => {
-        if (action === 'role') {
-            // Open Lock Role selector modal (always, not just when granting)
+        // Special workflow for employees.lock_role:
+        // 1) First-time grant should enable permission and immediately open lock-role selector.
+        // 2) Existing grant should open selector for editing locked role targets.
+        if (action === 'lock_role' && getPageKey(mod) === 'employees') {
             const role = roles.find(r => (r.id || r._id) === roleId);
+            if (!role) return;
+
+            const hasLockPermission = checkRolePerm(role, mod, action);
+
+            if (!hasLockPermission) {
+                doTogglePermission(roleId, mod, action);
+            }
+
             setLockRolesModal({
                 roleId,
                 roleName: role?.name || '',
                 selectedIds: [...(role?.locked_roles || [])],
                 searchTxt: '',
+                mod,
+                hasLockPermission: true,
             });
             return;
         }
+
         doTogglePermission(roleId, mod, action);
     }, [roles, doTogglePermission]);
 
@@ -563,6 +565,24 @@ ${actionHeaders}
                                 style={{ background: 'transparent', border: '1px solid #444', color: '#aaa', padding: '7px 18px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                                 Cancel
                             </button>
+                            {lockRolesModal.hasLockPermission && (
+                                <button
+                                    onClick={() => {
+                                        const role = roles.find(r => (r.id || r._id) === lockRolesModal.roleId);
+                                        if (lockRolesModal.mod) {
+                                            doTogglePermission(lockRolesModal.roleId, lockRolesModal.mod, 'lock_role');
+                                        }
+                                        if ((role?.locked_roles || []).length > 0) {
+                                            saveLockRoles(lockRolesModal.roleId, [], role?.locked_roles || []);
+                                        }
+                                        setLockRolesModal(null);
+                                    }}
+                                    style={{ background: 'transparent', border: '1px solid #ef4444', color: '#fca5a5', padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}
+                                    title="Disable lock role permission and clear locked roles"
+                                >
+                                    Remove Permission
+                                </button>
+                            )}
                             <button onClick={() => {
                                 const role = roles.find(r => (r.id || r._id) === lockRolesModal.roleId);
                                 saveLockRoles(lockRolesModal.roleId, lockRolesModal.selectedIds, role?.locked_roles || []);
@@ -813,7 +833,7 @@ ${actionHeaders}
                                             return (
                                                 <td key={`${mi}-${ai}`}
                                                     onClick={() => togglePermission(role.id || role._id, mod, action)}
-                                                    title={action === 'role'
+                                                    title={action === 'lock_role'
                                                         ? `Lock Roles for ${role.name} — ${(role.locked_roles || []).length} locked`
                                                         : `${has ? 'Remove' : 'Add'} "${ACTION_LABELS[action] || action}" for ${mod.label}`
                                                     }
@@ -821,24 +841,24 @@ ${actionHeaders}
                                                         textAlign: 'center',
                                                         padding: '8px 4px',
                                                         borderLeft: ai === 0 && mi > 0 ? '3px solid #1a1400' : '1px solid #111',
-                                                        background: action === 'role'
+                                                        background: action === 'lock_role'
                                                             ? ((role.locked_roles || []).length > 0 ? '#200d00' : 'transparent')
                                                             : (has ? '#001a00' : 'transparent'),
                                                         cursor: 'pointer',
                                                         transition: 'background 0.15s',
                                                     }}
                                                     onMouseEnter={e => {
-                                                        e.currentTarget.style.background = action === 'role' ? '#2a1200' : (has ? '#002a00' : '#1a1a00');
-                                                        e.currentTarget.style.outline = `1px solid ${action === 'role' ? '#f59e0b66' : '#ffd70066'}`;
+                                                        e.currentTarget.style.background = action === 'lock_role' ? '#2a1200' : (has ? '#002a00' : '#1a1a00');
+                                                        e.currentTarget.style.outline = `1px solid ${action === 'lock_role' ? '#f59e0b66' : '#ffd70066'}`;
                                                     }}
                                                     onMouseLeave={e => {
-                                                        e.currentTarget.style.background = action === 'role'
+                                                        e.currentTarget.style.background = action === 'lock_role'
                                                             ? ((role.locked_roles || []).length > 0 ? '#200d00' : 'transparent')
                                                             : (has ? '#001a00' : 'transparent');
                                                         e.currentTarget.style.outline = 'none';
                                                     }}
                                                 >
-                                                    {action === 'role' ? (
+                                                    {action === 'lock_role' ? (
                                                         (role.locked_roles || []).length > 0
                                                             ? <span style={{ color: '#f59e0b', fontSize: '11px', fontWeight: '700' }}>🔒 {role.locked_roles.length}</span>
                                                             : <span style={{ color: '#444', fontSize: '13px' }}>🔓</span>

@@ -139,6 +139,12 @@ const AppsPage = () => {
     hasPermission(getUserPermissions(), 'apps', '*') ||
     hasPermission(getUserPermissions(), 'apps', 'manage');
 
+  // Granular app permission flags
+  const canCreateApp = isAdmin || hasPermission(getUserPermissions(), 'apps', 'create_app');
+  const canEditApp = isAdmin || hasPermission(getUserPermissions(), 'apps', 'edit_app');
+  const canShareApp = isAdmin || hasPermission(getUserPermissions(), 'apps', 'share_app');
+  const canShowMenu = canEditApp || canShareApp;
+
   useEffect(() => {
     fetchApps();
     fetchRoles();
@@ -1265,7 +1271,7 @@ const AppsPage = () => {
             </div>
 
             {/* Create App Button */}
-            {isAdmin && (
+            {canCreateApp && (
               <button
                 className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white text-xl font-bold px-7 py-2 rounded-2xl shadow-lg transition transform hover:scale-105 flex items-center gap-2"
                 onClick={() => setShowCreateModal(true)}
@@ -1301,7 +1307,7 @@ const AppsPage = () => {
                 className="bg-gray-900 border border-gray-700 rounded-lg overflow-visible hover:border-[#08B8EA] transition-colors relative"
               >
                 {/* Three-dot menu button - Absolute positioned in top right */}
-                {isAdmin && (
+                {canShowMenu && (
                   <div className="absolute top-4 right-4 z-30">
                     <button
                       onClick={(e) => {
@@ -1322,6 +1328,7 @@ const AppsPage = () => {
                           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(8, 184, 234, 0.2)'
                         }}
                       >
+                        {canEditApp && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1333,6 +1340,8 @@ const AppsPage = () => {
                           <Edit size={16} />
                           <span>Edit</span>
                         </button>
+                        )}
+                        {canEditApp && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1349,6 +1358,8 @@ const AppsPage = () => {
                           <Image size={16} />
                           <span>Change Image</span>
                         </button>
+                        )}
+                        {canEditApp && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1360,6 +1371,8 @@ const AppsPage = () => {
                           <Shield size={16} />
                           <span>Permissions</span>
                         </button>
+                        )}
+                        {canShareApp && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1371,6 +1384,8 @@ const AppsPage = () => {
                           <LinkIcon size={16} />
                           <span>Share Links</span>
                         </button>
+                        )}
+                        {isAdmin && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1382,6 +1397,7 @@ const AppsPage = () => {
                           <Trash2 size={16} />
                           <span>Delete</span>
                         </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1476,7 +1492,7 @@ const AppsPage = () => {
                   : 'Create your first app to get started'
                 }
               </p>
-              {!selectedRole && isAdmin && (
+              {!selectedRole && canCreateApp && (
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="bg-[#08B8EA] hover:bg-[#12d8fa] text-white px-6 py-3 rounded-lg"

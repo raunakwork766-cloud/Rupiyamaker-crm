@@ -158,8 +158,8 @@ export default function TicketPage() {
       const ticketPermissions = {
         show: hasPermission(userPermissions, 'tickets', 'show') || hasPermission(userPermissions, 'Tickets', 'show'),
         own: hasPermission(userPermissions, 'tickets', 'own') || hasPermission(userPermissions, 'Tickets', 'own'),
-        junior: hasPermission(userPermissions, 'tickets', 'junior') || hasPermission(userPermissions, 'Tickets', 'junior'),
-        all: hasPermission(userPermissions, 'tickets', 'all') || hasPermission(userPermissions, 'Tickets', 'all'),
+        junior: hasPermission(userPermissions, 'tickets', 'junior') || hasPermission(userPermissions, 'tickets', 'view_team') || hasPermission(userPermissions, 'Tickets', 'junior') || hasPermission(userPermissions, 'Tickets', 'view_team'),
+        all: hasPermission(userPermissions, 'tickets', 'all') || hasPermission(userPermissions, 'tickets', 'view_all') || hasPermission(userPermissions, 'Tickets', 'all') || hasPermission(userPermissions, 'Tickets', 'view_all'),
         delete: hasPermission(userPermissions, 'tickets', 'delete') || hasPermission(userPermissions, 'Tickets', 'delete')
       };
 

@@ -437,12 +437,16 @@ class PermissionManager:
         if is_super_admin:
             return True
             
+        _CVC_LEADS_PAGES = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
         has_view_junior = any(
-            perm.get("page") == "leads" and 
+            perm.get("page", "").lower() in _CVC_LEADS_PAGES and 
             (
                 perm.get("actions") == "*" or
-                perm.get("actions") == "junior" or
-                (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions", []) or "junior" in perm.get("actions", [])))
+                (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
+                (isinstance(perm.get("actions"), list) and (
+                    "*" in perm.get("actions", []) or
+                    any(a.lower() in ("junior", "view_team") if isinstance(a, str) else False for a in perm.get("actions", []))
+                ))
             )
             for perm in viewer_permissions
         )
@@ -501,22 +505,24 @@ class PermissionManager:
         if is_leads_admin:
             return True  # Leads admin can see all leads
         
-        # Check for all permission
+        # Check for all/view_all permission (supports both old and new action names)
+        _CV_LEADS_PAGES = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
         has_view_all = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _CV_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("all", "view_all")) or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or 
+                any(a.lower() in ("all", "view_all") if isinstance(a, str) else False for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
         if has_view_all:
             return True  # User can see all leads
         
-        # Check for basic show permission
+        # Check for basic show permission (check all PLOD pages too)
         has_show_permission = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _CV_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
               perm.get("actions") == "show" or
               (isinstance(perm.get("actions"), list) and 
@@ -528,15 +534,12 @@ class PermissionManager:
         # they should still be able to see all leads
         if has_show_permission:
             # Check if they have any specific view permissions
+            _view_actions = {"own", "view_other", "junior", "view_team"}
             has_any_specific_view = has_view_all or any(
-                (perm.get("page") == "leads" and 
-                 (perm.get("actions") == "own" or 
-                  perm.get("actions") == "view_other" or
-                  perm.get("actions") == "junior" or
+                (perm.get("page", "").lower() in _CV_LEADS_PAGES and 
+                 (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in _view_actions) or
                   (isinstance(perm.get("actions"), list) and 
-                   ("own" in perm.get("actions") or 
-                    "view_other" in perm.get("actions") or
-                    "junior" in perm.get("actions")))))
+                   any(a.lower() in _view_actions if isinstance(a, str) else False for a in perm.get("actions", []))))
                 for perm in user_permissions
             )
             
@@ -595,13 +598,14 @@ class PermissionManager:
                     if user_id in assign_report_to:
                         return True
         
-        # Check for junior permission
+        # Check for junior/view_team permission (supports both old and new action names)
         has_view_junior = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _CV_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or 
+                any(a.lower() in ("junior", "view_team") if isinstance(a, str) else False for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -674,13 +678,15 @@ class PermissionManager:
         if is_leads_admin:
             return leads  # Leads admin can see all leads
         
-        # Check for all permission
+        # Check for all/view_all permission (supports both old and new action names)
+        _FLH_LEADS_PAGES = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
         has_view_all = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _FLH_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("all", "view_all")) or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or 
+                any(a.lower() in ("all", "view_all") if isinstance(a, str) else False for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -689,7 +695,7 @@ class PermissionManager:
         
         # Check for basic show permission
         has_show_permission = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _FLH_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
               perm.get("actions") == "show" or
               (isinstance(perm.get("actions"), list) and 
@@ -697,22 +703,23 @@ class PermissionManager:
             for perm in user_permissions
         )
         
-        # Check for specific permissions (own is now default, so we only check view_other and junior)
+        # Check for specific permissions (own is now default, so we only check view_other and junior/view_team)
         has_view_other = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _FLH_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "view_other" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "view_other") or
               (isinstance(perm.get("actions"), list) and 
                ("*" in perm.get("actions") or "view_other" in perm.get("actions")))))
             for perm in user_permissions
         )
         
         has_view_junior = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in _FLH_LEADS_PAGES and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or 
+                any(a.lower() in ("junior", "view_team") if isinstance(a, str) else False for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -861,8 +868,12 @@ class PermissionManager:
             return {"file_sent_to_login": {"$ne": True}}  # All leads except login department leads
         
         # Check for all permission (case-insensitive)
-        print(f"DEBUG: Checking for 'all' permission. User permissions: {user_permissions}")
+        # Supports both old names (all/junior) and new names (view_all/view_team) for PLOD leads
+        print(f"DEBUG: Checking for 'all'/'view_all' permission. User permissions: {user_permissions}")
         has_view_all = False
+        
+        # Pages that grant leads visibility when view_all/all action is present
+        LEADS_PAGES = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
         
         # Enhanced debugging for permission checking
         for perm in user_permissions:
@@ -871,11 +882,11 @@ class PermissionManager:
             
             print(f"DEBUG: Checking permission - page: '{page}', actions: {actions} (type: {type(actions)})")
             
-            # Check if page matches leads
-            page_matches = page.lower() == "leads"
+            # Check if page matches leads or PLOD leads
+            page_matches = page.lower() in LEADS_PAGES
             
             if page_matches:
-                print(f"DEBUG: Page matches 'leads' for permission: {perm}")
+                print(f"DEBUG: Page matches leads/PLOD for permission: {perm}")
                 
                 # Check for wildcard permission
                 if actions == "*":
@@ -883,21 +894,21 @@ class PermissionManager:
                     has_view_all = True
                     break
                 
-                # Check for string 'all' permission
-                if isinstance(actions, str) and actions.lower() == "all":
-                    print(f"DEBUG: Found string 'all' permission")
+                # Check for string 'all' or 'view_all' permission
+                if isinstance(actions, str) and actions.lower() in ("all", "view_all"):
+                    print(f"DEBUG: Found string '{actions}' permission")
                     has_view_all = True
                     break
                 
-                # Check for 'all' in array
+                # Check for 'all'/'view_all' in array
                 if isinstance(actions, list):
                     if "*" in actions:
                         print(f"DEBUG: Found '*' in actions array")
                         has_view_all = True
                         break
                     
-                    if any(action.lower() == "all" if isinstance(action, str) else False for action in actions):
-                        print(f"DEBUG: Found 'all' in actions array")
+                    if any(action.lower() in ("all", "view_all") if isinstance(action, str) else False for action in actions):
+                        print(f"DEBUG: Found 'all'/'view_all' in actions array")
                         has_view_all = True
                         break
         
@@ -941,14 +952,17 @@ class PermissionManager:
             user_object_id = None
         
         # ROLE-BASED VISIBILITY: Different rules for Team Leaders vs Regular Employees
-        # Check if user is a Team Leader (has junior or all permission)
+        # Check if user is a Team Leader (has junior/view_team or all/view_all permission)
+        LEADS_PAGES_LOWER = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
+        VIEW_ALL_ACTIONS = {"*", "all", "view_all"}
+        VIEW_TEAM_ACTIONS = {"junior", "view_team"}
         is_team_leader_by_permission = any(
-            (perm.get("page", "").lower() == "leads" and 
+            (perm.get("page", "").lower() in LEADS_PAGES_LOWER and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
-              perm.get("actions") == "junior" or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in VIEW_ALL_ACTIONS | VIEW_TEAM_ACTIONS) or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions") or "junior" in perm.get("actions")))))
+               any(a in perm.get("actions") or (isinstance(a, str) and a.lower() in VIEW_ALL_ACTIONS | VIEW_TEAM_ACTIONS)
+                   for a in perm.get("actions", [])))))
             for perm in user_permissions
         )
         
@@ -1028,14 +1042,14 @@ class PermissionManager:
             filter_conditions.append({"assign_report_to": user_id})
             filter_conditions.append({"assign_report_to": {"$in": [user_id]}})
         
-        # Check for junior permission (case-insensitive) - RE-ENABLED for multiple reporting support
+        # Check for junior/view_team permission (case-insensitive) - RE-ENABLED for multiple reporting support
         has_view_junior = any(
-            (perm.get("page", "").lower() == "leads" and 
+            (perm.get("page", "").lower() in LEADS_PAGES_LOWER and 
              (perm.get("actions") == "*" or 
-              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "junior") or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
                ("*" in perm.get("actions") or 
-                any(action.lower() == "junior" if isinstance(action, str) else False 
+                any(action.lower() in ("junior", "view_team") if isinstance(action, str) else False 
                     for action in perm.get("actions", []))))))
             for perm in user_permissions
         )
@@ -1079,44 +1093,22 @@ class PermissionManager:
         # NEW: TEAM MANAGER ROLE - Can see all team member leads
         # ========================================================================
         # Check for team_manager permission - allows seeing ALL subordinate leads
+        # FIXED: list check now properly guarded by page == "leads"
         has_team_manager_permission = any(
-            (perm.get("page", "").lower() == "leads" and 
-             (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "team_manager") or
-              (isinstance(perm.get("actions"), list) and 
-               any(action.lower() == "team_manager" if isinstance(action, str) else False 
-                   for action in perm.get("actions", []))))
+            perm.get("page", "").lower() == "leads" and
+            (
+                (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "team_manager") or
+                (isinstance(perm.get("actions"), list) and
+                 any(action.lower() == "team_manager" if isinstance(action, str) else False
+                     for action in perm.get("actions", [])))
+            )
             for perm in user_permissions
         )
         
-        # DESIGNATION IS DISPLAY-ONLY: Only check role name, NOT designation field
-        # Removed designation-based permission logic - designation is purely a job title for display
-        is_team_manager_by_role_name = False
-        
-        if not user_doc:
-            user_doc = await users_db.get_user(user_id)
-        
-        if user_doc and user_doc.get("role_id"):
-            # Only check role name (not designation)
-            role_doc = await roles_db.get_role(user_doc.get("role_id"))
-            if role_doc:
-                role_name = role_doc.get("name", "").lower()
-                # Check for various team manager role name variations
-                is_team_manager_by_role_name = (
-                    "team manager" in role_name or
-                    "teammanager" in role_name or
-                    "team-manager" in role_name or
-                    "tm" == role_name or  # Short form
-                    role_name.startswith("tm ") or  # TM followed by space
-                    role_name.endswith(" tm")  # Space followed by TM
-                )
-                print(f"DEBUG: Role name '{role_name}' matches Team Manager: {is_team_manager_by_role_name}")
-        
-        if has_team_manager_permission or is_team_manager_by_role_name:
-            if has_team_manager_permission:
-                trigger_reason = "team_manager permission"
-            else:
-                trigger_reason = "role name contains 'team manager'"
-            print(f"DEBUG: User {user_id} has TEAM MANAGER access (triggered by: {trigger_reason}) - adding team leads visibility")
+        # PERMISSION-ONLY: team manager access requires explicit team_manager permission
+        # Role name is NEVER used to bypass permissions
+        if has_team_manager_permission:
+            print(f"DEBUG: User {user_id} has TEAM MANAGER access (triggered by: team_manager permission) - adding team leads visibility")
             
             # Get the team manager's user document
             if not user_doc:
@@ -1390,21 +1382,21 @@ class PermissionManager:
                     has_view_all = True
                     break
                 
-                # Check for string 'all' permission
-                if isinstance(actions, str) and actions.lower() == "all":
-                    print(f"DEBUG: Found string 'all' permission for LOGIN")
+                # Check for string 'all' or 'view_all' permission (supports new action name)
+                if isinstance(actions, str) and actions.lower() in ("all", "view_all"):
+                    print(f"DEBUG: Found string '{actions}' permission for LOGIN")
                     has_view_all = True
                     break
                 
-                # Check for 'all' in array
+                # Check for 'all'/'view_all' in array
                 if isinstance(actions, list):
                     if "*" in actions:
                         print(f"DEBUG: Found '*' in LOGIN actions array")
                         has_view_all = True
                         break
                     
-                    if any(action.lower() == "all" if isinstance(action, str) else False for action in actions):
-                        print(f"DEBUG: Found 'all' in LOGIN actions array")
+                    if any(action.lower() in ("all", "view_all") if isinstance(action, str) else False for action in actions):
+                        print(f"DEBUG: Found 'all'/'view_all' in LOGIN actions array")
                         has_view_all = True
                         break
         
@@ -1454,13 +1446,15 @@ class PermissionManager:
         if user_object_id:
             filter_conditions.append({"assign_report_to": user_object_id})
         
-        # Check for LOGIN junior/team leader permissions
+        # Check for LOGIN junior/view_team permissions (supports both old and new action names)
         has_login_junior = any(
-            (perm.get("page", "").lower() == "login" and 
-             (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "junior") or
-              (isinstance(perm.get("actions"), list) and 
-               any(action.lower() == "junior" if isinstance(action, str) else False 
-                   for action in perm.get("actions", []))))
+            perm.get("page", "").lower() == "login" and 
+            (
+                (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
+                (isinstance(perm.get("actions"), list) and 
+                 any(action.lower() in ("junior", "view_team") if isinstance(action, str) else False 
+                     for action in perm.get("actions", [])))
+            )
             for perm in user_permissions
         )
         
