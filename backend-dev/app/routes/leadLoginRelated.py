@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form, Body
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, validator, root_validator
 from bson import ObjectId
 from datetime import datetime
 from app.utils.timezone import get_ist_now
@@ -37,6 +38,40 @@ router = APIRouter(
 _subordinates_cache = {}
 _cache_timestamps = {}
 CACHE_TTL = 300  # 5 minutes
+
+# ── Security: fields that must never be writable via the public API ──────────
+_PROTECTED_FIELDS = frozenset({
+    # Identity / auth
+    "_id", "id",
+    # Privileges
+    "is_super_admin", "role_id", "role", "permissions",
+    # Immutable lead metadata
+    "created_at", "login_created_at", "login_created_by", "created_by",
+    # System-managed audit fields (set by server only)
+    "updated_at", "updated_by",
+    # Source / origin control
+    "original_lead_id", "lead_source",
+})
+
+class LoginLeadUpdateRequest(BaseModel):
+    """
+    Pydantic schema for PUT /login-leads/{id}.
+    Accepts any field that is NOT in _PROTECTED_FIELDS.
+    All values remain untyped (Any) because login-lead fields are highly dynamic.
+    """
+    class Config:
+        extra = "allow"  # allow arbitrary lead fields
+
+    @root_validator(pre=True)
+    @classmethod
+    def strip_protected_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        blocked = _PROTECTED_FIELDS & set(values.keys())
+        if blocked:
+            raise ValueError(
+                f"Attempt to set protected field(s): {', '.join(sorted(blocked))}. "
+                "These fields cannot be modified via this endpoint."
+            )
+        return values
 
 async def create_field_update_activity(
     login_leads_db,
@@ -739,19 +774,20 @@ async def get_single_login_lead(
 @router.put("/login-leads/{login_lead_id}")
 async def update_login_lead(
     login_lead_id: str,
-    update_data: Dict[str, Any],
+    update_request: LoginLeadUpdateRequest,
     user_id: str = Query(..., description="ID of the user making the request"),
     login_leads_db = Depends(get_login_leads_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """
-    Update a login lead with any fields
-    Used by the details panel for auto-save functionality
+    Update a login lead with any non-protected fields.
+    Used by the details panel for auto-save functionality.
+    Protected fields (role_id, is_super_admin, created_at, etc.) are rejected with 422.
     """
     # Check permission
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
-    
+
     # Get the login lead
     login_lead = await login_leads_db.get_login_lead(login_lead_id)
     if not login_lead:
@@ -759,8 +795,11 @@ async def update_login_lead(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Login lead with ID {login_lead_id} not found"
         )
-    
-    # Add updated timestamp
+
+    # Convert validated model to plain dict (extra fields preserved via Config.extra="allow")
+    update_data = update_request.dict()
+
+    # Server-controlled audit fields — always overwritten here, never from client
     update_data["updated_at"] = get_ist_now().isoformat()
     update_data["updated_by"] = user_id
     
