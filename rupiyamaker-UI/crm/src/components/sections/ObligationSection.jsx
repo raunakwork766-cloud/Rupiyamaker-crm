@@ -375,12 +375,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   // Force immediate DOM update when save happens
   useLayoutEffect(() => {
     if (lastSaveTime > 0) {
-      console.log('🔄 useLayoutEffect triggered by save - forcing DOM update');
-      // This forces React to re-evaluate the entire component tree
-      const forceUpdate = () => setForceRender(prev => prev + 1);
-      forceUpdate();
+      // Use a one-time ref flag so we only increment once per save, not on every re-render
+      setForceRender(prev => prev + 1);
     }
-  }, [lastSaveTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSaveTime]); // only re-runs when lastSaveTime actually changes
   
   // Debug obligations state changes
   useEffect(() => {
@@ -460,14 +459,18 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   // Update debug state when leadData changes
   useEffect(() => {
-    if (leadData?.file_sent_to_login !== debugState.fileSentToLogin) {
-      setDebugState(prev => ({
+    // Only sync when the external prop actually differs from what we have stored
+    // Do NOT include debugState in deps — that causes an infinite loop
+    setDebugState(prev => {
+      const incoming = !!leadData?.file_sent_to_login;
+      if (prev.fileSentToLogin === incoming) return prev; // no change — bail out
+      return {
         ...prev,
-        fileSentToLogin: !!leadData?.file_sent_to_login,
+        fileSentToLogin: incoming,
         renderCount: prev.renderCount + 1
-      }));
-    }
-  }, [leadData?.file_sent_to_login, debugState.fileSentToLogin]);
+      };
+    });
+  }, [leadData?.file_sent_to_login]); // ← removed debugState.fileSentToLogin to break the loop
 
   // Handle scroll events to close dropdowns and handle click outside
   useEffect(() => {
