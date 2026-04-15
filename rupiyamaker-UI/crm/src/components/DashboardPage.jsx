@@ -384,6 +384,25 @@ export default function DashboardPage() {
     });
   }, [tableData, sortCol, sortAsc]);
 
+  // Compute per-column totals from the currently visible (filtered+sorted) data
+  const columnTotals = useMemo(() => {
+    const t = {
+      totalLeads: 0,
+      totalLogins: 0,
+      leads: {},
+      logins: {},
+    };
+    for (const s of leadStatuses) t.leads[s] = 0;
+    for (const s of loginStatuses) t.logins[s] = 0;
+    for (const row of sortedData) {
+      t.totalLeads += row.totalLeads || 0;
+      t.totalLogins += row.totalLogins || 0;
+      for (const s of leadStatuses) t.leads[s] += row.leads[s] ?? 0;
+      for (const s of loginStatuses) t.logins[s] += row.logins[s] ?? 0;
+    }
+    return t;
+  }, [sortedData, leadStatuses, loginStatuses]);
+
   const handleSort = (col) => {
     if (sortCol === col) setSortAsc((p) => !p);
     else { setSortCol(col); setSortAsc(col === "name" || col === "team"); }
@@ -1274,6 +1293,106 @@ export default function DashboardPage() {
               ))
             )}
           </tbody>
+
+          {/* ─── Column Totals Footer ─── */}
+          {sortedData.length > 0 && (
+            <tfoot>
+              <tr style={{ position: "sticky", bottom: 0, zIndex: 5 }}>
+                {/* TOTAL label — spans name + team */}
+                <td
+                  colSpan={2}
+                  style={{
+                    padding: "14px 16px",
+                    fontWeight: 900,
+                    fontSize: 13,
+                    letterSpacing: "0.5px",
+                    color: "#0f172a",
+                    background: "#e2e8f0",
+                    borderTop: "3px solid #94a3b8",
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 6,
+                    textTransform: "uppercase",
+                    boxShadow: "2px 0 5px rgba(0,0,0,0.08)",
+                    borderRight: "2px solid #94a3b8",
+                  }}
+                >
+                  Total ({sortedData.length})
+                </td>
+
+                {/* Total Leads */}
+                <td
+                  style={{
+                    padding: "14px 16px",
+                    textAlign: "center",
+                    fontFamily: "'SFMono-Regular', Consolas, monospace",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    background: "#dbeafe",
+                    color: "#1e3a8a",
+                    borderTop: "3px solid #94a3b8",
+                  }}
+                >
+                  {columnTotals.totalLeads}
+                </td>
+
+                {/* Lead status columns */}
+                {leadStatuses.map((s) => (
+                  <td
+                    key={s}
+                    style={{
+                      padding: "14px 16px",
+                      textAlign: "center",
+                      fontFamily: "'SFMono-Regular', Consolas, monospace",
+                      fontSize: 14,
+                      fontWeight: 800,
+                      background: "#eff6ff",
+                      color: "#1e40af",
+                      borderTop: "3px solid #94a3b8",
+                    }}
+                  >
+                    {columnTotals.leads[s] ?? 0}
+                  </td>
+                ))}
+
+                {/* Total Logins */}
+                <td
+                  style={{
+                    padding: "14px 16px",
+                    textAlign: "center",
+                    fontFamily: "'SFMono-Regular', Consolas, monospace",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    background: "#bbf7d0",
+                    color: "#064e3b",
+                    borderTop: "3px solid #94a3b8",
+                    borderLeft: "4px solid #475569",
+                  }}
+                >
+                  {columnTotals.totalLogins}
+                </td>
+
+                {/* Login status columns */}
+                {loginStatuses.map((s) => (
+                  <td
+                    key={s}
+                    style={{
+                      padding: "14px 16px",
+                      textAlign: "center",
+                      fontFamily: "'SFMono-Regular', Consolas, monospace",
+                      fontSize: 14,
+                      fontWeight: 800,
+                      background: "#dcfce7",
+                      color: "#065f46",
+                      borderTop: "3px solid #94a3b8",
+                    }}
+                  >
+                    {columnTotals.logins[s] ?? 0}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

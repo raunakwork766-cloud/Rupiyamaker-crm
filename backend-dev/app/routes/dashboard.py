@@ -94,14 +94,59 @@ async def get_dashboard_stats(
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
     emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
     users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Returns per-employee lead and login pipeline stats for the Dashboard page."""
     try:
-        # ─── Permission check (lenient: allow anyone logged in) ───
-        # Super admin or leads permission required; fallback allows access so UI can render
-        # Backend data is still scoped — no sensitive exposure
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
+
+        # ─── Determine effective permission level from user's role ───
+        user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_super_admin = any(
+            p.get("page") == "*" and (
+                p.get("actions") == "*" or
+                (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
+            )
+            for p in user_permissions
+        ) if user_permissions else False
+
+        if is_super_admin:
+            effective_level = "all"
+        else:
+            LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
+            LOGIN_PAGES = ["login"]
+            DASHBOARD_PAGES = ["dashboard"]
+            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+
+            def _has_level(level: str) -> bool:
+                actions_to_check = [level]
+                if level == "junior":
+                    actions_to_check.append("view_team")
+                for page in ALL_PAGES:
+                    for action in actions_to_check:
+                        if PermissionManager.has_permission(user_permissions, page, action):
+                            return True
+                return False
+
+            if _has_level("all"):
+                effective_level = "all"
+            elif _has_level("junior"):
+                effective_level = "junior"
+            elif _has_level("own"):
+                effective_level = "own"
+            else:
+                effective_level = "own"
+
+        logger.info(f"Dashboard stats (dev): user={user_id}, effective_level={effective_level}")
+
+        # ─── Build allowed_user_ids set based on effective_level ───
+        allowed_user_ids = None
+        if effective_level == "own":
+            allowed_user_ids = {user_id}
+        elif effective_level == "junior":
+            subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+            allowed_user_ids = {user_id} | set(subordinate_ids)
 
         # Get raw database directly from leads_db instance
         db_instances = get_database_instances()
@@ -127,11 +172,12 @@ async def get_dashboard_stats(
             date_match_leads["created_at"] = {"$gte": start_dt, "$lte": end_dt}
             date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
 
-        # ─── Fetch all active users ───
-        # Filter by employee_status if requested
+        # ─── Fetch users scoped by permission level ───
         users_query = {"is_active": {"$ne": False}}
         if emp_status in ("active", "inactive"):
             users_query["employee_status"] = emp_status
+        if allowed_user_ids is not None:
+            users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
         users_cursor = users_db.collection.find(
             users_query,
             {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
@@ -290,16 +336,28 @@ async def get_dashboard_teams(
 
         if is_super_admin:
             effective_level = "all"
-        elif (PermissionManager.has_permission(user_permissions, "dashboard", "all") or
-              PermissionManager.has_permission(user_permissions, "leads", "all") or
-              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "all")):
-            effective_level = "all"
-        elif (PermissionManager.has_permission(user_permissions, "dashboard", "junior") or
-              PermissionManager.has_permission(user_permissions, "leads", "junior") or
-              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "junior")):
-            effective_level = "junior"
         else:
-            effective_level = "own"
+            LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
+            LOGIN_PAGES = ["login"]
+            DASHBOARD_PAGES = ["dashboard"]
+            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+
+            def _has_level(level: str) -> bool:
+                actions_to_check = [level]
+                if level == "junior":
+                    actions_to_check.append("view_team")
+                for page in ALL_PAGES:
+                    for action in actions_to_check:
+                        if PermissionManager.has_permission(user_permissions, page, action):
+                            return True
+                return False
+
+            if _has_level("all"):
+                effective_level = "all"
+            elif _has_level("junior"):
+                effective_level = "junior"
+            else:
+                effective_level = "own"
 
         allowed_user_ids: Optional[set] = None
         if effective_level == "own":

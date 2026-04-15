@@ -115,25 +115,41 @@ async def get_dashboard_stats(
 
         if is_super_admin:
             effective_level = "all"
-        elif PermissionManager.has_permission(user_permissions, "dashboard", "all"):
-            effective_level = "all"
-        elif PermissionManager.has_permission(user_permissions, "dashboard", "junior"):
-            effective_level = "junior"
-        elif PermissionManager.has_permission(user_permissions, "dashboard", "own"):
-            effective_level = "own"
-        # No explicit dashboard permission → derive from leads module
-        elif PermissionManager.has_permission(user_permissions, "leads", "all") or \
-             PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "all"):
-            effective_level = "all"
-        elif PermissionManager.has_permission(user_permissions, "leads", "junior") or \
-             PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "junior"):
-            effective_level = "junior"
-        elif PermissionManager.has_permission(user_permissions, "leads", "own") or \
-             PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "own"):
-            effective_level = "own"
         else:
-            # No dashboard or leads permission — fallback: own data only (safe default)
-            effective_level = permission_level or "own"
+            # ─── Derive effective permission level ───
+            # Check across dashboard, leads (multiple page names), and login modules.
+            # Take the HIGHEST level found: all > junior > own.
+            # "view_team" action is semantically equivalent to "junior".
+            #
+            # Pages to check for leads: "leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"
+            # (different naming conventions exist in DB and code)
+            LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
+            LOGIN_PAGES = ["login"]
+            DASHBOARD_PAGES = ["dashboard"]
+            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+
+            def _has_level(level: str) -> bool:
+                """Check if any module grants the given permission level."""
+                actions_to_check = [level]
+                if level == "junior":
+                    actions_to_check.append("view_team")  # view_team = junior
+                for page in ALL_PAGES:
+                    for action in actions_to_check:
+                        if PermissionManager.has_permission(user_permissions, page, action):
+                            return True
+                return False
+
+            if _has_level("all"):
+                effective_level = "all"
+            elif _has_level("junior"):
+                effective_level = "junior"
+            elif _has_level("own"):
+                effective_level = "own"
+            else:
+                # No relevant permission — fallback: own data only (safe default)
+                effective_level = permission_level or "own"
+
+        logger.info(f"Dashboard stats: user={user_id}, effective_level={effective_level}, is_super_admin={is_super_admin}")
 
         # ─── Build allowed_user_ids set based on effective_level ───
         allowed_user_ids: Optional[set] = None  # None = no restriction (all)
@@ -353,147 +369,155 @@ async def get_dashboard_stats(
                 "logins": data["logins"],
             })
 
-        # ─── ASSIGNED LEADS (By Default for ALL users) ───────────────────────────────
-        # Find leads from EXTERNAL creators (not in user_ids) where the requesting user
-        # is in assign_report_to (Leads) or assigned_to (Login Leads).
-        # This ensures leads assigned to this user always appear in their dashboard view.
-        try:
-            # --- Regular Leads: assign_report_to contains requesting user_id (string or array) ---
-            ext_leads_pipeline = [
-                {"$match": {
-                    **date_match_leads,
-                    "$or": [
-                        {"assign_report_to": user_id},
-                        {"assign_report_to": {"$in": [user_id]}},
-                    ],
-                    "created_by": {"$nin": user_ids},
-                }},
-                {"$group": {
-                    "_id": {
-                        "user_id": "$created_by",
-                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                    },
-                    "count": {"$sum": 1}
-                }}
-            ]
+        # ─── ASSIGNED LEADS — only for users with restricted scope ─────────────────
+        # Show "ASSIGNED" badge ONLY for leads created by people OUTSIDE the user's
+        # full permission hierarchy.  If the creator is within the role hierarchy
+        # (allowed_user_ids), the user can already see their data through permissions,
+        # so marking it "ASSIGNED" is redundant and confusing.
+        #
+        # • Super admin / "all" level  → skip entirely (they see everything)
+        # • "junior" / "own" level     → use the FULL allowed_user_ids set (not the
+        #                                 status-filtered user_ids) for the $nin check
+        #                                 so that inactive subordinates don't leak as ASSIGNED.
+        if allowed_user_ids is not None:  # Only for "own" or "junior" — NOT for "all"/super admin
+            try:
+                # Full permission scope IDs (not filtered by emp_status / is_active)
+                scope_ids_list = list(allowed_user_ids)
 
-            # --- Login Leads: check assign_report_to (copied from original lead) AND assigned_to (multi-assign) ---
-            # Login leads are created by copying original leads, so they inherit assign_report_to.
-            # Some login leads may also have been directly assigned via assigned_to array.
-            ext_logins_pipeline = [
-                {"$match": {
-                    **date_match_logins,
-                    "$or": [
-                        {"assign_report_to": user_id},
-                        {"assign_report_to": {"$in": [user_id]}},
-                        {"assigned_to": user_id},
-                        {"assigned_to": {"$in": [user_id]}},
-                    ],
-                    "created_by": {"$nin": user_ids},
-                }},
-                {"$group": {
-                    "_id": {
-                        "user_id": "$created_by",
-                        "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
-                    },
-                    "count": {"$sum": 1}
-                }}
-            ]
+                # --- Regular Leads: assign_report_to contains requesting user_id ---
+                ext_leads_pipeline = [
+                    {"$match": {
+                        **date_match_leads,
+                        "$or": [
+                            {"assign_report_to": user_id},
+                            {"assign_report_to": {"$in": [user_id]}},
+                        ],
+                        "created_by": {"$nin": scope_ids_list},
+                    }},
+                    {"$group": {
+                        "_id": {
+                            "user_id": "$created_by",
+                            "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                        },
+                        "count": {"$sum": 1}
+                    }}
+                ]
 
-            ext_leads_agg = await leads_col.aggregate(ext_leads_pipeline).to_list(None)
-            ext_logins_agg = await login_leads_col.aggregate(ext_logins_pipeline).to_list(None)
+                # --- Login Leads: assign_report_to + assigned_to ---
+                ext_logins_pipeline = [
+                    {"$match": {
+                        **date_match_logins,
+                        "$or": [
+                            {"assign_report_to": user_id},
+                            {"assign_report_to": {"$in": [user_id]}},
+                            {"assigned_to": user_id},
+                            {"assigned_to": {"$in": [user_id]}},
+                        ],
+                        "created_by": {"$nin": scope_ids_list},
+                    }},
+                    {"$group": {
+                        "_id": {
+                            "user_id": "$created_by",
+                            "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                        },
+                        "count": {"$sum": 1}
+                    }}
+                ]
 
-            # Collect external creator IDs
-            ext_creator_ids: set = set()
-            for row in ext_leads_agg:
-                cid = row["_id"]["user_id"]
-                if cid:
-                    ext_creator_ids.add(str(cid))
-            for row in ext_logins_agg:
-                cid = row["_id"]["user_id"]
-                if cid:
-                    ext_creator_ids.add(str(cid))
+                ext_leads_agg = await leads_col.aggregate(ext_leads_pipeline).to_list(None)
+                ext_logins_agg = await login_leads_col.aggregate(ext_logins_pipeline).to_list(None)
 
-            if ext_creator_ids:
-                # Fetch user info for external creators
-                valid_ext_ids = [uid for uid in ext_creator_ids if uid and ObjectId.is_valid(uid)]
-                ext_users = await users_db.collection.find(
-                    {"_id": {"$in": [ObjectId(uid) for uid in valid_ext_ids]}},
-                    {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
-                ).to_list(None)
-
-                # Resolve department names for external creators
-                ext_dept_ids = {str(u["department_id"]) for u in ext_users if u.get("department_id")}
-                ext_dept_name_map: dict = {}
-                if ext_dept_ids:
-                    ext_depts = await departments_col.find(
-                        {"_id": {"$in": [ObjectId(d) for d in ext_dept_ids if ObjectId.is_valid(d)]}},
-                        {"name": 1}
-                    ).to_list(None)
-                    ext_dept_name_map = {str(d["_id"]): d.get("name", "") for d in ext_depts}
-
-                ext_user_map: dict = {}
-                for u in ext_users:
-                    uid = str(u["_id"])
-                    name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("username", uid)
-                    dept_id = str(u["department_id"]) if u.get("department_id") else ""
-                    ext_user_map[uid] = {
-                        "name": name,
-                        "team": ext_dept_name_map.get(dept_id, ""),
-                        "emp_status": u.get("employee_status", "active"),
-                    }
-
-                # Build per-external-creator data
-                ext_emp_data: dict = {
-                    uid: {
-                        "leads": {s: 0 for s in LEAD_STATUSES},
-                        "logins": {s: 0 for s in LOGIN_STATUSES},
-                        "totalLeads": 0,
-                        "totalLogins": 0,
-                    }
-                    for uid in ext_creator_ids
-                }
-
+                # Collect external creator IDs
+                ext_creator_ids: set = set()
                 for row in ext_leads_agg:
-                    uid = str(row["_id"]["user_id"])
-                    status = row["_id"]["status"]
-                    count = row["count"]
-                    if uid in ext_emp_data:
-                        ext_emp_data[uid]["totalLeads"] += count
-                        if status in ext_emp_data[uid]["leads"]:
-                            ext_emp_data[uid]["leads"][status] += count
-
+                    cid = row["_id"]["user_id"]
+                    if cid:
+                        ext_creator_ids.add(str(cid))
                 for row in ext_logins_agg:
-                    uid = str(row["_id"]["user_id"])
-                    status = row["_id"]["status"]
-                    count = row["count"]
-                    if uid in ext_emp_data:
-                        ext_emp_data[uid]["totalLogins"] += count
-                        if status in ext_emp_data[uid]["logins"]:
-                            ext_emp_data[uid]["logins"][status] += count
+                    cid = row["_id"]["user_id"]
+                    if cid:
+                        ext_creator_ids.add(str(cid))
 
-                # Add external rows to response — only if they have actual data
-                for uid in ext_creator_ids:
-                    uinfo = ext_user_map.get(uid, {"name": uid, "team": "", "emp_status": "active"})
-                    data = ext_emp_data[uid]
-                    # Skip assigned users with zero data
-                    if data["totalLeads"] == 0 and data["totalLogins"] == 0:
-                        continue
-                    total_leads += data["totalLeads"]
-                    total_logins += data["totalLogins"]
-                    employees.append({
-                        "id": uid,
-                        "name": uinfo["name"],
-                        "team": uinfo["team"],
-                        "empStatus": uinfo.get("emp_status", "active"),
-                        "totalLeads": data["totalLeads"],
-                        "totalLogins": data["totalLogins"],
-                        "leads": data["leads"],
-                        "logins": data["logins"],
-                        "isAssignedView": True,  # Flag: assigned-only rows
-                    })
-        except Exception as ext_err:
-            logger.warning(f"External assigned leads fetch failed (non-critical): {ext_err}")
+                if ext_creator_ids:
+                    # Fetch user info for external creators
+                    valid_ext_ids = [uid for uid in ext_creator_ids if uid and ObjectId.is_valid(uid)]
+                    ext_users = await users_db.collection.find(
+                        {"_id": {"$in": [ObjectId(uid) for uid in valid_ext_ids]}},
+                        {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
+                    ).to_list(None)
+
+                    # Resolve department names for external creators
+                    ext_dept_ids = {str(u["department_id"]) for u in ext_users if u.get("department_id")}
+                    ext_dept_name_map: dict = {}
+                    if ext_dept_ids:
+                        ext_depts = await departments_col.find(
+                            {"_id": {"$in": [ObjectId(d) for d in ext_dept_ids if ObjectId.is_valid(d)]}},
+                            {"name": 1}
+                        ).to_list(None)
+                        ext_dept_name_map = {str(d["_id"]): d.get("name", "") for d in ext_depts}
+
+                    ext_user_map: dict = {}
+                    for u in ext_users:
+                        uid = str(u["_id"])
+                        name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("username", uid)
+                        dept_id = str(u["department_id"]) if u.get("department_id") else ""
+                        ext_user_map[uid] = {
+                            "name": name,
+                            "team": ext_dept_name_map.get(dept_id, ""),
+                            "emp_status": u.get("employee_status", "active"),
+                        }
+
+                    # Build per-external-creator data
+                    ext_emp_data: dict = {
+                        uid: {
+                            "leads": {s: 0 for s in LEAD_STATUSES},
+                            "logins": {s: 0 for s in LOGIN_STATUSES},
+                            "totalLeads": 0,
+                            "totalLogins": 0,
+                        }
+                        for uid in ext_creator_ids
+                    }
+
+                    for row in ext_leads_agg:
+                        uid = str(row["_id"]["user_id"])
+                        status = row["_id"]["status"]
+                        count = row["count"]
+                        if uid in ext_emp_data:
+                            ext_emp_data[uid]["totalLeads"] += count
+                            if status in ext_emp_data[uid]["leads"]:
+                                ext_emp_data[uid]["leads"][status] += count
+
+                    for row in ext_logins_agg:
+                        uid = str(row["_id"]["user_id"])
+                        status = row["_id"]["status"]
+                        count = row["count"]
+                        if uid in ext_emp_data:
+                            ext_emp_data[uid]["totalLogins"] += count
+                            if status in ext_emp_data[uid]["logins"]:
+                                ext_emp_data[uid]["logins"][status] += count
+
+                    # Add external rows to response — only if they have actual data
+                    for uid in ext_creator_ids:
+                        uinfo = ext_user_map.get(uid, {"name": uid, "team": "", "emp_status": "active"})
+                        data = ext_emp_data[uid]
+                        # Skip assigned users with zero data
+                        if data["totalLeads"] == 0 and data["totalLogins"] == 0:
+                            continue
+                        total_leads += data["totalLeads"]
+                        total_logins += data["totalLogins"]
+                        employees.append({
+                            "id": uid,
+                            "name": uinfo["name"],
+                            "team": uinfo["team"],
+                            "empStatus": uinfo.get("emp_status", "active"),
+                            "totalLeads": data["totalLeads"],
+                            "totalLogins": data["totalLogins"],
+                            "leads": data["leads"],
+                            "logins": data["logins"],
+                            "isAssignedView": True,  # Flag: assigned-only rows
+                        })
+            except Exception as ext_err:
+                logger.warning(f"External assigned leads fetch failed (non-critical): {ext_err}")
 
         # Sort: employees with activity first, then alphabetically
         employees.sort(key=lambda e: (-e["totalLeads"] - e["totalLogins"], e["name"]))
@@ -537,16 +561,28 @@ async def get_dashboard_teams(
 
         if is_super_admin:
             effective_level = "all"
-        elif (PermissionManager.has_permission(user_permissions, "dashboard", "all") or
-              PermissionManager.has_permission(user_permissions, "leads", "all") or
-              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "all")):
-            effective_level = "all"
-        elif (PermissionManager.has_permission(user_permissions, "dashboard", "junior") or
-              PermissionManager.has_permission(user_permissions, "leads", "junior") or
-              PermissionManager.has_permission(user_permissions, "leads.pl_&_odd_leads", "junior")):
-            effective_level = "junior"
         else:
-            effective_level = "own"
+            LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
+            LOGIN_PAGES = ["login"]
+            DASHBOARD_PAGES = ["dashboard"]
+            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+
+            def _has_level(level: str) -> bool:
+                actions_to_check = [level]
+                if level == "junior":
+                    actions_to_check.append("view_team")
+                for page in ALL_PAGES:
+                    for action in actions_to_check:
+                        if PermissionManager.has_permission(user_permissions, page, action):
+                            return True
+                return False
+
+            if _has_level("all"):
+                effective_level = "all"
+            elif _has_level("junior"):
+                effective_level = "junior"
+            else:
+                effective_level = "own"
 
         allowed_user_ids: Optional[set] = None
         if effective_level == "own":

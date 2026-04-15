@@ -742,8 +742,8 @@ export default function CreateTicket({ onClose, onSubmit }) {
             </div>
 
             {/* Assignee Section */}
-            <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">Assignee</label>
+            <div className="mb-2.5">
+              <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wide mb-1.5 block">Assigned To</label>
               <div
                 ref={assignTriggerRef}
                 className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-white min-h-[44px] flex flex-wrap gap-2 items-center cursor-pointer hover:border-[#0097a7] transition-all duration-300"
