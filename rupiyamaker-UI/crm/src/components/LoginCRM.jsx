@@ -1740,7 +1740,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             case 'leadDate':
                 let leadDateCount = 0;
                 if (filterOptions.dateFrom || filterOptions.dateTo) leadDateCount++;
-                if (filterOptions.disbursementDateFrom || filterOptions.disbursementDateTo) leadDateCount++;
                 if (filterOptions.leadDateFrom || filterOptions.leadDateTo) leadDateCount++;
                 if (filterOptions.fileSentToLoginDateFrom || filterOptions.fileSentToLoginDateTo) leadDateCount++;
                 if (filterOptions.noActivityDate) leadDateCount++;
@@ -1774,6 +1773,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 if (filterOptions.incomeRangeFrom || filterOptions.incomeRangeTo) incomeCount++;
                 if (filterOptions.incomeSortOrder) incomeCount++;
                 return incomeCount;
+            case 'disbursementDate':
+                return (filterOptions.disbursementDateFrom || filterOptions.disbursementDateTo) ? 1 : 0;
             default:
                 return 0;
         }
@@ -6561,6 +6562,26 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             {getFilterCategoryCount('leadActivity') > 0 && (
                                                 <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                                                     {getFilterCategoryCount('leadActivity')}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedFilterCategory('disbursementDate')}
+                                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                                            selectedFilterCategory === 'disbursementDate'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'text-gray-300 hover:bg-[#2a3441]'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="w-4 h-4" />
+                                                Disbursement Date
+                                            </div>
+                                            {getFilterCategoryCount('disbursementDate') > 0 && (
+                                                <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                                    {getFilterCategoryCount('disbursementDate')}
                                                 </span>
                                             )}
                                         </div>
