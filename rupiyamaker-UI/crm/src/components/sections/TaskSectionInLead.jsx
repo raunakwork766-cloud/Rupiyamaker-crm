@@ -137,7 +137,7 @@ export default function TaskSectionInLead({ leadData }) {
         }
         
         // Detect if this is a login lead or regular lead
-        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at || localStorage.getItem('userDepartment') === 'login');
         const apiUrl = isLoginLead 
           ? `/api/lead-login/login-leads/${leadData._id}/tasks?user_id=${userId}`
           : `/api/tasks/lead/${leadData._id}?user_id=${userId}`;
@@ -277,7 +277,7 @@ export default function TaskSectionInLead({ leadData }) {
       // For creating a new task for the lead
       else {
         // Detect if this is a login lead or regular lead
-        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+        const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at || localStorage.getItem('userDepartment') === 'login');
         const apiUrl = isLoginLead
           ? `/api/lead-login/login-leads/${leadData._id}/tasks/create?user_id=${userId}`
           : `/api/tasks/lead/${leadData._id}/create?user_id=${userId}`;
@@ -359,7 +359,7 @@ export default function TaskSectionInLead({ leadData }) {
       
       // Refresh tasks after creating/updating
       // Detect if this is a login lead or regular lead
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at || localStorage.getItem('userDepartment') === 'login');
       const refreshUrl = isLoginLead
         ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/tasks?user_id=${userId}`
         : `${API_BASE_URL}/tasks/lead/${leadData._id}?user_id=${userId}`;
