@@ -4318,6 +4318,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   };
 
   const handleDeleteObligation = (index) => {
+    // Cancel any pending auto-save so it cannot race with the immediate delete save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+
     console.log('🔴🔴🔴 [DELETE BUTTON CLICKED] Index:', index, 'Total rows:', obligations.length);
     console.log('🔴🔴🔴 [DELETE] Current obligations:', obligations);
     
