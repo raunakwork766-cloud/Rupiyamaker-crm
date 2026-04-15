@@ -907,160 +907,99 @@ async def get_login_lead_obligations(
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Get obligation and eligibility data for a login lead"""
-    # Check permission
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
-    
-    # Get the login lead
+
     login_lead = await login_leads_db.get_login_lead(login_lead_id)
     if not login_lead:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Login lead with ID {login_lead_id} not found"
-        )
-    
-    # 🔍 DEBUG: Log the entire lead structure
-    logger.info("🔍 ========== FULL LEAD DATA DEBUG ==========")
-    logger.info(f"🔍 Lead ID: {login_lead_id}")
-    logger.info(f"🔍 Top-level keys: {list(login_lead.keys())}")
-    logger.info(f"🔍 dynamic_fields keys: {list(login_lead.get('dynamic_fields', {}).keys()) if login_lead.get('dynamic_fields') else 'None'}")
-    logger.info(f"🔍 dynamic_details keys: {list(login_lead.get('dynamic_details', {}).keys()) if login_lead.get('dynamic_details') else 'None'}")
-    logger.info(f"🔍 financial_details (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('financial_details', {})}")
-    logger.info(f"🔍 financial_details (in dynamic_details): {login_lead.get('dynamic_details', {}).get('financial_details', {})}")
-    logger.info(f"🔍 personal_details (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('personal_details', {})}")
-    logger.info(f"🔍 personal_details (in dynamic_details): {login_lead.get('dynamic_details', {}).get('personal_details', {})}")
-    logger.info(f"🔍 obligation_data (in dynamic_fields): {login_lead.get('dynamic_fields', {}).get('obligation_data', {})}")
-    logger.info("🔍 ==========================================")
-    
-    # Extract obligation data from the lead's dynamic_fields
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Login lead with ID {login_lead_id} not found")
+
     dynamic_fields = login_lead.get("dynamic_fields") or {}
-    dynamic_details = login_lead.get("dynamic_details") or {}  # Also check dynamic_details
-    financial_details = dynamic_fields.get("financial_details") or {}
-    financial_details_v2 = dynamic_details.get("financial_details") or {}  # Check both locations
-    personal_details = dynamic_fields.get("personal_details") or {}
-    personal_details_v2 = dynamic_details.get("personal_details") or {}  # Check both locations
-    check_eligibility = dynamic_fields.get("check_eligibility") or {}
-    eligibility_details = dynamic_fields.get("eligibility_details") or {}
-    obligation_data_nested = dynamic_fields.get("obligation_data") or {}
-    
-    # Extract obligations with priority order: 
-    # 1. dynamic_fields.obligations (top level)
-    # 2. dynamic_fields.obligation_data.obligations (nested)
-    # 3. financial_details.obligations (fallback)
-    obligations_list = (
-        dynamic_fields.get("obligations") or 
-        obligation_data_nested.get("obligations") or 
-        financial_details.get("obligations") or 
-        []
-    )
-    
-    # 🎯 ENHANCED: Extract loan_required from all possible locations with priority
-    loan_required_value = (
-        # Check dynamic_details first (newer structure)
-        financial_details_v2.get("loan_required") or
-        financial_details_v2.get("loan_amount") or
-        financial_details_v2.get("required_loan") or
-        financial_details_v2.get("loan_amt") or
-        dynamic_details.get("loan_required") or
-        dynamic_details.get("loan_amount") or
-        dynamic_details.get("required_loan") or
-        # Then check dynamic_fields (older structure)
-        financial_details.get("loan_required") or
-        financial_details.get("loan_amount") or
-        financial_details.get("required_loan") or  # ✨ NEW: Check required_loan
-        financial_details.get("loan_amt") or      # ✨ NEW: Check loan_amt
-        dynamic_fields.get("loanRequired") or
-        dynamic_fields.get("loan_required") or
-        dynamic_fields.get("loan_amount") or
-        # Finally check top-level lead fields
-        login_lead.get("loan_required") or
-        login_lead.get("loan_amount") or
-        login_lead.get("loanRequired") or
-        ""
-    )
-    
-    # 🎯 ENHANCED: Extract salary from all possible locations
-    salary_value = (
-        financial_details_v2.get("salary") or
-        financial_details_v2.get("monthly_income") or
-        dynamic_details.get("salary") or
-        financial_details.get("salary") or
-        financial_details.get("monthly_income") or
-        dynamic_fields.get("salary") or
-        login_lead.get("salary") or
-        ""
-    )
-    
-    # 🎯 ENHANCED: Extract company_name from all possible locations
-    company_name_value = (
-        personal_details_v2.get("company_name") or
-        dynamic_details.get("company_name") or
-        personal_details.get("company_name") or
-        dynamic_fields.get("companyName") or
-        dynamic_fields.get("company_name") or
-        login_lead.get("company_name") or
-        ""
-    )
-    
-    # 🎯 Extract processing bank from all possible locations
-    processing_bank_value = (
-        dynamic_fields.get("processingBank") or
-        dynamic_fields.get("processing_bank") or
-        dynamic_fields.get("bank_name") or
-        login_lead.get("processing_bank") or
-        login_lead.get("processingBank") or
-        ""
-    )
-    
-    # Build obligation data - Return COMPLETE lead structure with minimal extraction
-    # The key is to preserve ALL nested structures so frontend can find data anywhere
-    obligation_data = {
-        # 🎯 Core extracted fields (single source of truth for display)
-        "salary": salary_value,
-        "partnerSalary": dynamic_fields.get("partnerSalary", financial_details.get("partner_salary", financial_details_v2.get("partner_salary", ""))),
-        "yearlyBonus": dynamic_fields.get("yearlyBonus", financial_details.get("yearly_bonus", financial_details_v2.get("yearly_bonus", ""))),
-        "bonusDivision": dynamic_fields.get("bonusDivision", financial_details.get("bonus_division", financial_details_v2.get("bonus_division", None))),
-        "loanRequired": loan_required_value,
-        "companyName": company_name_value,
-        "processingBank": processing_bank_value,
-        "obligations": obligations_list,
-        "selectedBanks": dynamic_fields.get("selectedBanks", []),
-        "cibilScore": (
-            financial_details.get("cibil_score") or
-            financial_details_v2.get("cibil_score") or
-            dynamic_fields.get("cibil_score") or
-            login_lead.get("cibil_score") or
-            ""
-        ),
-        
-        # 🎯 CRITICAL: Preserve COMPLETE nested structures
-        # This allows frontend to find data in ANY location without conflicts
-        "dynamic_fields": dynamic_fields,
-        "dynamic_details": dynamic_details,
-        "check_eligibility": check_eligibility,
-        "eligibility_details": eligibility_details,
-        "obligation_data": obligation_data_nested,
+    dynamic_details = login_lead.get("dynamic_details") or {}
+
+    # ── Canonical location (new saves go here) ──
+    canonical = dynamic_fields.get("obligation_data") or {}
+
+    # ── Legacy fallback locations ──
+    fin_df   = dynamic_fields.get("financial_details") or {}
+    fin_dd   = dynamic_details.get("financial_details") or {}
+    per_df   = dynamic_fields.get("personal_details") or {}
+    per_dd   = dynamic_details.get("personal_details") or {}
+
+    def first(*vals):
+        """Return first truthy value, empty string as fallback."""
+        for v in vals:
+            if v not in (None, "", [], {}):
+                return v
+        return ""
+
+    salary          = first(canonical.get("salary"),
+                            fin_df.get("salary"), fin_df.get("monthly_income"),
+                            fin_dd.get("salary"), fin_dd.get("monthly_income"),
+                            dynamic_fields.get("salary"), login_lead.get("salary"))
+
+    cibil_score     = first(canonical.get("cibilScore"),
+                            fin_df.get("cibil_score"), fin_dd.get("cibil_score"),
+                            dynamic_fields.get("cibil_score"), login_lead.get("cibil_score"))
+
+    loan_required   = first(canonical.get("loanRequired"),
+                            fin_dd.get("loan_required"), fin_dd.get("loan_amount"),
+                            fin_df.get("loan_required"), fin_df.get("loan_amount"),
+                            fin_df.get("required_loan"), fin_df.get("loan_amt"),
+                            dynamic_fields.get("loanRequired"), dynamic_fields.get("loan_required"),
+                            login_lead.get("loan_required"), login_lead.get("loanRequired"))
+
+    company_name    = first(canonical.get("companyName"),
+                            per_df.get("company_name"), per_dd.get("company_name"),
+                            dynamic_fields.get("companyName"), dynamic_fields.get("company_name"),
+                            login_lead.get("company_name"))
+
+    processing_bank = first(canonical.get("processingBank"),
+                            dynamic_fields.get("processingBank"), dynamic_fields.get("processing_bank"),
+                            login_lead.get("processingBank"), login_lead.get("processing_bank"))
+
+    partner_salary  = first(canonical.get("partnerSalary"),
+                            fin_df.get("partner_salary"), fin_dd.get("partner_salary"),
+                            dynamic_fields.get("partnerSalary"))
+
+    yearly_bonus    = first(canonical.get("yearlyBonus"),
+                            fin_df.get("yearly_bonus"), fin_dd.get("yearly_bonus"),
+                            dynamic_fields.get("yearlyBonus"))
+
+    bonus_division  = first(canonical.get("bonusDivision"),
+                            fin_df.get("bonus_division"), fin_dd.get("bonus_division"),
+                            dynamic_fields.get("bonusDivision"))
+
+    selected_banks  = first(canonical.get("selectedBanks"),
+                            dynamic_fields.get("selectedBanks"))
+    if not isinstance(selected_banks, list):
+        selected_banks = []
+
+    obligations_list = first(canonical.get("obligations"),
+                             dynamic_fields.get("obligations"),
+                             fin_df.get("obligations"))
+    if not isinstance(obligations_list, list):
+        obligations_list = []
+
+    result = {
+        "salary":        salary,
+        "cibilScore":    cibil_score,
+        "loanRequired":  loan_required,
+        "companyName":   company_name,
+        "processingBank": processing_bank,
+        "partnerSalary": partner_salary,
+        "yearlyBonus":   yearly_bonus,
+        "bonusDivision": bonus_division,
+        "selectedBanks": selected_banks,
+        "obligations":   obligations_list,
+        # Preserve for eligibility section
+        "check_eligibility":  dynamic_fields.get("check_eligibility") or {},
+        "eligibility_details": dynamic_fields.get("eligibility_details") or {},
     }
-    
-    # 🔍 DEBUG: Log what we're returning
-    print(f"\n📊 ========== OBLIGATIONS RESPONSE DEBUG ==========")
-    print(f"📊 Login Lead ID: {login_lead_id}")
-    print(f"📊 Extracted Values:")
-    print(f"   - salary: {salary_value}")
-    print(f"   - loanRequired: {loan_required_value}")
-    print(f"   - companyName: {company_name_value}")
-    print(f"   - processingBank: {processing_bank_value}")
-    print(f"   - obligations count: {len(obligations_list)}")
-    print(f"   - cibilScore: {obligation_data['cibilScore']}")
-    print(f"📊 Nested Structures Preserved:")
-    print(f"   - dynamic_fields keys: {list(dynamic_fields.keys()) if dynamic_fields else 'None'}")
-    print(f"   - dynamic_details keys: {list(dynamic_details.keys()) if dynamic_details else 'None'}")
-    print(f"   - check_eligibility keys: {list(check_eligibility.keys()) if check_eligibility else 'None'}")
-    if obligations_list:
-        print(f"📊 First Obligation Sample: {obligations_list[0] if obligations_list else 'None'}")
-    print(f"📊 ================================================\n")
-    
-    logger.info(f"📊 Login lead {login_lead_id} obligations: salary={salary_value}, loanRequired={loan_required_value}, companyName={company_name_value}, processingBank={processing_bank_value}, obligations={len(obligations_list)}")
-    return obligation_data
+
+    logger.info(f"✅ GET obligations {login_lead_id}: salary={salary}, cibil={cibil_score}, "
+                f"loan={loan_required}, obligations={len(obligations_list)}")
+    return result
 
 @router.post("/login-leads/{login_lead_id}/obligations")
 async def update_login_lead_obligations(
@@ -1073,84 +1012,76 @@ async def update_login_lead_obligations(
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Update obligation and eligibility data for a login lead"""
-    # Check permission
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
-    
-    # Get the login lead
+
     login_lead = await login_leads_db.get_login_lead(login_lead_id)
     if not login_lead:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Login lead with ID {login_lead_id} not found"
-        )
-    
-    # Get existing dynamic fields
-    dynamic_fields = login_lead.get('dynamic_fields', {}) or {}
-    
-    # 🔍 DEBUG: Log what we're receiving and what exists
-    logger.info("🔍 ========== OBLIGATION SAVE DEBUG ==========")
-    logger.info(f"🔍 Login Lead ID: {login_lead_id}")
-    logger.info(f"🔍 Received obligation_data keys: {list(obligation_data.keys())}")
-    logger.info(f"🔍 Received obligations count: {len(obligation_data.get('obligations', []))}")
-    if obligation_data.get('obligations'):
-        logger.info(f"🔍 First obligation sample: {obligation_data['obligations'][0]}")
-    logger.info(f"🔍 BEFORE UPDATE - Existing dynamic_fields keys: {list(dynamic_fields.keys())}")
-    logger.info(f"🔍 BEFORE UPDATE - Existing personal_details: {dynamic_fields.get('personal_details', {})}")
-    logger.info(f"🔍 BEFORE UPDATE - Existing financial_details: {dynamic_fields.get('financial_details', {})}")
-    logger.info("🔍 ==========================================")
-    
-    # 🎯 CRITICAL FIX: Deep merge obligation data to preserve other sections
-    # Instead of replacing, we need to intelligently merge nested structures
-    
-    def deep_merge(base_dict, update_dict):
-        """Deep merge update_dict into base_dict, preserving existing nested data"""
-        result = base_dict.copy()
-        for key, value in update_dict.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                # Recursively merge nested dictionaries
-                result[key] = deep_merge(result[key], value)
-            else:
-                # Replace or add the value
-                result[key] = value
-        return result
-    
-    # Apply deep merge for obligation data
-    for key, value in obligation_data.items():
-        if key not in ['_id', 'id']:  # Skip ID fields
-            if key in dynamic_fields and isinstance(dynamic_fields[key], dict) and isinstance(value, dict):
-                # Deep merge for nested objects like personal_details, financial_details
-                dynamic_fields[key] = deep_merge(dynamic_fields[key], value)
-            else:
-                # Direct assignment for non-dict values or new keys
-                dynamic_fields[key] = value
-    
-    logger.info(f"🔍 AFTER UPDATE - dynamic_fields keys: {list(dynamic_fields.keys())}")
-    logger.info(f"🔍 AFTER UPDATE - personal_details: {dynamic_fields.get('personal_details', {})}")
-    logger.info(f"🔍 AFTER UPDATE - financial_details: {dynamic_fields.get('financial_details', {})}")
-    
-    # Prepare update data
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Login lead with ID {login_lead_id} not found")
+
+    dynamic_fields = dict(login_lead.get('dynamic_fields') or {})
+
+    # ── Known obligation field keys (camelCase as sent by frontend) ──
+    OBLIGATION_KEYS = {
+        "salary", "cibilScore", "loanRequired", "companyName", "processingBank",
+        "partnerSalary", "yearlyBonus", "bonusDivision", "selectedBanks", "obligations",
+    }
+
+    # Build canonical obligation_data from incoming payload
+    existing_canonical = dynamic_fields.get("obligation_data") or {}
+    new_canonical = dict(existing_canonical)  # start from existing, overwrite with incoming
+    for key in OBLIGATION_KEYS:
+        if key in obligation_data:
+            new_canonical[key] = obligation_data[key]
+
+    # Preserve eligibility fields if present in payload
+    for key in ("check_eligibility", "eligibility_details"):
+        if key in obligation_data:
+            dynamic_fields[key] = obligation_data[key]
+
+    # Write canonical block
+    dynamic_fields["obligation_data"] = new_canonical
+
+    # ── Remove stale duplicates from legacy locations ──
+    # This progressively cleans up old data over time without a one-shot migration.
+    for stale_key in ("obligations", "salary", "cibil_score",
+                      "loanRequired", "loan_required",
+                      "companyName", "company_name",
+                      "processingBank", "processing_bank",
+                      "partnerSalary", "yearlyBonus", "bonusDivision", "selectedBanks"):
+        dynamic_fields.pop(stale_key, None)
+
+    # Clean salary/cibil out of financial_details and personal_details sub-dicts too
+    if isinstance(dynamic_fields.get("financial_details"), dict):
+        for k in ("salary", "monthly_income", "cibil_score",
+                  "loan_required", "loan_amount", "required_loan", "loan_amt",
+                  "partner_salary", "yearly_bonus", "bonus_division",
+                  "obligations"):
+            dynamic_fields["financial_details"].pop(k, None)
+        if not dynamic_fields["financial_details"]:
+            dynamic_fields.pop("financial_details", None)
+
+    if isinstance(dynamic_fields.get("personal_details"), dict):
+        dynamic_fields["personal_details"].pop("company_name", None)
+        if not dynamic_fields["personal_details"]:
+            dynamic_fields.pop("personal_details", None)
+
     update_data = {
         'dynamic_fields': dynamic_fields,
         'updated_at': get_ist_now().isoformat(),
         'updated_by': user_id
     }
-    
-    # Update the login lead
+
     success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
-    
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update obligations"
-        )
-    
-    # 📝 Create activity log for obligation updates
-    lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
-    obligations_count = len(obligation_data.get('obligations', []))
-    salary = obligation_data.get('salary', '')
-    loan_required = obligation_data.get('loanRequired', '')
-    
-    description = f"Updated Obligation Section"
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Failed to update obligations")
+
+    obligations_count = len(new_canonical.get('obligations', []))
+    salary = new_canonical.get('salary', '')
+    loan_required = new_canonical.get('loanRequired', '')
+
+    description = "Updated Obligation Section"
     if context == "reassignment":
         description += " (during reassignment review)"
     elif context == "transfer":
@@ -1161,7 +1092,7 @@ async def update_login_lead_obligations(
         description += f", Salary: {salary}"
     if loan_required:
         description += f", Loan Required: {loan_required}"
-    
+
     await login_leads_db._log_activity(
         login_lead_id=login_lead_id,
         activity_type='obligation_update',
@@ -1174,14 +1105,15 @@ async def update_login_lead_obligations(
             'timestamp': get_ist_now().isoformat()
         }
     )
-    
-    # ⚡ CACHE INVALIDATION
+
     try:
         await invalidate_cache_pattern("login-department-leads*")
-        logger.info(f"🔄 Cache invalidated after login lead obligations update: {login_lead_id}")
     except Exception as cache_error:
         logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
-    
+
+    logger.info(f"✅ POST obligations {login_lead_id}: canonical saved with "
+                f"salary={salary}, cibil={new_canonical.get('cibilScore')}, "
+                f"loan={loan_required}, obligations={obligations_count}")
     return {"message": "Obligations updated successfully", "success": True}
 
 @router.post("/login-leads/{login_lead_id}/notes", response_model=Dict[str, str])
