@@ -1179,7 +1179,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         channelName: [], // Channel name filter from leads.channel_name
         incomeRangeFrom: '', // Income range filter from
         incomeRangeTo: '', // Income range filter to
-        incomeSortOrder: '' // Income sort order: 'asc', 'desc', or ''
+        incomeSortOrder: '', // Income sort order: 'asc', 'desc', or ''
+        loginAgeFrom: '', // Login age range filter (days) - from
+        loginAgeTo: ''   // Login age range filter (days) - to
     });
 
     // Calculate status counts from leads data
@@ -1425,7 +1427,28 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 incomeMatch = leadIncome >= minIncome && leadIncome <= maxIncome;
             }
 
-            return statusMatch && dateInRange && disbursementDateMatch && teamMatch && campaignMatch && createdByMatch && assignedTLMatch && loginDepartmentMatch && channelMatch && incomeMatch;
+            // Login age filter (days since login_date)
+            let loginAgeMatch = true;
+            if (filterOptions.loginAgeFrom !== '' || filterOptions.loginAgeTo !== '') {
+                const loginDateVal = lead.login_date ? new Date(lead.login_date) : null;
+                if (loginDateVal && !isNaN(loginDateVal)) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const loginDateNorm = new Date(loginDateVal);
+                    loginDateNorm.setHours(0, 0, 0, 0);
+                    const ageDays = Math.floor((today - loginDateNorm) / (1000 * 60 * 60 * 24));
+                    if (filterOptions.loginAgeFrom !== '') {
+                        loginAgeMatch = loginAgeMatch && ageDays >= parseInt(filterOptions.loginAgeFrom, 10);
+                    }
+                    if (filterOptions.loginAgeTo !== '') {
+                        loginAgeMatch = loginAgeMatch && ageDays <= parseInt(filterOptions.loginAgeTo, 10);
+                    }
+                } else {
+                    loginAgeMatch = false;
+                }
+            }
+
+            return statusMatch && dateInRange && disbursementDateMatch && teamMatch && campaignMatch && createdByMatch && assignedTLMatch && loginDepartmentMatch && channelMatch && incomeMatch && loginAgeMatch;
         });
 
         // Apply duplicate filter with enhanced algorithm
@@ -6659,6 +6682,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                 <label className="block text-gray-400 text-xs mb-1">From Age (Days)</label>
                                                 <input
                                                     type="number"
+                                                    min="0"
+                                                    value={filterOptions.loginAgeFrom}
+                                                    onChange={(e) => setFilterOptions({...filterOptions, loginAgeFrom: e.target.value})}
                                                     className="w-full bg-[#1b2230] border border-gray-600 rounded px-3 py-2 text-gray-300 focus:outline-none focus:border-blue-500"
                                                     placeholder="0"
                                                 />
@@ -6667,12 +6693,16 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                 <label className="block text-gray-400 text-xs mb-1">To Age (Days)</label>
                                                 <input
                                                     type="number"
+                                                    min="0"
+                                                    value={filterOptions.loginAgeTo}
+                                                    onChange={(e) => setFilterOptions({...filterOptions, loginAgeTo: e.target.value})}
                                                     className="w-full bg-[#1b2230] border border-gray-600 rounded px-3 py-2 text-gray-300 focus:outline-none focus:border-blue-500"
                                                     placeholder="365"
                                                 />
                                             </div>
                                         </div>
                                         <button
+                                            onClick={() => setFilterOptions({...filterOptions, loginAgeFrom: '', loginAgeTo: ''})}
                                             className="text-xs text-blue-400 hover:text-blue-300"
                                         >
                                             Clear Age Range
@@ -7558,7 +7588,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         
                                         incomeRangeFrom: '', // Clear income range from
                                         incomeRangeTo: '', // Clear income range to
-                                        incomeSortOrder: '' // Clear income sort order
+                                        incomeSortOrder: '', // Clear income sort order
+                                        loginAgeFrom: '', // Clear login age from
+                                        loginAgeTo: '' // Clear login age to
                                     });
                                     // Also clear search states
                                     clearSearchStates();
