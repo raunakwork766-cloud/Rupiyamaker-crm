@@ -357,11 +357,16 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
 
   // Notify parent component when unsaved changes state updates
   // Auto-save is always active - no tab-switch popup needed
+  // NOTE: onUnsavedChangesUpdate intentionally excluded from deps — it's an unstabilized callback
+  // prop (new reference on every parent render). Including it causes an infinite loop:
+  // effect fires → setObligationModalTrigger(new fn) → parent re-renders → new prop ref → effect fires...
+  const onUnsavedChangesUpdateRef = useRef(onUnsavedChangesUpdate);
+  useEffect(() => { onUnsavedChangesUpdateRef.current = onUnsavedChangesUpdate; }, [onUnsavedChangesUpdate]);
   useEffect(() => {
-    if (onUnsavedChangesUpdate && typeof onUnsavedChangesUpdate === 'function') {
-      onUnsavedChangesUpdate(false, () => {});
+    if (onUnsavedChangesUpdateRef.current && typeof onUnsavedChangesUpdateRef.current === 'function') {
+      onUnsavedChangesUpdateRef.current(false, () => {});
     }
-  }, [hasUnsavedChanges, onUnsavedChangesUpdate]);
+  }, [hasUnsavedChanges]); // ← only re-run when hasUnsavedChanges actually changes
   
   // Cleanup blur save timer on unmount
   useEffect(() => {
