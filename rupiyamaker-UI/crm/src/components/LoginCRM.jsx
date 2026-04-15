@@ -2934,7 +2934,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     // Sub-status breakdown for status card overview popup
     const getSubStatusBreakdown = (parentKey) => {
         const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
-        const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
+        const allLeads = Array.isArray(leads) ? leads : [];
         const inParent = allLeads.filter(lead => {
             const statusVal = typeof lead.status === 'object' ? (lead.status?.name || '') : (lead.status || '');
             return statusVal.toLowerCase() === parentKey.toLowerCase();
