@@ -2378,7 +2378,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         }
       }
     }
-  }, [JSON.stringify(leadData?.dynamic_fields?.obligations), hasUnsavedChanges]);
+  }, [JSON.stringify(leadData?.dynamic_fields?.obligations), hasUnsavedChanges, hasDeletedRow]);
   
   // Debug state watcher to track changes in key fields (optimized to reduce console spam)
   useEffect(() => {
