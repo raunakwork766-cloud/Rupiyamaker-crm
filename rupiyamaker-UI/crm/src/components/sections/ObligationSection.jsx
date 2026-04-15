@@ -286,6 +286,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [totalBtPos, setTotalBtPos] = useState('0');
   const [totalObligation, setTotalObligation] = useState('0');
   const [cibilScore, setCibilScore] = useState('');
+  const [cibilScoreError, setCibilScoreError] = useState('');
   const [obligations, setObligations] = useState([
     {
       id: Date.now(), // Add unique ID
@@ -6950,19 +6951,32 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     disabled={!canEdit}
                     onChange={(e) => {
                       if (!canEdit) return;
-                      const value = e.target.value;
-                      setCibilScore(value);
+                      const raw = e.target.value.replace(/[^0-9]/g, '');
+                      setCibilScore(raw);
+                      if (raw === '') {
+                        setCibilScoreError('');
+                      } else {
+                        const num = parseInt(raw, 10);
+                        if (num < 300 || num > 900) {
+                          setCibilScoreError('CIBIL score 300–900 ke beech hona chahiye');
+                        } else {
+                          setCibilScoreError('');
+                        }
+                      }
                       // Mark unsaved changes and trigger autosave
                       setHasUnsavedChanges(true);
                       setHasUserInteraction(true);
                       // Notify parent component of changes immediately for unsaved changes detection
                       if (handleChangeFunc) {
-                        handleChangeFunc('cibil_score', value);
+                        handleChangeFunc('cibil_score', raw);
                       }
                     }}
                     placeholder="Score"
                     inputMode="numeric"
                   />
+                  {cibilScoreError && (
+                    <span className="text-red-400 text-[10px] font-semibold mt-1 block">{cibilScoreError}</span>
+                  )}
                 </div>
               </div>
             </div>
