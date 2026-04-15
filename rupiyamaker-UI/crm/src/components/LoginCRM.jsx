@@ -5323,8 +5323,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     {statusCardConfig.map(({ key, label, gradient, shadowColor }, index) => (
                         <div
                             key={index}
-                            className={`flex-1 min-w-[130px] px-4 py-3 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
-                            onClick={() => setActiveCardModal(key)}
+                            className={`flex-1 min-w-[130px] px-4 py-3 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none ${selectedStatus === key ? 'ring-[3px] ring-white ring-offset-2 ring-offset-slate-900' : ''}`}
+                            onClick={() => { setSelectedStatus(prev => prev === key ? 'all' : key); setActiveCardModal(key); }}
                         >
                             <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm text-white font-semibold uppercase tracking-wide leading-tight">{label}</p>
@@ -5381,6 +5381,31 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             )}
                                         </tbody>
                                     </table>
+                                </div>
+                                <div className="px-5 py-3 border-t border-gray-700 flex items-center justify-between gap-3">
+                                    <span className="text-gray-400 text-xs">
+                                        {selectedStatus === activeCardModal
+                                            ? <span className="text-green-400 font-semibold">✓ Filter active — table showing {activeCardModal}</span>
+                                            : <span>Table not filtered by this status</span>
+                                        }
+                                    </span>
+                                    <div className="flex gap-2">
+                                        {selectedStatus === activeCardModal ? (
+                                            <button
+                                                className="px-4 py-1.5 rounded-lg bg-gray-600 hover:bg-gray-500 text-white text-xs font-bold transition"
+                                                onClick={() => { setSelectedStatus('all'); setActiveCardModal(null); }}
+                                            >✕ Clear Filter</button>
+                                        ) : (
+                                            <button
+                                                className={`px-4 py-1.5 rounded-lg bg-gradient-to-r ${cardGradient} text-white text-xs font-bold transition hover:opacity-90`}
+                                                onClick={() => { setSelectedStatus(activeCardModal); setActiveCardModal(null); }}
+                                            >Apply Filter to Table</button>
+                                        )}
+                                        <button
+                                            className="px-4 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold transition"
+                                            onClick={() => setActiveCardModal(null)}
+                                        >Close</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
