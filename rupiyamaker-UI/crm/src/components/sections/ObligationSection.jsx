@@ -6649,11 +6649,6 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       // Try to recover from backup first
       if (backupObligationData) {
         console.log('🔄 EMERGENCY: Recovering from backup data');
-        setDebugState(prev => ({
-          ...prev,
-          recoveryCount: prev.recoveryCount + 1,
-          lastRecoveryTime: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
-        }));
         setTimeout(() => {
           if (backupObligationData?.salary) setSalary(backupObligationData.salary);
           if (backupObligationData?.companyName) setCompanyName(backupObligationData.companyName);
