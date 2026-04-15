@@ -1864,7 +1864,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             if (!document.hidden) {
                 // Check if cache is stale when user returns to tab
                 const userId = localStorage.getItem('userId');
-                const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}`;
+                const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}${filterOptions.noActivityDate ? `_nad${filterOptions.noActivityDate}` : ''}`;
                 const cacheTimeKey = `${cacheKey}_time`;
                 const cacheTime = localStorage.getItem(cacheTimeKey);
                 
@@ -1994,7 +1994,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         
         try {
             const userId = localStorage.getItem('userId');
-            const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}`;
+            const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}${filterOptions.noActivityDate ? `_nad${filterOptions.noActivityDate}` : ''}`;
             const cacheTimeKey = `${cacheKey}_time`;
             
             // Clear localStorage cache
@@ -2099,7 +2099,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         }
 
         // ⚡ CACHE KEY for stale-while-revalidate strategy
-        const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}`;
+        // Include noActivityDate so cache is invalidated when this backend filter changes
+        const noActivitySuffix = filterOptions.noActivityDate ? `_nad${filterOptions.noActivityDate}` : '';
+        const cacheKey = `logincrm_leads_${userId}_${selectedStatus}_${selectedLoanType}${noActivitySuffix}`;
         const cacheTimeKey = `${cacheKey}_time`;
         
         // ⚡ ULTRA FAST: Show cached data IMMEDIATELY (Stale-While-Revalidate)
