@@ -7473,31 +7473,62 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 {selectedFilterCategory === 'other' && (
                                     <div>
                                         <h3 className="text-base font-medium text-gray-300 mb-4">Campaign Name</h3>
-                                        <div className="space-y-2 max-h-96 overflow-y-auto">
-                                            <label className="flex items-center cursor-pointer">
+                                        
+                                        {/* Search bar for campaigns */}
+                                        <div className="mb-4">
+                                            <div className="relative">
                                                 <input
-                                                    type="radio"
-                                                    name="campaignName"
-                                                    value=""
-                                                    checked={!filterOptions.campaignName}
-                                                    onChange={(e) => setFilterOptions({...filterOptions, campaignName: ''})}
-                                                    className="accent-blue-500 mr-2"
+                                                    type="text"
+                                                    placeholder="Search campaigns..."
+                                                    value={campaignNameSearch}
+                                                    onChange={(e) => setCampaignNameSearch(e.target.value)}
+                                                    className="w-full bg-[#1b2230] border border-gray-600 rounded px-3 py-2 pl-10 text-gray-300 focus:outline-none focus:border-blue-500"
                                                 />
-                                                <span className="text-gray-300">All Campaigns</span>
-                                            </label>
-                                            {[...new Set(leads.map(lead => lead.operations_channel_name).filter(Boolean))].sort().map(campaign => (
-                                                <label key={campaign} className="flex items-center cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                                    name="campaignName"
-                                                                    value={campaign}
-                                                                    checked={filterOptions.campaignName === campaign}
-                                                                    onChange={(e) => setFilterOptions({...filterOptions, campaignName: e.target.value})}
-                                                                    className="accent-blue-500 mr-2"
-                                                                />
-                                                                <span className="text-gray-300">{campaign}</span>
-                                                            </label>
-                                                        ))}
+                                                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                {campaignNameSearch && (
+                                                    <button
+                                                        onClick={() => setCampaignNameSearch('')}
+                                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Campaign options - checkbox multi-select */}
+                                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                                            {getFilteredCampaigns().map((campaign, index) => (
+                                                <label key={index} className="flex items-center cursor-pointer p-2 rounded hover:bg-[#2a3441] transition-colors">
+                                                    <Checkbox
+                                                        checked={filterOptions.campaignName?.includes(campaign) || false}
+                                                        onChange={(e) => {
+                                                            const isChecked = e.target.checked;
+                                                            const current = filterOptions.campaignName || [];
+                                                            setFilterOptions({
+                                                                ...filterOptions,
+                                                                campaignName: isChecked
+                                                                    ? [...current, campaign]
+                                                                    : current.filter(c => c !== campaign)
+                                                            });
+                                                        }}
+                                                        className="mr-3"
+                                                    />
+                                                    <span className="text-gray-300 flex-1">{campaign}</span>
+                                                </label>
+                                            ))}
+
+                                            {campaignNameSearch && getFilteredCampaigns().length === 0 && (
+                                                <div className="text-gray-400 text-sm py-2 text-center">
+                                                    No campaigns found matching "{campaignNameSearch}"
+                                                </div>
+                                            )}
+
+                                            {!campaignNameSearch && getFilteredCampaigns().length === 0 && (
+                                                <div className="text-gray-400 text-sm py-2 text-center">
+                                                    No campaigns available
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
