@@ -1164,8 +1164,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         disbursementDateTo: '', // Date Filters - disbursement date to
         
         // Enhanced date filters
-        leadDateFrom: '', // Lead date range filter (from)
-        leadDateTo: '', // Lead date range filter (to)
         fileSentToLoginDateFrom: '', // File sent to login date range (from)
         fileSentToLoginDateTo: '', // File sent to login date range (to)
         
@@ -1713,7 +1711,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         if (filterOptions.fileSentToLogin) count++;
         if (filterOptions.checkDuplicateLeads) count++;
         if (filterOptions.disbursementDateFrom || filterOptions.disbursementDateTo) count++;
-        if (filterOptions.leadDateFrom || filterOptions.leadDateTo) count++;
         if (filterOptions.fileSentToLoginDateFrom || filterOptions.fileSentToLoginDateTo) count++;
         if (filterOptions.noActivityDate) count++;
         if (filterOptions.loanTypeFilter?.length > 0) count++;
@@ -1740,7 +1737,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             case 'leadDate':
                 let leadDateCount = 0;
                 if (filterOptions.dateFrom || filterOptions.dateTo) leadDateCount++;
-                if (filterOptions.leadDateFrom || filterOptions.leadDateTo) leadDateCount++;
                 if (filterOptions.fileSentToLoginDateFrom || filterOptions.fileSentToLoginDateTo) leadDateCount++;
                 if (filterOptions.noActivityDate) leadDateCount++;
                 return leadDateCount;
@@ -7632,8 +7628,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         disbursementDateTo: '', // Clear disbursement date to
                                         
                                         // Enhanced date filters
-                                        leadDateFrom: '', // Clear lead date from
-                                        leadDateTo: '', // Clear lead date to
                                         fileSentToLoginDateFrom: '', // Clear file sent date from
                                         fileSentToLoginDateTo: '', // Clear file sent date to
                                         fileSentToLogin: false, // Clear file sent to login filter
