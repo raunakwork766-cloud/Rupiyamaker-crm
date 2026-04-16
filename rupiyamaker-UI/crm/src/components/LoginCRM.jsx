@@ -7640,8 +7640,14 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                     });
                                     // Also clear search states
                                     clearSearchStates();
+                                    // Clear main search bar
+                                    setSearchTerm('');
+                                    // Close the filter popup
+                                    setShowFilterPopup(false);
                                     // Increment filter revision to force re-computation
                                     triggerFilterUpdate();
+                                    // Feedback
+                                    message.success('Filters cleared!');
                                 }}
                                 className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition whitespace-nowrap"
                             >
