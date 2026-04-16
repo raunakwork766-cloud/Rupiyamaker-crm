@@ -46,6 +46,36 @@ const getUserId = () => {
 };
 
 // Fetch company names from Vakilsearch API with improved error handling
+
+/**
+ * Normalizes any incoming company_category value to a consistent
+ * Array<{key, display, category_name, company_name, bank_name}> format.
+ * Handles: null, string, single object, array of strings, array of objects.
+ */
+const normalizeCompanyCategories = (raw) => {
+  if (!raw) return [];
+  const toObject = (item) => {
+    if (typeof item === 'string') {
+      return { key: item, display: item, category_name: item, company_name: '', bank_name: '' };
+    }
+    if (typeof item === 'object' && item !== null) {
+      const category_name = item.category_name || item.key || item.display || '';
+      const display = item.display || item.key || category_name;
+      return {
+        key: item.key || category_name,
+        display,
+        category_name,
+        company_name: item.company_name || '',
+        bank_name: item.bank_name || '',
+        ...item,
+      };
+    }
+    return null;
+  };
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr.map(toObject).filter(Boolean);
+};
+
 const fetchCompanyNames = async (companyName) => {
   try {
     const userId = getUserId();
@@ -1900,9 +1930,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       if (shouldAlwaysUpdate || JSON.stringify(companyTypeValue) !== JSON.stringify(companyType)) setCompanyType(companyTypeValue);
       
       // Set company category - always update for login leads or new leads
-      const companyCategoryValue = extractedCompanyCategory ? 
-        (Array.isArray(extractedCompanyCategory) ? extractedCompanyCategory : [extractedCompanyCategory]) : 
-        (shouldAlwaysUpdate ? [] : companyCategory);
+      const companyCategoryValue = normalizeCompanyCategories(
+        extractedCompanyCategory || (shouldAlwaysUpdate ? [] : companyCategory)
+      );
       if (shouldAlwaysUpdate || JSON.stringify(companyCategoryValue) !== JSON.stringify(companyCategory)) setCompanyCategory(companyCategoryValue);
       
       // Handle FOIR settings - check multiple locations
@@ -3008,33 +3038,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       loanRequired,
       companyName: effectiveCompanyName, // Use effective company name
       companyType, 
-      companyCategory: (() => {
-        // Send complete category objects with company name, bank name, and category name
-        if (Array.isArray(companyCategory)) {
-          return companyCategory.map(cat => {
-            if (typeof cat === 'string') {
-              // Legacy format - convert to object structure
-              return {
-                company_name: effectiveCompanyName || '',
-                bank_name: '',
-                category_name: cat,
-                display: cat
-              };
-            } else if (typeof cat === 'object' && cat !== null) {
-              // New format - preserve all information
-              return {
-                company_name: cat.company_name || effectiveCompanyName || '',
-                bank_name: cat.bank_name || '',
-                category_name: cat.category_name || cat.key || cat.display || '',
-                display: cat.display || cat.key || '',
-                ...cat // Include any additional fields
-              };
-            }
-            return cat;
-          });
-        }
-        return companyCategory;
-      })(),
+      companyCategory: Array.isArray(companyCategory)
+        ? companyCategory.map(cat => ({
+            company_name: cat.company_name || effectiveCompanyName || '',
+            bank_name: cat.bank_name || '',
+            category_name: cat.category_name || cat.key || cat.display || '',
+            display: cat.display || cat.key || '',
+            ...cat,
+          }))
+        : [],
       cibilScore,
       obligations: obligationsToSave.map((obl) => ({
         ...obl,
@@ -3110,33 +3122,15 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           company: effectiveCompanyName || '',                     // Short field name
           organization: effectiveCompanyName || '',                // Organization field
           workplace: effectiveCompanyName || '',                   // Workplace field
-          company_category: (() => {
-            // Send complete category objects with company name, bank name, and category name
-            if (Array.isArray(companyCategory)) {
-              return companyCategory.map(cat => {
-                if (typeof cat === 'string') {
-                  // Legacy format - convert to object structure
-                  return {
-                    company_name: effectiveCompanyName || '', // Use effective company name
-                    bank_name: '',
-                    category_name: cat,
-                    display: cat
-                  };
-                } else if (typeof cat === 'object' && cat !== null) {
-                  // New format - preserve all information
-                  return {
-                    company_name: cat.company_name || effectiveCompanyName || '', // Use effective company name
-                    bank_name: cat.bank_name || '',
-                    category_name: cat.category_name || cat.key || cat.display || '',
-                    display: cat.display || cat.key || '',
-                    ...cat // Include any additional fields
-                  };
-                }
-                return cat;
-              });
-            }
-            return companyCategory;
-          })()
+          company_category: Array.isArray(companyCategory)
+            ? companyCategory.map(cat => ({
+                company_name: cat.company_name || effectiveCompanyName || '',
+                bank_name: cat.bank_name || '',
+                category_name: cat.category_name || cat.key || cat.display || '',
+                display: cat.display || cat.key || '',
+                ...cat,
+              }))
+            : [],
         },
         check_eligibility: {
           company_category: ceCompanyCategory ? String(ceCompanyCategory) : null,
