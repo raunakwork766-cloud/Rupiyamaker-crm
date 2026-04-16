@@ -3028,6 +3028,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     
     console.log('Final effective company name:', effectiveCompanyName);
     
+    // Fresh-calculate totalObligation from obligationsToSave so save never sends a stale state value
+    const freshTotalObligation = obligationsToSave.reduce((sum, obl) => {
+      return sum + (obl.emi ? parseINR(obl.emi) : 0);
+    }, 0);
+
     // Structure the data to match both the API expectations and the dynamic_fields structure
     const obligationData = {
       // Direct fields
@@ -3060,7 +3065,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       foirPercent: ceFoirPercent,
       customFoirPercent: ceCustomFoirPercent,
       totalBtPos,
-      totalObligation,
+      totalObligation: freshTotalObligation,
       eligibility,
       ceCompanyCategory,
       ceFoirPercent,
