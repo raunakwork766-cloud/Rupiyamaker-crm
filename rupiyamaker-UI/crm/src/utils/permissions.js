@@ -343,13 +343,17 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
             if (perm.page.toLowerCase() === page.toLowerCase()) {
                 console.log(`🎯 Found permission entry for page: ${page}`);
 
+                // Alias map: view_all ↔ all (view_team has no alias)
+                const _ALIASES = { view_all: 'all', all: 'view_all' };
+                const actionsToCheck = [action, _ALIASES[action]].filter(Boolean);
+
                 // Check if actions is a wildcard
                 if (perm.actions === '*') {
                     console.log('✅ hasUniversalPermission: Wildcard actions');
                     return true;
                 }
 
-                // Check if actions is an array containing the permission
+                // Check if actions is an array containing the permission (or its alias)
                 if (Array.isArray(perm.actions)) {
                     // Check for wildcard in actions array
                     if (perm.actions.includes('*')) {
@@ -357,15 +361,15 @@ export const hasUniversalPermission = (userPermissions, page, action) => {
                         return true;
                     }
 
-                    // Check for specific permission
-                    if (perm.actions.includes(action)) {
+                    // Check for specific permission or alias
+                    if (actionsToCheck.some(a => perm.actions.includes(a))) {
                         console.log(`✅ hasUniversalPermission: Specific action ${action} found`);
                         return true;
                     }
                 }
 
-                // Check if actions is a string matching the permission
-                if (typeof perm.actions === 'string' && perm.actions === action) {
+                // Check if actions is a string matching the permission (or its alias)
+                if (typeof perm.actions === 'string' && actionsToCheck.includes(perm.actions)) {
                     console.log(`✅ hasUniversalPermission: String action match ${action}`);
                     return true;
                 }
@@ -468,6 +472,11 @@ export const hasPermission = (userPermissions, page, action) => {
     // Check with original case, lowercase, and capitalized first letter
     const pageVariations = [page, pageLower, pageCapital];
     
+    // Alias map: view_all ↔ all (view_team has no alias - it is the single canonical name)
+    const ACTION_ALIASES = { view_all: 'all', all: 'view_all' };
+    const actionsToCheck = [action];
+    if (ACTION_ALIASES[action]) actionsToCheck.push(ACTION_ALIASES[action]);
+
     for (const pageVar of pageVariations) {
         // Page-specific super admin check (page "leads" and actions "*" means super admin for leads)
         if (userPermissions?.[pageVar] === "*") {
@@ -479,8 +488,8 @@ export const hasPermission = (userPermissions, page, action) => {
         if (userPermissions?.[pageVar]) {
             // If page permissions exist as object
             if (typeof userPermissions[pageVar] === 'object' && !Array.isArray(userPermissions[pageVar])) {
-                // Check if the action is explicitly allowed
-                if (userPermissions[pageVar][action] === true) {
+                // Check if the action (or its alias) is explicitly allowed
+                if (actionsToCheck.some(a => userPermissions[pageVar][a] === true)) {
                     console.log(`✅ hasPermission: Explicit permission ${pageVar}.${action}`);
                     return true;
                 }
@@ -494,8 +503,8 @@ export const hasPermission = (userPermissions, page, action) => {
     
             // If page permissions exist as array (backwards compatibility)
             if (Array.isArray(userPermissions[pageVar])) {
-                // Check if action is in the array or if '*' is in the array
-                if (userPermissions[pageVar].includes(action) || 
+                // Check if action (or alias) is in the array or if '*' is in the array
+                if (actionsToCheck.some(a => userPermissions[pageVar].includes(a)) || 
                     userPermissions[pageVar].includes('*')) {
                     console.log(`✅ hasPermission: Array permission ${pageVar}.${action}`);
                     return true;

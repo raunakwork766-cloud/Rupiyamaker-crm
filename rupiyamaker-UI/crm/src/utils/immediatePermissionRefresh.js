@@ -183,8 +183,6 @@ export const refreshCurrentUserPermissions = async () => {
  */
 export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) => {
     console.log('🔄 Updating role with immediate permission refresh...');
-    console.log('🔍 DEBUG: roleData received:', JSON.stringify(roleData, null, 2));
-    console.log('🔍 DEBUG: roleId:', roleId);
     
     try {
         const token = localStorage.getItem('token');
@@ -205,13 +203,7 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
         
         const method = roleId ? 'PUT' : 'POST';
         
-        console.log(`🔍 DEBUG: URL: ${url}`);
-        console.log(`🔍 DEBUG: Method: ${method}`);
-        console.log(`🔍 DEBUG: user_id: ${user_id}`);
-        console.log(`🔍 DEBUG: Request body:`, JSON.stringify(roleData, null, 2));
-        
-        // Step 1: Update the role
-        console.log(`📤 ${method}ing role to ${url}...`);
+        console.log(` ${method}ing role to ${url}...`);
         const response = await fetch(url, {
             method: method,
             headers: {
@@ -221,18 +213,13 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
             body: JSON.stringify(roleData)
         });
         
-        console.log('🔍 DEBUG: Response status:', response.status);
-        console.log('🔍 DEBUG: Response ok:', response.ok);
-        
         // Try to get response body even on error
         let result;
         try {
             result = await response.json();
-            console.log('🔍 DEBUG: Response body:', JSON.stringify(result, null, 2));
         } catch (jsonError) {
             console.error('❌ Failed to parse response JSON:', jsonError);
             const textResponse = await response.text();
-            console.log('🔍 DEBUG: Response text:', textResponse);
             throw new Error(`Backend response was not valid JSON: ${textResponse}`);
         }
         
@@ -247,9 +234,6 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
         // userData already retrieved earlier in the function
         const { role_id } = JSON.parse(userData);
         const updatedRoleId = roleId || result.id || result._id;
-        
-        console.log('🔍 DEBUG: Current user role_id:', role_id);
-        console.log('🔍 DEBUG: Updated role ID:', updatedRoleId);
         
         if (role_id === updatedRoleId || role_id === roleId) {
             console.log('🎯 Current user\'s role was updated - refreshing permissions immediately');
