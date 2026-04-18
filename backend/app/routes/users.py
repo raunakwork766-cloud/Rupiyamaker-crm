@@ -12,6 +12,7 @@ from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
 from app.database.Designations import DesignationService
+from app.database.Settings import SettingsDB
 from app.database import get_database_instances
 from app.schemas.user_schemas import (
     UserBase, UserCreate, UserUpdate, UserInDB, UserLogin,
@@ -45,6 +46,10 @@ async def get_departments_db():
 async def get_otp_db():
     db_instances = get_database_instances()
     return db_instances["otp"]
+
+async def get_settings_db():
+    db_instances = get_database_instances()
+    return db_instances["settings"]
     
 @router.post("/", response_model=Dict[str, str], status_code=status.HTTP_201_CREATED)
 async def create_user(
@@ -443,7 +448,8 @@ async def login(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
     departments_db: DepartmentsDB = Depends(get_departments_db),
-    otp_db: OTPDB = Depends(get_otp_db)
+    otp_db: OTPDB = Depends(get_otp_db),
+    settings_db: SettingsDB = Depends(get_settings_db)
 ):
     """Authenticate a user with optional OTP verification"""
     # Step 1: Look up user WITHOUT password check so we can give specific error messages
@@ -502,8 +508,19 @@ async def login(
     # This allows them to login fresh without the flag blocking them
     # NOTE: last_login is only updated AFTER full auth (including OTP) below.
     
-    # Check if OTP is required for this user (default is True if not set)
-    otp_required = user.get("otp_required", True)
+    # Check if OTP is required for this user based on role routing config
+    # If the user's role has OTP approval routing configured, OTP is required
+    otp_required = False
+    try:
+        role_id = str(user.get("role_id", ""))
+        if role_id and settings_db:
+            otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
+            otp_required = otp_route is not None
+        else:
+            # Fallback to per-user flag if settings_db not available
+            otp_required = user.get("otp_required", False)
+    except Exception:
+        otp_required = user.get("otp_required", False)
     
     if otp_required:
         if not login_data.otp_code:

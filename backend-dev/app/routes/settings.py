@@ -2478,11 +2478,17 @@ async def upsert_leave_approval_route(
     body: Dict[str, Any] = Body(...),
     user_id: str = Query(..., description="ID of the user making the request"),
     settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Create or update leave approval routing for a role.
     Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
     """
     try:
+        # Check if user has leave_setting permission
+        has_perm = await check_permission(user_id, "leaves", "leave_setting", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to manage leave settings")
         role_id = body.get("role_id")
         role_name = body.get("role_name", "")
         approver_ids = body.get("approver_ids", [])
@@ -2514,9 +2520,15 @@ async def delete_leave_approval_route(
     role_id: str,
     user_id: str = Query(..., description="ID of the user making the request"),
     settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Delete approval route for a role"""
     try:
+        # Check if user has leave_setting permission
+        has_perm = await check_permission(user_id, "leaves", "leave_setting", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to manage leave settings")
         deleted = await settings_db.delete_leave_approval_route(role_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Route not found for this role")
@@ -2709,8 +2721,111 @@ async def get_reassignment_approvers_for_me(
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Backfill: apply consecutive-absent → absconding rule on historical data
+# ── OTP Approval Routes (Login OTP routing) ──────────────────────────────────
+# Mirrors the reassignment routing pattern: per-role list of employees whose
+# personal_email will receive the login OTP for any user of that role.
+
+@router.get("/otp-approval-routes", response_model=Dict[str, Any])
+async def get_otp_approval_routes(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get all OTP approval routing rules"""
+    try:
+        routes = await settings_db.get_otp_approval_routes()
+        return {"success": True, "data": routes}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching OTP approval routes: {str(e)}"
+        )
+
+
+@router.get("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def get_otp_approval_route_by_role(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get OTP approval route for a specific role"""
+    try:
+        route = await settings_db.get_otp_approval_route_by_role(role_id)
+        return {"success": True, "data": route}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching OTP approval route: {str(e)}"
+        )
+
+
+@router.post("/otp-approval-routes", response_model=Dict[str, Any])
+async def upsert_otp_approval_route(
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Create or update OTP approval routing for a role.
+
+    Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
+
+    Requires settings:edit permission (or super admin).
+    """
+    try:
+        await check_permission(user_id, "settings", "edit", users_db, roles_db)
+
+        role_id = body.get("role_id")
+        role_name = body.get("role_name", "")
+        approver_ids = body.get("approver_ids", []) or []
+        approver_names = body.get("approver_names", []) or []
+
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+        if not approver_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one approver employee is required",
+            )
+
+        saved = await settings_db.upsert_otp_approval_route(
+            role_id=role_id,
+            role_name=role_name,
+            approver_ids=approver_ids,
+            approver_names=approver_names,
+        )
+        return {"success": True, "message": "OTP approval route saved", "data": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving OTP approval route: {str(e)}"
+        )
+
+
+@router.delete("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def delete_otp_approval_route(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete OTP approval route for a role"""
+    try:
+        await check_permission(user_id, "settings", "delete", users_db, roles_db)
+        deleted = await settings_db.delete_otp_approval_route(role_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Route not found for this role")
+        return {"success": True, "message": "OTP approval route deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting OTP approval route: {str(e)}"
+        )
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/settings/absconding-backfill")
 async def trigger_absconding_backfill(

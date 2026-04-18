@@ -25,6 +25,7 @@ const EmployeeForm = ({
         alternate_phone: employee?.alternate_phone || '',
         email: employee?.email || '',
         work_email: employee?.work_email || '',
+        personal_email: employee?.personal_email || employee?.email || '',
         dob: employee?.dob ? dayjs(employee.dob).format('YYYY-MM-DD') : '',
         pan_number: employee?.pan_number || '',
         aadhaar_number: employee?.aadhaar_number || '',
@@ -130,6 +131,7 @@ const EmployeeForm = ({
                 alternate_phone: employee?.alternate_phone || '',
                 email: employee?.email || '',
                 work_email: employee?.work_email || '',
+                personal_email: employee?.personal_email || employee?.email || '',
                 dob: employee?.dob ? dayjs(employee.dob).format('YYYY-MM-DD') : '',
                 pan_number: employee?.pan_number || '',
                 aadhaar_number: employee?.aadhaar_number || '',
@@ -459,6 +461,7 @@ const EmployeeForm = ({
                 alternate_phone: employee?.alternate_phone || '',
                 email: employee?.email || '',
                 work_email: employee?.work_email || '',
+                personal_email: employee?.personal_email || employee?.email || '',
                 dob: employee?.dob ? dayjs(employee.dob).format('YYYY-MM-DD') : '',
                 pan_number: employee?.pan_number || '',
                 aadhaar_number: employee?.aadhaar_number || '',
@@ -575,6 +578,7 @@ const EmployeeForm = ({
                     alternate_phone: '',
                     email: '',
                     work_email: '',
+                    personal_email: '',
                     dob: '',
                     pan_number: '',
                     aadhaar_number: '',
@@ -619,6 +623,7 @@ const EmployeeForm = ({
                     alternate_phone: '',
                     email: '',
                     work_email: '',
+                    personal_email: '',
                     dob: '',
                     pan_number: '',
                     aadhaar_number: '',
@@ -666,6 +671,7 @@ const EmployeeForm = ({
                 alternate_phone: '',
                 email: '',
                 work_email: '',
+                personal_email: '',
                 dob: '',
                 pan_number: '',
                 aadhaar_number: '',
@@ -1399,6 +1405,9 @@ const EmployeeForm = ({
                 // Email - now required field, must be included
                 if (formData.email && formData.email.trim()) {
                     submissionData.email = formData.email.trim();
+                } else if (formData.personal_email && formData.personal_email.trim()) {
+                    // Fall back to personal_email as login email for new employees
+                    submissionData.email = formData.personal_email.trim();
                 }
                 // Email is now required, so it should always be provided
                 
@@ -1508,6 +1517,7 @@ const EmployeeForm = ({
             if (formData.alternate_phone && formData.alternate_phone.trim()) submissionData.alternate_phone = formData.alternate_phone.trim();
             if (formData.email && formData.email.trim()) submissionData.email = formData.email.trim();
             if (formData.work_email && formData.work_email.trim()) submissionData.work_email = formData.work_email.trim();
+            if (formData.personal_email && formData.personal_email.trim()) submissionData.personal_email = formData.personal_email.trim();
             if (formData.dob && formData.dob.trim()) submissionData.dob = formData.dob;
             if (formData.pan_number && formData.pan_number.trim()) submissionData.pan_number = formData.pan_number.toUpperCase();
             if (formData.aadhaar_number && formData.aadhaar_number.trim()) submissionData.aadhaar_number = formData.aadhaar_number;
@@ -1930,19 +1940,19 @@ const EmployeeForm = ({
                                 )}
                             </div>
                             <div>
-                                <label className={validationErrors.email ? 'required-field-label' : ''}>Personal Email</label>
+                                <label className={validationErrors.personal_email ? 'required-field-label' : ''}>Personal Email</label>
                                 <input 
                                     ref={emailRef}
                                     type="email" 
-                                    name="email"
-                                    value={formData.email}
+                                    name="personal_email"
+                                    value={formData.personal_email}
                                     onChange={handleInputChange}
                                     placeholder="Personal Email"
-                                    className={`form-input ${validationErrors.email ? 'required-field-error' : ''}`}
+                                    className={`form-input ${validationErrors.personal_email ? 'required-field-error' : ''}`}
                                 />
-                                {validationErrors.email && (
+                                {validationErrors.personal_email && (
                                     <div className="error-message">
-                                        {validationErrors.email}
+                                        {validationErrors.personal_email}
                                     </div>
                                 )}
                             </div>

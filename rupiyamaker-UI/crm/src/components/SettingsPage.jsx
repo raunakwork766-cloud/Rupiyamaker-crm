@@ -55,6 +55,7 @@ import DepartmentSettings from './settings/DepartmentSettings';
 import RoleSettings from './settings/RoleSettings';
 import DesignationSettings from './settings/DesignationSettings';
 import PopupModalSettings from './settings/PopupModalSettings';
+import OtpVerificationSettings from './settings/OtpVerificationSettings';
 import { hrmsService } from '../services/hrmsService';
 
 // Tab Management Dropdown Component
@@ -160,13 +161,13 @@ const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
 const CoreManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
     const [isOpen, setIsOpen] = useState(false);
     
-    // Filter to show only the core management tabs: departments, designations, roles, emailSettings, adminEmails
+    // Filter to show only the core management tabs: departments, designations, roles, otpVerification
     const coreManageTabs = tabs.filter(tab => 
-        ['departments', 'designations', 'roles', 'emailSettings', 'adminEmails'].includes(tab.id)
+        ['departments', 'designations', 'roles', 'otpVerification'].includes(tab.id)
     );
     
     const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isCoreManageTabActive = ['departments', 'designations', 'roles', 'emailSettings', 'adminEmails'].includes(activeTab);
+    const isCoreManageTabActive = ['departments', 'designations', 'roles', 'otpVerification'].includes(activeTab);
     
     return (
         <div className="relative">
@@ -317,8 +318,6 @@ const SettingsPage = () => {
     const [designations, setDesignations] = useState([]);
     const [roles, setRoles] = useState([]);
     const [statuses, setStatuses] = useState([]);
-    const [emailSettings, setEmailSettings] = useState([]);
-    const [adminEmails, setAdminEmails] = useState([]);
     const [importantQuestions, setImportantQuestions] = useState([]);
     const [mistakeTypes, setMistakeTypes] = useState([]);
     const [warningActions, setWarningActions] = useState([]);
@@ -612,8 +611,7 @@ const SettingsPage = () => {
         { id: 'departments', label: 'Departments', icon: Building, color: 'cyan' },
         { id: 'designations', label: 'Designations', icon: Award, color: 'rose' },
         { id: 'roles', label: 'Roles & Permissions', icon: Users, color: 'indigo' },
-        { id: 'emailSettings', label: 'Email Settings', icon: Mail, color: 'emerald' },
-        { id: 'adminEmails', label: 'Admin Emails', icon: Shield, color: 'red' },
+        { id: 'otpVerification', label: 'OTP Verification', icon: Shield, color: 'emerald' },
         { id: 'statuses', label: 'Status Management', icon: CheckCircle, color: 'teal' },
         { id: 'attendance', label: 'Attendance Settings', icon: Clock, color: 'emerald' },
         { id: 'popupModals', label: 'Popup Modal Alerts', icon: Bell, color: 'violet' },
@@ -862,12 +860,6 @@ const SettingsPage = () => {
             case 'roles':
                 loadRoles();
                 break;
-            case 'emailSettings':
-                loadEmailSettings();
-                break;
-            case 'adminEmails':
-                loadAdminEmails();
-                break;
             case 'statuses':
                 // Add a check to prevent loading in a loop
                 const now = Date.now();
@@ -955,8 +947,6 @@ const SettingsPage = () => {
             loadDepartments(),
             loadDesignations(),
             loadRoles(),
-            loadEmailSettings(),
-            loadAdminEmails(),
             loadAttendanceSettings(),
             loadStatuses(),
             loadImportantQuestions()
@@ -1195,30 +1185,6 @@ const SettingsPage = () => {
             console.log('Loaded roles:', processedRoles);
         } catch (error) {
             console.error('Error loading roles:', error);
-        }
-    };
-
-    const loadEmailSettings = async () => {
-        try {
-            const response = await axios.get(`${BASE_URL}/otp/email-settings?user_id=${user_id}`);
-            const emailSettingsData = Array.isArray(response.data) ? response.data : (Array.isArray(response.data?.data) ? response.data.data : []);
-            console.log('Loaded email settings:', emailSettingsData);
-            setEmailSettings(emailSettingsData);
-        } catch (error) {
-            console.error('Error loading email settings:', error);
-            setEmailSettings([]);
-        }
-    };
-
-    const loadAdminEmails = async () => {
-        try {
-            const response = await axios.get(`${BASE_URL}/otp/admin-emails?user_id=${user_id}`);
-            const adminEmailsData = Array.isArray(response.data) ? response.data : (Array.isArray(response.data?.data) ? response.data.data : []);
-            console.log('Loaded admin emails:', adminEmailsData);
-            setAdminEmails(adminEmailsData);
-        } catch (error) {
-            console.error('Error loading admin emails:', error);
-            setAdminEmails([]);
         }
     };
 
@@ -1477,16 +1443,6 @@ const updateStatus = async (statusId, statusData) => {
                 department_id: null,
                 reporting_ids: []  // Changed from reporting_id to reporting_ids (array)
             });
-        } else if (type === 'emailSettings') {
-            setFormData({
-                email: '',
-                password: '',
-                smtp_server: 'smtp.gmail.com',
-                smtp_port: 587,
-                use_ssl: true,
-                is_active: true,
-                purpose: 'otp'
-            });
         } else if (type === 'importantQuestions') {
             setFormData({
                 question: '',
@@ -1666,22 +1622,6 @@ const updateStatus = async (statusId, statusData) => {
                 return;
             }
 
-            if (type === 'emailSettings') {
-                // Use OTP API for email settings
-                await axios.delete(`${BASE_URL}/otp/email-settings/${id}?user_id=${user_id}`);
-                loadEmailSettings();
-                alert('Email setting deleted successfully!');
-                return;
-            }
-
-            if (type === 'adminEmails') {
-                // Use OTP API for admin emails
-                await axios.delete(`${BASE_URL}/otp/admin-emails/${id}?user_id=${user_id}`);
-                loadAdminEmails();
-                alert('Admin email deleted successfully!');
-                return;
-            }
-
             if (type === 'importantQuestions') {
                 // Use important questions API
                 await axios.delete(`${BASE_URL}/important-questions/${id}?user_id=${user_id}`);
@@ -1759,9 +1699,6 @@ const updateStatus = async (statusId, statusData) => {
                     break;
                 case 'roles':
                     loadRoles();
-                    break;
-                case 'emailSettings':
-                    loadEmailSettings();
                     break;
                 case 'importantQuestions':
                     loadImportantQuestions();
@@ -1861,34 +1798,6 @@ const updateStatus = async (statusId, statusData) => {
                     alert(`Attachment type ${modalType === 'add' ? 'created' : 'updated'} successfully!`);
                     setLoading(false);
                     return; // Exit early for attachment types
-                case 'emailSettings':
-                    // Handle email settings with OTP API
-                    const emailData = {
-                        email: formData.email,
-                        password: formData.password,
-                        smtp_server: formData.smtp_server,
-                        smtp_port: formData.smtp_port,
-                        use_ssl: formData.use_ssl !== false,
-                        is_active: formData.is_active !== false,
-                        purpose: formData.purpose || 'otp'
-                    };
-                    
-                    if (modalType === 'add') {
-                        await axios.post(`${BASE_URL}/otp/email-settings?user_id=${user_id}`, emailData);
-                    } else {
-                        // Use _id if available, fallback to id
-                        const emailSettingId = editingItem?._id || editingItem?.id;
-                        if (!emailSettingId) {
-                            throw new Error('No valid ID found for email setting');
-                        }
-                        await axios.put(`${BASE_URL}/otp/email-settings/${emailSettingId}?user_id=${user_id}`, emailData);
-                    }
-                    
-                    setShowModal(false);
-                    loadEmailSettings();
-                    alert(`Email setting ${modalType === 'add' ? 'created' : 'updated'} successfully!`);
-                    setLoading(false);
-                    return; // Exit early for email settings
                 case 'departments':
                     endpoint = modalType === 'add'
                         ? `/departments`
@@ -1955,34 +1864,6 @@ const updateStatus = async (statusId, statusData) => {
                     console.log('Form data reporting_ids:', formData.reporting_ids);
                     console.log('Available departments:', departments);
                     break;
-                case 'adminEmails':
-                    // Handle admin emails with OTP API
-                    const adminEmailData = {
-                        name: formData.name,
-                        email: formData.email,
-                        department: formData.department || null,
-                        role: formData.role || 'Admin',
-                        receive_otp: formData.receive_otp !== false,
-                        receive_notifications: formData.receive_notifications !== false,
-                        is_active: formData.is_active !== false
-                    };
-                    
-                    if (modalType === 'add') {
-                        await axios.post(`${BASE_URL}/otp/admin-emails?user_id=${user_id}`, adminEmailData);
-                    } else {
-                        // Use _id if available, fallback to id
-                        const adminEmailId = editingItem?._id || editingItem?.id;
-                        if (!adminEmailId) {
-                            throw new Error('No valid ID found for admin email');
-                        }
-                        await axios.put(`${BASE_URL}/otp/admin-emails/${adminEmailId}?user_id=${user_id}`, adminEmailData);
-                    }
-                    
-                    setShowModal(false);
-                    loadAdminEmails();
-                    alert(`Admin email ${modalType === 'add' ? 'created' : 'updated'} successfully!`);
-                    setLoading(false);
-                    return; // Exit early for admin emails
                 case 'importantQuestions':
                     // Handle important questions
                     const questionData = {
@@ -2314,205 +2195,6 @@ const updateStatus = async (statusId, statusData) => {
             setLoading(false);
         }
     };
-
-    // Email Settings Table Render Function
-    const renderEmailSettingsTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
-                <div>
-                    <h3 className="text-xl font-bold text-white">Email Settings for OTP</h3>
-                    <p className="text-sm text-gray-300 mt-1">
-                        Configure email accounts that will be used to send OTP codes to users
-                    </p>
-                </div>
-                {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                    <button
-                        onClick={() => handleAdd('emailSettings')}
-                        className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-green-600 hover:to-green-700 transition-all"
-                    >
-                        <Plus size={16} />
-                        Add Email Account
-                    </button>
-                )}
-            </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-gray-800">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">SMTP Server</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Port</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">SSL</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Purpose</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Created</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-gray-900 divide-y divide-gray-700">
-                        {emailSettings.length === 0 ? (
-                            <tr>
-                                <td colSpan="8" className="px-6 py-8 text-center text-gray-400">
-                                    No email settings configured. Click "Add Email Account" to configure an email for sending OTP codes.
-                                </td>
-                            </tr>
-                        ) : (
-                            emailSettings.map((setting) => (
-                                <tr key={setting._id || setting.id} className="hover:bg-gray-800 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap font-medium text-white">
-                                        {setting.email}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                                        {setting.smtp_server}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                                        {setting.smtp_port}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            setting.use_ssl 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {setting.use_ssl ? 'SSL' : 'No SSL'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            {setting.purpose || 'OTP'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            setting.is_active 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {setting.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                        {setting.created_at ? new Date(setting.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
-                                            <button
-                                                onClick={() => handleEdit(setting, 'emailSettings')}
-                                                className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
-                                            >
-                                                <Edit size={14} />
-                                                Edit
-                                            </button>
-                                        )}
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
-                                            <button
-                                                onClick={() => handleDelete(setting._id || setting.id, 'emailSettings')}
-                                                className="text-red-400 hover:text-red-300 inline-flex items-center gap-1"
-                                            >
-                                                <Trash2 size={14} />
-                                                Delete
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            
-            {emailSettings.length > 0 && (
-                <div className="bg-gray-800 px-6 py-3 border-t border-gray-700">
-                    <p className="text-sm text-gray-400">
-                        <strong>Note:</strong> Only one email setting can be active at a time for OTP delivery. 
-                        The active setting will be used to send OTP codes to users.
-                    </p>
-                </div>
-            )}
-        </div>
-    );
-
-    // Admin Emails Table Render Function
-    const renderAdminEmailsTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
-                <div>
-                    <h3 className="text-xl font-bold text-white">Admin Emails for OTP Reception</h3>
-                    <p className="text-sm text-gray-300 mt-1">
-                        Configure admin email addresses that will receive OTP codes when employees request login. 
-                        Employees will need to contact admin to get their OTP codes.
-                    </p>
-                </div>
-                {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                    <button
-                        onClick={() => handleAdd('adminEmails')}
-                        className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-red-600 hover:to-red-700 transition-all"
-                    >
-                        <Plus size={16} />
-                        Add Admin Email
-                    </button>
-                )}
-            </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-gray-800">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-gray-900 divide-y divide-gray-700">
-                        {adminEmails.length === 0 ? (
-                            <tr>
-                                <td colSpan="2" className="px-6 py-8 text-center text-gray-400">
-                                    No admin emails configured. Click "Add Admin Email" to configure admin emails for OTP reception.
-                                </td>
-                            </tr>
-                        ) : (
-                            adminEmails.map((adminEmail) => (
-                                <tr key={adminEmail._id || adminEmail.id} className="hover:bg-gray-800 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                                        {adminEmail.email}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
-                                            <button
-                                                onClick={() => handleEdit(adminEmail, 'adminEmails')}
-                                                className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
-                                            >
-                                                <Edit size={14} />
-                                                Edit
-                                            </button>
-                                        )}
-                                        {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
-                                            <button
-                                                onClick={() => handleDelete(adminEmail._id || adminEmail.id, 'adminEmails')}
-                                                className="text-red-400 hover:text-red-300 inline-flex items-center gap-1"
-                                            >
-                                                <Trash2 size={14} />
-                                                Delete
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            
-            {adminEmails.length > 0 && (
-                <div className="bg-gray-800 px-6 py-3 border-t border-gray-700">
-                    <p className="text-sm text-gray-400">
-                        <strong>🔐 Security Note:</strong> OTP codes will be sent to all active admin emails with "Receive OTP" enabled. 
-                        Employees will need to contact these admins to get their OTP codes for login.
-                    </p>
-                </div>
-            )}
-        </div>
-    );
 
     // Important Questions Table Render Function
     const renderImportantQuestionsTable = () => (
@@ -2963,10 +2645,8 @@ const updateStatus = async (statusId, statusData) => {
                     console.error('Error rendering RoleSettings:', error);
                     return <div className="p-4 text-red-500">Error loading roles. Please refresh the page.</div>;
                 }
-            case 'emailSettings':
-                return renderEmailSettingsTable();
-            case 'adminEmails':
-                return renderAdminEmailsTable();
+            case 'otpVerification':
+                return <OtpVerificationSettings />;
             case 'statuses':
                 // Add a check to prevent loading in a loop
                 {
@@ -5068,166 +4748,6 @@ const updateStatus = async (statusId, statusData) => {
                                         rows="3"
                                         placeholder="Description or message about this designation"
                                     />
-                                </div>
-                            </>
-                        )}
-
-                        {activeTab === 'emailSettings' && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Email Address *</label>
-                                    <input
-                                        type="email"
-                                        value={formData.email || ''}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., otp@yourcompany.com"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Email Password *</label>
-                                    <input
-                                        type="password"
-                                        value={formData.password || ''}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="Enter email password"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">SMTP Server *</label>
-                                    <input
-                                        type="text"
-                                        value={formData.smtp_server || 'smtp.gmail.com'}
-                                        onChange={(e) => setFormData({ ...formData, smtp_server: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., smtp.gmail.com, smtp.outlook.com"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">SMTP Port *</label>
-                                    <input
-                                        type="number"
-                                        value={formData.smtp_port || 587}
-                                        onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., 587, 465, 25"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Purpose</label>
-                                    <select
-                                        value={formData.purpose || 'otp'}
-                                        onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                    >
-                                        <option value="otp">OTP (One-Time Password)</option>
-                                        
-                                        <option value="general">None</option>
-                                    </select>
-                                </div>
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="email-use-ssl"
-                                        checked={formData.use_ssl !== false}
-                                        onChange={(e) => setFormData({ ...formData, use_ssl: e.target.checked })}
-                                        className="mr-2"
-                                    />
-                                    <label htmlFor="email-use-ssl" className="text-sm text-black">Use SSL/TLS</label>
-                                </div>
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <h4 className="font-semibold text-blue-800 mb-2">Common SMTP Settings:</h4>
-                                    <div className="text-sm text-blue-700 space-y-1">
-                                        <p><strong>Gmail:</strong> smtp.gmail.com, Port 587 (SSL)</p>
-                                        <p><strong>Outlook:</strong> smtp.live.com, Port 587 (SSL)</p>
-                                        <p><strong>Yahoo:</strong> smtp.mail.yahoo.com, Port 587 (SSL)</p>
-                                        <p><strong>Custom Domain:</strong> Check with your hosting provider</p>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {activeTab === 'adminEmails' && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Admin Name *</label>
-                                    <input
-                                        type="text"
-                                        value={formData.name || ''}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., John Doe"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Email Address *</label>
-                                    <input
-                                        type="email"
-                                        value={formData.email || ''}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., admin@yourcompany.com"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Department</label>
-                                    <input
-                                        type="text"
-                                        value={formData.department || ''}
-                                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., IT, HR, Admin"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-black mb-1">Role</label>
-                                    <input
-                                        type="text"
-                                        value={formData.role || 'Admin'}
-                                        onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                                        className="w-full border border-black rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                                        placeholder="e.g., Admin, Super Admin, Manager"
-                                    />
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            id="admin-receive-otp"
-                                            checked={formData.receive_otp !== false}
-                                            onChange={(e) => setFormData({ ...formData, receive_otp: e.target.checked })}
-                                            className="mr-2"
-                                        />
-                                        <label htmlFor="admin-receive-otp" className="text-sm text-black">
-                                            <strong>Receive OTP Codes</strong> - This admin will receive OTP codes when employees request login
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            id="admin-receive-notifications"
-                                            checked={formData.receive_notifications !== false}
-                                            onChange={(e) => setFormData({ ...formData, receive_notifications: e.target.checked })}
-                                            className="mr-2"
-                                        />
-                                        <label htmlFor="admin-receive-notifications" className="text-sm text-black">
-                                            <strong>Receive Notifications</strong> - This admin will receive general system notifications
-                                        </label>
-                                    </div>
-                                </div>
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                                    <h4 className="font-semibold text-amber-800 mb-2">🔐 Security Note:</h4>
-                                    <div className="text-sm text-amber-700 space-y-1">
-                                        <p><strong>Centralized OTP Security:</strong> OTP codes will be sent to admin emails instead of individual users.</p>
-                                        <p><strong>Employee Process:</strong> Employees will need to contact admins to get their OTP codes for login.</p>
-                                        <p><strong>Admin Responsibility:</strong> Admins should verify employee identity before sharing OTP codes.</p>
-                                        <p><strong>Email Setup:</strong> Ensure admin emails are properly configured and monitored.</p>
-                                    </div>
                                 </div>
                             </>
                         )}

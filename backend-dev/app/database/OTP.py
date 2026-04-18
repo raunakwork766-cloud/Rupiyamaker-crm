@@ -38,7 +38,7 @@ class OTPDB:
             await self.collection.delete_many({"user_id": user_id})
             
             # Generate new OTP
-            otp_code = self.generate_otp()
+            otp_code = await self.generate_otp()
             
             # Calculate expiry time (30 minutes from now)
             expiry_time = get_ist_now() + timedelta(minutes=30)

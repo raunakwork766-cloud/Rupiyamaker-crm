@@ -59,17 +59,36 @@ const Login = ({ onLogin }) => {
             if (response.ok) {
                 setOtpGenerated(true);
                 setError('');
-                alert('OTP has been sent to administrators. Please check your email and enter the OTP below.');
+                const recipients = data.approver_count
+                    ? `${data.approver_count} approver${data.approver_count !== 1 ? 's' : ''}`
+                    : 'your role\'s OTP approvers';
+                alert(`OTP has been sent to ${recipients}. Please contact them to receive your OTP, then enter it below.`);
             } else {
-                // Handle OTP generation errors
+                // Handle OTP generation errors with structured codes
                 let errorMessage = 'Failed to generate OTP';
-                if (data.detail) {
-                    if (typeof data.detail === 'string') {
-                        errorMessage = data.detail;
-                    } else if (Array.isArray(data.detail)) {
-                        errorMessage = data.detail.map(err => err.msg || 'Validation error').join(', ');
-                    } else if (typeof data.detail === 'object') {
-                        errorMessage = data.detail.message || JSON.stringify(data.detail);
+                const detail = data?.detail;
+                const code = (detail && typeof detail === 'object' && detail.code) || null;
+
+                if (code === 'OTP_ROUTING_NOT_CONFIGURED') {
+                    errorMessage =
+                        'Login is blocked: no OTP approvers are configured for your role. ' +
+                        'Please ask an administrator to configure OTP Verification routing in Settings.';
+                } else if (code === 'APPROVER_PERSONAL_EMAIL_MISSING') {
+                    const names = (detail.missing && detail.missing.join(', ')) || '';
+                    errorMessage =
+                        'Login is blocked: the configured OTP approver(s) ' +
+                        (names ? `(${names}) ` : '') +
+                        'do not have a Personal Email set in HRMS. Please contact an administrator.';
+                } else if (code === 'SMTP_NOT_CONFIGURED') {
+                    errorMessage =
+                        'Login is blocked: the email server (SMTP) is not configured. Please contact an administrator.';
+                } else if (detail) {
+                    if (typeof detail === 'string') {
+                        errorMessage = detail;
+                    } else if (Array.isArray(detail)) {
+                        errorMessage = detail.map(err => err.msg || 'Validation error').join(', ');
+                    } else if (typeof detail === 'object') {
+                        errorMessage = detail.message || JSON.stringify(detail);
                     }
                 }
                 setError(errorMessage);

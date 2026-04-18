@@ -6,6 +6,7 @@ from app.database.EmailSettings import EmailSettingsDB
 from app.database.AdminEmails import AdminEmailsDB
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
+from app.database.Settings import SettingsDB
 from app.schemas.otp_schemas import (
     OTPCreate, OTPVerify, OTPResponse,
     EmailSettingCreate, EmailSettingUpdate, EmailSettingInDB,
@@ -41,6 +42,10 @@ async def get_roles_db():
     from app.database import get_roles_db as get_roles_db_instance
     return get_roles_db_instance()
 
+async def get_settings_db():
+    from app.database import get_settings_db as get_settings_db_instance
+    return get_settings_db_instance()
+
 def get_email_service():
     return EmailService()
 
@@ -50,9 +55,10 @@ async def generate_otp(
     user_id: str = Query(..., description="ID of the user making the request"),
     otp_db: OTPDB = Depends(get_otp_db),
     users_db: UsersDB = Depends(get_users_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
     email_service: EmailService = Depends(get_email_service)
 ):
-    """Generate OTP for user login"""
+    """Generate OTP for user login and send to configured role approvers"""
     try:
         # Get user data
         user = await users_db.get_user(otp_request.user_id)
@@ -62,11 +68,34 @@ async def generate_otp(
                 detail="User not found"
             )
 
-        # Check if user requires OTP
-        if not user.get("otp_required", True):
+        # Check if user's role has OTP routing configured
+        role_id = str(user.get("role_id", ""))
+        otp_route = None
+        if role_id and settings_db:
+            otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
+
+        if not otp_route:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OTP not required for this user"
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+                detail="No OTP approval routing configured for this user's role"
+            )
+
+        # Get approver emails (personal_email preferred, fallback to work email)
+        approver_ids = otp_route.get("approver_ids", [])
+        approver_emails = []
+        for approver_id in approver_ids:
+            approver = await users_db.get_user(approver_id)
+            if approver:
+                email = (approver.get("personal_email") or "").strip()
+                if not email:
+                    email = (approver.get("email") or "").strip()
+                if email:
+                    approver_emails.append(email)
+
+        if not approver_emails:
+            raise HTTPException(
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+                detail="No approver email addresses found. Please set personal emails for approvers in HRMS."
             )
 
         # Generate OTP
@@ -77,13 +106,13 @@ async def generate_otp(
                 detail="Failed to generate OTP"
             )
 
-        # Send OTP email
-        email_sent = email_service.send_otp_email(user, otp_code)
+        # Send OTP to all approver emails
+        email_sent = email_service.send_otp_to_approvers(user, otp_code, approver_emails)
 
         return OTPResponse(
             success=True,
-            message=f"OTP generated and {'sent' if email_sent else 'generation completed (email failed)'} to administrators",
-            expires_at=otp_db.get_otp_record(otp_request.user_id)["expires_at"]
+            message=f"OTP generated and {'sent to approvers' if email_sent else 'generated (email delivery failed)'}",
+            expires_at=None
         )
 
     except HTTPException:

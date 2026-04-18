@@ -95,6 +95,68 @@ class EmailService:
             print(f"Error sending OTP email: {e}")
             return False
 
+    def send_otp_to_approvers(self, user_data, otp_code, approver_emails: list):
+        """Send OTP email to specific approver email addresses (role-based routing)"""
+        try:
+            email_setting = self.email_settings_db.get_active_otp_email()
+            if not email_setting:
+                print("No active email setting found for OTP")
+                return False
+
+            user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+            if not user_name:
+                user_name = user_data.get('username', 'Unknown User')
+
+            subject = f"🔐 OTP Request - {user_name} Login"
+
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                    <h2 style="color: #007bff; text-align: center;">🔐 Employee Login OTP Request</h2>
+                    
+                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                        <h3 style="margin-top: 0; color: #495057;">Employee Details:</h3>
+                        <p><strong>Name:</strong> {user_name}</p>
+                        <p><strong>Username:</strong> {user_data.get('username', 'N/A')}</p>
+                        <p><strong>Email:</strong> {user_data.get('email', 'N/A')}</p>
+                        <p><strong>Employee ID:</strong> {user_data.get('employee_id', str(user_data.get('_id', 'N/A')))}</p>
+                    </div>
+                    
+                    <div style="text-align: center; background-color: #e3f2fd; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                        <h3 style="margin-top: 0; color: #1976d2;">OTP Code:</h3>
+                        <div style="font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 4px; font-family: monospace;">
+                            {otp_code}
+                        </div>
+                        <p style="color: #666; font-size: 14px; margin: 10px 0 0 0;">Valid for 30 minutes</p>
+                    </div>
+                    
+                    <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                        <p><strong>⚠️ Important:</strong> Please share this OTP with the employee to complete their login.</p>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
+                        <p>This is an automated message from Rupiya Maker CRM System</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+
+            success_count = 0
+            for email in approver_emails:
+                if self._send_email(email_setting, email, subject, body):
+                    success_count += 1
+                    print(f"OTP sent to approver {email}")
+                else:
+                    print(f"Failed to send OTP to approver {email}")
+
+            return success_count > 0
+
+        except Exception as e:
+            print(f"Error sending OTP to approvers: {e}")
+            return False
+
     def _send_email(self, email_setting, to_email, subject, body):
         """Send individual email"""
         try:
