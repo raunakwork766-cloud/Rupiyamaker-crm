@@ -15,16 +15,16 @@ from app.database.Roles import RolesDB
 DEFAULT_PERMISSIONS = {
     "global": ["show", "*"],  # show = visibility in menu, * = full system access
     "feeds": ["show", "post", "all", "delete", "*"],
-    "leads": ["show", "add", "own", "junior", "all", "assign", "reassignment_popup", "download_obligation", "status_update", "delete", "*"],
-    "login": ["show", "own", "junior", "all", "channel", "edit", "delete", "*"],
-    "tasks": ["show", "own", "junior", "all", "delete", "*"],
-    "tickets": ["show", "own", "junior", "all", "delete", "*"],
+    "leads": ["show", "add", "own", "view_team", "all", "assign", "reassignment_popup", "download_obligation", "status_update", "delete", "*"],
+    "login": ["show", "own", "view_team", "all", "channel", "edit", "delete", "*"],
+    "tasks": ["show", "own", "view_team", "all", "delete", "*"],
+    "tickets": ["show", "own", "view_team", "all", "delete", "*"],
     "hrms": ["show", "*"],  # General HRMS access
-    "employees": ["show", "password", "junior", "all", "role", "delete", "*"],
-    "leaves": ["show", "own", "junior", "all", "delete", "*"],
-    "attendance": ["show", "own", "junior", "all", "update", "delete", "*"],
-    "warnings": ["show", "own", "junior", "all", "delete", "issue", "view_mistakes", "create_mistake", "edit_mistake", "delete_mistake", "*"],
-    "interview": ["show", "junior", "all", "settings", "delete", "*"],
+    "employees": ["show", "password", "view_team", "all", "role", "delete", "*"],
+    "leaves": ["show", "own", "view_team", "all", "delete", "*"],
+    "attendance": ["show", "own", "view_team", "all", "update", "delete", "*"],
+    "warnings": ["show", "own", "view_team", "all", "delete", "issue", "view_mistakes", "create_mistake", "edit_mistake", "delete_mistake", "*"],
+    "interview": ["show", "view_team", "all", "settings", "delete", "*"],
     "dialer_report": ["show"],
     "apps": ["show", "manage", "*"],
     "notification": ["show", "delete", "send", "*"],
@@ -373,8 +373,12 @@ class PermissionManager:
         subordinate_roles = await roles_db.get_all_subordinate_roles(user_role_id)
         
         if not subordinate_roles:
-            print(f"DEBUG: No subordinate roles found for role_id {user_role_id}")
-            return []
+            print(f"DEBUG: No subordinate roles found for role_id {user_role_id} — falling back to same-role peers")
+            # Peer fallback: when no hierarchy is configured, view_team works on same-role colleagues
+            same_role_users = await users_db.get_users_by_roles([user_role_id])
+            user_ids = [str(u["_id"]) for u in same_role_users if str(u["_id"]) != user_id]
+            print(f"DEBUG: Peer fallback — found {len(user_ids)} same-role users")
+            return user_ids
             
         print(f"DEBUG: Found {len(subordinate_roles)} subordinate roles for user {user_id}")
         subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
@@ -955,7 +959,7 @@ class PermissionManager:
         # Check if user is a Team Leader (has junior/view_team or all/view_all permission)
         LEADS_PAGES_LOWER = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
         VIEW_ALL_ACTIONS = {"*", "all", "view_all"}
-        VIEW_TEAM_ACTIONS = {"junior", "view_team"}
+        VIEW_TEAM_ACTIONS = {"view_team"}
         is_team_leader_by_permission = any(
             (perm.get("page", "").lower() in LEADS_PAGES_LOWER and 
              (perm.get("actions") == "*" or 

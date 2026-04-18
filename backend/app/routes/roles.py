@@ -298,7 +298,8 @@ async def update_role(
     role_id: ObjectIdStr, 
     role_update: RoleUpdate,
     roles_db: RolesDB = Depends(get_roles_db),
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    users_db: UsersDB = Depends(get_users_db)
 ):
     """Update an existing role"""
     # Check if role exists
@@ -366,6 +367,13 @@ async def update_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Failed to update role"
         )
+    
+    # If permissions were updated, invalidate sessions for all users with this role
+    if "permissions" in update_data:
+        try:
+            await users_db.invalidate_sessions_by_role(role_id)
+        except Exception:
+            pass  # Don't fail the update if session invalidation fails
     
     return {"message": "Role updated successfully"}
 

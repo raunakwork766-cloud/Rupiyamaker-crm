@@ -382,8 +382,7 @@ async def list_leaves(
             has_junior = False
             for perm in permissions:
                 if perm.get("page") == "leaves" and \
-                   (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions")) or \
-                   perm.get("actions") == "junior":
+                   (perm.get("actions") in ("junior", "view_team") or (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", [])))):
                     has_junior = True
                     break
             perm_level = "junior" if has_junior else "own"

@@ -1041,7 +1041,7 @@ async def search_leads_for_task(
         
         # Check if user has 'all' level access to leads
         has_all = await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False)
-        has_junior = await PermissionManager.check_permission(user_id, "leads", "junior", users_db, roles_db, raise_error=False)
+        has_junior = await PermissionManager.check_permission(user_id, "leads", "view_team", users_db, roles_db, raise_error=False)
         
         if has_all:
             base_query = {}  # No filter - see all leads
@@ -2356,9 +2356,9 @@ async def get_filter_options(
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions"))))))
             for perm in user_permissions
         )
         
@@ -2475,9 +2475,9 @@ async def get_filtered_tasks(
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions"))))))
             for perm in user_permissions
         )
         
