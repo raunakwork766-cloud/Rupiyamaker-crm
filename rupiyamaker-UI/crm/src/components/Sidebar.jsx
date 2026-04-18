@@ -1536,6 +1536,30 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
   }, [userPermissions]);
 
   // Memoized permission checks for better performance - Enhanced with multiple checks and logging
+  /**
+   * hasAnyAccess: returns true if user has ANY action for a module.
+   * This ensures that view_team / view_all / delete / etc. permissions also
+   * show the module in the sidebar even when 'show' is not explicitly set.
+   */
+  const hasAnyAccess = useCallback((page) => {
+    if (!userPermissions) return false;
+    if (isSuperAdmin(userPermissions)) return true;
+    const variations = [
+      page,
+      page.toLowerCase(),
+      page.toUpperCase(),
+      page.charAt(0).toUpperCase() + page.slice(1).toLowerCase()
+    ];
+    for (const v of variations) {
+      const p = userPermissions[v];
+      if (!p) continue;
+      if (p === '*' || p === true) return true;
+      if (typeof p === 'object' && !Array.isArray(p) && Object.values(p).some(val => val === true)) return true;
+      if (Array.isArray(p) && p.length > 0) return true;
+    }
+    return false;
+  }, [userPermissions]);
+
   const permissions = useMemo(() => {
     console.log('🔐 ========================================');
     console.log('🔐 SIDEBAR PERMISSION CALCULATION START');
@@ -1545,116 +1569,164 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     console.log('🔐 ========================================');
     
     const perms = {
-      // LEAD CRM - Check multiple variations including sub-page dot-notation
+      // LEAD CRM - show if user has show OR view_team OR view_all OR any leads sub-permission
       canShowLeads: checkPermission('leads', 'show') ||
+                    checkPermission('leads', 'view_team') ||
+                    checkPermission('leads', 'view_all') ||
                     checkPermission('Leads', 'show') ||
                     checkPermission('LEADS', 'show') ||
                     checkPermission('lead', 'show') ||
                     checkPermission('leads.create_lead', 'show') ||
                     checkPermission('leads.pl_odd_leads', 'show') ||
+                    hasAnyAccess('leads') ||
                     isSuperAdmin(userPermissions),
       
-      // Feed - Show only if user has feeds.show permission (or super admin)
+      // Feed - Show only if user has feeds.show permission (or any feeds action, or super admin)
       canShowFeeds: checkPermission('feeds', 'show') ||
                     checkPermission('feeds', 'view') ||
                     checkPermission('Feeds', 'show') ||
+                    hasAnyAccess('feeds') ||
                     isSuperAdmin(userPermissions),
       
-      // Tasks - Check multiple variations
-      canShowTasks: checkPermission('tasks', 'show') || 
-                    checkPermission('Tasks', 'show') || 
+      // Tasks - show if user has show OR any task action (view_team, view_all, delete)
+      canShowTasks: checkPermission('tasks', 'show') ||
+                    checkPermission('tasks', 'view_team') ||
+                    checkPermission('tasks', 'view_all') ||
+                    checkPermission('Tasks', 'show') ||
                     checkPermission('task', 'show') ||
+                    hasAnyAccess('tasks') ||
                     isSuperAdmin(userPermissions),
       
-      // Tickets - Check multiple variations
-      canShowTickets: checkPermission('tickets', 'show') || 
-                      checkPermission('Tickets', 'show') || 
+      // Tickets - show if user has show OR any ticket action (view_team, view_all, delete)
+      canShowTickets: checkPermission('tickets', 'show') ||
+                      checkPermission('tickets', 'view_team') ||
+                      checkPermission('tickets', 'view_all') ||
+                      checkPermission('Tickets', 'show') ||
                       checkPermission('ticket', 'show') ||
+                      hasAnyAccess('tickets') ||
                       isSuperAdmin(userPermissions),
       
-      // HRMS - Show if ANY HRMS sub-module is accessible (employees, leaves, attendance, dialer_report, offer_letter)
+      // HRMS - show if ANY HRMS sub-module has ANY permission
       canShowHRMS: checkPermission('employees', 'show') ||
-                   checkPermission('Employees', 'show') ||
+                   checkPermission('employees', 'view_team') ||
+                   checkPermission('employees', 'view_all') ||
+                   hasAnyAccess('employees') ||
                    checkPermission('attendance', 'show') ||
+                   checkPermission('attendance', 'view_team') ||
+                   checkPermission('attendance', 'view_all') ||
+                   checkPermission('attendance', 'leave_management') ||
+                   checkPermission('attendance', 'update_attendance') ||
+                   hasAnyAccess('attendance') ||
                    checkPermission('leaves', 'show') ||
+                   checkPermission('leaves', 'view_team') ||
+                   checkPermission('leaves', 'view_all') ||
+                   checkPermission('leaves', 'leave_setting') ||
+                   hasAnyAccess('leaves') ||
                    checkPermission('offer_letter', 'show') ||
-                   checkPermission('Offer Letter', 'show') ||
                    checkPermission('dialer_report', 'show') ||
                    isSuperAdmin(userPermissions),
       
-      // Employees
-      canShowEmployees: checkPermission('employees', 'show') || 
+      // Employees - show if user has show OR any employee action
+      canShowEmployees: checkPermission('employees', 'show') ||
+                        checkPermission('employees', 'view_team') ||
+                        checkPermission('employees', 'view_all') ||
                         checkPermission('Employees', 'show') ||
+                        hasAnyAccess('employees') ||
                         isSuperAdmin(userPermissions),
 
       // Dialer Report
       canShowDialerReport: checkPermission('dialer_report', 'show') ||
+                           hasAnyAccess('dialer_report') ||
                            isSuperAdmin(userPermissions),
       
-      // Apps
-      canShowApps: checkPermission('apps', 'show') || 
-                   checkPermission('Apps', 'show') || 
+      // Apps - show if user has show or any app action (create_app, edit_app, share_app)
+      canShowApps: checkPermission('apps', 'show') ||
+                   checkPermission('apps', 'create_app') ||
+                   checkPermission('Apps', 'show') ||
+                   hasAnyAccess('apps') ||
                    isSuperAdmin(userPermissions),
       
       // Settings
-      canShowSettings: checkPermission('settings', 'show') || 
-                       checkPermission('Settings', 'show') || 
+      canShowSettings: checkPermission('settings', 'show') ||
+                       checkPermission('Settings', 'show') ||
                        isSuperAdmin(userPermissions),
       
-      // Login CRM - Check using utility and fallbacks
-      canViewLoginCRM: canViewLoginCRM(userPermissions) || 
-                       checkPermission('login', 'show') || 
-                       checkPermission('Login', 'show') || 
+      // Login CRM - show if user has show OR view_team OR view_all OR any login action
+      canViewLoginCRM: canViewLoginCRM(userPermissions) ||
+                       checkPermission('login', 'show') ||
+                       checkPermission('login', 'view_team') ||
+                       checkPermission('login', 'view_all') ||
+                       checkPermission('Login', 'show') ||
                        checkPermission('logins', 'show') ||
+                       hasAnyAccess('login') ||
                        isSuperAdmin(userPermissions),
       
-      // Interview Panel - Check using utility and fallbacks
-      canViewInterviewPanel: canViewInterviewPanel(userPermissions) || 
-                             checkPermission('interview', 'show') || 
-                             checkPermission('Interview', 'show') || 
+      // Interview Panel - show if user has show OR view_team OR view_all OR interview_setting
+      canViewInterviewPanel: canViewInterviewPanel(userPermissions) ||
+                             checkPermission('interview', 'show') ||
+                             checkPermission('interview', 'view_team') ||
+                             checkPermission('interview', 'view_all') ||
+                             checkPermission('interview', 'interview_setting') ||
+                             checkPermission('Interview', 'show') ||
                              checkPermission('interviews', 'show') ||
+                             hasAnyAccess('interview') ||
                              isSuperAdmin(userPermissions),
       
       // Reports - Check using utility and fallbacks
-      canViewReports: canViewReports(userPermissions) || 
-                      checkPermission('reports', 'show') || 
-                      checkPermission('Reports', 'show') || 
+      canViewReports: canViewReports(userPermissions) ||
+                      checkPermission('reports', 'show') ||
+                      checkPermission('Reports', 'show') ||
                       checkPermission('report', 'show') ||
                       isSuperAdmin(userPermissions),
       
-      // Notifications/Announcement - Check using utility and fallbacks
-      canViewNotifications: canViewNotifications(userPermissions) || 
-                            checkPermission('notifications', 'show') || 
-                            checkPermission('Notifications', 'show') || 
+      // Notifications/Announcement - show if user has show OR create OR delete
+      canViewNotifications: canViewNotifications(userPermissions) ||
                             checkPermission('notification', 'show') ||
+                            checkPermission('notification', 'create') ||
+                            checkPermission('notifications', 'show') ||
+                            checkPermission('Notifications', 'show') ||
                             checkPermission('announcement', 'show') ||
                             checkPermission('Announcement', 'show') ||
+                            hasAnyAccess('notification') ||
                             isSuperAdmin(userPermissions),
 
-      // Warnings - Check permission or super admin
+      // Warnings - show if user has show OR any warning action (view_team, view_all, warning_setting, delete_mistake)
       canShowWarnings: checkPermission('warnings', 'show') ||
+                       checkPermission('warnings', 'view_team') ||
+                       checkPermission('warnings', 'view_all') ||
+                       checkPermission('warnings', 'warning_setting') ||
                        checkPermission('Warnings', 'show') ||
                        checkPermission('warning', 'show') ||
+                       hasAnyAccess('warnings') ||
                        isSuperAdmin(userPermissions),
 
-      // Attendance - individual check for HRMS dropdown items
+      // Attendance - show if user has show OR any attendance action
       canShowAttendance: checkPermission('attendance', 'show') ||
+                         checkPermission('attendance', 'view_team') ||
+                         checkPermission('attendance', 'view_all') ||
+                         checkPermission('attendance', 'leave_management') ||
+                         checkPermission('attendance', 'update_attendance') ||
                          checkPermission('Attendance', 'show') ||
+                         hasAnyAccess('attendance') ||
                          isSuperAdmin(userPermissions),
 
-      // Leaves - individual check for HRMS dropdown items
+      // Leaves - show if user has show OR any leaves action
       canShowLeaves: checkPermission('leaves', 'show') ||
+                     checkPermission('leaves', 'view_team') ||
+                     checkPermission('leaves', 'view_all') ||
+                     checkPermission('leaves', 'leave_setting') ||
                      checkPermission('Leaves', 'show') ||
                      checkPermission('leave', 'show') ||
+                     hasAnyAccess('leaves') ||
                      isSuperAdmin(userPermissions),
 
-      // Offer Letter - individual check for HRMS dropdown items
+      // Offer Letter
       canShowOfferLetter: checkPermission('offer_letter', 'show') ||
                           checkPermission('Offer Letter', 'show') ||
                           checkPermission('offerLetter', 'show') ||
                           isSuperAdmin(userPermissions),
 
-      // Knowledge Base - admin always sees it, others need explicit permission
+      // Knowledge Base
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
                             checkPermission('knowledge_base', 'show') ||
                             checkPermission('Knowledge Base', 'show') ||
@@ -1678,7 +1750,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     console.log('🔐 ========================================');
     
     return perms;
-  }, [checkPermission, userPermissions]);
+  }, [checkPermission, hasAnyAccess, userPermissions]);
 
   // Memoize loan type menu items to prevent flickering on selection changes
   const leadCrmLoanTypeItems = useMemo(() => {
