@@ -94,12 +94,12 @@ async def get_hierarchical_permissions(user_id: str, module: str = "attendance")
                 if isinstance(actions, str):
                     actions = [actions]
                 
-                if "all" in actions or "*" in actions:
+                if "all" in actions or "view_all" in actions or "*" in actions:
                     has_all = True
-                elif "junior" in actions:
+                elif "junior" in actions or "view_team" in actions:
                     has_junior = True
                 
-                if "update" in actions:
+                if "update" in actions or "update_attendance" in actions:
                     has_update = True
         
         # Determine permission level
@@ -2548,9 +2548,16 @@ async def edit_attendance(
 ):
     """Edit attendance record (admin only)"""
     try:
-        # Check admin permissions
-        from app.utils.permissions import check_permission
-        await check_permission(admin_id, "attendance", "update", users_db, roles_db)
+        # Check admin permissions (support both old 'update' and new 'update_attendance')
+        from app.utils.permissions import check_permission, PermissionManager
+        perms_check = await PermissionManager.get_user_permissions(admin_id, users_db, roles_db)
+        has_update = PermissionManager.has_permission(perms_check, "attendance", "update_attendance") or \
+                     PermissionManager.has_permission(perms_check, "attendance", "update") or \
+                     PermissionManager.has_permission(perms_check, "attendance", "view_all") or \
+                     PermissionManager.has_permission(perms_check, "attendance", "all")
+        if not has_update:
+            from fastapi import HTTPException, status as http_status
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You don't have permission to update_attendance attendance")
         
         # Validate attendance ID
         if not ObjectId.is_valid(attendance_id):
@@ -4386,8 +4393,15 @@ async def trigger_missing_checkout_job(
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Manually trigger the end-of-day missing-checkout absent job (admin only)."""
-    from app.utils.permissions import check_permission
-    await check_permission(user_id, "attendance", "all", users_db, roles_db)
+    from app.utils.permissions import check_permission, PermissionManager
+    # Accept both old 'all' and new 'leave_management'/'view_all' admin-level actions
+    perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+    is_admin = PermissionManager.has_permission(perms, "attendance", "leave_management") or \
+               PermissionManager.has_permission(perms, "attendance", "view_all") or \
+               PermissionManager.has_permission(perms, "attendance", "all")
+    if not is_admin:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin attendance permission required")
     from app.utils.attendance_auto_absent import run_missing_checkout_job
     await run_missing_checkout_job()
     return {"success": True, "message": "Missing-checkout absent job triggered successfully."}
@@ -4401,8 +4415,15 @@ async def trigger_daily_absent_job(
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Manually trigger the midnight no-checkin absent job (admin only)."""
-    from app.utils.permissions import check_permission
-    await check_permission(user_id, "attendance", "all", users_db, roles_db)
+    from app.utils.permissions import check_permission, PermissionManager
+    # Accept both old 'all' and new 'leave_management'/'view_all' admin-level actions
+    perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+    is_admin = PermissionManager.has_permission(perms, "attendance", "leave_management") or \
+               PermissionManager.has_permission(perms, "attendance", "view_all") or \
+               PermissionManager.has_permission(perms, "attendance", "all")
+    if not is_admin:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin attendance permission required")
     from app.utils.attendance_auto_absent import run_daily_absent_job
     from datetime import date as date_type
     target = None

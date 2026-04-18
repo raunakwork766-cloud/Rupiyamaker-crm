@@ -17,7 +17,7 @@ from app.schemas.user_schemas import (
     EmployeeStatusUpdate, OnboardingStatusUpdate, CrmAccessUpdate, LoginStatusUpdate, OtpRequirementUpdate
 )
 from app.utils.common_utils import ObjectIdStr, convert_object_id
-from app.utils.permissions import check_permission, get_user_capabilities
+from app.utils.permissions import check_permission, get_user_capabilities, PermissionManager
 from app.utils.password_encryption import password_encryptor
 from app.database import get_database_instances
 from app.utils.timezone import get_ist_now
@@ -965,8 +965,22 @@ async def reset_employee_password(
     roles_db: RolesDB = Depends(get_roles_db)
 ):
     """Reset password for an employee to a default temporary password"""
-    # Check permission
-    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    # Check permission - require either reset_password or view_all level access
+    try:
+        perms_data = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        has_reset = PermissionManager.has_permission(perms_data, "employees", "reset_password") or \
+                    PermissionManager.has_permission(perms_data, "employees", "view_all") or \
+                    PermissionManager.has_permission(perms_data, "employees", "all")
+        if not has_reset:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to reset employee passwords"
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Fallback to basic show check
+        await check_permission(user_id, "employees", "show", users_db, roles_db)
     
     # Verify employee exists
     employee = await users_db.get_user(employee_id)

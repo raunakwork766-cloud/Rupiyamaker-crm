@@ -336,7 +336,16 @@ class UsersDB:
     async def get_users_by_role(self, role_id: str) -> List[dict]:
         """Get all users with a specific role"""
         return await self._async_to_list(self.collection.find({"role_id": role_id}))
-        
+
+    async def invalidate_sessions_by_role(self, role_id: str) -> int:
+        """Force logout all users with a specific role by setting session_invalidated_at"""
+        now = get_ist_now()
+        result = await self.collection.update_many(
+            {"role_id": role_id},
+            {"$set": {"session_invalidated_at": now}}
+        )
+        return result.modified_count
+
     async def count_users(self, filter_dict: dict = None) -> int:
         """Count users matching the filter criteria"""
         filter_dict = filter_dict or {}

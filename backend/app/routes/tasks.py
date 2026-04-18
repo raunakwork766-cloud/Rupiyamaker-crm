@@ -1039,8 +1039,9 @@ async def search_leads_for_task(
         
         base_query = {}
         
-        # Check if user has 'all' level access to leads
-        has_all = await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False)
+        # Check if user has 'all'/'view_all' level access to leads
+        has_all = await PermissionManager.check_permission(user_id, "leads", "view_all", users_db, roles_db, raise_error=False) or \
+                  await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False)
         has_junior = await PermissionManager.check_permission(user_id, "leads", "view_team", users_db, roles_db, raise_error=False)
         
         if has_all:

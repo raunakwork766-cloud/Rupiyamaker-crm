@@ -26,6 +26,27 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
+
+async def require_interview_setting_permission(user_id: str):
+    """Ensure the user has interview_setting permission (or is super admin)"""
+    try:
+        from app.utils.permissions import PermissionManager
+        from app.database import get_database_instances
+        db = get_database_instances()
+        perms = await PermissionManager.get_user_permissions(user_id, db['users'], db['roles'])
+        has_perm = (
+            PermissionManager.has_permission(perms, "interview", "interview_setting") or
+            PermissionManager.has_permission(perms, "interview", "settings") or
+            PermissionManager.has_permission(perms, "interview", "view_all") or
+            PermissionManager.has_permission(perms, "interview", "all")
+        )
+        if not has_perm:
+            raise HTTPException(status_code=403, detail="Interview settings permission required")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Could not verify interview_setting permission for {user_id}: {e}")
+
 # Initialize indexes on module load
 try:
     create_interview_settings_indexes()
@@ -106,6 +127,7 @@ async def create_job_opening_route(
 ):
     """Create a new job opening"""
     try:
+        await require_interview_setting_permission(user_id)
         job_opening_data = {
             "name": job_opening.name,
             "user_id": user_id
@@ -136,6 +158,7 @@ async def update_job_opening_route(
 ):
     """Update a job opening"""
     try:
+        await require_interview_setting_permission(user_id)
         job_opening_data = {
             "name": job_opening.name
         }
@@ -162,6 +185,7 @@ async def delete_job_opening_route(
 ):
     """Delete a job opening"""
     try:
+        await require_interview_setting_permission(user_id)
         success = await delete_job_opening(job_opening_id, user_id)
         
         if success:
@@ -199,6 +223,7 @@ async def create_interview_type_route(
 ):
     """Create a new interview type"""
     try:
+        await require_interview_setting_permission(user_id)
         interview_type_data = {
             "name": interview_type.name,
             "user_id": user_id
@@ -229,6 +254,7 @@ async def update_interview_type_route(
 ):
     """Update an interview type"""
     try:
+        await require_interview_setting_permission(user_id)
         interview_type_data = {
             "name": interview_type.name
         }
@@ -256,6 +282,7 @@ async def delete_interview_type(
     """Delete an interview type"""
     
     try:
+        await require_interview_setting_permission(user_id)
         # Get database instances
         db_instances = get_database_instances()
         users_db = db_instances["users"]
@@ -312,6 +339,7 @@ async def create_status_route(
 ):
     """Create a new interview status"""
     try:
+        await require_interview_setting_permission(user_id)
         print(f"🔧 Backend: Creating status with name='{status.name}', statusType='{status.statusType}'")
         
         status_data = {
@@ -343,6 +371,7 @@ async def update_status_route(
 ):
     """Update an interview status"""
     try:
+        await require_interview_setting_permission(user_id)
         status_data = {
             "name": status.name,
             "statusType": status.statusType or "Open"  # Include statusType
@@ -373,6 +402,7 @@ async def delete_status_route(
 ):
     """Delete an interview status"""
     try:
+        await require_interview_setting_permission(user_id)
         success = await InterviewStatuses.delete(status_id, user_id)
         
         if success:
@@ -413,6 +443,7 @@ async def create_sub_status_route(
 ):
     """Create a new interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         # Validate parent status exists
         parent_status = await InterviewStatuses.get_by_id(sub_status.parent_status_id, user_id)
         if not parent_status:
@@ -460,6 +491,7 @@ async def update_sub_status_route(
 ):
     """Update an interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         # Check if sub-status exists
         existing_sub_status = await InterviewSubStatuses.get_by_id(sub_status_id, user_id)
         if not existing_sub_status:
@@ -488,6 +520,7 @@ async def delete_sub_status_route(
 ):
     """Delete an interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         success = await InterviewSubStatuses.delete(sub_status_id, user_id)
         
         if success:
@@ -528,6 +561,7 @@ async def create_sub_status_route(
 ):
     """Create a new interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         # Validate parent status exists
         parent_status = await InterviewStatuses.get_by_id(sub_status.parent_status_id, user_id)
         if not parent_status:
@@ -566,6 +600,7 @@ async def update_sub_status_route(
 ):
     """Update an interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         # Check if sub-status exists
         existing_sub_status = await InterviewSubStatuses.get_by_id(sub_status_id, user_id)
         if not existing_sub_status:
@@ -595,6 +630,7 @@ async def delete_sub_status_route(
 ):
     """Delete an interview sub-status"""
     try:
+        await require_interview_setting_permission(user_id)
         success = await InterviewSubStatuses.delete(sub_status_id, user_id)
         
         if success:
@@ -633,6 +669,7 @@ async def get_source_portals_route(user_id: str = Query(...)):
 async def create_source_portal_route(source_portal_data: SourcePortalCreate, user_id: str = Query(...)):
     """Create a new source/portal"""
     try:
+        await require_interview_setting_permission(user_id)
         logger.info(f"Creating source/portal: {source_portal_data.name} for user: {user_id}")
         
         # Prepare data for database
@@ -660,6 +697,7 @@ async def create_source_portal_route(source_portal_data: SourcePortalCreate, use
 async def update_source_portal_route(source_portal_id: str, source_portal_data: SourcePortalUpdate, user_id: str = Query(...)):
     """Update a source/portal"""
     try:
+        await require_interview_setting_permission(user_id)
         logger.info(f"Updating source/portal {source_portal_id} for user: {user_id}")
         
         # Update source/portal
@@ -682,6 +720,7 @@ async def update_source_portal_route(source_portal_id: str, source_portal_data: 
 async def delete_source_portal_route(source_portal_id: str, user_id: str = Query(...)):
     """Delete a source/portal"""
     try:
+        await require_interview_setting_permission(user_id)
         logger.info(f"Deleting source/portal {source_portal_id} for user: {user_id}")
         
         # Get database instances
@@ -757,6 +796,7 @@ async def save_global_settings_route(
 ):
     """Save / update global interview settings."""
     try:
+        await require_interview_setting_permission(user_id)
         data = body.dict()
         updated = await upsert_global_settings(data)
         if updated is None:

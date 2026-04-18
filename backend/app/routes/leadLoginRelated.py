@@ -2045,7 +2045,7 @@ async def get_hierarchical_permissions(user_id: str, module: str = "login") -> D
                 
                 if "all" in actions or "*" in actions:
                     has_all = True
-                elif "junior" in actions:
+                elif "junior" in actions or "view_team" in actions:
                     has_junior = True
         
         # Determine permission level

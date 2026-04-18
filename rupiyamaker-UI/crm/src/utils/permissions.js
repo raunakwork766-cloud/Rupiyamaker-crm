@@ -907,8 +907,10 @@ export const canAdminLeaves = (userPermissions) => {
     return true;
   }
   
-  // Check for all permission (full admin access to leaves)
-  return hasPermission(userPermissions, 'leaves', 'all');
+  // Check for admin access to leaves (supports both old 'all' and new 'leave_setting'/'view_all')
+  return hasPermission(userPermissions, 'leaves', 'leave_setting') ||
+         hasPermission(userPermissions, 'leaves', 'view_all') ||
+         hasPermission(userPermissions, 'leaves', 'all');
 };
 
 /**
@@ -951,8 +953,11 @@ export const canAdminAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for all permission (full admin access to attendance)
-  return hasPermission(userPermissions, 'attendance', 'all');
+  // Check for admin access to attendance (supports both old 'all' and new 'leave_management'/'view_all')
+  return hasPermission(userPermissions, 'attendance', 'leave_management') ||
+         hasPermission(userPermissions, 'attendance', 'update_attendance') ||
+         hasPermission(userPermissions, 'attendance', 'view_all') ||
+         hasPermission(userPermissions, 'attendance', 'all');
 };
 
 /**
@@ -973,8 +978,9 @@ export const canMarkAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for attendance_mark permission
-  return hasPermission(userPermissions, 'attendance', 'update');
+  // Check for update_attendance permission (supports both old 'update' and new 'update_attendance')
+  return hasPermission(userPermissions, 'attendance', 'update_attendance') ||
+         hasPermission(userPermissions, 'attendance', 'update');
 };
 
 /**
@@ -990,8 +996,8 @@ export const canViewJuniorLeaves = (userPermissions) => {
     return true;
   }
   
-  // Check for leaves all permission (can see all)
-  if (hasPermission(userPermissions, 'leaves', 'all')) {
+  // Check for leaves view_all permission (supports both old 'all' and new 'view_all')
+  if (hasPermission(userPermissions, 'leaves', 'view_all') || hasPermission(userPermissions, 'leaves', 'all')) {
     return true;
   }
   
@@ -1000,8 +1006,8 @@ export const canViewJuniorLeaves = (userPermissions) => {
     return true;
   }
   
-  // Check for junior permission
-  return hasPermission(userPermissions, 'leaves', 'junior');
+  // Check for view_team/junior permission (supports both old 'junior' and new 'view_team')
+  return hasPermission(userPermissions, 'leaves', 'view_team') || hasPermission(userPermissions, 'leaves', 'junior');
 };
 
 /**
@@ -1017,8 +1023,8 @@ export const canViewJuniorAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for attendance all permission (can see all)
-  if (hasPermission(userPermissions, 'attendance', 'all')) {
+  // Check for attendance view_all permission (supports both old 'all' and new 'view_all')
+  if (hasPermission(userPermissions, 'attendance', 'view_all') || hasPermission(userPermissions, 'attendance', 'all')) {
     return true;
   }
   
@@ -1027,8 +1033,8 @@ export const canViewJuniorAttendance = (userPermissions) => {
     return true;
   }
   
-  // Check for junior permission
-  return hasPermission(userPermissions, 'attendance', 'junior');
+  // Check for view_team/junior permission (supports both old 'junior' and new 'view_team')
+  return hasPermission(userPermissions, 'attendance', 'view_team') || hasPermission(userPermissions, 'attendance', 'junior');
 };
 
 /**
@@ -1039,14 +1045,15 @@ export const canViewJuniorAttendance = (userPermissions) => {
 export const getLeavesVisibilityScope = (userPermissions) => {
   if (!userPermissions) return 'own';
   
-  // Super admin or all permission - can see all
+  // Super admin or view_all permission - can see all (supports both old 'all' and new 'view_all')
   if (isSuperAdmin(userPermissions) || 
+      hasPermission(userPermissions, 'leaves', 'view_all') ||
       hasPermission(userPermissions, 'leaves', 'all')) {
     return 'all';
   }
   
-  // View junior permission - can see subordinates
-  if (hasPermission(userPermissions, 'leaves', 'junior')) {
+  // View team/junior permission - can see subordinates (supports both old 'junior' and new 'view_team')
+  if (hasPermission(userPermissions, 'leaves', 'view_team') || hasPermission(userPermissions, 'leaves', 'junior')) {
     return 'junior';
   }
   
@@ -1062,14 +1069,15 @@ export const getLeavesVisibilityScope = (userPermissions) => {
 export const getAttendanceVisibilityScope = (userPermissions) => {
   if (!userPermissions) return 'own';
   
-  // Super admin or all permission - can see all
+  // Super admin or view_all permission - can see all (supports both old 'all' and new 'view_all')
   if (isSuperAdmin(userPermissions) || 
+      hasPermission(userPermissions, 'attendance', 'view_all') ||
       hasPermission(userPermissions, 'attendance', 'all')) {
     return 'all';
   }
   
-  // View junior permission - can see subordinates
-  if (hasPermission(userPermissions, 'attendance', 'junior')) {
+  // View team/junior permission - can see subordinates (supports both old 'junior' and new 'view_team')
+  if (hasPermission(userPermissions, 'attendance', 'view_team') || hasPermission(userPermissions, 'attendance', 'junior')) {
     return 'junior';
   }
   
@@ -1216,8 +1224,9 @@ export const canSendNotifications = (userPermissions) => {
     return true;
   }
   
-  // Check for notification send permission
-  return hasPermission(userPermissions, 'notification', 'send');
+  // Check for notification create/send permission (new action name is 'create')
+  return hasPermission(userPermissions, 'notification', 'create') ||
+         hasPermission(userPermissions, 'notification', 'send');
 };
 
 /**

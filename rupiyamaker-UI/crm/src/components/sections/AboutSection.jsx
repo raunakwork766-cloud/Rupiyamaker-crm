@@ -1091,79 +1091,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     }
   };
 
-  // Format pincode & city field
-  const formatPincodeCity = (value) => {
-    // If empty or user is deleting, allow it
-    if (!value || value.trim() === '') {
-      return '';
-    }
-    
-    // Convert to uppercase
-    value = value.toUpperCase();
-    
-    // Remove existing commas and extra spaces to handle re-formatting
-    let cleaned = value.replace(/,/g, '').replace(/\s+/g, ' ').trim();
-    
-    // Extract digits only for pincode (first 6 characters)
-    const digitsOnly = cleaned.replace(/[^0-9]/g, '');
-    
-    // If less than 6 digits, just return the digits (allow deletion)
-    if (digitsOnly.length < 6) {
-      return digitsOnly;
-    }
-    
-    // If user is at exactly "123456, " and backspacing, remove the comma/space formatting
-    // This happens when the cleaned string has 6 digits but no city text
-    const pincode = digitsOnly.substring(0, 6);
-    
-    // Get the city name part (everything after the first 6 digits)
-    // Find where the 6th digit ends in the original value
-    let pincodeEndIndex = 0;
-    let digitCount = 0;
-    for (let i = 0; i < cleaned.length; i++) {
-      if (/[0-9]/.test(cleaned[i])) {
-        digitCount++;
-        if (digitCount === 6) {
-          pincodeEndIndex = i + 1;
-          break;
-        }
-      }
-    }
-    
-    // Get everything after the 6th digit (city name) - already uppercase
-    const cityPart = cleaned.substring(pincodeEndIndex).trim();
-    
-    // If there's city name, include it with formatting
-    if (cityPart) {
-      return `${pincode}, ${cityPart}`;
-    }
-    
-    // If exactly 6 digits with no city, show formatted version
-    // But if user is deleting (original value was shorter), just show digits
-    if (digitsOnly.length === 6) {
-      // Check if the original value already had comma formatting
-      // If yes, keep it; if no (user just typed 6th digit), add it
-      if (value.includes(',')) {
-        return `${pincode}, `;
-      }
-      return `${pincode}, `;
-    }
-    
-    return pincode;
-  };
-
   const handleChange = (field, value) => {
     console.log(`📝 AboutSection: Input changed - ${field}: ${value}`);
     
     // Convert text fields to uppercase (exclude numeric fields)
     let processedValue = value;
     
-    // Handle pincode_city field formatting
-    if (field === 'pincode_city') {
-      processedValue = formatPincodeCity(value);
-    }
     // Handle specific field validations
-    else if (field === 'alternateNumber') {
+    if (field === 'alternateNumber') {
       // Only allow numbers, limit to 10 digits
       processedValue = value.replace(/\D/g, '').slice(0, 10);
       
@@ -2311,7 +2246,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 onChange={e => canEdit && handleChange("pincode_city", e.target.value)}
                 onBlur={e => canEdit && handleBlur("pincode_city", e.target.value)}
                 readOnly={!canEdit}
-                placeholder={!canEdit ? "Read-only: No edit permission" : "Enter 6-digit pincode (auto-formats: 123456, City Name)"}
+                placeholder={!canEdit ? "Read-only: No edit permission" : "Pincode & City"}
               />
               <button
                 type="button"

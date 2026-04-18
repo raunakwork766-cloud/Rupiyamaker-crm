@@ -226,16 +226,35 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
                 can_delete_mistake_category=True
             )
         
-        # Check for warnings admin permissions
+        # Check for warnings admin permissions (supports both old 'warnings_admin' and new 'warning_setting'/'view_all')
         has_warnings_admin = any(
-            perm.get("page") == "warnings" and ("warnings_admin" in str(perm.get("actions", "")) or perm.get("actions") == "*")
+            perm.get("page") == "warnings" and (
+                "warnings_admin" in str(perm.get("actions", "")) or
+                perm.get("actions") == "*" or
+                (isinstance(perm.get("actions"), list) and (
+                    "warning_setting" in perm.get("actions", []) or
+                    "view_all" in perm.get("actions", []) or
+                    "*" in perm.get("actions", [])
+                ))
+            )
+            for perm in permissions
+        )
+        
+        # Check for view_team permission (junior/manager level)
+        has_view_team = any(
+            perm.get("page") == "warnings" and (
+                isinstance(perm.get("actions"), list) and (
+                    "view_team" in perm.get("actions", []) or
+                    "junior" in perm.get("actions", [])
+                ) or perm.get("actions") in ("view_team", "junior")
+            )
             for perm in permissions
         )
         
         # Define permission mapping for warnings - updated to new permission structure
         warning_permissions = WarningPermissions(
             can_view_own=True,  # All users can view their own warnings
-            can_view_all=has_warnings_admin,  # Only admin can view all warnings
+            can_view_all=has_warnings_admin or has_view_team,  # Admin and team managers can view beyond own
             can_add=has_warnings_admin,  # Only admin can add warnings
             can_edit=has_warnings_admin,  # Only admin can edit warnings
             can_delete=has_warnings_admin,  # Only admin can delete warnings

@@ -123,10 +123,14 @@ async def check_send_permission(current_user_id: str, users_db: UsersDB, roles_d
     - Super admin (page: *, action: *)
     """
     try:
-        # Check for notification send permission
+        # Check for notification send/create permission (supports both old 'send' and new 'create')
         has_send_permission = await PermissionManager.check_permission(
             current_user_id, "notification", "send", users_db, roles_db, raise_error=False
         )
+        if not has_send_permission:
+            has_send_permission = await PermissionManager.check_permission(
+                current_user_id, "notification", "create", users_db, roles_db, raise_error=False
+            )
         
         if has_send_permission:
             return True
