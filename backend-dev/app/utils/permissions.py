@@ -394,8 +394,12 @@ class PermissionManager:
         subordinate_roles = await roles_db.get_all_subordinate_roles(user_role_id)
         
         if not subordinate_roles:
-            print(f"DEBUG: No subordinate roles found for role_id {user_role_id}")
-            return []
+            print(f"DEBUG: No subordinate roles found for role_id {user_role_id} — falling back to same-role peers")
+            # Peer fallback: when no hierarchy is configured, view_team works on same-role colleagues
+            same_role_users = await users_db.get_users_by_roles([user_role_id])
+            user_ids = [str(u["_id"]) for u in (same_role_users or []) if str(u["_id"]) != user_id]
+            print(f"DEBUG: Peer fallback — found {len(user_ids)} same-role users")
+            return user_ids
             
         print(f"DEBUG: Found {len(subordinate_roles)} subordinate roles for user {user_id}")
         subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
@@ -410,6 +414,18 @@ class PermissionManager:
             
         user_ids = [str(user["_id"]) for user in subordinate_users]
         print(f"DEBUG: Found {len(user_ids)} subordinate users: {user_ids}")
+
+        # Peer Visibility: include same-role colleagues if the role has peer_visibility=True
+        user_role = await roles_db.get_role(user_role_id)
+        if user_role and user_role.get("peer_visibility", False):
+            print(f"DEBUG: peer_visibility ON for role {user_role_id}, including same-role users")
+            peer_users = await users_db.get_users_by_roles([user_role_id])
+            for peer in (peer_users or []):
+                peer_id = str(peer["_id"])
+                if peer_id != user_id and peer_id not in user_ids:
+                    user_ids.append(peer_id)
+            print(f"DEBUG: After peer visibility, total subordinate users: {len(user_ids)}")
+
         return user_ids
 
     @staticmethod
@@ -452,7 +468,7 @@ class PermissionManager:
             return True
             
         has_view_junior = any(
-            perm.get("page") == "leads" and 
+            perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and
             (
                 perm.get("actions") == "*" or
                 perm.get("actions") in ("junior", "view_team") or
@@ -517,11 +533,11 @@ class PermissionManager:
         
         # Check for all permission
         has_view_all = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
+              perm.get("actions") in ("all", "view_all") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "all" in perm.get("actions") or "view_all" in perm.get("actions")))))
             for perm in user_permissions
         )
         
@@ -611,7 +627,7 @@ class PermissionManager:
         
         # Check for junior permission
         has_view_junior = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and
              (perm.get("actions") == "*" or 
               perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
@@ -690,11 +706,11 @@ class PermissionManager:
         
         # Check for all permission
         has_view_all = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
+              perm.get("actions") in ("all", "view_all") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "all" in perm.get("actions") or "view_all" in perm.get("actions")))))
             for perm in user_permissions
         )
         
@@ -722,7 +738,7 @@ class PermissionManager:
         )
         
         has_view_junior = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and
              (perm.get("actions") == "*" or 
               perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
@@ -964,14 +980,14 @@ class PermissionManager:
             user_object_id = None
         
         # ROLE-BASED VISIBILITY: Different rules for Team Leaders vs Regular Employees
-        # Check if user is a Team Leader (has junior or all permission)
+        # Check if user is a Team Leader (has junior or all permission on any leads page)
         is_team_leader_by_permission = any(
-            (perm.get("page", "").lower() == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and 
              (perm.get("actions") == "*" or 
               perm.get("actions") == "all" or
-              perm.get("actions") in ("junior", "view_team") or
+              perm.get("actions") in ("junior", "view_team", "view_all") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
+               ("*" in perm.get("actions") or "all" in perm.get("actions") or any(a in ("junior", "view_team", "view_all") for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -1053,7 +1069,7 @@ class PermissionManager:
         
         # Check for junior permission (case-insensitive) - RE-ENABLED for multiple reporting support
         has_view_junior = any(
-            (perm.get("page", "").lower() == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and 
              (perm.get("actions") == "*" or 
               (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
@@ -1592,7 +1608,7 @@ class PermissionManager:
         
         # Check for subordinate access
         has_view_junior = any(
-            (perm.get("page") == "leads" and 
+            (perm.get("page", "").lower() in ("leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads") and 
              (perm.get("actions") == "*" or 
               perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
