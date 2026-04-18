@@ -137,7 +137,28 @@ class PermissionManager:
                     if action_lower in actions_lower:
                         print(f"DEBUG: Permission granted for {page}.{action} via list of actions (case-insensitive)")
                         return True
-        
+
+        # CRITICAL FIX (April 2026): When checking 'show', grant access if the user
+        # has ANY non-trivial action for that page (view_team, view_all, view_other,
+        # delete, edit, etc.). This mirrors the frontend hasAnyAccess logic and ensures
+        # that a role with only 'view_team' can still pass route-level 'show' gates.
+        if action_lower == "show":
+            for perm in permissions:
+                perm_page = perm.get("page", "")
+                page_match = (perm_page in ["*", "any"] or
+                              (perm_page.lower() if perm_page else "") == page_lower)
+                if not page_match:
+                    continue
+                actions = perm.get("actions")
+                if actions == "*" or actions is True:
+                    return True
+                if isinstance(actions, str) and actions.strip():
+                    print(f"DEBUG: 'show' granted via implicit access (has '{actions}' on {page})")
+                    return True
+                if isinstance(actions, list) and len(actions) > 0:
+                    print(f"DEBUG: 'show' granted via implicit access (has actions {actions} on {page})")
+                    return True
+
         print(f"DEBUG: Permission denied for {page}.{action}")
         return False
     
@@ -902,16 +923,25 @@ class PermissionManager:
             print(f"DEBUG: User has 'all' permission - granting access to ALL leads")
             return {}  # Return empty filter to show ALL leads
         
-        # Check for basic view permissio
-        has_view_permission = any(
-            (perm.get("page") == "leads" and 
-             (perm.get("actions") == "*" or 
-              perm.get("actions") == "show" or
-              (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "show" in perm.get("actions")))))
-            for perm in user_permissions
-        )
-        
+        # Check for basic view permission - any leads action grants visibility
+        # (own leads + view_team / view_all expansion handled below)
+        LEADS_PAGES_FOR_VIEW = {"leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"}
+        has_view_permission = False
+        for perm in user_permissions:
+            page_v = perm.get("page", "")
+            if page_v.lower() not in LEADS_PAGES_FOR_VIEW:
+                continue
+            actions_v = perm.get("actions")
+            if actions_v == "*" or actions_v is True:
+                has_view_permission = True
+                break
+            if isinstance(actions_v, str) and actions_v.strip():
+                has_view_permission = True
+                break
+            if isinstance(actions_v, list) and len(actions_v) > 0:
+                has_view_permission = True
+                break
+
         if not has_view_permission:
             return {"_id": {"$exists": False}}  # Return no results
         
@@ -1407,14 +1437,22 @@ class PermissionManager:
             print(f"DEBUG: User has 'all' LOGIN permission - granting access to ALL login leads")
             return {}  # Return empty filter to show ALL login leads
         
-        # Check for basic LOGIN view permission
-        has_view_permission = any(
-            (perm.get("page", "").lower() == "login" and 
-             ("show" in perm.get("actions", []) if isinstance(perm.get("actions"), list) 
-              else perm.get("actions") == "show"))
-            for perm in user_permissions
-        )
-        
+        # Check for basic LOGIN view permission - any login action grants visibility
+        has_view_permission = False
+        for perm in user_permissions:
+            if perm.get("page", "").lower() != "login":
+                continue
+            actions_v = perm.get("actions")
+            if actions_v == "*" or actions_v is True:
+                has_view_permission = True
+                break
+            if isinstance(actions_v, str) and actions_v.strip():
+                has_view_permission = True
+                break
+            if isinstance(actions_v, list) and len(actions_v) > 0:
+                has_view_permission = True
+                break
+
         if not has_view_permission:
             print(f"DEBUG: User {user_id} has no LOGIN view permission")
             return {"_id": {"$exists": False}}  # No login access
