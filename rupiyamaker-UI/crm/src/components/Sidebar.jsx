@@ -1554,8 +1554,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                     checkPermission('leads.pl_odd_leads', 'show') ||
                     isSuperAdmin(userPermissions),
       
-      // Feed - Always visible
-      canShowFeeds: true,
+      // Feed - Show only if user has feeds.show permission (or super admin)
+      canShowFeeds: checkPermission('feeds', 'show') ||
+                    checkPermission('feeds', 'view') ||
+                    checkPermission('Feeds', 'show') ||
+                    isSuperAdmin(userPermissions),
       
       // Tasks - Check multiple variations
       canShowTasks: checkPermission('tasks', 'show') || 
@@ -1569,16 +1572,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                       checkPermission('ticket', 'show') ||
                       isSuperAdmin(userPermissions),
       
-      // HRMS - Check multiple variations including sub-modules
-      canShowHRMS: checkPermission('hrms', 'show') || 
-                   checkPermission('HRMS', 'show') || 
-                   checkPermission('employees', 'show') ||
+      // HRMS - Show if ANY HRMS sub-module is accessible (employees, leaves, attendance, dialer_report, offer_letter)
+      canShowHRMS: checkPermission('employees', 'show') ||
                    checkPermission('Employees', 'show') ||
-                   checkPermission('warnings', 'show') ||
                    checkPermission('attendance', 'show') ||
                    checkPermission('leaves', 'show') ||
                    checkPermission('offer_letter', 'show') ||
                    checkPermission('Offer Letter', 'show') ||
+                   checkPermission('dialer_report', 'show') ||
                    isSuperAdmin(userPermissions),
       
       // Employees
@@ -1639,14 +1640,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       // Attendance - individual check for HRMS dropdown items
       canShowAttendance: checkPermission('attendance', 'show') ||
                          checkPermission('Attendance', 'show') ||
-                         checkPermission('hrms', 'show') ||
                          isSuperAdmin(userPermissions),
 
       // Leaves - individual check for HRMS dropdown items
       canShowLeaves: checkPermission('leaves', 'show') ||
                      checkPermission('Leaves', 'show') ||
                      checkPermission('leave', 'show') ||
-                     checkPermission('hrms', 'show') ||
                      isSuperAdmin(userPermissions),
 
       // Offer Letter - individual check for HRMS dropdown items
@@ -1661,12 +1660,10 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('Knowledge Base', 'show') ||
                             checkPermission('knowledgebase', 'show'),
 
-      // Dashboard (DSA Performance) - leads users + super admin
+      // Dashboard - STRICT: Only show if user has explicit dashboard.show permission
       canShowDashboard: isSuperAdmin(userPermissions) ||
                         checkPermission('dashboard', 'show') ||
-                        checkPermission('Dashboard', 'show') ||
-                        checkPermission('leads', 'show') ||
-                        checkPermission('Leads', 'show')
+                        checkPermission('Dashboard', 'show')
     };
     
     console.log('🔐 ========================================');
@@ -1762,6 +1759,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           <nav className="flex flex-col gap-1 touch-manipulation"
                style={{ touchAction: 'pan-y' }}>
             {/* Feed */}
+            {permissions.canShowFeeds && (
             <MenuItem 
               icon={icons["Feed"]} 
               label="Feed" 
@@ -1769,6 +1767,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
               selectedLabel={selectedLabel} 
               onSelect={handleSelection} 
             />
+            )}
 
             {/* Dashboard */}
             {permissions.canShowDashboard && (

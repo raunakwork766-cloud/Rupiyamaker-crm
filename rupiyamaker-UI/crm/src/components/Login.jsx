@@ -294,9 +294,12 @@ const Login = ({ onLogin }) => {
                     });
                 }
 
-                // Set default view permissions for essential sections if not set
+                // Set default show permission for feeds if not explicitly set by the role
                 if (!permissions.feeds) {
-                    permissions.feeds = { view: true };
+                    permissions.feeds = { show: true, view: true };
+                } else if (typeof permissions.feeds === 'object' && !permissions.feeds.show) {
+                    // If feeds object exists but show is not explicitly set, grant show by default
+                    permissions.feeds.show = true;
                 }
 
                 // Store permissions in localStorage
