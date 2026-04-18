@@ -143,15 +143,18 @@ const RoleSettings = () => {
     const checkRolePerm = (role, mod, action) => {
         if (!role.permissions || !Array.isArray(role.permissions)) return false;
         if (role.permissions.some(p => p.page === '*')) return true;
+        // Build aliases for backward compat: view_team ↔ junior, view_all ↔ all
+        const aliasMap = { view_team: ['view_team', 'junior'], view_all: ['view_all', 'all'] };
+        const actionsToCheck = aliasMap[action] || [action];
         if (mod.isNested) {
             const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
             const dbSection = mod.section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
             const pageKey = dbModule + '.' + dbSection;
             const perm = role.permissions.find(p => p.page === pageKey);
-            return !!(perm && perm.actions && perm.actions.includes(action));
+            return !!(perm && perm.actions && actionsToCheck.some(a => perm.actions.includes(a)));
         } else {
             const perm = role.permissions.find(p => p.page === mod.originalModule);
-            return !!(perm && perm.actions && perm.actions.includes(action));
+            return !!(perm && perm.actions && actionsToCheck.some(a => perm.actions.includes(a)));
         }
     };
 
@@ -923,8 +926,15 @@ const RoleSettings = () => {
                         if (!permissionsObj[perm.page]) {
                             permissionsObj[perm.page] = [];
                         }
-                        const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
-                        permissionsObj[perm.page] = [...(permissionsObj[perm.page] || []), ...actions];
+                        let actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
+                        // Normalize old action names to new names for ALL modules
+                        actions = actions.map(a => {
+                            if (a === 'junior') return 'view_team';
+                            if (a === 'all') return 'view_all';
+                            if (perm.page === 'interview' && a === 'settings') return 'interview_setting';
+                            return a;
+                        });
+                        permissionsObj[perm.page] = [...new Set([...(permissionsObj[perm.page] || []), ...actions])];
                     }
                 });
             }
@@ -1170,9 +1180,6 @@ const RoleSettings = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        console.log('🔍 DEBUG: Starting handleSubmit...');
-        console.log('🔍 DEBUG: formData.permissions:', JSON.stringify(formData.permissions, null, 2));
-        
         // Convert permissions object back to array format for backend
         const permissionsArray = [];
         
@@ -1190,8 +1197,6 @@ const RoleSettings = () => {
             Object.keys(formData.permissions).forEach(module => {
                 const permissions = formData.permissions[module];
                 
-                console.log(`🔍 DEBUG: Processing module "${module}" with permissions:`, permissions);
-                
                 // Check if it's a nested permission (e.g., "Leads CRM.Create LEAD")
                 if (module.includes('.')) {
                     const [parentModule, section] = module.split('.');
@@ -1200,8 +1205,6 @@ const RoleSettings = () => {
                     // This is critical for permission checks to work correctly
                     const pageName = parentModule === 'Leads CRM' ? 'leads' : parentModule.toLowerCase();
                     const formattedPage = `${pageName}.${section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_')}`;
-                    
-                    console.log(`🔍 DEBUG: Nested permission - page: "${formattedPage}", actions:`, permissions);
                     
                     permissionsArray.push({
                         page: formattedPage,
@@ -1214,7 +1217,6 @@ const RoleSettings = () => {
                     }
                 } else if (permissions.length > 0) {
                     // Regular flat permissions (only save if not empty)
-                    console.log(`🔍 DEBUG: Regular permission - page: "${module}", actions:`, permissions);
                     permissionsArray.push({
                         page: module,
                         actions: permissions
@@ -1226,7 +1228,6 @@ const RoleSettings = () => {
             // This combines ALL permissions from all Leads CRM sections
             if (leadsPermissions.size > 0) {
                 const leadsArray = Array.from(leadsPermissions);
-                console.log(`🔍 DEBUG: Adding unified leads permissions:`, leadsArray);
                 permissionsArray.push({
                     page: "leads",
                     actions: leadsArray
@@ -1234,27 +1235,16 @@ const RoleSettings = () => {
             }
         }
         
-        console.log('🔍 DEBUG: Final permissionsArray BEFORE submitData:', JSON.stringify(permissionsArray, null, 2));
-        
         const submitData = {
             ...formData,
             permissions: permissionsArray
         };
         
-        console.log('🔍 DEBUG: Complete submitData:', JSON.stringify(submitData, null, 2));
-        
         try {
             // Use the new immediate refresh system instead of manual API calls
-            console.log('🚀 Using immediate permission refresh system...');
-            console.log('📤 Submitting to backend...');
-            
             const roleId = editingRole ? (editingRole.id || editingRole._id) : null;
-            console.log('🔍 DEBUG: Role ID:', roleId);
-            console.log('🔍 DEBUG: Edit mode:', !!editingRole);
             
             const result = await updateRoleWithImmediateRefresh(submitData, roleId);
-            
-            console.log('✅ Role updated with immediate permission refresh:', result);
             message.success(`Role ${editingRole ? 'updated' : 'created'} successfully! Permissions applied immediately.`);
             
             closeModal();

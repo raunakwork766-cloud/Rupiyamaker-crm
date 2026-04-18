@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'rupiyame-backend-dev',
-      cwd: '/www/wwwroot/RupiyaMe/backend',
+      cwd: '/www/wwwroot/RupiyaMe/backend-dev',
       script: 'venv/bin/python',
       args: '-m app',
       interpreter: 'none',
@@ -19,8 +19,8 @@ module.exports = {
         DEV_PORT: '8051',  // Different port for dev
         COMPANY_NAME: 'crm_database_dev'  // Separate database for dev
       },
-      error_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-error.log',
-      out_file: '/www/wwwroot/RupiyaMe/backend/logs/backend-dev-out.log',
+      error_file: '/www/wwwroot/RupiyaMe/backend-dev/logs/backend-dev-error.log',
+      out_file: '/www/wwwroot/RupiyaMe/backend-dev/logs/backend-dev-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       time: true

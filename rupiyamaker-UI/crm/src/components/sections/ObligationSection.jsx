@@ -2512,7 +2512,22 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
     }
     
-    setDebugStateValues(currentState);
+    // Use functional update with bail-out: only update if meaningful values changed.
+    // Unconditionally creating a new object (with timestamp) on every run caused extra re-renders.
+    setDebugStateValues(prev => {
+      if (
+        prev.salary === currentState.salary &&
+        prev.partnerSalary === currentState.partnerSalary &&
+        prev.yearlyBonus === currentState.yearlyBonus &&
+        prev.loanRequired === currentState.loanRequired &&
+        prev.companyName === currentState.companyName &&
+        prev.cibilScore === currentState.cibilScore &&
+        prev.obligationsCount === currentState.obligationsCount
+      ) {
+        return prev; // No meaningful change — skip re-render
+      }
+      return currentState;
+    });
   }, [salary, partnerSalary, yearlyBonus, loanRequired, companyName, cibilScore, obligations.length, 
       leadData?.file_sent_to_login, backupObligationData, dataStableForFileSentToLogin, isInitialLoad, dataLoaded, hasUserInteraction]);
   
@@ -2710,7 +2725,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     const timeoutId = setTimeout(syncTableData, debounceDelay);
     
     return () => clearTimeout(timeoutId);
-  }, [obligations, isInitialLoad, totalObligation, totalBtPos, leadData?.file_sent_to_login, dataLoaded]);
+  }, [obligations, isInitialLoad, totalBtPos, leadData?.file_sent_to_login, dataLoaded]); // totalObligation removed — it was a stale dep from commented-out code
 
   // Enhanced save function that resets unsaved changes
   const handleSaveObligationsWithChangeTracking = async () => {
@@ -6337,7 +6352,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       return eligibilityData;
     });
 
-    setTotalBtPos(formatINR(Math.round(totalBtPosValue).toString()));
+    setTotalBtPos(prev => {
+      const newVal = formatINR(Math.round(totalBtPosValue).toString());
+      return prev === newVal ? prev : newVal; // Skip re-render if unchanged
+    });
 
     // Check eligibility status
     const requiredAmount = parseINR(loanRequired);
@@ -6348,7 +6366,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       loanEligibilityFoir: Math.round(loanEligibilityFoir),
       status: eligibilityStatus
     });
-    setLoanEligibilityStatus(eligibilityStatus);
+    setLoanEligibilityStatus(prev => prev === eligibilityStatus ? prev : eligibilityStatus);
     
     console.log('📊 ========================================');
     console.log('📊 ELIGIBILITY CALCULATION COMPLETE');
@@ -6405,8 +6423,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       timestamp: getISTTimestamp()
     });
     
-    // Update total obligation immediately when obligations change
-    setTotalObligation(formattedValue);
+    // Use functional update with bail-out to avoid triggering deps of other effects unnecessarily
+    setTotalObligation(prev => {
+      if (prev === formattedValue) return prev; // No change — skip re-render
+      console.log('🟦 [DEDICATED] Total obligation changed:', prev, '→', formattedValue);
+      return formattedValue;
+    });
     
     // Set a timeout to check if our value gets overridden
     setTimeout(() => {
