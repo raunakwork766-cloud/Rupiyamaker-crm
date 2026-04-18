@@ -105,7 +105,7 @@ async def get_hierarchical_permissions(
                 
                 if "all" in actions or "*" in actions:
                     has_all = True
-                elif "junior" in actions:
+                elif "junior" in actions or "view_team" in actions:
                     has_junior = True
         
         # Determine permission level
@@ -375,8 +375,8 @@ async def list_leaves(
             has_junior = False
             for perm in permissions:
                 if perm.get("page") == "leaves" and \
-                   (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions")) or \
-                   perm.get("actions") == "junior":
+                   (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))) or \
+                   perm.get("actions") in ("junior", "view_team"):
                     has_junior = True
                     break
             perm_level = "junior" if has_junior else "own"

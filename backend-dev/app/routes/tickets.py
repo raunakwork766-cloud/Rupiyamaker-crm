@@ -251,7 +251,7 @@ async def get_user_ticket_permissions(user_id: str) -> TicketPermissions:
                         has_show = True
                     if "own" in actions:
                         has_own = True
-                    if "junior" in actions:
+                    if "junior" in actions or "view_team" in actions:
                         has_junior = True
                     if "all" in actions:
                         has_all = True
@@ -604,7 +604,7 @@ async def update_ticket(
         
         # Check permissions
         has_edit_permission = await PermissionManager.check_permission(
-            current_user_id, "tickets", "junior", users_db, roles_db, raise_error=False
+            current_user_id, "tickets", "view_team", users_db, roles_db, raise_error=False
         )
         
         can_edit = (
@@ -876,7 +876,7 @@ async def close_ticket(
         
         # Check permissions - allow users with edit permission, creators, or assigned users
         has_edit_permission = await PermissionManager.check_permission(
-            current_user_id, "tickets", "junior", users_db, roles_db, raise_error=False
+            current_user_id, "tickets", "view_team", users_db, roles_db, raise_error=False
         )
         
         can_close = (
@@ -948,7 +948,7 @@ async def reopen_ticket(
         
         # Check permissions - allow users with edit permission, creators, or assigned users
         has_edit_permission = await PermissionManager.check_permission(
-            current_user_id, "tickets", "junior", users_db, roles_db, raise_error=False
+            current_user_id, "tickets", "view_team", users_db, roles_db, raise_error=False
         )
         
         can_reopen = (
@@ -1147,7 +1147,7 @@ async def delete_ticket(
         
         # Also check if user has junior (edit) permission as a fallback
         has_junior_permission = await PermissionManager.check_permission(
-            current_user_id, "tickets", "junior", users_db, roles_db, raise_error=False
+            current_user_id, "tickets", "view_team", users_db, roles_db, raise_error=False
         )
         
         can_delete = (

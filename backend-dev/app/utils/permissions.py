@@ -15,16 +15,16 @@ from app.database.Roles import RolesDB
 DEFAULT_PERMISSIONS = {
     "global": ["show", "*"],  # show = visibility in menu, * = full system access
     "feeds": ["show", "post", "all", "delete", "*"],
-    "leads": ["show", "add", "own", "junior", "all", "assign", "reassignment_popup", "download_obligation", "status_update", "delete", "*"],
-    "login": ["show", "own", "junior", "all", "channel", "edit", "delete", "*"],
-    "tasks": ["show", "own", "junior", "all", "delete", "*"],
-    "tickets": ["show", "own", "junior", "all", "delete", "*"],
+    "leads": ["show", "add", "own", "view_team", "all", "assign", "reassignment_popup", "download_obligation", "status_update", "delete", "*"],
+    "login": ["show", "own", "view_team", "all", "channel", "edit", "delete", "*"],
+    "tasks": ["show", "own", "view_team", "all", "delete", "*"],
+    "tickets": ["show", "own", "view_team", "all", "delete", "*"],
     "hrms": ["show", "*"],  # General HRMS access
-    "employees": ["show", "password", "junior", "all", "role", "delete", "*"],
-    "leaves": ["show", "own", "junior", "all", "delete", "*"],
-    "attendance": ["show", "own", "junior", "all", "update", "delete", "*"],
-    "warnings": ["show", "own", "junior", "all", "delete", "issue", "view_mistakes", "create_mistake", "edit_mistake", "delete_mistake", "*"],
-    "interview": ["show", "junior", "all", "settings", "delete", "*"],
+    "employees": ["show", "password", "view_team", "all", "role", "delete", "*"],
+    "leaves": ["show", "own", "view_team", "all", "delete", "*"],
+    "attendance": ["show", "own", "view_team", "all", "update", "delete", "*"],
+    "warnings": ["show", "own", "view_team", "all", "delete", "issue", "view_mistakes", "create_mistake", "edit_mistake", "delete_mistake", "*"],
+    "interview": ["show", "view_team", "all", "settings", "delete", "*"],
     "dialer_report": ["show"],
     "apps": ["show", "manage", "*"],
     "notification": ["show", "delete", "send", "*"],
@@ -434,8 +434,8 @@ class PermissionManager:
             perm.get("page") == "leads" and 
             (
                 perm.get("actions") == "*" or
-                perm.get("actions") == "junior" or
-                (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions", []) or "junior" in perm.get("actions", [])))
+                perm.get("actions") in ("junior", "view_team") or
+                (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions", []) or any(a in ("junior", "view_team") for a in perm.get("actions", []))))
             )
             for perm in viewer_permissions
         )
@@ -525,11 +525,11 @@ class PermissionManager:
                 (perm.get("page") == "leads" and 
                  (perm.get("actions") == "own" or 
                   perm.get("actions") == "view_other" or
-                  perm.get("actions") == "junior" or
+                  perm.get("actions") in ("junior", "view_team") or
                   (isinstance(perm.get("actions"), list) and 
                    ("own" in perm.get("actions") or 
                     "view_other" in perm.get("actions") or
-                    "junior" in perm.get("actions")))))
+                    any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
                 for perm in user_permissions
             )
             
@@ -592,9 +592,9 @@ class PermissionManager:
         has_view_junior = any(
             (perm.get("page") == "leads" and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -703,9 +703,9 @@ class PermissionManager:
         has_view_junior = any(
             (perm.get("page") == "leads" and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -939,9 +939,9 @@ class PermissionManager:
             (perm.get("page", "").lower() == "leads" and 
              (perm.get("actions") == "*" or 
               perm.get("actions") == "all" or
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "all" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         
@@ -1025,10 +1025,10 @@ class PermissionManager:
         has_view_junior = any(
             (perm.get("page", "").lower() == "leads" and 
              (perm.get("actions") == "*" or 
-              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "junior") or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
                ("*" in perm.get("actions") or 
-                any(action.lower() == "junior" if isinstance(action, str) else False 
+                any(action.lower() in ("junior", "view_team") if isinstance(action, str) else False 
                     for action in perm.get("actions", []))))))
             for perm in user_permissions
         )
@@ -1450,9 +1450,9 @@ class PermissionManager:
         # Check for LOGIN junior/team leader permissions
         has_login_junior = any(
             (perm.get("page", "").lower() == "login" and 
-             (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "junior") or
+             (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ("junior", "view_team")) or
               (isinstance(perm.get("actions"), list) and 
-               any(action.lower() == "junior" if isinstance(action, str) else False 
+               any(action.lower() in ("junior", "view_team") if isinstance(action, str) else False 
                    for action in perm.get("actions", []))))
             for perm in user_permissions
         )
@@ -1556,9 +1556,9 @@ class PermissionManager:
         has_view_junior = any(
             (perm.get("page") == "leads" and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
+              perm.get("actions") in ("junior", "view_team") or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions")))))
+               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
             for perm in user_permissions
         )
         

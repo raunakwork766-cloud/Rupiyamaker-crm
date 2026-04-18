@@ -158,8 +158,8 @@ async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, s
         # Check module-specific "junior" permission (page="module" with actions="junior")
         has_junior_permission = any(
             perm.get("page") == module and 
-            (perm.get("actions") == "junior" or
-             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            (perm.get("actions") in ("junior", "view_team") or
+             (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -406,8 +406,8 @@ async def get_user_warnings(
         # Check if requesting user has junior permission for hierarchical access
         has_view_junior = any(
             perm.get("page") == "warnings" and 
-            (perm.get("actions") == "junior" or
-             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            (perm.get("actions") in ("junior", "view_team") or
+             (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -1277,8 +1277,8 @@ async def get_employee_warning_ranking(
         # Check if requesting user has junior permission for hierarchical access
         has_view_junior = any(
             perm.get("page") == "warnings" and 
-            (perm.get("actions") == "junior" or
-             (isinstance(perm.get("actions"), list) and "junior" in perm.get("actions", [])))
+            (perm.get("actions") in ("junior", "view_team") or
+             (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))))
             for perm in user_permissions
         )
         
