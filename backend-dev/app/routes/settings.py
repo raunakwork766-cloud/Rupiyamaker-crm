@@ -2870,3 +2870,145 @@ async def trigger_absconding_backfill(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Backfill error: {str(e)}"
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SMTP / Email Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/smtp-config", response_model=Dict[str, Any])
+async def get_smtp_config(
+    user_id: str = Query(...),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Get current SMTP sender configuration (password masked). Super Admin only."""
+    await check_permission(user_id, "settings", "show", users_db, roles_db)
+    try:
+        from app.database import get_database_instances
+        db_instances = get_database_instances()
+        db = db_instances.get("settings")
+        if db and hasattr(db, "db") and db.db is not None:
+            raw_db = db.db
+        else:
+            import os
+            from motor.motor_asyncio import AsyncIOMotorClient
+            mongo_url = os.getenv("MONGO_URL", "mongodb://raunak:Raunak%40123@156.67.111.95:27017/admin?authSource=admin")
+            company = os.getenv("COMPANY_NAME", "crm_database_dev")
+            client = AsyncIOMotorClient(mongo_url)
+            raw_db = client[company]
+
+        doc = await raw_db["email_settings"].find_one({"is_active": True})
+        if not doc:
+            return {
+                "configured": False,
+                "sender_email": "",
+                "smtp_server": "smtp.gmail.com",
+                "smtp_port": 587,
+                "use_ssl": False,
+            }
+        return {
+            "configured": bool(doc.get("email") and doc.get("password")),
+            "sender_email": doc.get("email", ""),
+            "smtp_server": doc.get("smtp_server", "smtp.gmail.com"),
+            "smtp_port": doc.get("smtp_port", 587),
+            "use_ssl": doc.get("use_ssl", False),
+            "password_set": bool(doc.get("password")),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching SMTP config: {str(e)}")
+
+
+@router.put("/smtp-config", response_model=Dict[str, Any])
+async def update_smtp_config(
+    config: Dict[str, Any],
+    user_id: str = Query(...),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Update SMTP sender configuration. Super Admin only.
+    
+    Body: { sender_email, app_password, smtp_server?, smtp_port? }
+    """
+    await check_permission(user_id, "settings", "update", users_db, roles_db)
+    try:
+        sender_email = (config.get("sender_email") or "").strip()
+        app_password = (config.get("app_password") or "").strip()
+        smtp_server  = (config.get("smtp_server") or "smtp.gmail.com").strip()
+        smtp_port    = int(config.get("smtp_port") or 587)
+
+        if not sender_email:
+            raise HTTPException(status_code=400, detail="sender_email is required")
+
+        import os
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from datetime import datetime, timezone
+        mongo_url = os.getenv("MONGO_URL", "mongodb://raunak:Raunak%40123@156.67.111.95:27017/admin?authSource=admin")
+        company = os.getenv("COMPANY_NAME", "crm_database_dev")
+        client = AsyncIOMotorClient(mongo_url)
+        raw_db = client[company]
+
+        update_doc: dict = {
+            "email": sender_email,
+            "smtp_server": smtp_server,
+            "smtp_port": smtp_port,
+            "use_ssl": smtp_port == 465,
+            "is_active": True,
+            "purpose": "otp",
+            "updated_at": datetime.now(timezone.utc),
+        }
+        # Only update password if a new one is provided
+        if app_password:
+            update_doc["password"] = app_password
+
+        existing = await raw_db["email_settings"].find_one({})
+        if existing:
+            await raw_db["email_settings"].update_one(
+                {"_id": existing["_id"]},
+                {"$set": update_doc},
+            )
+        else:
+            update_doc["created_at"] = datetime.now(timezone.utc)
+            await raw_db["email_settings"].insert_one(update_doc)
+
+        return {"success": True, "message": "SMTP configuration saved successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving SMTP config: {str(e)}")
+
+
+@router.post("/smtp-config/test", response_model=Dict[str, Any])
+async def test_smtp_config(
+    config: Dict[str, Any],
+    user_id: str = Query(...),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Test SMTP connection with given credentials (does NOT save). Super Admin only."""
+    await check_permission(user_id, "settings", "show", users_db, roles_db)
+    import smtplib
+    import os
+    sender_email = (config.get("sender_email") or "").strip()
+    app_password  = (config.get("app_password") or "").strip()
+    smtp_server   = (config.get("smtp_server") or "smtp.gmail.com").strip()
+    smtp_port     = int(config.get("smtp_port") or 587)
+    use_ssl       = smtp_port == 465
+
+    if not sender_email or not app_password:
+        raise HTTPException(status_code=400, detail="sender_email and app_password are required for test")
+    try:
+        if use_ssl:
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+        server.login(sender_email, app_password)
+        server.quit()
+        return {"success": True, "message": f"✅ Connection successful! Logged in as {sender_email}"}
+    except smtplib.SMTPAuthenticationError:
+        return {"success": False, "message": "❌ Authentication failed. Check email and App Password."}
+    except Exception as e:
+        return {"success": False, "message": f"❌ Connection error: {str(e)}"}

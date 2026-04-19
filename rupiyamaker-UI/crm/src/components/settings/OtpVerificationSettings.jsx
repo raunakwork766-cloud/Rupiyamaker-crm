@@ -23,6 +23,11 @@ import {
     AlertTriangle,
     Mail,
     RefreshCw,
+    Settings,
+    Eye,
+    EyeOff,
+    TestTube,
+    Save,
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -33,6 +38,19 @@ const OtpVerificationSettings = () => {
     const [otpRoutes, setOtpRoutes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
+
+    // ── SMTP config state ─────────────────────────────────────────────────
+    const [smtpConfig, setSmtpConfig] = useState(null);
+    const [smtpForm, setSmtpForm] = useState({
+        sender_email: '',
+        app_password: '',
+        smtp_server: 'smtp.gmail.com',
+        smtp_port: 587,
+    });
+    const [showPassword, setShowPassword] = useState(false);
+    const [smtpSaving, setSmtpSaving] = useState(false);
+    const [smtpTesting, setSmtpTesting] = useState(false);
+    const [smtpMsg, setSmtpMsg] = useState({ text: '', ok: null });
 
     const [selectedRole, setSelectedRole] = useState(null);
     const [selectedApprovers, setSelectedApprovers] = useState([]);
@@ -52,19 +70,32 @@ const OtpVerificationSettings = () => {
         };
     }, []);
 
-    // ── Load roles, employees, and existing OTP routes ────────────────────
+    // ── Load roles, employees, OTP routes, and SMTP config ──────────────
     const load = useCallback(async () => {
             setLoading(true);
             setLoadError('');
             try {
                 const { userId, headers } = getAuth();
-                const [rolesRes, empsRes, routesRes] = await Promise.all([
+                const [rolesRes, empsRes, routesRes, smtpRes] = await Promise.all([
                     fetch(`${API_BASE}/roles/?user_id=${userId}`, { headers }).then((r) => r.json()),
                     fetch(`${API_BASE}/users/?user_id=${userId}&is_active=true`, { headers }).then((r) => r.json()),
                     fetch(`${API_BASE}/settings/otp-approval-routes?user_id=${userId}`, { headers }).then((r) => r.json()),
+                    fetch(`${API_BASE}/settings/smtp-config?user_id=${userId}`, { headers })
+                        .then((r) => r.ok ? r.json() : null)
+                        .catch(() => null),
                 ]);
 
                 setAllRoles(Array.isArray(rolesRes) ? rolesRes : []);
+
+                if (smtpRes) {
+                    setSmtpConfig(smtpRes);
+                    setSmtpForm((prev) => ({
+                        ...prev,
+                        sender_email: smtpRes.sender_email || '',
+                        smtp_server: smtpRes.smtp_server || 'smtp.gmail.com',
+                        smtp_port: smtpRes.smtp_port || 587,
+                    }));
+                }
 
                 const usersRaw = Array.isArray(empsRes)
                     ? empsRes
@@ -216,6 +247,51 @@ const OtpVerificationSettings = () => {
         [selectedApprovers, allEmployees],
     );
 
+    // ── SMTP handlers ─────────────────────────────────────────────────────
+    const handleSmtpTest = useCallback(async () => {
+        setSmtpTesting(true);
+        setSmtpMsg({ text: '', ok: null });
+        try {
+            const { userId, headers } = getAuth();
+            const res = await fetch(`${API_BASE}/settings/smtp-config/test?user_id=${userId}`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(smtpForm),
+            });
+            const data = await res.json();
+            setSmtpMsg({ text: data.message, ok: data.success });
+        } catch (err) {
+            setSmtpMsg({ text: `Error: ${err.message}`, ok: false });
+        } finally {
+            setSmtpTesting(false);
+        }
+    }, [smtpForm, getAuth]);
+
+    const handleSmtpSave = useCallback(async () => {
+        setSmtpSaving(true);
+        setSmtpMsg({ text: '', ok: null });
+        try {
+            const { userId, headers } = getAuth();
+            const res = await fetch(`${API_BASE}/settings/smtp-config?user_id=${userId}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(smtpForm),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSmtpMsg({ text: '✅ Saved successfully!', ok: true });
+                setSmtpConfig((prev) => ({ ...prev, configured: true, sender_email: smtpForm.sender_email, password_set: true }));
+                setSmtpForm((prev) => ({ ...prev, app_password: '' })); // clear password field after save
+            } else {
+                setSmtpMsg({ text: data.detail || 'Save failed', ok: false });
+            }
+        } catch (err) {
+            setSmtpMsg({ text: `Error: ${err.message}`, ok: false });
+        } finally {
+            setSmtpSaving(false);
+        }
+    }, [smtpForm, getAuth]);
+
     // ── Render ────────────────────────────────────────────────────────────
     return (
         <div className="bg-black rounded-xl shadow-lg overflow-hidden">
@@ -240,10 +316,87 @@ const OtpVerificationSettings = () => {
                 </p>
                 <div className="mt-3 flex items-start gap-2 text-xs text-amber-300 bg-amber-900/20 border border-amber-800/40 rounded p-2">
                     <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>Roles without an OTP routing rule will be <strong>blocked from logging in</strong>.</span>
+                </div>
+            </div>
+
+            {/* ── SMTP Email Sender Configuration ── */}
+            <div className="p-5 border-b border-gray-700">
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                    <Settings className="w-4 h-4 text-purple-400" />
+                    Email Sender (SMTP) Configuration
+                    {smtpConfig?.configured ? (
+                        <span className="ml-2 text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Active: {smtpConfig.sender_email}
+                        </span>
+                    ) : (
+                        <span className="ml-2 text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded-full">Not configured</span>
+                    )}
+                </h4>
+                <p className="text-xs text-gray-400 mb-4">
+                    OTP emails are sent <strong>FROM this account</strong> to the approver's personal email.
+                    Use a dedicated Gmail account + Gmail App Password (Google Account → Security → 2-Step Verification → App Passwords).
+                    Regular Gmail password will NOT work — App Password required.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                        Roles without an OTP routing rule will be <strong>blocked from logging in</strong>.
-                        SMTP credentials are read from the backend <code className="px-1 bg-gray-800 rounded">.env</code> file.
+                        <label className="block text-xs text-gray-400 mb-1">Sender Gmail Address *</label>
+                        <input
+                            type="email"
+                            placeholder="e.g. rupiyamaker.crm@gmail.com"
+                            value={smtpForm.sender_email}
+                            onChange={(e) => setSmtpForm((p) => ({ ...p, sender_email: e.target.value }))}
+                            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                        />
                     </div>
+                    <div>
+                        <label className="block text-xs text-gray-400 mb-1">
+                            Gmail App Password {smtpConfig?.password_set && !smtpForm.app_password && <span className="text-green-400">(already set — leave blank to keep)</span>}
+                        </label>
+                        <div className="relative">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                placeholder={smtpConfig?.password_set ? '••••••••••••••••' : '16-char App Password (no spaces)'}
+                                value={smtpForm.app_password}
+                                onChange={(e) => setSmtpForm((p) => ({ ...p, app_password: e.target.value.replace(/\s/g, '') }))}
+                                className="w-full px-3 py-2 pr-9 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((p) => !p)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                            >
+                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {smtpMsg.text && (
+                    <div className={`mt-3 text-xs px-3 py-2 rounded ${
+                        smtpMsg.ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'
+                    }`}>
+                        {smtpMsg.text}
+                    </div>
+                )}
+
+                <div className="mt-3 flex gap-2">
+                    <button
+                        onClick={handleSmtpTest}
+                        disabled={smtpTesting || !smtpForm.sender_email || !smtpForm.app_password}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <TestTube className="w-3.5 h-3.5" />
+                        {smtpTesting ? 'Testing...' : 'Test Connection'}
+                    </button>
+                    <button
+                        onClick={handleSmtpSave}
+                        disabled={smtpSaving || !smtpForm.sender_email}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <Save className="w-3.5 h-3.5" />
+                        {smtpSaving ? 'Saving...' : 'Save SMTP Config'}
+                    </button>
                 </div>
             </div>
 
