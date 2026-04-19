@@ -1236,3 +1236,58 @@ class SettingsDB:
         if route:
             return route.get("approver_ids", [])
         return []
+
+    # ── OTP Approval Routes (Login OTP routing) ──────────────────────────────
+    async def get_otp_approval_routes(self) -> list:
+        """Get all OTP approval routing rules"""
+        cursor = self.db.otp_approval_routes.find({}).sort("created_at", -1)
+        routes = []
+        async for r in cursor:
+            r["_id"] = str(r["_id"])
+            routes.append(r)
+        return routes
+
+    async def get_otp_approval_route_by_role(self, role_id: str) -> dict:
+        """Get OTP approval route for a specific role"""
+        route = await self.db.otp_approval_routes.find_one({"role_id": role_id})
+        if route:
+            route["_id"] = str(route["_id"])
+        return route
+
+    async def upsert_otp_approval_route(
+        self,
+        role_id: str,
+        role_name: str,
+        approver_ids: list,
+        approver_names: list,
+    ) -> dict:
+        """Create or update OTP approval route for a role"""
+        now = get_ist_now()
+        doc = {
+            "role_id": role_id,
+            "role_name": role_name,
+            "approver_ids": approver_ids,
+            "approver_names": approver_names,
+            "updated_at": now,
+        }
+        await self.db.otp_approval_routes.update_one(
+            {"role_id": role_id},
+            {"$set": doc, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        saved = await self.db.otp_approval_routes.find_one({"role_id": role_id})
+        if saved:
+            saved["_id"] = str(saved["_id"])
+        return saved
+
+    async def delete_otp_approval_route(self, role_id: str) -> bool:
+        """Delete OTP approval route for a role"""
+        result = await self.db.otp_approval_routes.delete_one({"role_id": role_id})
+        return result.deleted_count > 0
+
+    async def get_otp_approvers_for_role(self, role_id: str) -> list:
+        """Get OTP approver employee IDs configured for the given role."""
+        route = await self.db.otp_approval_routes.find_one({"role_id": role_id})
+        if route:
+            return route.get("approver_ids", []) or []
+        return []
