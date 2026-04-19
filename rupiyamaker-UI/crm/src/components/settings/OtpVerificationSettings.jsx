@@ -26,7 +26,6 @@ import {
     Settings,
     Eye,
     EyeOff,
-    TestTube,
     Save,
 } from 'lucide-react';
 
@@ -49,7 +48,6 @@ const OtpVerificationSettings = () => {
     });
     const [showPassword, setShowPassword] = useState(false);
     const [smtpSaving, setSmtpSaving] = useState(false);
-    const [smtpTesting, setSmtpTesting] = useState(false);
     const [smtpMsg, setSmtpMsg] = useState({ text: '', ok: null });
 
     const [selectedRole, setSelectedRole] = useState(null);
@@ -248,25 +246,6 @@ const OtpVerificationSettings = () => {
     );
 
     // ── SMTP handlers ─────────────────────────────────────────────────────
-    const handleSmtpTest = useCallback(async () => {
-        setSmtpTesting(true);
-        setSmtpMsg({ text: '', ok: null });
-        try {
-            const { userId, headers } = getAuth();
-            const res = await fetch(`${API_BASE}/settings/smtp-config/test?user_id=${userId}`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(smtpForm),
-            });
-            const data = await res.json();
-            setSmtpMsg({ text: data.message, ok: data.success });
-        } catch (err) {
-            setSmtpMsg({ text: `Error: ${err.message}`, ok: false });
-        } finally {
-            setSmtpTesting(false);
-        }
-    }, [smtpForm, getAuth]);
-
     const handleSmtpSave = useCallback(async () => {
         setSmtpSaving(true);
         setSmtpMsg({ text: '', ok: null });
@@ -381,14 +360,6 @@ const OtpVerificationSettings = () => {
                 )}
 
                 <div className="mt-3 flex gap-2">
-                    <button
-                        onClick={handleSmtpTest}
-                        disabled={smtpTesting || !smtpForm.sender_email || !smtpForm.app_password}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <TestTube className="w-3.5 h-3.5" />
-                        {smtpTesting ? 'Testing...' : 'Test Connection'}
-                    </button>
                     <button
                         onClick={handleSmtpSave}
                         disabled={smtpSaving || !smtpForm.sender_email}
