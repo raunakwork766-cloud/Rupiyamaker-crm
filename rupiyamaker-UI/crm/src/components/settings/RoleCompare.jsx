@@ -9,6 +9,7 @@ const ACTION_LABELS = {
     delete:               'Delete',
     post:                 'Create Feed',
     duplicate_lead:       'Duplicate Lead',
+    bank_name_permission: 'Bank Name Permission',
     view_team:            'View Team',
     view_all:             'View All',
     view_data_code:       'View Data Code',
@@ -55,7 +56,7 @@ const allPermissions = {
     'feeds': ['show', 'post', 'delete'],
     'dashboard': ['show'],
     'Leads CRM': {
-        'Create LEAD': ['show', 'duplicate_lead'],
+        'Create LEAD': ['show', 'duplicate_lead', 'bank_name_permission'],
         'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
     },
     'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
