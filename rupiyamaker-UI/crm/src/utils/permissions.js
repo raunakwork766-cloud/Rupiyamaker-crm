@@ -817,7 +817,7 @@ export const canApproveLeadReassignment = (userPermissions) => {
 /**
  * Check if user can view the Bank Logins panel inside the
  * Transfer Lead review popup. Controlled by the
- * `bank_name_permission` action under the `leads.pl_odd_leads` page.
+ * `bank_name_permission` action under the `leads.create_lead` page.
  *
  * @param {Object} userPermissions - The user's permissions object
  * @returns {boolean}
@@ -831,7 +831,7 @@ export const canViewBankNameInTransfer = (userPermissions) => {
   // Wildcard leads access
   if (userPermissions?.Leads === "*" || userPermissions?.leads === "*") return true;
 
-  // Object-form cache: { 'leads.pl_odd_leads': { bank_name_permission: true, ... } }
+  // Object-form cache: { 'leads.create_lead': { bank_name_permission: true, ... } }
   const objCheck = (key) => {
     const node = userPermissions?.[key];
     if (!node) return false;
@@ -840,12 +840,12 @@ export const canViewBankNameInTransfer = (userPermissions) => {
     if (typeof node === 'object') return node.bank_name_permission === true;
     return false;
   };
-  if (objCheck('leads.pl_odd_leads') || objCheck('Leads.pl_odd_leads')) return true;
+  if (objCheck('leads.create_lead') || objCheck('Leads.create_lead')) return true;
 
   // Generic permission lookup against array-form permissions
   return (
-    hasPermission(userPermissions, 'leads.pl_odd_leads', 'bank_name_permission') ||
-    hasPermission(userPermissions, 'Leads.pl_odd_leads', 'bank_name_permission')
+    hasPermission(userPermissions, 'leads.create_lead', 'bank_name_permission') ||
+    hasPermission(userPermissions, 'Leads.create_lead', 'bank_name_permission')
   );
 };
 
