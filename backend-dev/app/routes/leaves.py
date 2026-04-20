@@ -70,32 +70,35 @@ async def get_hierarchical_permissions(
         # Get user data
         user = await users_db.get_user(user_id)
         if not user:
-            return {"permission_level": "own", "is_super_admin": False}
+            return {"permission_level": "own", "is_super_admin": False, "has_delete": False, "has_leave_setting": False}
         
         # Check if user is super admin
         is_super_admin = user.get("is_super_admin", False)
         if is_super_admin:
-            return {"permission_level": "all", "is_super_admin": True}
+            return {"permission_level": "all", "is_super_admin": True, "has_delete": True, "has_leave_setting": True}
         
         # Get user's role permissions
         role_id = user.get("role_id")
         if not role_id:
-            return {"permission_level": "own", "is_super_admin": False}
+            return {"permission_level": "own", "is_super_admin": False, "has_delete": False, "has_leave_setting": False}
         
         role = await roles_db.get_role(role_id)
         if not role:
-            return {"permission_level": "own", "is_super_admin": False}
+            return {"permission_level": "own", "is_super_admin": False, "has_delete": False, "has_leave_setting": False}
         
         permissions = role.get("permissions", [])
         
         # Check for super admin permission in role
         for perm in permissions:
             if is_super_admin_permission(perm):
-                return {"permission_level": "all", "is_super_admin": True}
+                return {"permission_level": "all", "is_super_admin": True, "has_delete": True, "has_leave_setting": True}
         
         # Check for module-specific permissions
         has_all = False
         has_junior = False
+        
+        has_delete = False
+        has_leave_setting = False
         
         for perm in permissions:
             if perm.get("page") == module:
@@ -103,22 +106,26 @@ async def get_hierarchical_permissions(
                 if isinstance(actions, str):
                     actions = [actions]
                 
-                if "all" in actions or "*" in actions:
+                if "all" in actions or "view_all" in actions or "*" in actions:
                     has_all = True
-                elif "junior" in actions or "view_team" in actions:
+                if "junior" in actions or "view_team" in actions:
                     has_junior = True
+                if "delete" in actions:
+                    has_delete = True
+                if "leave_setting" in actions:
+                    has_leave_setting = True
         
         # Determine permission level
         if has_all:
-            return {"permission_level": "all", "is_super_admin": False}
+            return {"permission_level": "all", "is_super_admin": False, "has_delete": has_delete, "has_leave_setting": has_leave_setting}
         elif has_junior:
-            return {"permission_level": "junior", "is_super_admin": False}
+            return {"permission_level": "junior", "is_super_admin": False, "has_delete": has_delete, "has_leave_setting": has_leave_setting}
         else:
-            return {"permission_level": "own", "is_super_admin": False}
+            return {"permission_level": "own", "is_super_admin": False, "has_delete": has_delete, "has_leave_setting": has_leave_setting}
             
     except Exception as e:
         print(f"Error getting hierarchical permissions for {user_id}: {e}")
-        return {"permission_level": "own", "is_super_admin": False}
+        return {"permission_level": "own", "is_super_admin": False, "has_delete": False, "has_leave_setting": False}
 
 # File upload configuration
 UPLOAD_BASE_DIR = "media/leaves"
@@ -375,8 +382,7 @@ async def list_leaves(
             has_junior = False
             for perm in permissions:
                 if perm.get("page") == "leaves" and \
-                   (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))) or \
-                   perm.get("actions") in ("junior", "view_team"):
+                   (perm.get("actions") in ("junior", "view_team") or (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", [])))):
                     has_junior = True
                     break
             perm_level = "junior" if has_junior else "own"
@@ -552,12 +558,20 @@ async def get_leave(
             else:
                 print(f"🔍 Backend get_leave: Leave belongs to different user")
         
-        # if not can_view_leave:
-        #     print(f"🔍 Backend get_leave: Access denied - insufficient permissions")
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="You don't have permission to view this leave application"
-        #     )
+        # Also allow if user is an approver for this leave
+        if not can_view_leave:
+            approvers = leave.get("approvers", [])
+            for ap in approvers:
+                if ap.get("approver_id") == current_user_id:
+                    can_view_leave = True
+                    break
+        
+        if not can_view_leave:
+            print(f"🔍 Backend get_leave: Access denied - insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view this leave application"
+            )
         
         print(f"🔍 Backend get_leave: Access granted - returning leave data")
         
@@ -965,12 +979,19 @@ async def get_leave_statistics(
 async def delete_leave(
     leave_id: str,
     current_user_id: str = Depends(get_current_user_id),
-    leaves_db: LeavesDB = Depends(get_leaves_db)
+    leaves_db: LeavesDB = Depends(get_leaves_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
 ):
     """
     Delete a leave application
     
-    Users can only delete their own pending leaves.
+    Permission Rules:
+    - Super admin: can delete any leave
+    - User with 'delete' permission + 'view_all': can delete any leave (only pending)
+    - User with 'delete' permission + 'view_team': can delete own + subordinate leaves (only pending)
+    - User with 'delete' permission: can delete own pending leaves only
+    - User without 'delete' permission: can only delete own pending leaves
     """
     try:
         # Get the leave
@@ -981,19 +1002,55 @@ async def delete_leave(
                 detail="Leave application not found"
             )
         
-        # Check if user owns this leave
-        # if leave.get("employee_id") != current_user_id:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="You can only delete your own leave applications"
-        #     )
+        # Get user permissions
+        permissions = await get_hierarchical_permissions(current_user_id, "leaves")
+        is_super_admin = permissions.get("is_super_admin", False)
+        perm_level = permissions.get("permission_level", "own")
+        has_delete = permissions.get("has_delete", False)
         
-        # Check if leave is still pending
-        # if leave.get("status") != "pending":
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail="You can only delete pending leave applications"
-        #     )
+        leave_employee_id = leave.get("employee_id")
+        is_own_leave = leave_employee_id == current_user_id
+        
+        # Permission check: who can delete this leave?
+        can_delete_leave = False
+        
+        if is_super_admin:
+            # Super admin can delete any leave
+            can_delete_leave = True
+        elif has_delete:
+            # User has delete permission - check hierarchy
+            if perm_level == "all":
+                can_delete_leave = True
+            elif perm_level == "junior":
+                if is_own_leave:
+                    can_delete_leave = True
+                else:
+                    subordinate_user_ids = await PermissionManager.get_subordinate_users(
+                        current_user_id, users_db, roles_db
+                    )
+                    if leave_employee_id in subordinate_user_ids:
+                        can_delete_leave = True
+            else:
+                # Own permission level - can only delete own
+                if is_own_leave:
+                    can_delete_leave = True
+        else:
+            # No delete permission - can still delete own pending leaves
+            if is_own_leave:
+                can_delete_leave = True
+        
+        if not can_delete_leave:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this leave application"
+            )
+        
+        # Non-super-admin can only delete pending leaves
+        if not is_super_admin and leave.get("status") != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You can only delete pending leave applications"
+            )
         
         # Delete associated files
         for attachment in leave.get("attachments", []):

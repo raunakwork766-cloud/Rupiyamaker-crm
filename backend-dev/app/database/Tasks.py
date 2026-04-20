@@ -560,35 +560,34 @@ class TasksDB:
             for perm in user_permissions
         )
         
-        # Check for task admin permissions - includes "all" permissions
+        # Check for task admin permissions (view_all or wildcard)
         is_task_admin = any(
             (perm.get("page") == "tasks" and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "all" or
+              perm.get("actions") == "view_all" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "view_all" in perm.get("actions")))))
             for perm in user_permissions
         )
         
-        # Check for junior permission - includes "all" permissions
+        # Check for view_team permission (see subordinate tasks)
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") == "junior" or
-              perm.get("actions") == "all" or
+              perm.get("actions") == "view_team" or
+              perm.get("actions") == "view_all" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "junior" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "view_team" in perm.get("actions") or "view_all" in perm.get("actions")))))
             for perm in user_permissions
         )
         
-        # Verify basic view permission first - includes "all" permissions
+        # Verify basic view permission first
         has_view_permission = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
               perm.get("actions") == "show" or
-              perm.get("actions") == "all" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or "show" in perm.get("actions") or "all" in perm.get("actions")))))
+               ("*" in perm.get("actions") or "show" in perm.get("actions")))))
             for perm in user_permissions
         )
         
@@ -1322,8 +1321,7 @@ async def get_tasks_due_on_date(self, user_id: str, date_str: str) -> List[Dict[
 async def get_unacknowledged_tasks(self, user_id: str) -> List[Dict[str, Any]]:
     """
     Get tasks assigned to a user that are not yet acknowledged by that user.
-    Includes self-assigned tasks (created_by == user_id) so the popup shows even when
-    a user assigns a task to themselves.
+    Excludes tasks created by the user themselves.
     Only returns tasks from the last 30 days to avoid flooding old data.
     Returns tasks sorted by created_at descending (newest first).
     """
@@ -1334,6 +1332,7 @@ async def get_unacknowledged_tasks(self, user_id: str) -> List[Dict[str, Any]]:
         tasks = []
         async for doc in self.collection.find({
             "assigned_to": user_oid,
+            "created_by": {"$ne": user_oid},
             "status": {"$nin": ["Completed", "Cancelled"]},
             "created_at": {"$gte": cutoff_date},
             "$or": [

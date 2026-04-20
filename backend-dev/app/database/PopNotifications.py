@@ -62,7 +62,10 @@ class PopNotificationsDB:
                     if (get_ist_now() - cached_time).seconds < 300:
                         return cached_count
 
-                active_users = await users_db.list_users({"status": {"$ne": "inactive"}})
+                active_users = await users_db.list_users({
+                    "employee_status": {"$ne": "inactive"},
+                    "is_active": {"$ne": False}
+                })
                 count = len(active_users)
 
                 # Cache the result
@@ -97,7 +100,7 @@ class PopNotificationsDB:
                 if users_to_check:
                     for user_id in users_to_check:
                         user = await users_db.get_user(user_id)
-                        is_active = user and user.get("status") != "inactive"
+                        is_active = user and user.get("employee_status") != "inactive" and user.get("is_active", True) is not False
 
                         # Cache the result
                         self._user_status_cache[user_id] = (get_ist_now(), is_active)
@@ -125,7 +128,8 @@ class PopNotificationsDB:
 
                 # Count active users in target departments
                 query = {
-                    "status": {"$ne": "inactive"},
+                    "employee_status": {"$ne": "inactive"},
+                    "is_active": {"$ne": False},
                     "$or": [
                         {"department_id": {"$in": target_departments}},
                         {"department": {"$in": target_departments}}

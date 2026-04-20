@@ -323,6 +323,8 @@ class EmployeeAttendanceCalendar(BaseModel):
     employee_photo: Optional[str] = Field(None, description="Employee photo URL")
     department_name: str = Field(default="Unknown Department", description="Department name")
     role_name: Optional[str] = Field(None, description="Role name")
+    designation: Optional[str] = Field(None, description="Employee designation")
+    joining_date: Optional[str] = Field(None, description="Employee joining date")
     days: List[AttendanceCalendarDay] = Field(..., description="Attendance data for each day")
     stats: AttendanceStats = Field(..., description="Monthly attendance statistics")
 
@@ -384,7 +386,9 @@ def determine_attendance_status(check_in_time: str, check_out_time: str, setting
         
         # Parse times
         check_in_dt = datetime.strptime(check_in_time, "%H:%M:%S").time()
-        late_threshold = datetime.strptime(settings.get("late_arrival_threshold", "10:30"), "%H:%M").time()
+        # Use reporting_deadline (grace cutoff) as late threshold; fallback to legacy late_arrival_threshold
+        late_threshold_str = settings.get("reporting_deadline", settings.get("late_arrival_threshold", "10:15"))
+        late_threshold = datetime.strptime(late_threshold_str, "%H:%M").time()
         
         total_working_hours = 0.0
         if check_out_time:

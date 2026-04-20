@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Any
 from bson import ObjectId
 from datetime import datetime
 import logging
+import re
 import bcrypt
 from app.utils.password_encryption import password_encryptor
 from app.config import Config
@@ -117,8 +118,8 @@ class UsersDB:
         # Generate next ID
         next_id = max_id + 1
         
-        # Format as 3-digit string with leading zeros
-        return f"{next_id:03d}"
+        # Format as RM + 3-digit string with leading zeros
+        return f"RM{next_id:03d}"
         
     async def create_user(self, user_data: dict) -> str:
         """Create a new user with timestamps and hashed password"""
@@ -150,14 +151,16 @@ class UsersDB:
         return user
         
     async def get_user_by_username(self, username: str) -> Optional[dict]:
-        """Get a user by username"""
-        return await self.collection.find_one({"username": username})
+        """Get a user by username (case-insensitive)"""
+        escaped = re.escape(username)
+        return await self.collection.find_one({"username": {"$regex": f"^{escaped}$", "$options": "i"}})
         
     async def get_user_by_email(self, email: str) -> Optional[dict]:
-        """Get a user by email"""
+        """Get a user by email (case-insensitive)"""
         if not email:  # Handle None or empty email
             return None
-        return await self.collection.find_one({"email": email})
+        escaped = re.escape(email)
+        return await self.collection.find_one({"email": {"$regex": f"^{escaped}$", "$options": "i"}})
         
     async def get_user_by_phone(self, phone: str) -> Optional[dict]:
         """Get a user by phone number"""
@@ -216,7 +219,7 @@ class UsersDB:
             
     async def get_active_users(self) -> List[dict]:
         """
-        Get all active users (not disabled)
+        Get all active users (not disabled, not inactive employee status)
         
         Returns:
             List[dict]: List of active users
@@ -224,7 +227,11 @@ class UsersDB:
         try:
             logger.info("Fetching active users")
             users = []
-            async for user in self.collection.find({"is_disabled": {"$ne": True}}):
+            async for user in self.collection.find({
+                "is_disabled": {"$ne": True},
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False}
+            }):
                 users.append(user)
             logger.info(f"Found {len(users)} active users")
             # Convert ObjectId to string
@@ -345,7 +352,7 @@ class UsersDB:
             {"$set": {"session_invalidated_at": now}}
         )
         return result.modified_count
-
+        
     async def count_users(self, filter_dict: dict = None) -> int:
         """Count users matching the filter criteria"""
         filter_dict = filter_dict or {}

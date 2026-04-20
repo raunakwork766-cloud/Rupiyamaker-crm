@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Clock, CheckCircle, XCircle, RefreshCw, X, Phone, ArrowRight, User, Calendar, Building2, AlertCircle } from 'lucide-react';
-import { canApproveLeadReassignment } from '../../utils/permissions';
+import { canApproveLeadReassignment, canViewBankNameInTransfer } from '../../utils/permissions';
 import useTabWithHistory from '../../hooks/useTabWithHistory';
 const LeadDetails = lazy(() => import('../LeadDetails'));
 
@@ -56,6 +56,15 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
     try {
       const raw = localStorage.getItem('userPermissions');
       return canApproveLeadReassignment(raw ? JSON.parse(raw) : null);
+    } catch { return false; }
+  })();
+
+  // Resolve "Bank Name Permission" once — controls visibility of the
+  // LEFT "Bank Logins" sidebar inside the Transfer Lead review popup.
+  const canSeeBankLogins = (() => {
+    try {
+      const raw = localStorage.getItem('userPermissions');
+      return canViewBankNameInTransfer(raw ? JSON.parse(raw) : null);
     } catch { return false; }
   })();
 
@@ -626,7 +635,8 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
             {/* ── Modal Body ── */}
             <div className="flex flex-1 overflow-hidden text-[13px]" style={{ minHeight: 0 }}>
 
-              {/* ── LEFT: Bank Logins Sidebar ── */}
+              {/* ── LEFT: Bank Logins Sidebar (gated by `bank_name_permission`) ── */}
+              {canSeeBankLogins && (
               <div className="w-64 shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
                 <div className="px-3 pt-3 pb-2">
                   <div className="flex items-center justify-between mb-3">
@@ -718,6 +728,7 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
                   )}
                 </div>
               </div>
+              )}
 
               {/* ── RIGHT: Timeline ── */}
               <div className="flex-1 flex flex-col overflow-hidden bg-white">

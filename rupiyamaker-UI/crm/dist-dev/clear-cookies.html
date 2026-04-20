@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Cookies & Fix Login - RupiyaMe</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin: 10px 0;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .btn-danger {
+            background: #f44336;
+        }
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+            border: 1px solid #4CAF50;
+        }
+        .info {
+            background: rgba(33, 150, 243, 0.3);
+            border: 1px solid #2196F3;
+            margin-bottom: 20px;
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fix Login Issues</h1>
+        
+        <div class="info status" style="display: block;">
+            <strong>⚠️ Problem:</strong> Request headers too large (431 error)<br>
+            <strong>✅ Solution:</strong> Clear all cookies and storage
+        </div>
+
+        <button class="btn btn-danger" onclick="clearEverything()">
+            🧹 Clear All Cookies & Storage
+        </button>
+
+        <button class="btn" onclick="goToLogin()">
+            ➡️ Go to Login Page
+        </button>
+
+        <div id="status" class="status">
+            <p id="statusText"></p>
+        </div>
+
+        <div class="info status" style="display: block; margin-top: 20px;">
+            <strong>📝 What this does:</strong>
+            <ul>
+                <li>Clears all cookies for rupiyamaker.com</li>
+                <li>Clears localStorage</li>
+                <li>Clears sessionStorage</li>
+                <li>Fixes "431 Request Header Fields Too Large" error</li>
+            </ul>
+        </div>
+
+        <div class="info status" style="display: block; margin-top: 20px;">
+            <strong>🔐 Test Credentials:</strong><br>
+            Username: <code>rm004</code><br>
+            Password: <code>G7bK3mX9tP2vR6dJ</code>
+        </div>
+    </div>
+
+    <script>
+        function clearEverything() {
+            const statusDiv = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+            
+            try {
+                // Clear all cookies
+                const cookies = document.cookie.split(";");
+                let cookiesCleared = 0;
+                
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i];
+                    const eqPos = cookie.indexOf("=");
+                    const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                    
+                    // Clear for current path
+                    document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+                    // Clear for root
+                    document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname;
+                    cookiesCleared++;
+                }
+                
+                // Clear localStorage
+                localStorage.clear();
+                
+                // Clear sessionStorage
+                sessionStorage.clear();
+                
+                // Show success message
+                statusDiv.className = 'status success';
+                statusDiv.style.display = 'block';
+                statusText.innerHTML = `
+                    <strong>✅ Success!</strong><br>
+                    • Cleared ${cookiesCleared} cookies<br>
+                    • Cleared localStorage<br>
+                    • Cleared sessionStorage<br>
+                    <br>
+                    <strong>Now click "Go to Login Page" button above</strong>
+                `;
+                
+                console.log('✅ All cookies and storage cleared successfully!');
+                console.log('Cookies cleared:', cookiesCleared);
+                
+            } catch (error) {
+                statusDiv.className = 'status';
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = 'rgba(244, 67, 54, 0.3)';
+                statusDiv.style.border = '1px solid #f44336';
+                statusText.innerHTML = `
+                    <strong>❌ Error:</strong><br>
+                    ${error.message}
+                `;
+            }
+        }
+
+        function goToLogin() {
+            // Redirect to main site
+            window.location.href = '/';
+        }
+
+        // Check current cookies on load
+        window.onload = function() {
+            const cookieCount = document.cookie.split(';').filter(c => c.trim()).length;
+            console.log(`Current cookies: ${cookieCount}`);
+            
+            if (cookieCount > 10) {
+                console.warn(`⚠️ Warning: ${cookieCount} cookies detected. This might cause 431 errors.`);
+            }
+        }
+    </script>
+</body>
+</html>

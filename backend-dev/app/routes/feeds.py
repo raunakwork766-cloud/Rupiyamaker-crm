@@ -236,7 +236,7 @@ async def update_post(
     
     # Check permission
     # User can edit if they have edit permission OR if they created the post
-    has_edit_permission = await check_permission(user_id, "feeds", "feeds", users_db, roles_db, raise_error=False)
+    has_edit_permission = await check_permission(user_id, "feeds", "edit", users_db, roles_db, raise_error=False)
     can_edit = has_edit_permission or post["created_by"] == user_id
     
     if not can_edit:
@@ -297,9 +297,11 @@ async def delete_post(
     # User can delete if:
     # 1. They are a super admin
     # 2. They have explicit delete permission for feeds
-    # 3. They created the post
-    has_delete_permission = await check_permission(user_id, "feeds", "feeds", users_db, roles_db, raise_error=False)
-    can_delete = is_super_admin or has_delete_permission or post["created_by"] == user_id
+    # 3. They have 'all' permission for feeds (legacy from old SettingsPage — means full management)
+    # 4. They created the post
+    has_delete_permission = await check_permission(user_id, "feeds", "delete", users_db, roles_db, raise_error=False)
+    has_all_permission = await check_permission(user_id, "feeds", "all", users_db, roles_db, raise_error=False)
+    can_delete = is_super_admin or has_delete_permission or has_all_permission or post["created_by"] == user_id
     
     if not can_delete:
         raise HTTPException(
@@ -511,7 +513,7 @@ async def get_post_comments(
                     
                     # Or if they have edit permission
                     if not comment_dict["can_edit"] and user_id:
-                        has_edit_permission = await check_permission(user_id, "feeds", "feeds", users_db, roles_db, raise_error=False)
+                        has_edit_permission = await check_permission(user_id, "feeds", "edit", users_db, roles_db, raise_error=False)
                         comment_dict["can_edit"] = has_edit_permission
             else:
                 # Set default user name if user not found
@@ -556,7 +558,7 @@ async def update_comment(
     
     # Check permission
     # User can edit if they have edit permission OR if they created the comment
-    has_edit_permission = await check_permission(user_id, "feeds", "feeds", users_db, roles_db, raise_error=False)
+    has_edit_permission = await check_permission(user_id, "feeds", "edit", users_db, roles_db, raise_error=False)
     can_edit = has_edit_permission or comment["created_by"] == user_id
     
     if not can_edit:
@@ -618,7 +620,7 @@ async def delete_comment(
     # 1. They are a super admin
     # 2. They have explicit delete permission for feeds
     # 3. They created the comment
-    has_delete_permission = await check_permission(user_id, "feeds", "feeds", users_db, roles_db, raise_error=False)
+    has_delete_permission = await check_permission(user_id, "feeds", "delete", users_db, roles_db, raise_error=False)
     can_delete = is_super_admin or has_delete_permission or comment["created_by"] == user_id
     
     if not can_delete:

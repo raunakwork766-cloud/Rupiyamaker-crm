@@ -1238,9 +1238,6 @@ class SettingsDB:
         return []
 
     # ── OTP Approval Routes (Login OTP routing) ──────────────────────────────
-    # Each role can be configured with a list of "approver" employees whose
-    # personal_email will receive the login OTP whenever any user of that
-    # role attempts to log in to the CRM.
     async def get_otp_approval_routes(self) -> list:
         """Get all OTP approval routing rules"""
         cursor = self.db.otp_approval_routes.find({}).sort("created_at", -1)
@@ -1289,9 +1286,7 @@ class SettingsDB:
         return result.deleted_count > 0
 
     async def get_otp_approvers_for_role(self, role_id: str) -> list:
-        """Get OTP approver employee IDs configured for the given role.
-        Returns [] if no routing rule is configured.
-        """
+        """Get OTP approver employee IDs configured for the given role."""
         route = await self.db.otp_approval_routes.find_one({"role_id": role_id})
         if route:
             return route.get("approver_ids", []) or []

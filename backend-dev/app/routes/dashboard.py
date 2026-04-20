@@ -93,6 +93,7 @@ async def get_dashboard_stats(
     date_from: Optional[str] = Query(None, description="Custom start date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="Custom end date YYYY-MM-DD"),
     emp_status: Optional[str] = Query(None, description="active|inactive — filter by employee_status field"),
+    permission_level: Optional[str] = Query(None, description="hint from frontend; backend re-derives from DB role"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
@@ -101,7 +102,8 @@ async def get_dashboard_stats(
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        # ─── Determine effective permission level from user's role ───
+        # ─── Determine effective permission level from the user's ACTUAL role in DB ───
+        # Always derive from DB so stale frontend cache can never bypass restrictions.
         user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
         is_super_admin = any(
             p.get("page") == "*" and (
@@ -114,16 +116,31 @@ async def get_dashboard_stats(
         if is_super_admin:
             effective_level = "all"
         else:
+            # ─── Derive effective permission level ───
+            # Dashboard team visibility is gated by LEADS + DASHBOARD page permissions.
+            # Login page permissions control the Login CRM module only — they do NOT
+            # grant dashboard team visibility.  The highest level found wins:
+            # all > junior > own.  "view_team" action = "junior".
+            #
+            # Pages to check: "leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"
+            # (different naming conventions exist in DB and code)
             LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
-            LOGIN_PAGES = ["login"]
             DASHBOARD_PAGES = ["dashboard"]
-            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+            # NOTE: LOGIN_PAGES intentionally excluded — login permissions do not
+            # control dashboard team view.  view_team / junior must be present
+            # in leads or dashboard pages for team data to appear.
+            TEAM_VIEW_PAGES = DASHBOARD_PAGES + LEADS_PAGES
 
             def _has_level(level: str) -> bool:
-                actions_to_check = [level]
+                """Check if leads/dashboard pages grant the given permission level."""
+                actions_to_check = []
                 if level == "junior":
                     actions_to_check.append("view_team")
-                for page in ALL_PAGES:
+                elif level == "all":
+                    actions_to_check.append("view_all")
+                else:
+                    actions_to_check.append(level)
+                for page in TEAM_VIEW_PAGES:
                     for action in actions_to_check:
                         if PermissionManager.has_permission(user_permissions, page, action):
                             return True
@@ -136,17 +153,19 @@ async def get_dashboard_stats(
             elif _has_level("own"):
                 effective_level = "own"
             else:
-                effective_level = "own"
+                # No relevant permission — fallback: own data only (safe default)
+                effective_level = permission_level or "own"
 
-        logger.info(f"Dashboard stats (dev): user={user_id}, effective_level={effective_level}")
+        logger.info(f"Dashboard stats: user={user_id}, effective_level={effective_level}, is_super_admin={is_super_admin}")
 
         # ─── Build allowed_user_ids set based on effective_level ───
-        allowed_user_ids = None
+        allowed_user_ids: Optional[set] = None  # None = no restriction (all)
         if effective_level == "own":
             allowed_user_ids = {user_id}
         elif effective_level == "junior":
             subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
             allowed_user_ids = {user_id} | set(subordinate_ids)
+        # effective_level == "all" → allowed_user_ids stays None (fetch everyone)
 
         # Get raw database directly from leads_db instance
         db_instances = get_database_instances()
@@ -162,15 +181,55 @@ async def get_dashboard_stats(
         leads_col = raw_db["leads"]
         login_leads_col = raw_db["login_leads"]
         departments_col = raw_db["departments"]
+        statuses_col = raw_db["statuses"]
+
+        # ─── Fetch statuses dynamically from Settings ───
+        all_statuses = await statuses_col.find(
+            {}, {"name": 1, "department_ids": 1}
+        ).sort("order", 1).to_list(None)
+
+        dyn_lead_statuses = []
+        dyn_login_statuses = []
+        for s in all_statuses:
+            name = s.get("name", "").strip().upper()
+            if not name:
+                continue
+            dept = s.get("department_ids", "")
+            if isinstance(dept, list):
+                if "leads" in dept:
+                    dyn_lead_statuses.append(name)
+                if "login" in dept:
+                    dyn_login_statuses.append(name)
+            elif isinstance(dept, str):
+                dl = dept.lower()
+                if dl == "leads":
+                    dyn_lead_statuses.append(name)
+                elif dl == "login":
+                    dyn_login_statuses.append(name)
+
+        # Fallback to defaults if nothing configured
+        LEAD_STATUSES = dyn_lead_statuses if dyn_lead_statuses else ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
+        LOGIN_STATUSES = dyn_login_statuses if dyn_login_statuses else [
+            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
+            "LOST BY MISTAKE", "LOST LOGIN",
+            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
+        ]
 
         # ─── Build date range ───
         start_dt, end_dt = _build_date_range_utc(time_filter, date_from, date_to)
 
         date_match_leads = {}
         date_match_logins = {}
+        date_match_disbursed = {}
         if start_dt and end_dt:
             date_match_leads["created_at"] = {"$gte": start_dt, "$lte": end_dt}
-            date_match_logins["created_at"] = {"$gte": start_dt, "$lte": end_dt}
+            date_match_logins["login_created_at"] = {"$gte": start_dt, "$lte": end_dt}
+            # disbursement_date is stored as YYYY-MM-DD string — convert UTC range to IST date strings
+            _IST_OFF = timedelta(hours=5, minutes=30)
+            date_match_disbursed["disbursement_date"] = {
+                "$gte": (start_dt + _IST_OFF).strftime("%Y-%m-%d"),
+                "$lte": (end_dt + _IST_OFF).strftime("%Y-%m-%d")
+            }
 
         # ─── Fetch users scoped by permission level ───
         users_query = {"is_active": {"$ne": False}}
@@ -178,14 +237,14 @@ async def get_dashboard_stats(
             users_query["employee_status"] = emp_status
         if allowed_user_ids is not None:
             users_query["_id"] = {"$in": [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]}
-        users_cursor = users_db.collection.find(
+        all_users = await users_db.collection.find(
             users_query,
             {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
-        )
-        all_users = await users_cursor.to_list(None)
+        ).to_list(None)
 
         if not all_users:
-            return {"employees": [], "totals": {"leads": 0, "logins": 0}}
+            return {"employees": [], "totals": {"leads": 0, "logins": 0},
+                    "leadStatuses": LEAD_STATUSES, "loginStatuses": LOGIN_STATUSES}
 
         user_ids = [str(u["_id"]) for u in all_users]
 
@@ -212,7 +271,6 @@ async def get_dashboard_stats(
                     udata["team"] = dept_name_map.get(udata["dept_id"], "")
 
         # ─── Aggregate LEADS created by each user ───
-        # Use created_by (who entered the lead) grouped by status
         leads_pipeline = [
             {"$match": {**date_match_leads, "created_by": {"$in": user_ids}}},
             {"$group": {
@@ -225,7 +283,7 @@ async def get_dashboard_stats(
         ]
         leads_agg = await leads_col.aggregate(leads_pipeline).to_list(None)
 
-        # ─── Aggregate LOGIN LEADS created by each user ───
+        # ─── Aggregate LOGIN LEADS created by each user (non-DISBURSED, by login_created_at) ───
         logins_pipeline = [
             {"$match": {**date_match_logins, "created_by": {"$in": user_ids}}},
             {"$group": {
@@ -238,13 +296,22 @@ async def get_dashboard_stats(
         ]
         logins_agg = await login_leads_col.aggregate(logins_pipeline).to_list(None)
 
-        # ─── Build per-employee data ───
-        LEAD_STATUSES = ["ACTIVE LEADS", "NOT A LEAD", "LOST BY MISTAKE", "LOST LEAD"]
-        LOGIN_STATUSES = [
-            "ACTIVE LOGIN", "APPROVED", "DISBURSED",
-            "LOST BY MISTAKE", "LOST LOGIN",
-            "MULTI LOGIN DISBURSED BY US BY OTHER BANK"
+        # ─── Aggregate DISBURSED logins separately using disbursement_date ───
+        disbursed_pipeline = [
+            {"$match": {**date_match_disbursed, "created_by": {"$in": user_ids},
+                        "status": {"$regex": "^disbursed$", "$options": "i"}}},
+            {"$group": {
+                "_id": {
+                    "user_id": "$created_by",
+                    "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                },
+                "count": {"$sum": 1}
+            }}
         ]
+        disbursed_agg = await login_leads_col.aggregate(disbursed_pipeline).to_list(None)
+
+        # ─── Build per-employee data ───
+        # (LEAD_STATUSES and LOGIN_STATUSES already built dynamically above)
 
         emp_data = {
             uid: {
@@ -268,6 +335,17 @@ async def get_dashboard_stats(
         for row in logins_agg:
             uid = row["_id"]["user_id"]
             status = row["_id"]["status"]
+            if status == "DISBURSED":
+                continue  # Counted separately via disbursed_agg (uses disbursement_date)
+            count = row["count"]
+            if uid in emp_data:
+                emp_data[uid]["totalLogins"] += count
+                if status in emp_data[uid]["logins"]:
+                    emp_data[uid]["logins"][status] += count
+
+        for row in disbursed_agg:
+            uid = row["_id"]["user_id"]
+            status = row["_id"]["status"]  # Will be "DISBURSED"
             count = row["count"]
             if uid in emp_data:
                 emp_data[uid]["totalLogins"] += count
@@ -282,7 +360,7 @@ async def get_dashboard_stats(
         for uid in user_ids:
             uinfo = user_map.get(uid, {"name": uid, "team": ""})
             data = emp_data[uid]
-            # Skip users with zero leads AND zero logins
+            # Skip users with zero leads AND zero logins — they should not appear on dashboard
             if data["totalLeads"] == 0 and data["totalLogins"] == 0:
                 continue
             total_leads += data["totalLeads"]
@@ -298,17 +376,171 @@ async def get_dashboard_stats(
                 "logins": data["logins"],
             })
 
+        # ─── ASSIGNED LEADS — only for users with restricted scope ─────────────────
+        # Show "ASSIGNED" badge ONLY for leads created by people OUTSIDE the user's
+        # full permission hierarchy.  If the creator is within the role hierarchy
+        # (allowed_user_ids), the user can already see their data through permissions,
+        # so marking it "ASSIGNED" is redundant and confusing.
+        #
+        # • Super admin / "all" level  → skip entirely (they see everything)
+        # • "junior" / "own" level     → use the FULL allowed_user_ids set (not the
+        #                                 status-filtered user_ids) for the $nin check
+        #                                 so that inactive subordinates don't leak as ASSIGNED.
+        if allowed_user_ids is not None:  # Only for "own" or "junior" — NOT for "all"/super admin
+            try:
+                # Full permission scope IDs (not filtered by emp_status / is_active)
+                scope_ids_list = list(allowed_user_ids)
+
+                # --- Regular Leads: assign_report_to contains requesting user_id ---
+                ext_leads_pipeline = [
+                    {"$match": {
+                        **date_match_leads,
+                        "$or": [
+                            {"assign_report_to": user_id},
+                            {"assign_report_to": {"$in": [user_id]}},
+                        ],
+                        "created_by": {"$nin": scope_ids_list},
+                    }},
+                    {"$group": {
+                        "_id": {
+                            "user_id": "$created_by",
+                            "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                        },
+                        "count": {"$sum": 1}
+                    }}
+                ]
+
+                # --- Login Leads: assign_report_to + assigned_to ---
+                ext_logins_pipeline = [
+                    {"$match": {
+                        **date_match_logins,
+                        "$or": [
+                            {"assign_report_to": user_id},
+                            {"assign_report_to": {"$in": [user_id]}},
+                            {"assigned_to": user_id},
+                            {"assigned_to": {"$in": [user_id]}},
+                        ],
+                        "created_by": {"$nin": scope_ids_list},
+                    }},
+                    {"$group": {
+                        "_id": {
+                            "user_id": "$created_by",
+                            "status": {"$toUpper": {"$ifNull": ["$status", "UNKNOWN"]}}
+                        },
+                        "count": {"$sum": 1}
+                    }}
+                ]
+
+                ext_leads_agg = await leads_col.aggregate(ext_leads_pipeline).to_list(None)
+                ext_logins_agg = await login_leads_col.aggregate(ext_logins_pipeline).to_list(None)
+
+                # Collect external creator IDs
+                ext_creator_ids: set = set()
+                for row in ext_leads_agg:
+                    cid = row["_id"]["user_id"]
+                    if cid:
+                        ext_creator_ids.add(str(cid))
+                for row in ext_logins_agg:
+                    cid = row["_id"]["user_id"]
+                    if cid:
+                        ext_creator_ids.add(str(cid))
+
+                if ext_creator_ids:
+                    # Fetch user info for external creators
+                    valid_ext_ids = [uid for uid in ext_creator_ids if uid and ObjectId.is_valid(uid)]
+                    ext_users = await users_db.collection.find(
+                        {"_id": {"$in": [ObjectId(uid) for uid in valid_ext_ids]}},
+                        {"first_name": 1, "last_name": 1, "username": 1, "department_id": 1, "employee_status": 1}
+                    ).to_list(None)
+
+                    # Resolve department names for external creators
+                    ext_dept_ids = {str(u["department_id"]) for u in ext_users if u.get("department_id")}
+                    ext_dept_name_map: dict = {}
+                    if ext_dept_ids:
+                        ext_depts = await departments_col.find(
+                            {"_id": {"$in": [ObjectId(d) for d in ext_dept_ids if ObjectId.is_valid(d)]}},
+                            {"name": 1}
+                        ).to_list(None)
+                        ext_dept_name_map = {str(d["_id"]): d.get("name", "") for d in ext_depts}
+
+                    ext_user_map: dict = {}
+                    for u in ext_users:
+                        uid = str(u["_id"])
+                        name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("username", uid)
+                        dept_id = str(u["department_id"]) if u.get("department_id") else ""
+                        ext_user_map[uid] = {
+                            "name": name,
+                            "team": ext_dept_name_map.get(dept_id, ""),
+                            "emp_status": u.get("employee_status", "active"),
+                        }
+
+                    # Build per-external-creator data
+                    ext_emp_data: dict = {
+                        uid: {
+                            "leads": {s: 0 for s in LEAD_STATUSES},
+                            "logins": {s: 0 for s in LOGIN_STATUSES},
+                            "totalLeads": 0,
+                            "totalLogins": 0,
+                        }
+                        for uid in ext_creator_ids
+                    }
+
+                    for row in ext_leads_agg:
+                        uid = str(row["_id"]["user_id"])
+                        status = row["_id"]["status"]
+                        count = row["count"]
+                        if uid in ext_emp_data:
+                            ext_emp_data[uid]["totalLeads"] += count
+                            if status in ext_emp_data[uid]["leads"]:
+                                ext_emp_data[uid]["leads"][status] += count
+
+                    for row in ext_logins_agg:
+                        uid = str(row["_id"]["user_id"])
+                        status = row["_id"]["status"]
+                        count = row["count"]
+                        if uid in ext_emp_data:
+                            ext_emp_data[uid]["totalLogins"] += count
+                            if status in ext_emp_data[uid]["logins"]:
+                                ext_emp_data[uid]["logins"][status] += count
+
+                    # Add external rows to response — only if they have actual data
+                    for uid in ext_creator_ids:
+                        uinfo = ext_user_map.get(uid, {"name": uid, "team": "", "emp_status": "active"})
+                        data = ext_emp_data[uid]
+                        # Skip assigned users with zero data
+                        if data["totalLeads"] == 0 and data["totalLogins"] == 0:
+                            continue
+                        total_leads += data["totalLeads"]
+                        total_logins += data["totalLogins"]
+                        employees.append({
+                            "id": uid,
+                            "name": uinfo["name"],
+                            "team": uinfo["team"],
+                            "empStatus": uinfo.get("emp_status", "active"),
+                            "totalLeads": data["totalLeads"],
+                            "totalLogins": data["totalLogins"],
+                            "leads": data["leads"],
+                            "logins": data["logins"],
+                            "isAssignedView": True,  # Flag: assigned-only rows
+                        })
+            except Exception as ext_err:
+                logger.warning(f"External assigned leads fetch failed (non-critical): {ext_err}")
+
         # Sort: employees with activity first, then alphabetically
         employees.sort(key=lambda e: (-e["totalLeads"] - e["totalLogins"], e["name"]))
 
-        return {
+        result = {
             "employees": employees,
-            "totals": {"leads": total_leads, "logins": total_logins}
+            "totals": {"leads": total_leads, "logins": total_logins},
+            "leadStatuses": LEAD_STATUSES,
+            "loginStatuses": LOGIN_STATUSES,
         }
-
+        return result
+        
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Dashboard stats error")
         logger.error(f"Dashboard stats error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {str(e)}")
 
@@ -324,7 +556,7 @@ async def get_dashboard_teams(
         if not user_id or not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        # ─── Determine effective permission scope ───
+        # ─── Determine effective permission scope (same logic as /stats) ───
         user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
         is_super_admin = any(
             p.get("page") == "*" and (
@@ -338,15 +570,18 @@ async def get_dashboard_teams(
             effective_level = "all"
         else:
             LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
-            LOGIN_PAGES = ["login"]
             DASHBOARD_PAGES = ["dashboard"]
-            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+            TEAM_VIEW_PAGES = DASHBOARD_PAGES + LEADS_PAGES
 
             def _has_level(level: str) -> bool:
-                actions_to_check = [level]
+                actions_to_check = []
                 if level == "junior":
                     actions_to_check.append("view_team")
-                for page in ALL_PAGES:
+                elif level == "all":
+                    actions_to_check.append("view_all")
+                else:
+                    actions_to_check.append(level)
+                for page in TEAM_VIEW_PAGES:
                     for action in actions_to_check:
                         if PermissionManager.has_permission(user_permissions, page, action):
                             return True

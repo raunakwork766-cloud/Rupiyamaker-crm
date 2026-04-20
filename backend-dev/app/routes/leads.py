@@ -8,7 +8,6 @@ import secrets
 import string
 import os
 import io
-import json
 import zipfile
 import tempfile
 import shutil
@@ -103,7 +102,7 @@ async def create_lead(
 ):
     """Create a new lead"""
     # Check permission
-    # await check_permission(user_id, "leads", "create", users_db, roles_db)
+    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     
     # Validate department
     if lead.department_id:
@@ -448,10 +447,22 @@ async def check_phone_number(
         if isinstance(dept_name, dict):
             dept_name = dept_name.get("name", "")
 
-        bank_name = lead.get("bank_name", "") or ""
+        bank_name = lead.get("bank_name", "") or lead.get("processing_bank", "") or ""
         if not bank_name:
             fin = lead.get("financial_details", {}) or {}
             bank_name = fin.get("bank_name", "") or ""
+        if not bank_name:
+            # Check process_data.processing_bank (saved by HowToProcessSection)
+            pd = lead.get("process_data", {}) or {}
+            bank_name = pd.get("processing_bank", "") or ""
+        if not bank_name:
+            # Check dynamic_fields.process.processing_bank (legacy fallback)
+            dyn = lead.get("dynamic_fields", {}) or {}
+            bank_name = (
+                dyn.get("process", {}).get("processing_bank", "")
+                or dyn.get("processing_bank", "")
+                or ""
+            )
         if isinstance(bank_name, list):
             bank_name = bank_name[0] if bank_name else ""
 
@@ -1036,7 +1047,7 @@ async def update_document(
         )
     
     # Check permission
-    # await check_permission(user_id, "leads", "create", users_db, roles_db)
+    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     
     # Update document
     update_dict = {k: v for k, v in document_update.dict().items() if v is not None}
@@ -1069,7 +1080,7 @@ async def delete_document(
         )
     
     # Check permission
-    # await check_permission(user_id, "leads", "create", users_db, roles_db)
+    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     
     # Delete document
     success = await leads_db.delete_document(document_id, user_id)
@@ -1366,7 +1377,7 @@ async def delete_attachment(
     
     # Check permission using the proper permission utility
     # try:
-    #     await check_permission(user_id, "leads", "create", users_db, roles_db)
+        await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     # except HTTPException:
     #     # If direct permission check fails, check for super admin
     #     permissions = await get_user_permissions(user_id, users_db, roles_db)
@@ -1464,8 +1475,9 @@ async def list_leads(
         # ⚡ STEP 1: Fast permission check (caching temporarily disabled)
         t1 = time.time()
         # cached_permissions = await get_cached_user_permissions(user_id)
+        # Accept flat 'leads' show OR any nested leads sub-page show
         # if not cached_permissions:
-        await check_permission(user_id, "leads", "show", users_db, roles_db)
+        await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
         logger.info(f"⏱️ Permission check: {(time.time()-t1)*1000:.2f}ms")
             # Cache permissions for future requests
             # user_permissions = await get_user_permissions(user_id, users_db, roles_db)
@@ -1618,34 +1630,6 @@ async def list_leads(
         t5 = time.time()
         user_ids_to_fetch = set()
         dept_ids_to_fetch = set()
-
-        def extract_assign_report_to_ids(assign_report_to):
-            if not assign_report_to:
-                return []
-
-            if isinstance(assign_report_to, list):
-                extracted_ids = []
-                for item in assign_report_to:
-                    if isinstance(item, dict):
-                        candidate = item.get("id") or item.get("_id") or item.get("user_id") or item.get("employee_id")
-                    else:
-                        candidate = item
-
-                    if candidate:
-                        extracted_ids.append(str(candidate).strip())
-                return [user_id for user_id in extracted_ids if user_id]
-
-            if isinstance(assign_report_to, dict):
-                candidate = assign_report_to.get("id") or assign_report_to.get("_id") or assign_report_to.get("user_id") or assign_report_to.get("employee_id")
-                return [str(candidate).strip()] if candidate else []
-
-            if isinstance(assign_report_to, str):
-                try:
-                    return extract_assign_report_to_ids(json.loads(assign_report_to))
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    return [item.strip() for item in assign_report_to.split(",") if item.strip()]
-
-            return []
         
         for lead in leads:
             # Handle assigned_to which can be either a string or a list
@@ -1655,9 +1639,6 @@ async def list_leads(
                     user_ids_to_fetch.update(assigned_to)
                 else:
                     user_ids_to_fetch.add(assigned_to)
-
-            for assign_report_to_id in extract_assign_report_to_ids(lead.get("assign_report_to") or lead.get("assignReportTo")):
-                user_ids_to_fetch.add(assign_report_to_id)
             
             if lead.get("created_by"):
                 user_ids_to_fetch.add(lead["created_by"])
@@ -1727,21 +1708,6 @@ async def list_leads(
             else:
                 lead_dict["assigned_to_name"] = "Unassigned"
                 lead_dict["assigned_to_email"] = ""
-
-            assign_report_to_names = []
-            for assign_report_to_id in extract_assign_report_to_ids(lead_dict.get("assign_report_to") or lead_dict.get("assignReportTo")):
-                user = user_cache.get(assign_report_to_id)
-                if not user:
-                    continue
-
-                user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
-                if not user_name:
-                    user_name = user.get("username") or user.get("employee_id") or ""
-                if user_name:
-                    assign_report_to_names.append(user_name)
-
-            lead_dict["assign_report_to_names"] = list(dict.fromkeys(assign_report_to_names))
-            lead_dict["assign_report_to_name"] = ", ".join(lead_dict["assign_report_to_names"])
             
             # ⚡ OPTIMIZED: Use cached creator info
             if "created_by" in lead_dict and lead_dict["created_by"]:
@@ -2215,24 +2181,31 @@ async def update_lead(
             #     )
     else:
         # Standard permission check for regular updates
+        # Check if this update includes a status/sub_status change
         try:
-            pass
-            # await check_permission(user_id, "leads", "create", users_db, roles_db)
-        except HTTPException:
-            # If the user doesn't have direct lead edit permission, check if they're a super admin
+            update_fields = lead_update.dict(exclude_unset=True) if hasattr(lead_update, 'dict') else {}
+            is_status_update = 'status' in update_fields or 'sub_status' in update_fields
+        except Exception:
+            is_status_update = False
+
+        if is_status_update:
+            # Check if user has status_change permission on leads.pl_&_odd_leads
             is_super_admin = any(
                 (is_super_admin_permission(perm)) or
-                (perm.get("page") == "*" and isinstance(perm.get("actions"), list) and "*" in perm.get("actions", [])) or
-                (perm.get("page") == "any" and perm.get("actions") == "*") or
-                (perm.get("page") == "admin" and perm.get("actions") == "*")
+                (perm.get("page") == "*" and (perm.get("actions") == "*" or (isinstance(perm.get("actions"), list) and "*" in perm.get("actions", []))))
                 for perm in permissions
             )
-            
-            # if not is_super_admin:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_403_FORBIDDEN,
-            #         detail="You don't have permission to edit leads"
-            #     )
+            if not is_super_admin:
+                has_status_permission = any(
+                    (perm.get("page") in ("leads.pl_&_odd_leads", "leads.pl_odd_leads", "leads")) and
+                    ("status_change" in (perm.get("actions") or []) or "*" in (perm.get("actions") or []))
+                    for perm in permissions
+                )
+                if not has_status_permission:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You don't have permission to change lead status"
+                    )
     
     # Validate department if changing
     if lead_update.department_id:
@@ -2451,15 +2424,18 @@ async def delete_lead(
         for perm in user_permissions
     )
     
-    # Check if user has explicit delete permission for leads (including PL & ODD Leads sub-page)
-    LEADS_DELETE_PAGES = ["leads", "Leads", "leads.pl_&_odd_leads", "leads.pl_odd_leads",
-                          "leads_pl_&_odd_leads", "leads_pl_odd_leads"]
+    # Check if user has explicit delete permission for leads
     has_leads_delete_permission = any(
-        perm.get("page") in LEADS_DELETE_PAGES and (
+        (perm.get("page") == "leads" and (
             perm.get("actions") == "*" or
             (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
             perm.get("actions") == "delete"
-        )
+        )) or
+        (perm.get("page") == "Leads" and (
+            perm.get("actions") == "*" or
+            (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
+            perm.get("actions") == "delete"
+        ))
         for perm in user_permissions
     )
     
@@ -4999,7 +4975,7 @@ async def update_lead_obligations(
         )
     
     # Check permission
-    # await check_permission(user_id, "leads", "create", users_db, roles_db)
+    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     
     # Get existing dynamic_fields or initialize empty dict
     dynamic_fields = lead.get("dynamic_fields", {})
@@ -5673,7 +5649,7 @@ async def copy_lead(
 ):
     """Copy an existing lead with all related data"""
     # Check permission
-    # await check_permission(user_id, "leads", "create", users_db, roles_db)
+    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
     
     lead_id = copy_data.get("lead_id")
     if not lead_id:

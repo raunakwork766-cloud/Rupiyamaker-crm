@@ -2721,111 +2721,8 @@ async def get_reassignment_approvers_for_me(
         )
 
 
-# ── OTP Approval Routes (Login OTP routing) ──────────────────────────────────
-# Mirrors the reassignment routing pattern: per-role list of employees whose
-# personal_email will receive the login OTP for any user of that role.
-
-@router.get("/otp-approval-routes", response_model=Dict[str, Any])
-async def get_otp_approval_routes(
-    user_id: str = Query(..., description="ID of the user making the request"),
-    settings_db: SettingsDB = Depends(get_settings_db),
-):
-    """Get all OTP approval routing rules"""
-    try:
-        routes = await settings_db.get_otp_approval_routes()
-        return {"success": True, "data": routes}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching OTP approval routes: {str(e)}"
-        )
-
-
-@router.get("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
-async def get_otp_approval_route_by_role(
-    role_id: str,
-    user_id: str = Query(..., description="ID of the user making the request"),
-    settings_db: SettingsDB = Depends(get_settings_db),
-):
-    """Get OTP approval route for a specific role"""
-    try:
-        route = await settings_db.get_otp_approval_route_by_role(role_id)
-        return {"success": True, "data": route}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching OTP approval route: {str(e)}"
-        )
-
-
-@router.post("/otp-approval-routes", response_model=Dict[str, Any])
-async def upsert_otp_approval_route(
-    body: Dict[str, Any] = Body(...),
-    user_id: str = Query(..., description="ID of the user making the request"),
-    settings_db: SettingsDB = Depends(get_settings_db),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db),
-):
-    """Create or update OTP approval routing for a role.
-
-    Body: { role_id, role_name, approver_ids: [...], approver_names: [...] }
-
-    Requires settings:edit permission (or super admin).
-    """
-    try:
-        await check_permission(user_id, "settings", "edit", users_db, roles_db)
-
-        role_id = body.get("role_id")
-        role_name = body.get("role_name", "")
-        approver_ids = body.get("approver_ids", []) or []
-        approver_names = body.get("approver_names", []) or []
-
-        if not role_id:
-            raise HTTPException(status_code=400, detail="role_id is required")
-        if not approver_ids:
-            raise HTTPException(
-                status_code=400,
-                detail="At least one approver employee is required",
-            )
-
-        saved = await settings_db.upsert_otp_approval_route(
-            role_id=role_id,
-            role_name=role_name,
-            approver_ids=approver_ids,
-            approver_names=approver_names,
-        )
-        return {"success": True, "message": "OTP approval route saved", "data": saved}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error saving OTP approval route: {str(e)}"
-        )
-
-
-@router.delete("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
-async def delete_otp_approval_route(
-    role_id: str,
-    user_id: str = Query(..., description="ID of the user making the request"),
-    settings_db: SettingsDB = Depends(get_settings_db),
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db),
-):
-    """Delete OTP approval route for a role"""
-    try:
-        await check_permission(user_id, "settings", "delete", users_db, roles_db)
-        deleted = await settings_db.delete_otp_approval_route(role_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Route not found for this role")
-        return {"success": True, "message": "OTP approval route deleted"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting OTP approval route: {str(e)}"
-        )
+# ─────────────────────────────────────────────────────────────────────────────
+# Backfill: apply consecutive-absent → absconding rule on historical data
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/settings/absconding-backfill")
 async def trigger_absconding_backfill(
@@ -2872,6 +2769,102 @@ async def trigger_absconding_backfill(
         )
 
 
+# ── OTP Approval Routes (Login OTP routing) ──────────────────────────────────
+@router.get("/otp-approval-routes", response_model=Dict[str, Any])
+async def get_otp_approval_routes(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get all OTP approval routing rules"""
+    try:
+        routes = await settings_db.get_otp_approval_routes()
+        return {"success": True, "data": routes}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching OTP approval routes: {str(e)}"
+        )
+
+
+@router.get("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def get_otp_approval_route_by_role(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get OTP approval route for a specific role"""
+    try:
+        route = await settings_db.get_otp_approval_route_by_role(role_id)
+        return {"success": True, "data": route}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching OTP approval route: {str(e)}"
+        )
+
+
+@router.post("/otp-approval-routes", response_model=Dict[str, Any])
+async def upsert_otp_approval_route(
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Create or update OTP approval routing for a role."""
+    try:
+        await check_permission(user_id, "settings", "edit", users_db, roles_db)
+
+        role_id = body.get("role_id")
+        role_name = body.get("role_name", "")
+        approver_ids = body.get("approver_ids", []) or []
+        approver_names = body.get("approver_names", []) or []
+
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+        if not approver_ids:
+            raise HTTPException(status_code=400, detail="At least one approver employee is required")
+
+        saved = await settings_db.upsert_otp_approval_route(
+            role_id=role_id,
+            role_name=role_name,
+            approver_ids=approver_ids,
+            approver_names=approver_names,
+        )
+        return {"success": True, "message": "OTP approval route saved", "data": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving OTP approval route: {str(e)}"
+        )
+
+
+@router.delete("/otp-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def delete_otp_approval_route(
+    role_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete OTP approval route for a role"""
+    try:
+        await check_permission(user_id, "settings", "delete", users_db, roles_db)
+        deleted = await settings_db.delete_otp_approval_route(role_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Route not found for this role")
+        return {"success": True, "message": "OTP approval route deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting OTP approval route: {str(e)}"
+        )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # SMTP / Email Configuration
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2885,18 +2878,12 @@ async def get_smtp_config(
     """Get current SMTP sender configuration (password masked). Super Admin only."""
     await check_permission(user_id, "settings", "show", users_db, roles_db)
     try:
-        from app.database import get_database_instances
-        db_instances = get_database_instances()
-        db = db_instances.get("settings")
-        if db and hasattr(db, "db") and db.db is not None:
-            raw_db = db.db
-        else:
-            import os
-            from motor.motor_asyncio import AsyncIOMotorClient
-            mongo_url = os.getenv("MONGO_URL", "mongodb://raunak:Raunak%40123@156.67.111.95:27017/admin?authSource=admin")
-            company = os.getenv("COMPANY_NAME", "crm_database_dev")
-            client = AsyncIOMotorClient(mongo_url)
-            raw_db = client[company]
+        import os
+        from motor.motor_asyncio import AsyncIOMotorClient
+        mongo_url = os.getenv("MONGO_URL", "mongodb://raunak:Raunak%40123@156.67.111.95:27017/admin?authSource=admin")
+        company = os.getenv("COMPANY_NAME", "crm_database")
+        client = AsyncIOMotorClient(mongo_url)
+        raw_db = client[company]
 
         doc = await raw_db["email_settings"].find_one({"is_active": True})
         if not doc:
@@ -2944,7 +2931,7 @@ async def update_smtp_config(
         from motor.motor_asyncio import AsyncIOMotorClient
         from datetime import datetime, timezone
         mongo_url = os.getenv("MONGO_URL", "mongodb://raunak:Raunak%40123@156.67.111.95:27017/admin?authSource=admin")
-        company = os.getenv("COMPANY_NAME", "crm_database_dev")
+        company = os.getenv("COMPANY_NAME", "crm_database")
         client = AsyncIOMotorClient(mongo_url)
         raw_db = client[company]
 
@@ -2957,7 +2944,6 @@ async def update_smtp_config(
             "purpose": "otp",
             "updated_at": datetime.now(timezone.utc),
         }
-        # Only update password if a new one is provided
         if app_password:
             update_doc["password"] = app_password
 
@@ -2988,7 +2974,6 @@ async def test_smtp_config(
     """Test SMTP connection with given credentials (does NOT save). Super Admin only."""
     await check_permission(user_id, "settings", "show", users_db, roles_db)
     import smtplib
-    import os
     sender_email = (config.get("sender_email") or "").strip()
     app_password  = (config.get("app_password") or "").strip()
     smtp_server   = (config.get("smtp_server") or "smtp.gmail.com").strip()

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fixing Login...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .box {
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            padding: 40px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+            display: inline-block;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🔧 Fixing Login Issue...</h1>
+        <div class="spinner"></div>
+        <p id="status">Clearing all cookies...</p>
+        <p id="count"></p>
+        <a href="/" class="btn" id="loginBtn" style="display:none;">Go to Login</a>
+    </div>
+
+    <script>
+        let cleared = 0;
+        
+        function clearAllCookies() {
+            const cookies = document.cookie.split(";");
+            
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i];
+                const eqPos = cookie.indexOf("=");
+                const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+                
+                if (name) {
+                    // Clear for all possible paths and domains
+                    const domains = [
+                        window.location.hostname,
+                        '.' + window.location.hostname,
+                        'rupiyamaker.com',
+                        '.rupiyamaker.com'
+                    ];
+                    
+                    const paths = ['/', '/api', '/api/', ''];
+                    
+                    domains.forEach(domain => {
+                        paths.forEach(path => {
+                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=' + path + '; domain=' + domain;
+                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=' + path;
+                        });
+                    });
+                    
+                    cleared++;
+                }
+            }
+            
+            // Clear storage
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+            } catch(e) {}
+            
+            return cleared;
+        }
+
+        function init() {
+            setTimeout(() => {
+                const count = clearAllCookies();
+                document.getElementById('status').innerHTML = '✅ Cookies Cleared!';
+                document.getElementById('count').innerHTML = `Cleared ${count} cookies + localStorage + sessionStorage`;
+                
+                setTimeout(() => {
+                    document.getElementById('status').innerHTML = '✅ Ready to login!';
+                    document.getElementById('loginBtn').style.display = 'inline-block';
+                    
+                    // Auto redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                }, 1000);
+            }, 1000);
+        }
+
+        init();
+        
+        // Also clear on load
+        window.addEventListener('load', clearAllCookies);
+    </script>
+</body>
+</html>

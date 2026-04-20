@@ -255,49 +255,49 @@ class TicketsDB:
         
     async def get_tickets_for_user(self, user_id: str, permissions: List[Dict[str, Any]] = None, 
                                    additional_filters: dict = None, skip: int = 0, limit: int = None,
-                                   projection: dict = None) -> tuple[List[dict], int]:
+                                   projection: dict = None, subordinate_user_ids: List[str] = None) -> tuple[List[dict], int]:
         """
         Get tickets based on user permissions with optimized filtering:
-        - If user has "ticket:view" permission, return all tickets
-        - Otherwise, return only tickets created by or assigned to the user
+        - view_all: return all tickets
+        - view_team: return own + subordinate tickets
+        - default: return only tickets created by or assigned to the user
         Returns: (tickets_list, total_count)
         """
-        # Check if user has ticket:view permission (can see all tickets) - includes "all" permissions
-        has_view_permission = False
-        
-        # DEBUG: Log what we're checking
-        print(f"🔍 Database - Checking permissions for user {user_id}")
-        print(f"🔍 Database - Permissions received: {permissions}")
+        has_view_all = False
+        has_view_team = False
         
         if permissions:
             for perm in permissions:
-                print(f"🔍 Database - Checking permission: {perm}")
-                # IMPORTANT: Only "all" permission or super admin can see ALL tickets
-                # "show" permission just allows seeing the tickets page, not all tickets
-                if (is_super_admin_permission(perm)) or \
-                   ((perm.get("page") == "ticket" or perm.get("page") == "tickets" or perm.get("page") == "Tickets") and 
-                    (perm.get("actions") == "*" or 
-                     perm.get("actions") == "all" or
-                     (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "all" in perm.get("actions"))))):
-                    has_view_permission = True
-                    print(f"✅ Database - User {user_id} has view ALL permission!")
+                if is_super_admin_permission(perm):
+                    has_view_all = True
                     break
+                if perm.get("page") in ("ticket", "tickets", "Tickets"):
+                    actions = perm.get("actions", [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+                    if "*" in actions or "view_all" in actions:
+                        has_view_all = True
+                        break
+                    if "view_team" in actions:
+                        has_view_team = True
         
-        print(f"🎯 Database - Final has_view_permission: {has_view_permission}")
-        
-        if has_view_permission:
-            # User can see all tickets
+        if has_view_all:
             filter_dict = {}
-            print(f"✅ Database - Returning ALL tickets (no user filter)")
+        elif has_view_team and subordinate_user_ids:
+            team_ids = [user_id] + subordinate_user_ids
+            filter_dict = {
+                "$or": [
+                    {"created_by": {"$in": team_ids}},
+                    {"assigned_users": {"$in": team_ids}}
+                ]
+            }
         else:
-            # User can only see tickets they created or are assigned to
             filter_dict = {
                 "$or": [
                     {"created_by": user_id},
                     {"assigned_users": {"$in": [user_id]}}
                 ]
             }
-            print(f"🔒 Database - Returning only user's own tickets (user filter applied)")
         
         # Merge additional filters
         if additional_filters:
@@ -412,8 +412,7 @@ class TicketsDB:
     async def get_unacknowledged_tickets(self, user_id: str) -> List[dict]:
         """
         Get tickets assigned to a user that are not yet acknowledged by that user.
-        Includes self-assigned tickets (created_by == user_id) so the popup shows
-        even when a user assigns a ticket to themselves.
+        Excludes tickets created by the user themselves.
         Only returns tickets from the last 30 days to avoid flooding old data.
         Returns tickets sorted by created_at descending (newest first).
         """
@@ -423,6 +422,7 @@ class TicketsDB:
             tickets = []
             async for doc in self.collection.find({
                 "assigned_users": user_id,
+                "created_by": {"$ne": user_id},
                 "status": {"$nin": ["closed"]},
                 "created_at": {"$gte": cutoff_date},
                 "$or": [

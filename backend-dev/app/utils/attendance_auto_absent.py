@@ -91,10 +91,13 @@ async def _get_active_users() -> list:
 
 async def run_missing_checkout_job():
     """
-    For every user who has a check_in_time but no check_out_time today,
-    For every user who has a check_in_time but no check_out_time today,
-    set status = -2 (absconding) and mark auto_absent_no_checkout = True.
+    For every user who has a check_in_time but no check_out_time today (end-of-day),
+    set status = -1 (ABSENT) and mark auto_absent_no_checkout = True.
     Only processes records not already marked absent (-1) or absconding (-2).
+
+    Rule: Missing check-out → ABSENT (not half day, not absconding directly).
+    After 2 consecutive absent days without approved leave or correction,
+    run_consecutive_absent_absconding_job() will convert them to ABSCONDING (-2).
     """
     try:
         from app.database.Attendance import AttendanceDB
@@ -125,17 +128,15 @@ async def run_missing_checkout_job():
             await attendance_db.collection.update_one(
                 {"_id": record["_id"]},
                 {"$set": {
-                    "status": -2,
+                    "status": -1,  # ABSENT — will escalate to ABSCONDING after 2 days if uncorrected
                     "auto_absent_no_checkout": True,
-                    "auto_absconding": True,
-                    "auto_absconding_reason": "Auto-absconding: checked in but did not check out before working hours ended",
-                    "comments": "Auto-absconding: checked in but did not check out before working hours ended",
+                    "comments": "Auto-absent: user missed check-out",
                     "updated_at": datetime.now(IST),
                 }}
             )
             updated += 1
 
-        logger.info(f"[AutoAbsent] Missing-checkout job done: {updated} record(s) marked absconding.")
+        logger.info(f"[AutoAbsent] Missing-checkout job done: {updated} record(s) marked absent.")
     except Exception as e:
         logger.error(f"[AutoAbsent] Error in missing-checkout job: {e}", exc_info=True)
 
@@ -419,17 +420,21 @@ async def _attendance_scheduler_loop():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Job 3 – Consecutive-absent absconding rule
+# Job 3 – Age-based absent → absconding rule
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def run_consecutive_absent_absconding_job(check_date: date = None):
     """
-    Rule: If an employee has 3+ consecutive absent days (Mon–Sat, ignoring Sundays)
-    **without** an approved leave for any of those days, convert ALL those absent
-    records to Absconding (status = -2).
+    Rule: Any ABSENT (-1) record whose date is at least `threshold` calendar days
+    BEFORE today, and has no approved leave and no admin correction, is converted to
+    ABSCONDING (-2).
 
-    Runs daily (triggered after the midnight absent job, so new absences are already
-    written). Looks back up to 14 days to catch streaks.
+    Example (threshold=2):
+      - Absent April 7 → becomes ABSCONDING on April 9 (2 days later) ✓
+      - Absent April 8 → still ABSENT on April 9 (only 1 day old, waits until April 10) ✓
+      - Absent April 9 (today) → still ABSENT (today not finalised) ✓
+
+    Runs daily at midnight (after the midnight absent job writes new records).
     """
     try:
         from app.database.Attendance import AttendanceDB
@@ -439,119 +444,76 @@ async def run_consecutive_absent_absconding_job(check_date: date = None):
 
         # Feature flag: default enabled
         if not settings.get("enable_consecutive_absent_absconding", True):
-            logger.info("[AutoAbsent] Consecutive-absent absconding rule is disabled — skipping.")
+            logger.info("[AutoAbsent] Absent-age absconding rule is disabled — skipping.")
             return
 
-        threshold = int(settings.get("consecutive_absent_absconding_days", 3))
-        check_date = check_date or datetime.now(IST).date()
+        threshold = int(settings.get("consecutive_absent_absconding_days", 2))
+        today_ist = datetime.now(IST).date()
+        check_date = check_date or today_ist
 
-        logger.info(f"[AutoAbsent] Running consecutive-absent absconding job (threshold={threshold}) as of {check_date}")
+        # Cutoff: only absent records STRICTLY older than `threshold` days are eligible
+        # e.g. threshold=2: dates <= today-2 (i.e. April 7 when today is April 9)
+        cutoff_date = check_date - timedelta(days=threshold)
+
+        logger.info(
+            f"[AutoAbsent] Running age-based absconding job "
+            f"(threshold={threshold} days, cutoff={cutoff_date}) as of {check_date}"
+        )
 
         db = get_database_instances()
         attendance_db: AttendanceDB = db["attendance"]
 
-        # Look back enough days to include the full streak window
-        lookback_days = max(threshold + 4, 14)
-        start_date = check_date - timedelta(days=lookback_days)
-
-        # Fetch all absent / absconding records in the window (Mon–Sat only)
-        working_dates = [
-            start_date + timedelta(days=i)
-            for i in range((check_date - start_date).days + 1)
-            if (start_date + timedelta(days=i)).weekday() != 6  # skip Sundays
-        ]
-        date_strs = [d.isoformat() for d in working_dates]
-
-        # Pull all attendance records in the window (absent=-1 only; absconding=-2 already done)
+        # Pull ALL absent records older than the cutoff (not manually edited)
         cursor = attendance_db.collection.find({
-            "date": {"$in": date_strs},
-            "status": -1,  # absent only (not yet absconding)
+            "date": {"$lte": cutoff_date.isoformat()},
+            "status": -1,                      # absent only (not yet absconding)
+            "edited_by": {"$exists": False},   # skip manually edited records
         })
 
-        # Group by user_id
-        from collections import defaultdict
-        user_absences: dict = defaultdict(list)
-        async for rec in cursor:
-            uid = str(rec.get("user_id") or rec.get("employee_id") or "")
-            if uid:
-                user_absences[uid].append((rec["date"], rec["_id"]))
-
-        if not user_absences:
-            logger.info("[AutoAbsent] No absent records in window — nothing to check.")
-            return
-
-        # For each user, find consecutive streaks ≥ threshold
-        converted_users = 0
+        converted_users: set = set()
         converted_records = 0
 
-        for uid, absence_list in user_absences.items():
-            # Sort by date
-            absence_dates_sorted = sorted(d for d, _ in absence_list)
-            id_map = {d: oid for d, oid in absence_list}
-
-            # Build consecutive working-day streaks using the working_dates list
-            streak: list = []
-            streaks_to_convert: list = []
-
-            for wd in working_dates:
-                wd_str = wd.isoformat()
-                if wd_str in id_map:
-                    streak.append(wd_str)
-                else:
-                    # Break in streak — check if the preceding streak qualifies
-                    if len(streak) >= threshold:
-                        streaks_to_convert.extend(streak)
-                    streak = []
-
-            # Check tail streak
-            if len(streak) >= threshold:
-                streaks_to_convert.extend(streak)
-
-            if not streaks_to_convert:
+        async for rec in cursor:
+            uid = str(rec.get("user_id") or rec.get("employee_id") or "")
+            if not uid:
                 continue
 
-            # For each day in the streak, verify no approved leave exists
-            # If even one day has an approved leave we skip (employee is covered)
-            days_without_leave = []
-            for date_str in streaks_to_convert:
-                d = date.fromisoformat(date_str)
-                approved = None
-                try:
-                    approved = await check_approved_leave_for_date(uid, d)
-                except Exception:
-                    pass
-                if not approved:
-                    days_without_leave.append(date_str)
-
-            if len(days_without_leave) < threshold:
+            date_str = rec.get("date", "")
+            if not date_str:
                 continue
 
-            # Convert absent → absconding for these days
-            for date_str in days_without_leave:
-                oid = id_map.get(date_str)
-                if not oid:
-                    continue
-                await attendance_db.collection.update_one(
-                    {"_id": oid},
-                    {"$set": {
-                        "status": -2,  # Absconding
-                        "auto_absconding": True,
-                        "auto_absconding_reason": f"Auto-absconding: {threshold}+ consecutive absent days without approved leave",
-                        "updated_at": datetime.now(IST),
-                    }}
-                )
-                converted_records += 1
+            # Check no approved leave for this specific day
+            approved = None
+            try:
+                approved = await check_approved_leave_for_date(uid, date.fromisoformat(date_str))
+            except Exception:
+                pass
 
-            if days_without_leave:
-                converted_users += 1
-                logger.info(
-                    f"[AutoAbsent] User {uid}: converted {len(days_without_leave)} absent day(s) "
-                    f"to absconding ({', '.join(days_without_leave)})"
-                )
+            if approved:
+                continue  # Leave covers this absence — skip
+
+            # Convert ABSENT → ABSCONDING
+            await attendance_db.collection.update_one(
+                {"_id": rec["_id"]},
+                {"$set": {
+                    "status": -2,
+                    "auto_absconding": True,
+                    "auto_absconding_reason": (
+                        f"Auto-absconding: absent for {threshold}+ days without approved leave"
+                    ),
+                    "updated_at": datetime.now(IST),
+                }}
+            )
+            converted_records += 1
+            converted_users.add(uid)
+            logger.info(
+                f"[AutoAbsent] User {uid}: {date_str} → absconding "
+                f"(absent {(check_date - date.fromisoformat(date_str)).days} days ago)"
+            )
 
         logger.info(
-            f"[AutoAbsent] Consecutive-absent absconding job done: "
-            f"{converted_records} record(s) across {converted_users} employee(s) converted."
+            f"[AutoAbsent] Age-based absconding job done: "
+            f"{converted_records} record(s) across {len(converted_users)} employee(s) converted."
         )
 
     except Exception as e:
@@ -560,132 +522,90 @@ async def run_consecutive_absent_absconding_job(check_date: date = None):
 
 async def run_historical_absconding_backfill(from_date: date = None, to_date: date = None) -> dict:
     """
-    One-time / on-demand backfill: apply the consecutive-absent→absconding rule
+    One-time / on-demand backfill: apply the age-based absent→absconding rule
     across ALL historical absent records (or a date range if provided).
+
+    Rule: Any absent record whose date is `threshold` or more calendar days before
+    today (or to_date, whichever is earlier) is converted to ABSCONDING, unless
+    the employee has an approved leave for that day or the record was manually edited.
+
     Returns a summary dict with counts.
     """
     try:
         from app.database.Attendance import AttendanceDB
         from app.database import get_database_instances
-        from collections import defaultdict
 
         settings = await _get_settings()
-        threshold = int(settings.get("consecutive_absent_absconding_days", 3))
+        threshold = int(settings.get("consecutive_absent_absconding_days", 2))
 
         db = get_database_instances()
         attendance_db: AttendanceDB = db["attendance"]
 
-        # Build the query — fetch ALL absent records (optionally within date range)
-        query: dict = {"status": -1}  # absent only
-        if from_date or to_date:
-            date_filter: dict = {}
-            if from_date:
-                date_filter["$gte"] = from_date.isoformat()
-            if to_date:
-                date_filter["$lte"] = to_date.isoformat()
-            query["date"] = date_filter
+        # Always exclude today (and future) — today is not yet finalised.
+        today_ist = datetime.now(IST).date()
+        # Cutoff: any absent record on or before (today - threshold) is eligible
+        cutoff_date = today_ist - timedelta(days=threshold)
+        if to_date:
+            cutoff_date = min(cutoff_date, to_date)
 
-        logger.info(f"[Backfill] Starting historical absconding backfill (threshold={threshold}, from={from_date}, to={to_date})")
+        query: dict = {
+            "status": -1,                      # absent only
+            "edited_by": {"$exists": False},   # skip manually edited
+            "date": {"$lte": cutoff_date.isoformat()},
+        }
+        if from_date:
+            query["date"]["$gte"] = from_date.isoformat()
 
-        # Fetch all matching absent records
+        logger.info(
+            f"[Backfill] Starting age-based absconding backfill "
+            f"(threshold={threshold} days, cutoff={cutoff_date}, from={from_date})"
+        )
+
         cursor = attendance_db.collection.find(query, {"_id": 1, "date": 1, "user_id": 1, "employee_id": 1})
-        user_absences: dict = defaultdict(list)
+
+        converted_records = 0
+        converted_users: set = set()
+        skipped_records = 0
+
         async for rec in cursor:
             uid = str(rec.get("user_id") or rec.get("employee_id") or "")
-            if uid and rec.get("date"):
-                user_absences[uid].append((rec["date"], rec["_id"]))
-
-        logger.info(f"[Backfill] Found absent records for {len(user_absences)} employee(s)")
-
-        if not user_absences:
-            return {"converted_records": 0, "converted_users": 0, "message": "No absent records found"}
-
-        converted_users = 0
-        converted_records = 0
-        skipped_users = 0
-
-        for uid, absence_list in user_absences.items():
-            # Sort and build map
-            absence_list_sorted = sorted(absence_list, key=lambda x: x[0])
-            id_map = {d: oid for d, oid in absence_list_sorted}
-            all_dates_sorted = [date.fromisoformat(d) for d, _ in absence_list_sorted]
-
-            # Build consecutive Mon-Sat streaks
-            streak: list = []
-            streaks_to_convert: list = []
-
-            for i, d in enumerate(all_dates_sorted):
-                if d.weekday() == 6:  # skip Sunday
-                    continue
-                if streak and (d - streak[-1]).days > 2:
-                    # Gap > 1 working day (allowing for Sunday in between)
-                    # Actually check: is the gap only because of one Sunday?
-                    prev = streak[-1]
-                    days_gap = (d - prev).days
-                    # Allow gap of 2 if the day in between is a Sunday
-                    middle = prev + timedelta(days=1)
-                    if days_gap == 2 and middle.weekday() == 6:
-                        pass  # Saturday→Sunday→Monday is still consecutive
-                    elif days_gap == 1:
-                        pass  # directly consecutive
-                    else:
-                        # real break
-                        if len(streak) >= threshold:
-                            streaks_to_convert.extend([s.isoformat() for s in streak])
-                        streak = []
-                streak.append(d)
-
-            if len(streak) >= threshold:
-                streaks_to_convert.extend([s.isoformat() for s in streak])
-
-            if not streaks_to_convert:
-                skipped_users += 1
+            date_str = rec.get("date", "")
+            if not uid or not date_str:
                 continue
 
-            # Verify no approved leave for each qualifying day
-            days_without_leave = []
-            for date_str in streaks_to_convert:
-                d = date.fromisoformat(date_str)
-                approved = None
-                try:
-                    approved = await check_approved_leave_for_date(uid, d)
-                except Exception:
-                    pass
-                if not approved:
-                    days_without_leave.append(date_str)
+            # Verify no approved leave
+            approved = None
+            try:
+                approved = await check_approved_leave_for_date(uid, date.fromisoformat(date_str))
+            except Exception:
+                pass
 
-            if len(days_without_leave) < threshold:
-                skipped_users += 1
+            if approved:
+                skipped_records += 1
                 continue
 
-            # Convert to absconding
-            for date_str in days_without_leave:
-                oid = id_map.get(date_str)
-                if not oid:
-                    continue
-                await attendance_db.collection.update_one(
-                    {"_id": oid},
-                    {"$set": {
-                        "status": -2,
-                        "auto_absconding": True,
-                        "auto_absconding_reason": f"Backfill: {threshold}+ consecutive absent days without approved leave",
-                        "updated_at": datetime.now(IST),
-                    }}
-                )
-                converted_records += 1
-
-            if days_without_leave:
-                converted_users += 1
-                logger.info(
-                    f"[Backfill] User {uid}: {len(days_without_leave)} day(s) → absconding "
-                    f"({', '.join(days_without_leave)})"
-                )
+            await attendance_db.collection.update_one(
+                {"_id": rec["_id"]},
+                {"$set": {
+                    "status": -2,
+                    "auto_absconding": True,
+                    "auto_absconding_reason": (
+                        f"Backfill: absent {threshold}+ days ago without approved leave"
+                    ),
+                    "updated_at": datetime.now(IST),
+                }}
+            )
+            converted_records += 1
+            converted_users.add(uid)
 
         summary = {
             "converted_records": converted_records,
-            "converted_users": converted_users,
-            "skipped_users": skipped_users,
-            "message": f"Backfill done: {converted_records} record(s) across {converted_users} employee(s) converted to absconding."
+            "converted_users": len(converted_users),
+            "skipped_records": skipped_records,
+            "message": (
+                f"Backfill done: {converted_records} record(s) across "
+                f"{len(converted_users)} employee(s) converted to absconding."
+            ),
         }
         logger.info(f"[Backfill] {summary['message']}")
         return summary
