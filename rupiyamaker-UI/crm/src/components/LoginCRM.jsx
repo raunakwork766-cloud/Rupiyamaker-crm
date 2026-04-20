@@ -263,11 +263,15 @@ const getLeadField = (lead, fieldName) => {
             return lead.salary || lead.monthly_income || '';
 
         case 'total_income': {
-            // If an explicit pre-computed total_income is stored, use it
+            // Priority 1: Obligation section's calculated totalIncome (eligibility_details)
+            const ed = lead.dynamic_fields?.eligibility_details || lead.dynamic_details?.eligibility_details || lead.eligibility_details || {};
+            if (ed.totalIncome || ed.total_income) return ed.totalIncome || ed.total_income;
+
+            // Priority 2: Pre-computed total_income in financial_details
             const fin = lead.dynamic_fields?.financial_details || lead.dynamic_details?.financial_details || {};
             if (fin.total_income) return fin.total_income;
 
-            // Calculate actual total = monthly_income + partner_salary + yearly_bonus/bonus_division
+            // Priority 3: Calculate total = monthly_income + partner_salary + yearly_bonus/bonus_division
             const monthlyIncome  = parseFloat(fin.monthly_income)  || 0;
             const partnerSalary  = parseFloat(fin.partner_salary)   || 0;
             const yearlyBonus    = parseFloat(fin.yearly_bonus)     || 0;
@@ -333,39 +337,38 @@ const getLeadField = (lead, fieldName) => {
             return lead.operations_amount_approved || lead.amount_approved || '';
 
         case 'foir_eligibility':
-        case 'foir':
-            // Check eligibility_details for finalEligibility (FOIR Eligibility is stored as finalEligibility in backend)
-            if (lead.dynamic_fields?.eligibility_details?.finalEligibility) {
-                return lead.dynamic_fields.eligibility_details.finalEligibility;
-            }
-            // Also check for final_eligibility (snake_case variant)
-            if (lead.dynamic_fields?.eligibility_details?.final_eligibility) {
-                return lead.dynamic_fields.eligibility_details.final_eligibility;
-            }
-            // Check for foir_eligibility variant
-            if (lead.dynamic_fields?.eligibility_details?.foir_eligibility) {
-                return lead.dynamic_fields.eligibility_details.foir_eligibility;
-            }
-            // Check eligibility object
-            if (lead.dynamic_fields?.eligibility?.finalEligibility) {
-                return lead.dynamic_fields.eligibility.finalEligibility;
-            }
-            if (lead.dynamic_fields?.eligibility?.final_eligibility) {
-                return lead.dynamic_fields.eligibility.final_eligibility;
-            }
-            // Check root level eligibility fields
-            if (lead.eligibility?.finalEligibility) {
-                return lead.eligibility.finalEligibility;
-            }
-            if (lead.eligibility?.final_eligibility) {
-                return lead.eligibility.final_eligibility;
-            }
-            // Fallback to direct fields
-            return lead.foir_eligibility || lead.final_eligibility || lead.foir || '';
+        case 'foir': {
+            // FOIR Eligibility = finalEligibility saved by ObligationSection ONLY
+            const eligEd = lead.dynamic_fields?.eligibility_details ?? lead.dynamic_details?.eligibility_details ?? lead.eligibility_details ?? null;
+            if (!eligEd || typeof eligEd !== 'object') return '';
+            const fe = eligEd.finalEligibility ?? eligEd.final_eligibility ?? null;
+            if (fe === null || fe === undefined) return '';
+            return fe;
+        }
+
+        case 'loan_amount': {
+            // Check obligation section paths (loanRequired/loan_required) before falling to lead.loan_amount
+            const loanSources = [
+                lead.dynamic_fields?.financial_details?.loan_required,
+                lead.dynamic_fields?.financial_details?.loanRequired,
+                lead.dynamic_fields?.loanRequired,
+                lead.dynamic_fields?.loan_required,
+                lead.dynamic_details?.financial_details?.loan_required,
+                lead.dynamic_details?.financial_details?.loanRequired,
+                lead.loanRequired,
+                lead.loan_required,
+                lead.loan_amount,
+            ];
+            return loanSources.find(v => v !== undefined && v !== null && v !== '') || '';
+        }
 
         case 'net_disbursement_amount':
             // Map to net_disbursement_amount field
-            return lead.net_disbursement_amount || lead.operations_net_disbursement_amount || '';
+            return lead.net_disbursement_amount ||
+                   lead.operations_net_disbursement_amount ||
+                   lead.dynamic_fields?.net_disbursement_amount ||
+                   lead.dynamic_details?.net_disbursement_amount ||
+                   '';
 
         default:
             // First check if it exists directly in lead
@@ -5689,6 +5692,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         { label: 'CUSTOMER NAME', key: 'customer_name' },
                                         { label: 'STATUS', key: null },
                                         { label: 'TOTAL INCOME', key: 'total_income' },
+                                        { label: 'ASSIGN LEAD', key: null },
                                         { label: 'FOIR ELIGIBILITY', key: 'foir_eligibility' },
                                         { label: 'LOAN AMOUNT REQUIRED', key: 'loan_amount' },
                                         { label: 'NET DISBURSEMENT AMOUNT', key: 'net_disbursement_amount' },
@@ -5729,6 +5733,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                 <td className="py-3 px-4"><div className="h-4 w-40 bg-gray-700 rounded"></div></td>
                                                 <td className="py-3 px-4"><div className="h-4 w-36 bg-gray-700 rounded"></div></td>
                                                 <td className="py-3 px-4"><div className="h-4 w-24 bg-gray-700 rounded"></div></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-28 bg-gray-700 rounded"></div></td>
                                                 <td className="py-3 px-4"><div className="h-4 w-20 bg-gray-700 rounded"></div></td>
                                                 <td className="py-3 px-4"><div className="h-4 w-32 bg-gray-700 rounded"></div></td>
                                                 <td className="py-3 px-4"><div className="h-4 w-28 bg-gray-700 rounded"></div></td>
@@ -5738,7 +5743,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                     </>
                                 ) : isFilteringActivity ? (
                                     <tr>
-                                        <td colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "13" : "12"} className="text-center py-10 text-gray-500">
+                                        <td colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "14" : "13"} className="text-center py-10 text-gray-500">
                                             <div className="flex items-center justify-center space-x-2">
                                                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
                                                 <span>Checking activity for leads...</span>
@@ -5747,7 +5752,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                     </tr>
                                 ) : displayedLeads.length === 0 ? (
                                     <tr>
-                                        <td colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "13" : "12"} className="text-center py-10 text-gray-500">
+                                        <td colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "14" : "13"} className="text-center py-10 text-gray-500">
                                             No Leads Found
                                             {selectedLoanType !== 'all' && (
                                                 <div className="mt-2">
@@ -6032,9 +6037,57 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">{renderCurrency(getLeadField(lead, 'total_income') || getLeadField(lead, 'salary'))}</td>
-                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">{getLeadField(lead, 'foir_eligibility') || getLeadField(lead, 'foir') || '-'}</td>
-                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">{renderCurrency(lead.loan_amount)}</td>
+                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">{renderCurrency(getLeadField(lead, 'total_income'))}</td>
+                                            <td className="py-3 px-4 whitespace-nowrap">
+                                                {(() => {
+                                                    const raw = lead.assign_report_to || lead.assignReportTo;
+                                                    if (!raw) return <span className="text-gray-500 text-sm">-</span>;
+                                                    const idToName = {};
+                                                    if (Array.isArray(employees)) {
+                                                        employees.forEach(emp => {
+                                                            const empName = (emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || '').trim();
+                                                            [emp.id, emp._id, emp.user_id, emp.employee_id].filter(Boolean).forEach(id => { idToName[String(id)] = empName; });
+                                                        });
+                                                    }
+                                                    let ids = [];
+                                                    if (Array.isArray(raw)) {
+                                                        ids = raw.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                    } else if (typeof raw === 'string') {
+                                                        try {
+                                                            const parsed = JSON.parse(raw);
+                                                            if (Array.isArray(parsed)) {
+                                                                ids = parsed.map(item => typeof item === 'object' ? String(item.id || item._id || item.user_id || '') : String(item).trim()).filter(Boolean);
+                                                            } else {
+                                                                ids = [raw.trim()];
+                                                            }
+                                                        } catch {
+                                                            ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+                                                        }
+                                                    }
+                                                    const names = ids.map(id => idToName[id] || id).filter(Boolean);
+                                                    if (names.length === 0) return <span className="text-gray-500 text-sm">-</span>;
+                                                    const isMultiple = names.length > 1;
+                                                    return (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            {names.map((name, i) => (
+                                                                <span key={i} className={`font-semibold ${isMultiple ? 'text-[11px] leading-tight' : 'text-sm'}`}>{name}</span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">
+                                                {(() => {
+                                                    const ed = lead.dynamic_fields?.eligibility_details ?? lead.dynamic_details?.eligibility_details ?? lead.eligibility_details ?? null;
+                                                    if (!ed || typeof ed !== 'object') return '-';
+                                                    const fe = ed.finalEligibility ?? ed.final_eligibility ?? null;
+                                                    if (fe === null || fe === undefined || fe === '') return '-';
+                                                    if (fe === '0' || fe === 0) return '₹ 0';
+                                                    if (typeof fe === 'string' && (fe.includes(',') || fe.includes('₹'))) return fe;
+                                                    return renderCurrency(fe);
+                                                })()}
+                                            </td>
+                                            <td className="text-left py-3 px-4 text-md whitespace-nowrap">{renderCurrency(getLeadField(lead, 'loan_amount'))}</td>
                                             <td className="text-left py-3 px-4 text-md whitespace-nowrap">{renderCurrency(getLeadField(lead, 'net_disbursement_amount'))}</td>
                                             <td className="text-left py-3 px-4 text-md whitespace-nowrap">
                                                 {getLeadField(lead, 'company_name') || '-'}
@@ -6047,7 +6100,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 {hasMoreToShow && displayedLeads.length > 0 && (
                                     <tr>
                                         <td 
-                                            colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "13" : "12"}
+                                            colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "14" : "13"}
                                             className="py-6 text-center bg-black"
                                         >
                                             <button
@@ -6067,7 +6120,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 {!hasMoreToShow && displayedLeads.length > 0 && (
                                     <tr>
                                         <td 
-                                            colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "13" : "12"}
+                                            colSpan={((canDeleteLogin() || isUserSuperAdmin) && checkboxVisible) ? "14" : "13"}
                                             className="py-6 text-center bg-black text-gray-400"
                                         >
                                             <p className="text-sm">— End of leads ({filteredLeadsData.length} total) —</p>

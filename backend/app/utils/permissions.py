@@ -110,20 +110,10 @@ class PermissionManager:
         # Check each permission entry
         for perm in permissions:
             perm_page = perm.get("page", "")
-            perm_page_lower = perm_page.lower() if perm_page else ""
             # Check if page matches (directly or via wildcard)
             # Case-insensitive comparison for page names
-            # Also supports dot-notation parent-child matching:
-            #   - checking "leads" also accepts stored "leads.create_lead" or "leads.pl_odd_leads" (child)
-            #   - checking "leads.create_lead" also accepts stored "leads" (parent, backward compat)
-            page_match = (
-                perm_page in ["*", "any"] or
-                perm_page_lower == page_lower or
-                # Stored is a child of requested parent (e.g. request "leads", stored "leads.create_lead")
-                ("." not in page_lower and perm_page_lower.startswith(page_lower + ".")) or
-                # Stored is parent of requested child (e.g. request "leads.create_lead", stored "leads")
-                ("." in page_lower and perm_page_lower == page_lower.rsplit(".", 1)[0])
-            )
+            page_match = (perm_page in ["*", "any"] or 
+                         (perm_page.lower() if perm_page else "") == page_lower)
             
             if page_match:
                 # Check if action matches
@@ -1085,32 +1075,42 @@ class PermissionManager:
                 
                 print(f"DEBUG: Added subordinate lead visibility filters for user {user_id}")
             else:
-                print(f"DEBUG: No subordinate users found by role hierarchy for user {user_id}")
-                # Only show same-role peers if peer_visibility is explicitly ON for this role
+                print(f"DEBUG: No subordinate users found by role hierarchy for user {user_id} - trying department fallback")
+                # Fallback: look up all users in same department so view_team works
+                # even when role hierarchy doesn't define subordinates
                 if not user_doc:
                     user_doc = await users_db.get_user(user_id)
-                user_role_id_for_peer = user_doc.get("role_id") if user_doc else None
-                if user_role_id_for_peer:
-                    from app.database.Roles import RolesDB as _RolesDB
-                    _roles_db_tmp = _RolesDB()
-                    peer_role_doc = await _roles_db_tmp.get_role(user_role_id_for_peer)
-                    if peer_role_doc and peer_role_doc.get("peer_visibility", False):
-                        print(f"DEBUG: peer_visibility ON — adding same-role peers as fallback")
-                        from bson import ObjectId as _ObjId
-                        peer_users = await users_db.get_users_by_roles([str(user_role_id_for_peer)])
-                        peer_ids = [str(u["_id"]) for u in (peer_users or []) if str(u["_id"]) != user_id]
-                        if peer_ids:
-                            filter_conditions.append({"created_by": {"$in": peer_ids}})
-                            filter_conditions.append({"assigned_to": {"$in": peer_ids}})
-                            peer_oids = [_ObjId(p) for p in peer_ids if _ObjId.is_valid(p)]
-                            if peer_oids:
-                                filter_conditions.append({"created_by": {"$in": peer_oids}})
-                                filter_conditions.append({"assigned_to": {"$in": peer_oids}})
-                            print(f"DEBUG: Added {len(peer_ids)} peer users via peer_visibility fallback")
+                user_dept_id = user_doc.get("department_id") if user_doc else None
+                if user_dept_id:
+                    from bson import ObjectId as _ObjId
+                    dept_filter = {"$or": [
+                        {"department_id": user_dept_id},
+                        {"department_id": str(user_dept_id)}
+                    ]}
+                    if _ObjId.is_valid(str(user_dept_id)):
+                        try:
+                            dept_filter["$or"].append({"department_id": _ObjId(str(user_dept_id))})
+                        except:
+                            pass
+                    dept_users = await users_db.collection.find(dept_filter).to_list(None)
+                    dept_member_ids = [str(u["_id"]) for u in dept_users if str(u["_id"]) != user_id]
+                    if dept_member_ids:
+                        dept_object_ids = []
+                        for mid in dept_member_ids:
+                            try:
+                                dept_object_ids.append(_ObjId(mid))
+                            except:
+                                pass
+                        filter_conditions.append({"created_by": {"$in": dept_member_ids}})
+                        filter_conditions.append({"assigned_to": {"$in": dept_member_ids}})
+                        if dept_object_ids:
+                            filter_conditions.append({"created_by": {"$in": dept_object_ids}})
+                            filter_conditions.append({"assigned_to": {"$in": dept_object_ids}})
+                        print(f"DEBUG: Added department fallback - {len(dept_member_ids)} team members in dept {user_dept_id}")
                     else:
-                        print(f"DEBUG: peer_visibility OFF — no fallback peers added")
+                        print(f"DEBUG: No other users found in department {user_dept_id}")
                 else:
-                    print(f"DEBUG: No role_id found for user {user_id}, no peer fallback")
+                    print(f"DEBUG: No department_id found for user {user_id}, cannot do department fallback")
         
         # ========================================================================
         # NEW: TEAM MANAGER ROLE - Can see all team member leads

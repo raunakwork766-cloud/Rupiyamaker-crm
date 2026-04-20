@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Clock, CheckCircle, XCircle, RefreshCw, X, Phone, ArrowRight, User, Calendar, Building2, AlertCircle } from 'lucide-react';
 import { canApproveLeadReassignment } from '../../utils/permissions';
 import useTabWithHistory from '../../hooks/useTabWithHistory';
@@ -6,7 +6,7 @@ const LeadDetails = lazy(() => import('../LeadDetails'));
 
 const API_BASE_URL = '/api';
 
-const TransferRequestsPage = ({ user }) => {
+const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
   const [activeTab, setActiveTab] = useTabWithHistory('status', 'pending');
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -39,6 +39,7 @@ const TransferRequestsPage = ({ user }) => {
   const fmtAmt = (v) => { if (v === null || v === undefined || v === '') return '—'; const n = parseFloat(String(v).replace(/[₹,\s]/g, '')); return isNaN(n) ? String(v) : '₹' + Math.round(n).toLocaleString('en-IN'); };
 
   const handleRowViewLead = async (lead) => {
+    navPush?.();               // push SYNCHRONOUSLY before any state change
     setViewFullLeadLoading(true);
     setViewFullLead(lead);
     try {
@@ -111,6 +112,7 @@ const TransferRequestsPage = ({ user }) => {
         body: JSON.stringify({ remark: decisionRemark.trim() || undefined }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${res.status}`); }
+      navBack?.();             // consume the history entry we pushed when modal opened
       setSelectedLead(null);
       setDecisionRemark('');
       loadRequests();
@@ -132,6 +134,7 @@ const TransferRequestsPage = ({ user }) => {
         body: JSON.stringify({ rejection_reason: decisionRemark.trim() }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${res.status}`); }
+      navBack?.();             // consume the history entry we pushed when modal opened
       setSelectedLead(null);
       setDecisionRemark('');
       loadRequests();
@@ -144,6 +147,7 @@ const TransferRequestsPage = ({ user }) => {
   };
 
   const openModal = async (lead) => {
+    navPush?.();               // push SYNCHRONOUSLY before state change
     setSelectedLead(lead);
     setHistory([]);
     setBankLogins([]);
@@ -346,6 +350,28 @@ const TransferRequestsPage = ({ user }) => {
        currentLead.name || currentLead.customer_name || 'Lead')
     : '';
 
+  // ─── Browser back-button support (delegated to CreateLead_new) ───────────
+  // navPush/navBack are called SYNCHRONOUSLY inside action handlers (not in
+  // effects) to eliminate any async race between "entry pushed" and "user presses
+  // back". Rules:
+  //   • openModal / handleRowViewLead call navPush() BEFORE setting state
+  //   • Every programmatic close (X button, approve, reject) calls navBack()
+  //     BEFORE resetting state — navBack consumes the orphaned history entry
+  //   • trpNavStateRef.current.close*() — called only by the back-button
+  //     handler which already decremented historyDepth — so NO navBack here
+
+  // Keep parent ref up-to-date every render (synchronous, fine outside effect)
+  if (trpNavStateRef) {
+    trpNavStateRef.current = {
+      viewFullLead,
+      selectedLead,
+      // Called by back-button handler — historyDepth already decremented, no navBack
+      closeViewFullLead: () => { setViewFullLead(null); setViewFullLeadLoading(false); },
+      closeSelectedLead: () => { setSelectedLead(null); setDecisionRemark(''); },
+    };
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-[#0d1117] text-white">
       {/* Page Header */}
@@ -538,7 +564,7 @@ const TransferRequestsPage = ({ user }) => {
         <div
           className="fixed inset-0 z-[900] flex items-center justify-center p-4 sm:p-6"
           style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
-          onClick={() => setSelectedLead(null)}
+          onClick={() => { navBack?.(); setSelectedLead(null); }}
         >
           <div
             className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200"
@@ -590,7 +616,7 @@ const TransferRequestsPage = ({ user }) => {
                 </div>
               </div>
               <button
-                onClick={() => setSelectedLead(null)}
+                onClick={() => { navBack?.(); setSelectedLead(null); }}
                 className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition shrink-0"
               >
                 <X size={18} />
@@ -1294,7 +1320,7 @@ const TransferRequestsPage = ({ user }) => {
                 readOnly={true}
                 allowedTabs={['details', 'obligations']}
                 saveContext="transfer"
-                onBack={() => { setViewFullLead(null); setViewFullLeadLoading(false); }}
+                onBack={() => { navBack?.(); setViewFullLead(null); setViewFullLeadLoading(false); }}
               />
             </Suspense>
           )}

@@ -8,7 +8,6 @@ import secrets
 import string
 import os
 import io
-import json
 import zipfile
 import tempfile
 import shutil
@@ -1631,34 +1630,6 @@ async def list_leads(
         t5 = time.time()
         user_ids_to_fetch = set()
         dept_ids_to_fetch = set()
-
-        def extract_assign_report_to_ids(assign_report_to):
-            if not assign_report_to:
-                return []
-
-            if isinstance(assign_report_to, list):
-                extracted_ids = []
-                for item in assign_report_to:
-                    if isinstance(item, dict):
-                        candidate = item.get("id") or item.get("_id") or item.get("user_id") or item.get("employee_id")
-                    else:
-                        candidate = item
-
-                    if candidate:
-                        extracted_ids.append(str(candidate).strip())
-                return [user_id for user_id in extracted_ids if user_id]
-
-            if isinstance(assign_report_to, dict):
-                candidate = assign_report_to.get("id") or assign_report_to.get("_id") or assign_report_to.get("user_id") or assign_report_to.get("employee_id")
-                return [str(candidate).strip()] if candidate else []
-
-            if isinstance(assign_report_to, str):
-                try:
-                    return extract_assign_report_to_ids(json.loads(assign_report_to))
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    return [item.strip() for item in assign_report_to.split(",") if item.strip()]
-
-            return []
         
         for lead in leads:
             # Handle assigned_to which can be either a string or a list
@@ -1668,9 +1639,6 @@ async def list_leads(
                     user_ids_to_fetch.update(assigned_to)
                 else:
                     user_ids_to_fetch.add(assigned_to)
-
-            for assign_report_to_id in extract_assign_report_to_ids(lead.get("assign_report_to") or lead.get("assignReportTo")):
-                user_ids_to_fetch.add(assign_report_to_id)
             
             if lead.get("created_by"):
                 user_ids_to_fetch.add(lead["created_by"])
@@ -1740,21 +1708,6 @@ async def list_leads(
             else:
                 lead_dict["assigned_to_name"] = "Unassigned"
                 lead_dict["assigned_to_email"] = ""
-
-            assign_report_to_names = []
-            for assign_report_to_id in extract_assign_report_to_ids(lead_dict.get("assign_report_to") or lead_dict.get("assignReportTo")):
-                user = user_cache.get(assign_report_to_id)
-                if not user:
-                    continue
-
-                user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
-                if not user_name:
-                    user_name = user.get("username") or user.get("employee_id") or ""
-                if user_name:
-                    assign_report_to_names.append(user_name)
-
-            lead_dict["assign_report_to_names"] = list(dict.fromkeys(assign_report_to_names))
-            lead_dict["assign_report_to_name"] = ", ".join(lead_dict["assign_report_to_names"])
             
             # ⚡ OPTIMIZED: Use cached creator info
             if "created_by" in lead_dict and lead_dict["created_by"]:
@@ -2471,15 +2424,18 @@ async def delete_lead(
         for perm in user_permissions
     )
     
-    # Check if user has explicit delete permission for leads (including PL & ODD Leads sub-page)
-    LEADS_DELETE_PAGES = ["leads", "Leads", "leads.pl_&_odd_leads", "leads.pl_odd_leads",
-                          "leads_pl_&_odd_leads", "leads_pl_odd_leads"]
+    # Check if user has explicit delete permission for leads
     has_leads_delete_permission = any(
-        perm.get("page") in LEADS_DELETE_PAGES and (
+        (perm.get("page") == "leads" and (
             perm.get("actions") == "*" or
             (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
             perm.get("actions") == "delete"
-        )
+        )) or
+        (perm.get("page") == "Leads" and (
+            perm.get("actions") == "*" or
+            (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
+            perm.get("actions") == "delete"
+        ))
         for perm in user_permissions
     )
     

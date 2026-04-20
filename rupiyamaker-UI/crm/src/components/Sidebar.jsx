@@ -5,7 +5,6 @@ import { cn } from "../lib/utils.js";
 import { hasPermission, getUserPermissions, isSuperAdmin, canViewLoginCRM, canViewInterviewPanel, canViewReports, canViewNotifications } from '../utils/permissions';
 import { useAppNavigation, getRouteByLabel, ROUTES } from '../utils/navigation';
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
-import { hasActiveModalEntry } from '../hooks/useModalHistory';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -63,6 +62,15 @@ const icons = {
     <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <path d="M8 2v4M16 2v4" />
+    </svg>
+  ),
+  "Offer Letter": (
+    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
   "Offer Letter": (
@@ -586,41 +594,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       else if (currentPath.includes('/performance')) {
         urlBasedLabel = 'Daily Performance';
       }
-      else if (currentPath === '/dashboard') {
-        urlBasedLabel = 'Dashboard';
-      }
-      else if (currentPath.includes('/feed-home') || currentPath === '/' || currentPath.includes('/feed')) {
-        urlBasedLabel = 'Feed';
-      }
-      else if (currentPath.includes('/task')) {
-        urlBasedLabel = 'Task';
-      }
-      else if (currentPath.includes('/ticket')) {
-        urlBasedLabel = 'Ticket';
-      }
-      else if (currentPath.includes('/notifications') || currentPath.includes('/notification')) {
-        urlBasedLabel = 'Announcement';
-      }
-      else if (currentPath.includes('/app')) {
-        urlBasedLabel = 'Apps';
-      }
-      else if (currentPath.includes('/setting')) {
-        urlBasedLabel = 'Settings';
-      }
-      else if (currentPath.includes('/report')) {
-        urlBasedLabel = 'Reports';
-      }
-      else if (currentPath.includes('/knowledge-base')) {
-        urlBasedLabel = 'Knowledge Base';
-      }
-      else if (currentPath.includes('/offer-letter')) {
-        urlBasedLabel = 'Offer Letter';
-      }
-      else if (currentPath.includes('/transfer-requests')) {
-        urlBasedLabel = 'Transfer Requests';
-      }
       
-      // Use URL-based label if available, otherwise fallback to persisted value
+      // Use URL-based label if it's different from persisted or if no persisted label
       const targetLabel = urlBasedLabel || persistedLabel;
       
       if (targetLabel && targetLabel !== selectedLabel) {
@@ -669,12 +644,15 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       }
     };
 
+    // Check for component load periodically to maintain state
+    const intervalId = setInterval(handleComponentLoad, 1000);
+
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('selectedLabelChanged', handleLabelChange);
     window.addEventListener('DOMContentLoaded', handleComponentLoad);
     window.addEventListener('load', handleComponentLoad);
-
-    // Listen for browser history navigation events
+    
+    // Also listen for page navigation events
     window.addEventListener('popstate', handleComponentLoad);
     window.addEventListener('pushstate', handleComponentLoad);
     window.addEventListener('replacestate', handleComponentLoad);
@@ -690,6 +668,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       window.removeEventListener('popstate', handleComponentLoad);
       window.removeEventListener('pushstate', handleComponentLoad);
       window.removeEventListener('replacestate', handleComponentLoad);
+      clearInterval(intervalId);
     };
   }, [selectedLabel, parentSetSelectedLabel, itemToParentMap, loanTypes]);
 
@@ -807,16 +786,21 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           fullRoute = `${route}?loan_type_name=${encodeURIComponent(baseLoanTypeName)}`;
         }
         
-        // Clear restore state so sidebar navigation opens the module's main screen.
+        // Clear logincrm_restore so navigating back to LoginCRM shows the list, not a stale lead
         sessionStorage.removeItem('logincrm_restore');
-        sessionStorage.removeItem('leadcrm_restore');
+
+        // When switching between loan-type sub-sections of the SAME component
+        // (e.g. PL Login → BL Login), use replace so the browser back button
+        // exits the component entirely rather than cycling through each loan type.
+        const isSamePathname = (() => {
+          try {
+            const target = new URL(fullRoute, window.location.href);
+            return target.pathname === window.location.pathname;
+          } catch { return false; }
+        })();
         
-        // Avoid duplicate history entries when the user clicks the same sidebar item again.
-        const currentFullUrl = window.location.pathname + window.location.search;
-        if (currentFullUrl !== fullRoute) {
-          const shouldReplace = hasActiveModalEntry();
-          navigateToRoute(fullRoute, label, { replace: shouldReplace });
-        }
+        // Navigate with the full URL (including query parameters)
+        navigateToRoute(fullRoute, label, { replace: isSamePathname });
         
         // Final highlight confirmation after navigation
         setTimeout(() => {
@@ -1338,14 +1322,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       const urlParams = new URLSearchParams(window.location.search);
       const loanTypeName = urlParams.get('loan_type_name');
       
-      // If no persisted label or URL indicates a different page, derive from URL
-      if (!persistedLabel ||
+      // If no persisted label or if URL suggests different selection, derive from URL
+      if (!persistedLabel || 
           (loanTypeName && !persistedLabel.includes(loanTypeName)) ||
-          (currentPath === '/dashboard' && persistedLabel !== 'Dashboard') ||
-          ((currentPath.includes('/feed-home') || currentPath.includes('/feed') || currentPath === '/') && persistedLabel !== 'Feed') ||
-          (currentPath.includes('/task') && persistedLabel !== 'Task') ||
-          (currentPath.includes('/ticket') && persistedLabel !== 'Ticket') ||
-          ((currentPath.includes('/notifications') || currentPath.includes('/notification')) && persistedLabel !== 'Announcement') ||
           (currentPath.includes('/employees') && persistedLabel !== 'Employees') ||
           (currentPath.includes('/attendance') && persistedLabel !== 'Attendance') ||
           (currentPath.includes('/leave') && persistedLabel !== 'Leave') ||
@@ -1358,21 +1337,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           } else if (currentPath.includes('/login-crm') || currentPath.includes('/login')) {
             persistedLabel = `${loanTypeName} Login`;
           }
-        }
-        else if (currentPath === '/dashboard') {
-          persistedLabel = 'Dashboard';
-        }
-        else if (currentPath.includes('/feed-home') || currentPath.includes('/feed') || currentPath === '/') {
-          persistedLabel = 'Feed';
-        }
-        else if (currentPath.includes('/task')) {
-          persistedLabel = 'Task';
-        }
-        else if (currentPath.includes('/ticket')) {
-          persistedLabel = 'Ticket';
-        }
-        else if (currentPath.includes('/notifications') || currentPath.includes('/notification')) {
-          persistedLabel = 'Announcement';
         }
         else if (currentPath.includes('/employees')) {
           persistedLabel = 'Employees';

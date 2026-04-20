@@ -33,13 +33,12 @@ const computeStartPath = (perms) => {
     perms['*'] === '*' ||
     (perms?.pages === '*' && perms?.actions === '*') ||
     perms?.Global === '*';
-  if (isAdmin) return { path: '/dashboard', label: 'Dashboard' };
+  if (isAdmin) return { path: '/feed', label: 'Feed' };
 
-  // Priority list — Dashboard first so users land on their main work page,
-  // not the Feed (which has a dark theme and may appear empty on first load).
+  // Priority list — matches allPermissions declaration order in RoleCompare.jsx
   const priorities = [
-    { check: () => perms?.dashboard?.show || perms?.dashboard === '*', path: '/dashboard',      label: 'Dashboard' },
     { check: () => perms?.feeds?.show     || perms?.feeds     === '*', path: '/feed',           label: 'Feed' },
+    { check: () => perms?.dashboard?.show || perms?.dashboard === '*', path: '/dashboard',      label: 'Dashboard' },
     // Leads sub-sections checked separately (create_lead → /create-lead, pl_odd_leads → /lead-crm)
     { check: () => perms?.['leads.create_lead']?.show  || perms?.['leads.create_lead']  === '*', path: '/create-lead', label: 'Create LEAD' },
     { check: () => perms?.['leads.pl_odd_leads']?.show || perms?.['leads.pl_odd_leads'] === '*', path: '/lead-crm',    label: 'Lead CRM' },
@@ -116,6 +115,9 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  // Deferred redirect target set by handleLogin; navigated to in a useEffect
+  // AFTER React has committed the auth state change and mounted the route tree.
+  const [pendingStartPath, setPendingStartPath] = useState(null)
   const [selectedLabel, setSelectedLabel] = useState(() => {
     const stored = localStorage.getItem('selectedLabel');
     return stored || 'Feed';
@@ -155,6 +157,16 @@ function App() {
   // Ref to skip mobile-redirect on the very first render (page load/refresh)
   const isInitialMobileCheck = useRef(true)
 
+  // Deferred navigation: execute the pending redirect AFTER React has committed
+  // the isAuthenticated state change and fully mounted the route tree. This prevents
+  // the race condition where ProtectedRoute renders before auth state is stable.
+  useEffect(() => {
+    if (isAuthenticated && pendingStartPath) {
+      navigate(pendingStartPath, { replace: true });
+      setPendingStartPath(null);
+    }
+  }, [isAuthenticated, pendingStartPath, navigate]);
+  
   // Initialize selectedLabel based on current URL on first load
   useEffect(() => {
     const currentPath = location.pathname
@@ -573,18 +585,15 @@ function App() {
       localStorage.setItem('selectedLabel', startLabel);
     }
 
-    // Navigate directly to the computed start path.
-    // Login.jsx writes all localStorage keys (token, userId, userPermissions) BEFORE
-    // calling onLogin, so ProtectedRoute's localStorage-based checks will pass on the
-    // very first render. With React 18 automatic batching, setIsAuthenticated(true)
-    // and navigate() are committed in a SINGLE render flush, which means
-    // SmartRootRedirect (on '/') never fires — the router already sees the target
-    // path — eliminating the Feed→Dashboard double-navigation flicker.
-    navigate(startPath, { replace: true });
+    // Use deferred navigation via pendingStartPath state so the navigate fires AFTER
+    // React commits the isAuthenticated = true state and mounts the route tree.
+    // Direct navigate() here would race with AppAuthGuard switching from <Login> to
+    // <Routes>, causing ProtectedRoute to fire at an intermediate state → /unauthorized.
+    setPendingStartPath(startPath);
 
     // Start session monitoring when user logs in
     sessionMonitor.start()
-  }, [navigate])
+  }, [])
 
   const handleLogout = () => {
     // Stop session monitoring before clearing data

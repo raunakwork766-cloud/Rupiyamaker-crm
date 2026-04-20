@@ -17,25 +17,15 @@ import ProtectedRoute from '../components/ProtectedRoute';
  * Priority order mirrors allPermissions in RoleCompare.jsx.
  */
 const SmartRootRedirect = () => {
-  const hasAuth = !!(localStorage.getItem('token') && localStorage.getItem('userId'));
-  const rawPermissions = localStorage.getItem('userPermissions');
-
-  // During auth-hydration window, permission key can be temporarily unavailable.
-  // Avoid redirecting to /unauthorized in that transient state to prevent flicker.
-  if (hasAuth && rawPermissions === null) {
-    return <RouteLoader route="permissions" />;
-  }
-
   let perms = {};
-  try { perms = JSON.parse(rawPermissions || '{}'); } catch {}
+  try { perms = JSON.parse(localStorage.getItem('userPermissions') || '{}'); } catch {}
 
   // Super admin — any of the three formats written by Login.jsx
   if (perms['*'] === '*' || (perms?.pages === '*' && perms?.actions === '*') || perms?.Global === '*') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/feed" replace />;
   }
-  // Dashboard first — ensures users land on their primary work page, not the dark-themed Feed
-  if (perms?.dashboard?.show   || perms?.dashboard   === '*') return <Navigate to="/dashboard"      replace />;
   if (perms?.feeds?.show       || perms?.feeds       === '*') return <Navigate to="/feed"           replace />;
+  if (perms?.dashboard?.show   || perms?.dashboard   === '*') return <Navigate to="/dashboard"      replace />;
   if (perms?.['leads.create_lead']?.show  || perms?.['leads.create_lead']  === '*') return <Navigate to="/create-lead" replace />;
   if (perms?.['leads.pl_odd_leads']?.show || perms?.['leads.pl_odd_leads'] === '*') return <Navigate to="/lead-crm"    replace />;
   if (perms?.login?.show       || perms?.login       === '*') return <Navigate to="/login-crm"      replace />;
@@ -107,7 +97,7 @@ const LazyDashboardPage = createLazyComponent(() => import('../components/Dashbo
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
-  <div className="flex items-center justify-center min-h-[400px] w-full bg-white">
+  <div className="flex items-center justify-center min-h-[400px] w-full">
     <div className="flex flex-col items-center space-y-4">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       <div className="text-sm text-gray-600">

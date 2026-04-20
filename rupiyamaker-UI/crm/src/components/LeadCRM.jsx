@@ -1237,8 +1237,20 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         };
     }, [selectedLead?._id, activeTab]);
 
+    // Ref so the useModalHistory close callback can always read the latest
+    // hasUnsavedObligationChanges without being stale.
+    const hasUnsavedObligationChangesRef = useRef(false);
+
     // Push browser history when lead detail is opened, handle back button to close detail
     useModalHistory(!!selectedLead, () => {
+        if (hasUnsavedObligationChangesRef.current) {
+            // Re-push the modal entry so we stay on the lead detail
+            window.history.pushState({ modalOpen: true }, '');
+            // Show the unsaved changes modal
+            setShowUnsavedChangesModal(true);
+            setPendingTabNavigation('back_to_table');
+            return;
+        }
         setSelectedLead(null);
         setActiveTab(0);
         setOpenSections([]);
@@ -1441,6 +1453,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // Obligation dirty state tracking
     const [hasUnsavedObligationChanges, setHasUnsavedObligationChanges] = useState(false);
+    // Keep ref in sync so useModalHistory callback above can read it without stale closure
+    hasUnsavedObligationChangesRef.current = hasUnsavedObligationChanges;
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
     const [pendingTabNavigation, setPendingTabNavigation] = useState(null);
     const [pendingSectionNavigation, setPendingSectionNavigation] = useState(null);
@@ -1450,31 +1464,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const apiBaseUrl = '/api';
     // const userId = user?._id || localStorage.getItem('userId');
 
-    // Handle browser navigation (back button) when there are unsaved obligation changes
-    // Note: Removed beforeunload event to allow page reload/close without alerts
-    useEffect(() => {
-        const handlePopState = (e) => {
-            if (hasUnsavedObligationChanges) {
-                e.preventDefault();
-                const shouldLeave = window.confirm('You have unsaved changes in the obligation section. Are you sure you want to leave?');
-                if (!shouldLeave) {
-                    // Push the current state back to prevent navigation
-                    window.history.pushState(null, '', window.location.href);
-                    return;
-                }
-                // If user confirms, reset the unsaved changes flag
-                setHasUnsavedObligationChanges(false);
-            }
-        };
-
-        // Add event listener only for back/forward navigation
-        window.addEventListener('popstate', handlePopState);
-
-        // Cleanup function
-        return () => {
-            window.removeEventListener('popstate', handlePopState);
-        };
-    }, [hasUnsavedObligationChanges]);
+    // NOTE: The obligation unsaved-changes check on browser back is now handled
+    // inside the useModalHistory callback above (via hasUnsavedObligationChangesRef),
+    // so we no longer need a separate competing popstate listener here.
 
     // Sub-status to main status mapping
     // Status mapping - will be populated by API instead of hardcoded values
@@ -2787,10 +2779,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for performance
-        // Support multiple search terms separated by commas
+        // Support multiple search terms separated by spaces (same as main filter)
         if (debouncedSearchTerm) {
-            // Split search term by commas, trim each, filter out empty strings
-            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
+            // Split search term by spaces and filter out empty strings
+            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
             
             filtered = filtered.filter(lead => {
                 // Lead matches if ANY of the search terms match ANY of the fields
@@ -2811,6 +2803,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
                         (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
+                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
                     );
                 });
@@ -3207,10 +3203,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for smooth typing
-        // Support multiple search terms separated by commas
+        // Support multiple search terms separated by spaces
         if (debouncedSearchTerm) {
-            // Split search term by commas, trim each, filter out empty strings
-            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
+            // Split search term by spaces and filter out empty strings
+            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
             
             if (process.env.NODE_ENV === 'development') {
                 console.log('🔍 Multi-Search Active:', { 
@@ -3239,6 +3235,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
                         (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
+                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
+                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
+                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
                     );
                 });
@@ -6484,12 +6484,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const fetchEmployees = async () => {
         setLoadingEmployees(true);
         try {
-            // Try different possible endpoints — fetch ALL users (including inactive) for name resolution
+            // Try different possible endpoints
             const endpoints = [
-                `${apiBaseUrl}/users?user_id=${userId}&include_all=true`,
+                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
                 `${apiBaseUrl}/users?user_id=${userId}&is_active=true`,
-                `${apiBaseUrl}/hrms/employees?user_id=${userId}&employee_status=active`,
-                `${apiBaseUrl}/employees?user_id=${userId}&employee_status=active`
+                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader&employee_status=active`,
+                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader&employee_status=active`
             ];
             
             let data = null;
@@ -6527,9 +6527,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     employees = data.employees;
                 }
                 
-                // Use all returned employees (including inactive) for name resolution
-                // include_all=true is passed to the API so all users are available
-                setEmployees(employees);
+                // Filter for active employees
+                const activeEmployees = employees.filter(emp => 
+                    emp.employee_status === 'active' || 
+                    emp.is_active === true || 
+                    emp.employee_status === undefined
+                );
+                
+                setEmployees(activeEmployees);
                 
             } else {
                 setEmployees([]);
@@ -7374,7 +7379,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             <div className="relative w-[320px]">
                                 <input
                                     type="text"
-                                    placeholder="Search leads (use commas for multiple terms)..."
+                                    placeholder="Search leads (use spaces for multiple terms)..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full py-3 pl-10 pr-10 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-base placeholder-gray-500 transition-all duration-200 ease-in-out"

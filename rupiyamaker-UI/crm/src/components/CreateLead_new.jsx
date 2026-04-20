@@ -2969,7 +2969,7 @@ const handleMobileNumberChange = (e) => {
     loanTypes, campaignNames, dataCodes, companyCategories, assignableUsers,
     loadingLoanTypes, loadingSettings,
     // Mobile check results
-    mobileCheckResult, showReassignmentOption, showLeadDetails, existingLeadData,
+    mobileCheckResult, setMobileCheckResult, showReassignmentOption, showLeadDetails, existingLeadData,
     allDuplicateLeads, setAllDuplicateLeads,
     setShowReassignmentOption, setShowLeadDetails, setExistingLeadData,
     handleReassignmentRequest, handleReassignmentCancel, handleCompanyCategoryChange,
@@ -4579,7 +4579,7 @@ function CreateLead() {
     loanTypes, campaignNames, dataCodes, companyCategories, assignableUsers,
     loadingLoanTypes, loadingSettings,
     // Mobile check results
-    mobileCheckResult, showReassignmentOption, showLeadDetails, existingLeadData,
+    mobileCheckResult, setMobileCheckResult, showReassignmentOption, showLeadDetails, existingLeadData,
     allDuplicateLeads, setAllDuplicateLeads,
     setShowReassignmentOption, setShowLeadDetails, setExistingLeadData,
     handleReassignmentRequest, handleReassignmentCancel, handleCompanyCategoryChange,
@@ -4856,6 +4856,129 @@ function CreateLead() {
       setDupModalHistoryLoading(false);
     }
   };
+
+  // ─── Browser back-button navigation support ───────────────────────────────
+  // ARCHITECTURE: CreateLead owns the ENTIRE history stack — including TRP
+  // (TransferRequestsPage) sub-views. This is necessary because for `popstate`
+  // events on `window`, all listeners fire in REGISTRATION ORDER regardless of
+  // capture flag. CreateLead's listener was registered first (at mount, before
+  // TRP even existed), so it always fires first.
+  //
+  // Solution: TRP has NO popstate listener. Instead it:
+  //   1. Calls trpNavPush/trpNavBack (props) when its sub-views open/close
+  //   2. Keeps trpNavStateRef.current updated with current state + close fns
+  // CreateLead's single handler reads trpNavState to close the innermost overlay
+  // first, then falls through to its own sub-views.
+  //
+  // closedByBackRef: when back-button closes a TRP sub-view, we set this flag
+  // so TRP's transition effect knows NOT to call navBack again (would double-decrement).
+
+  const clNavRef   = useRef({ historyDepth: 0, cleanupCount: 0 });
+  const clNavState = useRef({});
+  clNavState.current = { viewLeadId, showReassignmentOption, showLeadDetails, showLeadForm, activeTab };
+
+  // Shared refs populated by TransferRequestsPage every render
+  const trpNavState     = useRef({ viewFullLead: null, selectedLead: null, closeViewFullLead: null, closeSelectedLead: null });
+
+  // Stable callbacks passed as props to TransferRequestsPage
+  const trpNavPush = useCallback(() => {
+    window.history.pushState(null, '');
+    clNavRef.current.historyDepth++;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trpNavBack = useCallback(() => {
+    const nav = clNavRef.current;
+    if (nav.historyDepth > 0) {
+      nav.historyDepth--;
+      nav.cleanupCount++;
+      window.history.back();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clNavPrev = useRef({
+    viewLeadId: null, showReassignmentOption: false,
+    showLeadDetails: false, showLeadForm: false, activeTab: 'all',
+  });
+
+  useEffect(() => {
+    const p   = clNavPrev.current;
+    const nav = clNavRef.current;
+
+    const justOpened =
+      (!p.viewLeadId             && !!viewLeadId)          ||
+      (!p.showReassignmentOption && showReassignmentOption) ||
+      (!p.showLeadDetails        && showLeadDetails)        ||
+      (!p.showLeadForm           && showLeadForm)           ||
+      (p.activeTab !== 'reassignment' && activeTab === 'reassignment');
+
+    const justClosed =
+      (!!p.viewLeadId             && !viewLeadId)           ||
+      (p.showReassignmentOption   && !showReassignmentOption) ||
+      (p.showLeadDetails          && !showLeadDetails)      ||
+      (p.showLeadForm             && !showLeadForm)         ||
+      (p.activeTab === 'reassignment' && activeTab !== 'reassignment');
+
+    clNavPrev.current = { viewLeadId, showReassignmentOption, showLeadDetails, showLeadForm, activeTab };
+
+    if (justOpened) {
+      window.history.pushState(null, '');
+      nav.historyDepth++;
+    } else if (justClosed && nav.historyDepth > 0) {
+      nav.historyDepth--;
+      nav.cleanupCount++;
+      window.history.back();
+    }
+  }, [viewLeadId, showReassignmentOption, showLeadDetails, showLeadForm, activeTab]);
+
+  // Single stable listener — registered once at CreateLead mount (earliest possible).
+  // Always fires first. Checks TRP sub-views BEFORE CreateLead's own states so
+  // the innermost overlay is always closed first.
+  useEffect(() => {
+    const handlePopState = () => {
+      const nav = clNavRef.current;
+
+      if (nav.cleanupCount > 0) {
+        nav.cleanupCount--;
+        return;
+      }
+
+      if (nav.historyDepth <= 0) return;
+      nav.historyDepth--;
+
+      // ── Innermost first: TRP overlays (active when activeTab='reassignment') ──
+      const trp = trpNavState.current;
+      if (trp.viewFullLead && trp.closeViewFullLead) {
+        trp.closeViewFullLead();
+        return;
+      }
+      if (trp.selectedLead && trp.closeSelectedLead) {
+        trp.closeSelectedLead();
+        return;
+      }
+
+      // ── CreateLead's own sub-views ──
+      const s = clNavState.current;
+      if (s.viewLeadId) {
+        setViewLeadId(null);
+        setViewLeadData(null);
+      } else if (s.showReassignmentOption) {
+        setShowReassignmentOption(false);
+      } else if (s.showLeadDetails) {
+        setShowLeadDetails(false);
+        setExistingLeadData(null);
+        setMobileCheckResult(null);
+        setAllDuplicateLeads([]);
+      } else if (s.showLeadForm) {
+        setShowLeadForm(false);
+      } else if (s.activeTab === 'reassignment') {
+        setActiveTab('all');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Handle section change
   const handleSectionChange = (section) => {
@@ -6083,7 +6206,11 @@ function CreateLead() {
         )}
 
         {activeTab === "reassignment" && (
-          <TransferRequestsPage />
+          <TransferRequestsPage
+            navPush={trpNavPush}
+            navBack={trpNavBack}
+            trpNavStateRef={trpNavState}
+          />
         )}
       </div>
 

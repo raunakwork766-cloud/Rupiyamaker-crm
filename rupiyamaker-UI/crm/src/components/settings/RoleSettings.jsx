@@ -1141,8 +1141,6 @@ const RoleSettings = () => {
                 newPermissions[module].push(action);
                 console.log(`Added ${action} to ${module}`);
             }
-            // view_all and view_team can coexist — no mutual exclusion
-            // view_all = see all records, view_team = see subordinates, peer_visibility = see same-role peers
         } else {
             // When unchecking, simply remove the permission
             newPermissions[module] = newPermissions[module].filter(a => a !== action);
