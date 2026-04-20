@@ -353,6 +353,7 @@ const AllEmployees = () => {
     const canUserEdit = (recordOwnerId) => canEdit('employees', recordOwnerId);
     const canUserDelete = (recordOwnerId) => canDelete('employees', recordOwnerId);
     const canResetPassword = () => hasPermission(getUserPermissions(), 'employees', 'reset_password');
+    const canAddEmployee = () => hasPermission(getUserPermissions(), 'employees', 'add_employee');
 
     // Debug permissions
     const debugPerms = {
@@ -1573,7 +1574,7 @@ const AllEmployees = () => {
                             alignItems: 'center',
                             marginBottom: '1rem'
                         }}>
-                            {canEditEmployees && (
+                            {canAddEmployee() && (
                                 <Button
                                     style={{
                                         background: '#58a6ff',
