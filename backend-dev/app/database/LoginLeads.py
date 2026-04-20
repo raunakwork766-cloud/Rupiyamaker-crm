@@ -169,6 +169,15 @@ class LoginLeadsDB:
         update_data['updated_at'] = get_ist_now()
         update_data['last_updated_by'] = user_id
         
+        # CRITICAL GUARD: Never allow created_at or login_created_at to be overwritten
+        for protected_field in ('created_at', 'login_created_at', 'login_date'):
+            if protected_field in update_data:
+                original_value = current_lead.get(protected_field)
+                if original_value:
+                    update_data[protected_field] = original_value
+                else:
+                    del update_data[protected_field]
+        
         # CRITICAL FIX: Use MongoDB dot notation for nested fields (process_data, dynamic_fields)
         # This preserves other fields when updating only specific nested fields
         mongodb_update = {}
@@ -274,11 +283,8 @@ class LoginLeadsDB:
         return await self.collection.count_documents(query)
     
     async def get_login_lead_by_original_id(self, original_lead_id: str) -> Optional[dict]:
-        """Get the LATEST login lead by its original lead ID (sorted by creation, newest first)"""
-        return await self.collection.find_one(
-            {"original_lead_id": original_lead_id},
-            sort=[("_id", -1)]  # Latest first (_id encodes creation time in MongoDB)
-        )
+        """Get a login lead by its original lead ID"""
+        return await self.collection.find_one({"original_lead_id": original_lead_id})
     
     async def add_note(self, note_data: dict) -> str:
         """Add a note to a login lead"""
@@ -392,3 +398,32 @@ class LoginLeadsDB:
         cursor = self.documents_collection.find({"login_lead_id": login_lead_id})
         documents = await cursor.to_list(None)
         return documents
+
+    async def get_document(self, document_id: str) -> Optional[dict]:
+        """Get a single document by ID"""
+        if not ObjectId.is_valid(document_id):
+            return None
+        return await self.documents_collection.find_one({"_id": ObjectId(document_id)})
+
+    async def delete_document(self, document_id: str, user_id: str) -> bool:
+        """Delete a document and its physical file"""
+        from pathlib import Path
+        if not ObjectId.is_valid(document_id):
+            return False
+
+        document = await self.documents_collection.find_one({"_id": ObjectId(document_id)})
+        if not document:
+            return False
+
+        # Delete physical file if it exists
+        abs_path = document.get("absolute_file_path") or document.get("file_path")
+        if abs_path:
+            try:
+                p = Path(abs_path) if Path(abs_path).is_absolute() else Path.cwd() / abs_path
+                if p.exists():
+                    p.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete file {abs_path}: {e}")
+
+        result = await self.documents_collection.delete_one({"_id": ObjectId(document_id)})
+        return result.deleted_count > 0

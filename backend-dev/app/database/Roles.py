@@ -94,27 +94,26 @@ class RolesDB:
     async def get_permissions_config(self) -> List[Dict]:
         """
         Return all available pages/modules and possible actions.
-        Updated to use simplified 3-type permission system: own, junior, all
+        Permission types: show (sidebar), view_team (subordinate data), view_all (all data)
         """
         return [
             {"page": "*", "actions": ["*"]},  # Super Admin - All pages and actions
-            {"page": "warnings", "actions": ["own", "junior", "all"]},
-            {"page": "users", "actions": ["own", "junior", "all"]},
-            {"page": "attendance", "actions": ["own", "junior", "all"]},
-            {"page": "leaves", "actions": ["own", "junior", "all"]},
-            {"page": "leads", "actions": ["own", "junior", "all", "download_obligation"]},
-            {"page": "tickets", "actions": ["own", "junior", "all"]},
-            {"page": "interviews", "actions": ["own", "junior", "all"]},
-            {"page": "reports", "actions": ["own", "junior", "all"]},
-            {"page": "hrms", "actions": ["own", "junior", "all"]},
-            {"page": "tasks", "actions": ["own", "junior", "all"]},
+            {"page": "warnings", "actions": ["show", "view_team", "view_all"]},
+            {"page": "users", "actions": ["show", "view_team", "view_all"]},
+            {"page": "attendance", "actions": ["show", "view_team", "view_all"]},
+            {"page": "leaves", "actions": ["show", "view_team", "view_all"]},
+            {"page": "leads", "actions": ["show", "view_team", "view_all", "download_obligation"]},
+            {"page": "tickets", "actions": ["show", "view_team", "view_all"]},
+            {"page": "interviews", "actions": ["show", "view_team", "view_all"]},
+            {"page": "reports", "actions": ["show", "view_team", "view_all"]},
+            {"page": "hrms", "actions": ["show", "view_team", "view_all"]},
+            {"page": "tasks", "actions": ["show", "view_team", "view_all"]},
             {"page": "dialer_report", "actions": ["show"]},
-            {"page": "calculators", "actions": ["show", "use"]},  # Special case - no hierarchy needed
-            {"page": "dialer_report", "actions": ["show"]},
-            {"page": "settings", "actions": ["show", "create", "edit", "delete"]},  # Admin-only
-            {"page": "departments", "actions": ["show", "add", "edit", "delete"]},  # Admin-only
-            {"page": "teams", "actions": ["show", "add", "edit", "delete"]},  # Admin-only
-            {"page": "roles", "actions": ["show", "add", "edit", "delete"]},  # Admin-only
+            {"page": "calculators", "actions": ["show", "use"]},
+            {"page": "settings", "actions": ["show", "create", "edit", "delete"]},
+            {"page": "departments", "actions": ["show", "add", "edit", "delete"]},
+            {"page": "teams", "actions": ["show", "add", "edit", "delete"]},
+            {"page": "roles", "actions": ["show", "add", "edit", "delete"]},
         ]
 
     async def check_permission(self, role_id: str, page: str, action: str) -> bool:

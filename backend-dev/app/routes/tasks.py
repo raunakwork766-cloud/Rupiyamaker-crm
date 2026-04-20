@@ -847,15 +847,16 @@ async def get_users_for_assignment(
         for perm in user_permissions
     )
     
-    # Get all users — ONLY active employees (inactive employees should not appear in assignment dropdowns)
-    all_users = await users_db.list_users()
+    # Get ONLY active employees — inactive employees must not appear in assignment dropdowns
+    all_users = await users_db.list_users({
+        "employee_status": {"$ne": "inactive"},
+        "is_active": {"$ne": False}
+    })
     available_users = []
     
     for user_obj in all_users:
-        # ✅ FILTER: Skip inactive employees — they should not appear in assignment dropdowns
-        employee_status = user_obj.get("employee_status", "active")
-        is_active = user_obj.get("is_active", True)
-        if employee_status == "inactive" or is_active == False:
+        # Double-check: skip any that slipped through (e.g. missing field edge cases)
+        if not user_obj.get("is_active", True) or user_obj.get("employee_status") == "inactive":
             continue
         
         # Get user's role
@@ -1038,11 +1039,9 @@ async def search_leads_for_task(
         
         base_query = {}
         
-        # Check if user has 'all' level access to leads (supports both old 'all' and new 'view_all')
-        has_all = await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False) or \
-                  await PermissionManager.check_permission(user_id, "leads", "view_all", users_db, roles_db, raise_error=False)
-        has_junior = await PermissionManager.check_permission(user_id, "leads", "junior", users_db, roles_db, raise_error=False) or \
-                     await PermissionManager.check_permission(user_id, "leads", "view_team", users_db, roles_db, raise_error=False)
+        # Check if user has 'view_all' level access to leads
+        has_all = await PermissionManager.check_permission(user_id, "leads", "view_all", users_db, roles_db, raise_error=False)
+        has_junior = await PermissionManager.check_permission(user_id, "leads", "view_team", users_db, roles_db, raise_error=False)
         
         if has_all:
             base_query = {}  # No filter - see all leads
@@ -1763,6 +1762,7 @@ async def update_task(
         # Remove remark from update_data — it's only for history, not stored on the task
         update_data.pop("remark", None)
         old_status = task.get("status")
+        user_object_id = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
         if task_update.status == TaskStatus.COMPLETED and task.get("status") != TaskStatus.COMPLETED:
             update_data["completed_at"] = get_ist_now()
             update_data["completed_by"] = user_object_id
@@ -2352,13 +2352,13 @@ async def get_filter_options(
             for perm in user_permissions
         )
         
-        # Check if user has junior permission
+        # Check if user has team-visibility permission
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") in ("junior", "view_team") or
+              perm.get("actions") == "view_team" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
+               ("*" in perm.get("actions") or "view_team" in perm.get("actions")))))
             for perm in user_permissions
         )
         
@@ -2472,12 +2472,13 @@ async def get_filtered_tasks(
             for perm in user_permissions
         )
         
+        # Check for view_team permission
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") in ("junior", "view_team") or
+              perm.get("actions") == "view_team" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions", []))))))
+               ("*" in perm.get("actions") or "view_team" in perm.get("actions")))))
             for perm in user_permissions
         )
         

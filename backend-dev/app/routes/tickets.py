@@ -251,9 +251,9 @@ async def get_user_ticket_permissions(user_id: str) -> TicketPermissions:
                         has_show = True
                     if "own" in actions:
                         has_own = True
-                    if "junior" in actions or "view_team" in actions:
+                    if "view_team" in actions:
                         has_junior = True
-                    if "all" in actions:
+                    if "view_all" in actions or "*" in actions:
                         has_all = True
                     if "delete" in actions:
                         has_delete = True
@@ -365,10 +365,12 @@ async def list_tickets(
             current_user_id, users_db, roles_db
         )
         
-        # DEBUG: Log permissions for troubleshooting
-        print(f"🔍 Backend - User {current_user_id} permissions:", permissions)
+        # Get subordinate user IDs for view_team filtering
+        subordinate_user_ids = await PermissionManager.get_subordinate_users(
+            current_user_id, users_db, roles_db
+        )
         
-        # Build database-level filters (OPTIMIZATION: moved from Python to MongoDB)
+        # Build database-level filters
         additional_filters = {}
         
         if ticket_status:
@@ -390,7 +392,7 @@ async def list_tickets(
                 {"description": search_pattern}
             ]
         
-        # Field projection for list view (OPTIMIZATION: reduce data transfer)
+        # Field projection for list view
         list_projection = {
             "_id": 1,
             "subject": 1,
@@ -403,20 +405,20 @@ async def list_tickets(
             "tags": 1,
             "created_at": 1,
             "updated_at": 1
-            # Exclude: comments, attachments, history (heavy fields)
         }
         
         # Calculate skip for pagination
         skip = (page - 1) * per_page
         
-        # Get tickets with all filters at database level (OPTIMIZATION)
+        # Get tickets with all filters at database level
         tickets, total = await tickets_db.get_tickets_for_user(
             current_user_id, 
             permissions,
             additional_filters=additional_filters,
             skip=skip,
             limit=per_page,
-            projection=list_projection
+            projection=list_projection,
+            subordinate_user_ids=subordinate_user_ids
         )
         
         # Calculate total pages
@@ -1145,7 +1147,7 @@ async def delete_ticket(
             current_user_id, "tickets", "delete", users_db, roles_db, raise_error=False
         )
         
-        # Also check if user has junior (edit) permission as a fallback
+        # Also check if user has view_team permission as a fallback
         has_junior_permission = await PermissionManager.check_permission(
             current_user_id, "tickets", "view_team", users_db, roles_db, raise_error=False
         )

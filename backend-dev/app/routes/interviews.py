@@ -87,15 +87,14 @@ async def get_interview_visibility_filter(
         if is_interviews_admin:
             return {}  # Admin can see all interviews
         
-        # Check for all permission (case-insensitive)
-        # Accepts both 'all' (legacy) and 'view_all' (RoleSettings action name)
+        # Check for view_all permission
         has_view_all = any(
             (perm.get("page", "").lower() == "interview" and 
              (perm.get("actions") == "*" or 
-              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ["all", "view_all"]) or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "view_all") or
               (isinstance(perm.get("actions"), list) and 
                ("*" in perm.get("actions") or 
-                any(action.lower() in ["all", "view_all"] if isinstance(action, str) else False 
+                any(action.lower() == "view_all" if isinstance(action, str) else False 
                     for action in perm.get("actions", []))))))
             for perm in user_permissions
         )
@@ -110,15 +109,14 @@ async def get_interview_visibility_filter(
         filter_conditions.append({"user_id": user_id})
         filter_conditions.append({"created_by": user_id})
         
-        # Check for junior/team permission (case-insensitive)
-        # Accepts both 'junior' (legacy) and 'view_team' (RoleSettings action name)
+        # Check for view_team permission
         has_view_junior = any(
             (perm.get("page", "").lower() == "interview" and 
              (perm.get("actions") == "*" or 
-              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() in ["junior", "view_team"]) or
+              (isinstance(perm.get("actions"), str) and perm.get("actions").lower() == "view_team") or
               (isinstance(perm.get("actions"), list) and 
                ("*" in perm.get("actions") or 
-                any(action.lower() in ["junior", "view_team"] if isinstance(action, str) else False 
+                any(action.lower() == "view_team" if isinstance(action, str) else False 
                     for action in perm.get("actions", []))))))
             for perm in user_permissions
         )

@@ -12,8 +12,8 @@ from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
 from app.database.Designations import DesignationService
-from app.database import get_database_instances
 from app.database.Settings import SettingsDB
+from app.database import get_database_instances
 from app.schemas.user_schemas import (
     UserBase, UserCreate, UserUpdate, UserInDB, UserLogin,
     EmployeeCreate, EmployeeUpdate, EmployeeInDB, ComprehensiveEmployeeInDB,
@@ -106,6 +106,7 @@ async def list_users(
     department_id: Optional[str] = None,
     team_id: Optional[str] = None,
     is_active: Optional[bool] = None,
+    include_all: Optional[bool] = Query(None, description="If true, return ALL employees including inactive (for employee management page)"),
     users_db: UsersDB = Depends(get_users_db)
 ):
     """⚡ OPTIMIZED: List users with hierarchical permission filtering and caching"""
@@ -119,7 +120,7 @@ async def list_users(
         print(f"GET /users - Listing users (requested by user: {user_id})")
         
         # ⚡ STEP 1: Generate cache key
-        filters_str = f"{user_id}|{role_id}|{department_id}|{team_id}|{is_active}"
+        filters_str = f"{user_id}|{role_id}|{department_id}|{team_id}|{is_active}|{include_all}"
         cache_key = f"users_list:{hashlib.md5(filters_str.encode()).hexdigest()}"
         
         # ⚡ STEP 2: Try cache first (10-second TTL for user lists)
@@ -129,9 +130,12 @@ async def list_users(
             print(f"⚡ Cache HIT - Users returned in {response_time:.2f}ms")
             return cached_result
         
-        # If no user_id provided, return all users (for backward compatibility)
+        # If no user_id provided, return active-only users (inactive employees must never appear in dropdowns)
         if not user_id:
-            filter_dict = {}
+            filter_dict = {
+                "employee_status": {"$ne": "inactive"},
+                "is_active": {"$ne": False}
+            }
             if role_id:
                 filter_dict["role_id"] = role_id
             if department_id:
@@ -140,6 +144,9 @@ async def list_users(
                 filter_dict["team_id"] = team_id
             if is_active is not None:
                 filter_dict["is_active"] = is_active
+                # If explicitly requesting inactive users, remove the status exclusion filter
+                if is_active is False:
+                    filter_dict.pop("employee_status", None)
             
             users = await users_db.list_users(filter_dict)
             converted_users = [convert_object_id(user) for user in users]
@@ -151,8 +158,11 @@ async def list_users(
         permissions = await get_hierarchical_permissions(user_id, "employees")
         permission_level = permissions["permission_level"]
         
-        # Build filter based on permissions
+        # Build filter based on permissions — exclude inactive employees by default
         filter_dict = {}
+        if not include_all:
+            filter_dict["employee_status"] = {"$ne": "inactive"}
+            filter_dict["is_active"] = {"$ne": False}
         if role_id:
             filter_dict["role_id"] = role_id
         if department_id:
@@ -161,6 +171,9 @@ async def list_users(
             filter_dict["team_id"] = team_id
         if is_active is not None:
             filter_dict["is_active"] = is_active
+            # If explicitly requesting inactive users, remove the status exclusion filter
+            if is_active is False:
+                filter_dict.pop("employee_status", None)
         
         # Apply hierarchical filtering based on permission level
         if permission_level == "all":
@@ -435,15 +448,14 @@ async def login(
     if not user_lookup:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username/email or password"
+            detail="USERNAME_NOT_FOUND"
         )
 
     # Step 2: Check account status BEFORE verifying password (gives specific 403 errors)
-    # Previously these checks were dead code because authenticate_user returned None first
     if not user_lookup.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is inactive. Please contact the administrator."
+            detail="ACCOUNT_INACTIVE"
         )
 
     # 🔒 CRITICAL: Check employee status for HRMS employees
@@ -452,14 +464,14 @@ async def login(
         if employee_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account is inactive. Please contact the administrator."
+                detail="ACCOUNT_INACTIVE"
             )
 
     # Check if login is enabled for this user (default is True if not set)
     if not user_lookup.get("login_enabled", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Login access is disabled for your account. Please contact the administrator."
+            detail="LOGIN_DISABLED"
         )
 
     # Step 3: Now verify the password
@@ -471,7 +483,7 @@ async def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username/email or password"
+            detail="WRONG_PASSWORD"
         )
     
     # 🔒 CRITICAL: Check if user's session was invalidated (for offline logout)
@@ -485,6 +497,7 @@ async def login(
     # NOTE: last_login is only updated AFTER full auth (including OTP) below.
     
     # Check if OTP is required for this user based on role routing config
+    # If the user's role has OTP approval routing configured, OTP is required
     otp_required = False
     try:
         role_id = str(user.get("role_id", ""))
@@ -492,10 +505,11 @@ async def login(
             otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
             otp_required = otp_route is not None
         else:
+            # Fallback to per-user flag if settings_db not available
             otp_required = user.get("otp_required", False)
     except Exception:
         otp_required = user.get("otp_required", False)
-
+    
     if otp_required:
         if not login_data.otp_code:
             # User needs to provide OTP - include user ID for frontend
@@ -562,10 +576,40 @@ async def login(
     # Convert ObjectId to string
     user_dict = convert_object_id(user)
     
+    # 🔒 SECURITY + PERFORMANCE: Only send necessary fields in login response
+    # This prevents localStorage quota exceeded errors on the frontend
+    login_user_fields = [
+        '_id', 'first_name', 'last_name', 'username', 'email', 'phone',
+        'role_id', 'department_id', 'team_id', 'employee_id',
+        'is_active', 'login_enabled', 'is_employee', 'employee_status',
+        'otp_required', 'profile_photo', 'designation',
+        'crm_access', 'onboarding_status'
+    ]
+    user_dict = {k: user_dict.get(k) for k in login_user_fields if k in user_dict}
+    
+    # Send only essential role info (name + id), permissions sent separately
+    role_info = None
+    if role:
+        role_converted = convert_object_id(role)
+        role_info = {
+            '_id': role_converted.get('_id'),
+            'name': role_converted.get('name'),
+            'reporting_id': role_converted.get('reporting_id')
+        }
+    
+    # Send only essential department info
+    dept_info = None
+    if department:
+        dept_converted = convert_object_id(department)
+        dept_info = {
+            '_id': dept_converted.get('_id'),
+            'name': dept_converted.get('name')
+        }
+    
     return {
         "user": user_dict,
-        "role": convert_object_id(role) if role else None,
-        "department": convert_object_id(department) if department else None,
+        "role": role_info,
+        "department": dept_info,
         "designation": designation if designation else None,
         "permissions": role_permissions,
         "otp_verified": otp_required,  # Indicates if OTP was required and verified
@@ -1385,6 +1429,48 @@ async def get_user_permissions(
             detail="Failed to get user permissions"
         )
 
+@router.get("/{user_id}/subordinates")
+async def get_subordinate_user_ids(
+    user_id: str,
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Return IDs of all users who are subordinate to the given user (for Team filter)"""
+    from app.utils.permissions import PermissionManager
+    try:
+        # Strict chain: reporting_manager/reporting_id graph traversal
+        discovered = set()
+        frontier = [str(user_id)]
+
+        while frontier:
+            manager_id = frontier.pop(0)
+            manager_keys = [manager_id]
+            if ObjectId.is_valid(manager_id):
+                manager_keys.append(ObjectId(manager_id))
+
+            direct_reports = await users_db.collection.find({
+                "$or": [
+                    {"reporting_manager_id": {"$in": manager_keys}},
+                    {"reporting_manager": {"$in": manager_keys}},
+                    {"reporting_id": {"$in": manager_keys}},
+                ]
+            }, {"_id": 1}).to_list(None)
+
+            for report in direct_reports:
+                report_id = str(report.get("_id"))
+                if report_id and report_id != str(user_id) and report_id not in discovered:
+                    discovered.add(report_id)
+                    frontier.append(report_id)
+
+        if discovered:
+            return {"subordinate_ids": list(discovered)}
+
+        # Fallback for older datasets where reporting links are missing.
+        subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+        return {"subordinate_ids": subordinate_ids}
+    except Exception as e:
+        return {"subordinate_ids": []}
+
 @router.get("/{user_id}/password", response_model=Dict[str, str])
 async def get_user_password(
     user_id: ObjectIdStr,
@@ -1796,48 +1882,6 @@ async def upload_user_profile_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload profile photo: {str(e)}"
         )
-
-@router.get("/{user_id}/subordinates")
-async def get_subordinate_user_ids(
-    user_id: str,
-    users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
-):
-    """Return IDs of all users who are subordinate to the given user (for Team filter)."""
-    from app.utils.permissions import PermissionManager
-    try:
-        # Strict chain: reporting_manager/reporting_id graph traversal
-        discovered = set()
-        frontier = [str(user_id)]
-
-        while frontier:
-            manager_id = frontier.pop(0)
-            manager_keys = [manager_id]
-            if ObjectId.is_valid(manager_id):
-                manager_keys.append(ObjectId(manager_id))
-
-            direct_reports = await users_db.collection.find({
-                "$or": [
-                    {"reporting_manager_id": {"$in": manager_keys}},
-                    {"reporting_manager": {"$in": manager_keys}},
-                    {"reporting_id": {"$in": manager_keys}},
-                ]
-            }, {"_id": 1}).to_list(None)
-
-            for report in direct_reports:
-                report_id = str(report.get("_id"))
-                if report_id and report_id != str(user_id) and report_id not in discovered:
-                    discovered.add(report_id)
-                    frontier.append(report_id)
-
-        if discovered:
-            return {"subordinate_ids": list(discovered)}
-
-        # Fallback for older datasets where reporting links are missing.
-        subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
-        return {"subordinate_ids": subordinate_ids}
-    except Exception:
-        return {"subordinate_ids": []}
 
 @router.post("/bulk-update-status")
 async def bulk_update_user_status(

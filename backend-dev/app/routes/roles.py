@@ -299,8 +299,8 @@ async def update_role(
     role_id: ObjectIdStr, 
     role_update: RoleUpdate,
     roles_db: RolesDB = Depends(get_roles_db),
-    users_db: UsersDB = Depends(get_users_db),
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    users_db: UsersDB = Depends(get_users_db)
 ):
     """Update an existing role"""
     # Check if role exists
@@ -368,12 +368,15 @@ async def update_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Failed to update role"
         )
-
-    # If permissions changed, force logout all users with this role
+    
+    # If permissions were updated, invalidate sessions for all users with this role
     if "permissions" in update_data:
-        affected = await users_db.invalidate_sessions_by_role(role_id)
-        print(f"🔒 Role {role_id} permissions updated — force-logged out {affected} user(s)")
-
+        try:
+            await users_db.invalidate_sessions_by_role(role_id)
+        except Exception as e:
+            print(f"WARNING: Failed to invalidate sessions for role {role_id}: {e}")
+            # Don't fail the update if session invalidation fails
+    
     return {"message": "Role updated successfully"}
 
 @router.delete("/{role_id}", response_model=Dict[str, str])

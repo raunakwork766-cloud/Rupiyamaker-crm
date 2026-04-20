@@ -72,7 +72,7 @@ const RoleSettings = () => {
         // Leads CRM - Section-wise permissions
         'Leads CRM': {
             'Create LEAD': ['show', 'duplicate_lead'],
-            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
+            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'bank_name_permission', 'delete'],
         },
 
         'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
@@ -98,7 +98,7 @@ const RoleSettings = () => {
             'feeds': { show:'Show in Sidebar', post:'Create Feed', delete:'Delete Feed' },
             'dashboard': { show:'Show in Sidebar' },
             'Leads CRM|Create LEAD': { show:'Show in Sidebar', duplicate_lead:'Duplicate Lead' },
-            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', delete:'Delete' },
+            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', bank_name_permission:'Bank Name Permission', delete:'Delete' },
             'login': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', channel:'View Channel Name', edit:'Edit Data', delete:'Delete' },
             'tasks': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
             'tickets': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
@@ -178,6 +178,7 @@ const RoleSettings = () => {
         'status_change': '🔄 Status Change - Can update record status',
         'rollback_login': '↩️ Roll Back Login - Can rollback login actions',
         'download_obligation': '📥 Download Obligation - Can download obligation documents',
+        'bank_name_permission': '🏦 Bank Name Permission - Can view Bank Logins panel inside Transfer Lead review popup',
         'channel': '📺 View Channel Name - Can see channel information',
         'warning_setting': '⚙️ Warning Setting - Can manage warning configurations',
         'interview_setting': '⚙️ Interview Setting - Can manage interview configurations',

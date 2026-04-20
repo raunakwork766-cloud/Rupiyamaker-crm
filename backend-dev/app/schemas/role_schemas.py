@@ -14,6 +14,7 @@ class RoleBase(BaseModel):
     reporting_ids: List[str] = []  # Changed from reporting_id to reporting_ids (array)
     is_active: bool = True
     permissions: List[PermissionItem] = []
+    peer_visibility: bool = False  # Allow same-role users to see each other's data
 
 class RoleCreate(RoleBase):
     pass
@@ -27,6 +28,7 @@ class RoleUpdate(BaseModel):
     is_active: Optional[bool] = None
     permissions: Optional[List[PermissionItem]] = None
     locked_roles: Optional[List[str]] = None  # Role IDs that are locked/hidden for users with this role
+    peer_visibility: Optional[bool] = None  # Allow same-role users to see each other's data
 
 class RoleInDB(RoleBase):
     id: str = Field(alias="_id")
@@ -50,6 +52,7 @@ class RoleResponse(BaseModel):
     is_active: bool = True
     permissions: List[PermissionItem] = []
     locked_roles: List[str] = []  # Role IDs that are locked/hidden for users with this role
+    peer_visibility: bool = False  # Allow same-role users to see each other's data
     created_at: datetime
     updated_at: datetime
 

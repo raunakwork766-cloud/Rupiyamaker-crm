@@ -815,6 +815,41 @@ export const canApproveLeadReassignment = (userPermissions) => {
 };
 
 /**
+ * Check if user can view the Bank Logins panel inside the
+ * Transfer Lead review popup. Controlled by the
+ * `bank_name_permission` action under the `leads.pl_odd_leads` page.
+ *
+ * @param {Object} userPermissions - The user's permissions object
+ * @returns {boolean}
+ */
+export const canViewBankNameInTransfer = (userPermissions) => {
+  if (!userPermissions) return false;
+
+  // Super admin can always see
+  if (isSuperAdmin(userPermissions)) return true;
+
+  // Wildcard leads access
+  if (userPermissions?.Leads === "*" || userPermissions?.leads === "*") return true;
+
+  // Object-form cache: { 'leads.pl_odd_leads': { bank_name_permission: true, ... } }
+  const objCheck = (key) => {
+    const node = userPermissions?.[key];
+    if (!node) return false;
+    if (node === '*') return true;
+    if (Array.isArray(node)) return node.includes('bank_name_permission');
+    if (typeof node === 'object') return node.bank_name_permission === true;
+    return false;
+  };
+  if (objCheck('leads.pl_odd_leads') || objCheck('Leads.pl_odd_leads')) return true;
+
+  // Generic permission lookup against array-form permissions
+  return (
+    hasPermission(userPermissions, 'leads.pl_odd_leads', 'bank_name_permission') ||
+    hasPermission(userPermissions, 'Leads.pl_odd_leads', 'bank_name_permission')
+  );
+};
+
+/**
  * Check if user can download obligation data
  * @param {Object} userPermissions - The user's permissions object
  * @returns {boolean} - Whether user can download obligation
