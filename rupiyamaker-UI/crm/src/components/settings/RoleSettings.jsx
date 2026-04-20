@@ -71,8 +71,8 @@ const RoleSettings = () => {
 
         // Leads CRM - Section-wise permissions
         'Leads CRM': {
-            'Create LEAD': ['show', 'duplicate_lead'],
-            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'bank_name_permission', 'delete'],
+            'Create LEAD': ['show', 'duplicate_lead', 'bank_name_permission'],
+            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
         },
 
         'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
@@ -97,8 +97,8 @@ const RoleSettings = () => {
         const map = {
             'feeds': { show:'Show in Sidebar', post:'Create Feed', delete:'Delete Feed' },
             'dashboard': { show:'Show in Sidebar' },
-            'Leads CRM|Create LEAD': { show:'Show in Sidebar', duplicate_lead:'Duplicate Lead' },
-            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', bank_name_permission:'Bank Name Permission', delete:'Delete' },
+            'Leads CRM|Create LEAD': { show:'Show in Sidebar', duplicate_lead:'Duplicate Lead', bank_name_permission:'Bank Name Permission' },
+            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', delete:'Delete' },
             'login': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', channel:'View Channel Name', edit:'Edit Data', delete:'Delete' },
             'tasks': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
             'tickets': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
