@@ -506,6 +506,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     view_others: false, // Can see "Others" tab (junior permission)
     view_all: false     // Can see "All" tab (all permission)
   });
+  const [subordinateUserIds, setSubordinateUserIds] = useState([]);
 
   // Memoized user management for better performance
   const getCurrentUserId = useCallback(() => {
@@ -900,6 +901,25 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     }
   }, [permissions, assignmentFilter]);
 
+  // Load strict subordinate IDs for Team filter (reporting-chain based)
+  useEffect(() => {
+    const loadSubordinates = async () => {
+      if (!currentUserId) return;
+      try {
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/${currentUserId}/subordinates`);
+        const data = await response.json();
+        const ids = Array.isArray(data?.subordinate_ids)
+          ? data.subordinate_ids.map((id) => String(id))
+          : [];
+        setSubordinateUserIds(ids);
+      } catch (error) {
+        console.warn('Failed to load subordinate IDs for Team filter:', error);
+        setSubordinateUserIds([]);
+      }
+    };
+    loadSubordinates();
+  }, [currentUserId]);
+
   // Optimized data fetching effect
   useEffect(() => {
     if (isInitialized && currentUserId) {
@@ -965,20 +985,29 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     // First, apply view filter (me/others/all) to get the base set of tasks
     let baseTasks = tasks;
     if (assignmentFilter !== 'all') {
-      const currentUserLower = currentUser.toLowerCase().trim();
+      const currentUserIdStr = String(currentUserId || '');
+      const subordinateIdSet = new Set(subordinateUserIds.map((id) => String(id)));
       
       baseTasks = tasks.filter((task) => {
+        const createdById = String(task.created_by || '');
+        const assignedToIds = Array.isArray(task.assigned_to)
+          ? task.assigned_to.map((id) => String(id))
+          : [];
+
         const assignedToColumn = (task.assign || '').toLowerCase();
         const createdByColumn = (task.createdBy || '').toLowerCase().trim();
-        const isMyTask = assignedToColumn.includes(currentUserLower) || createdByColumn === currentUserLower;
+        const isMyTask = createdById === currentUserIdStr || assignedToIds.includes(currentUserIdStr);
+        const isTeamTask = subordinateIdSet.has(createdById) || assignedToIds.some((id) => subordinateIdSet.has(id));
         
         if (assignmentFilter === 'me') return isMyTask;
-        if (assignmentFilter === 'others') return !isMyTask;
+        if (assignmentFilter === 'others') return isTeamTask;
         // Legacy support
         if (assignmentFilter === 'assigned_to_me') {
+          const currentUserLower = currentUser.toLowerCase().trim();
           if (!assignedToColumn.trim() || assignedToColumn === 'unassigned') return false;
           return assignedToColumn.includes(currentUserLower);
         } else if (assignmentFilter === 'assigned_by_me') {
+          const currentUserLower = currentUser.toLowerCase().trim();
           return createdByColumn === currentUserLower && 
                  assignedToColumn !== 'unassigned' && 
                  assignedToColumn.trim() !== '';
@@ -1090,7 +1119,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     });
 
     return { realTimeCounts, safeCounts, filteredTasks };
-  }, [tasks, taskStats, search, activeFilter, assignmentFilter, taskTypeFilter, currentUser]);
+  }, [tasks, taskStats, search, activeFilter, assignmentFilter, taskTypeFilter, currentUser, currentUserId, subordinateUserIds]);
 
   // Memoized filters
   const FILTERS = useMemo(() => [
@@ -2253,7 +2282,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             <div className="task-view-toggle-group">
               {[
                 { key: 'me', label: '👤 My', visible: true },
-                { key: 'others', label: '👥 Others', visible: permissions.view_others || isSuperAdmin(getUserPermissions()) },
+                { key: 'others', label: '👥 Team', visible: permissions.view_others || isSuperAdmin(getUserPermissions()) },
                 { key: 'all', label: '📋 All', visible: permissions.view_all || isSuperAdmin(getUserPermissions()) }
               ].filter(v => v.visible).map(v => (
                 <button

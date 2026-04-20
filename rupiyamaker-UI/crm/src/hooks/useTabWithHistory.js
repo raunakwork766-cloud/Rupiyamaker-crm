@@ -1,116 +1,123 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigationType } from 'react-router-dom';
 
 /**
  * Custom hook that syncs tab state with URL search params for browser back/forward support.
- * 
- * @param {string} paramName - URL search param name (e.g., 'tab', 'view', 'filter')
- * @param {string|number} defaultValue - Default tab value when no URL param exists
- * @param {Object} options
- * @param {string} options.localStorageKey - Optional localStorage key for persistence
- * @param {boolean} options.isNumeric - If true, parse/store as number (default: false)
- * @param {boolean} options.replace - If true, use replaceState instead of pushState for initial load (default: true)
- * @returns {[string|number, function]} - [currentTab, setTab]
+ *
+ * Navigation context awareness (KEY BEHAVIOR):
+ *  - PUSH / REPLACE  (sidebar click, link navigation) →
+ *      ALWAYS shows defaultValue — never restores stale saved tab
+ *  - POP             (browser back / forward)         →
+ *      restores from URL param (kept accurate by replaceState)
+ *
+ * This ensures: clicking a sidebar item ALWAYS opens the module in its default
+ * state, while browser back/forward properly restores where the user was.
+ *
+ * @param {string}       paramName    - URL search param name (e.g. 'tab', 'status', 'filter')
+ * @param {string|number} defaultValue - Value shown on fresh (sidebar) navigation
+ * @param {Object}       options
+ * @param {string}       options.localStorageKey - Key for POP fallback when URL param absent
+ * @param {boolean}      options.isNumeric       - Parse/store value as number (default: false)
+ * @returns {[string|number, function]}           - [currentTab, setTab]
  */
 export default function useTabWithHistory(paramName, defaultValue, options = {}) {
-  const { localStorageKey, isNumeric = false, replace = true } = options;
+  const { localStorageKey, isNumeric = false } = options;
   const isInitialMount = useRef(true);
 
-  // Parse value from string
+  // 'PUSH' or 'REPLACE' = fresh sidebar / link navigation → always show default
+  // 'POP'               = browser back / forward          → restore saved state
+  const navigationType = useNavigationType();
+
+  // Parse value helper
   const parseValue = useCallback((val) => {
     if (val === null || val === undefined) return null;
     if (isNumeric) {
-      const parsed = parseInt(val, 10);
-      return isNaN(parsed) ? null : parsed;
+      const p = parseInt(val, 10);
+      return isNaN(p) ? null : p;
     }
     return val;
   }, [isNumeric]);
 
-  // Serialize value to string
-  const serializeValue = useCallback((val) => {
-    return String(val);
-  }, []);
-
-  // Get initial value: URL param > localStorage > default
-  const getInitialValue = useCallback(() => {
+  // Initial value — computed ONCE at mount.
+  // Captures `navigationType` via closure (called before useState, so it's in scope).
+  const [value, setValue] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const urlVal = parseValue(urlParams.get(paramName));
-    if (urlVal !== null) return urlVal;
+    const rawUrlVal = urlParams.get(paramName);
 
-    if (localStorageKey) {
+    // 1. URL param always wins (explicit URL, bookmark, or replaceState-preserved tab)
+    if (rawUrlVal !== null) {
+      if (isNumeric) {
+        const p = parseInt(rawUrlVal, 10);
+        return isNaN(p) ? defaultValue : p;
+      }
+      return rawUrlVal;
+    }
+
+    // 2. No URL param — consult navigation context
+    //    POP (browser back/forward): restore from localStorage as fallback
+    //    PUSH/REPLACE (sidebar click, fresh nav): ALWAYS use default — no stale state
+    if (navigationType === 'POP' && localStorageKey) {
       const stored = localStorage.getItem(localStorageKey);
       if (stored !== null) {
-        const parsed = parseValue(stored);
-        if (parsed !== null) return parsed;
+        if (isNumeric) {
+          const p = parseInt(stored, 10);
+          if (!isNaN(p)) return p;
+        } else if (stored) {
+          return stored;
+        }
       }
     }
 
     return defaultValue;
-  }, [paramName, defaultValue, localStorageKey, parseValue]);
+  });
 
-  const [value, setValue] = useState(getInitialValue);
-
-  // Update URL when value changes (push new history entry)
+  // Change tab — replaceState keeps URL accurate without adding history entries
   const setTab = useCallback((newValue) => {
     setValue((prev) => {
-      const resolvedValue = typeof newValue === 'function' ? newValue(prev) : newValue;
-      
-      // Update URL with pushState (creates new history entry for back button)
+      const resolved = typeof newValue === 'function' ? newValue(prev) : newValue;
+      const serialized = String(resolved);
       const url = new URL(window.location.href);
-      url.searchParams.set(paramName, serializeValue(resolvedValue));
-      window.history.pushState({ [paramName]: resolvedValue }, '', url.toString());
-
-      // Also persist to localStorage if configured
+      url.searchParams.set(paramName, serialized);
+      window.history.replaceState({ [paramName]: resolved }, '', url.toString());
       if (localStorageKey) {
-        localStorage.setItem(localStorageKey, serializeValue(resolvedValue));
+        localStorage.setItem(localStorageKey, serialized);
       }
-
-      return resolvedValue;
+      return resolved;
     });
-  }, [paramName, serializeValue, localStorageKey]);
+  }, [paramName, localStorageKey]);
 
-  // On initial mount, sync URL to reflect current tab (replace, don't push)
+  // Sync URL on initial mount — reflects the computed initial value in the URL
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
+      const serialized = String(value);
       const url = new URL(window.location.href);
-      const currentUrlVal = url.searchParams.get(paramName);
-      const serialized = serializeValue(value);
-      
-      if (currentUrlVal !== serialized) {
+      if (url.searchParams.get(paramName) !== serialized) {
         url.searchParams.set(paramName, serialized);
         window.history.replaceState({ [paramName]: value }, '', url.toString());
       }
-
-      // Also persist to localStorage
       if (localStorageKey) {
         localStorage.setItem(localStorageKey, serialized);
       }
     }
-  }, [paramName, value, serializeValue, localStorageKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — runs once only on mount
 
-  // Listen for browser back/forward (popstate)
+  // Listen for browser back/forward — restore tab from URL
   useEffect(() => {
     const handlePopState = () => {
       const urlParams = new URLSearchParams(window.location.search);
       const urlVal = parseValue(urlParams.get(paramName));
-      
-      if (urlVal !== null) {
-        setValue(urlVal);
-        if (localStorageKey) {
-          localStorage.setItem(localStorageKey, serializeValue(urlVal));
-        }
-      } else {
-        // Param removed from URL — go to default
-        setValue(defaultValue);
-        if (localStorageKey) {
-          localStorage.setItem(localStorageKey, serializeValue(defaultValue));
-        }
+      const next = urlVal !== null ? urlVal : defaultValue;
+      setValue(next);
+      if (localStorageKey) {
+        localStorage.setItem(localStorageKey, String(next));
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [paramName, defaultValue, parseValue, serializeValue, localStorageKey]);
+  }, [paramName, defaultValue, parseValue, localStorageKey]);
 
   return [value, setTab];
 }

@@ -564,6 +564,13 @@ async def get_attendance_calendar(
                 continue
             
             employee_name = f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip()
+            if not employee_name:
+                employee_name = (
+                    employee.get("name")
+                    or employee.get("username")
+                    or employee.get("employee_name")
+                    or str(employee.get("employee_id") or "")
+                )
             
             # Get pre-fetched data for this employee
             employee_attendance = attendance_lookup.get(user_emp_id, {})
@@ -890,6 +897,8 @@ async def get_attendance_calendar(
                 "employee_photo": employee.get("profile_picture"),
                 "department_name": department_name,
                 "role_name": employee.get("role_name"),
+                "designation": employee.get("designation"),
+                "joining_date": str(employee.get("joining_date", "")) if employee.get("joining_date") else None,
                 "days": days,
                 "stats": {
                     "total_days": total_days,
@@ -1213,7 +1222,16 @@ async def mark_attendance(
         
         # Get admin info for history
         admin = await users_db.get_user(user_id)
-        admin_name = admin.get("name") or admin.get("username", "Unknown Admin") if admin else "Unknown Admin"
+        admin_name = "Unknown Admin"
+        if admin:
+            full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            admin_name = (
+                admin.get("name")
+                or full_name
+                or admin.get("username")
+                or admin.get("email")
+                or "Unknown Admin"
+            )
         
         # Add history entry for new attendance record
         await attendance_history_db.add_history_entry(
@@ -2576,7 +2594,16 @@ async def edit_attendance(
         
         # Get admin info for history
         admin = await users_db.get_user(admin_id)
-        admin_name = admin.get("name") or admin.get("username", "Unknown Admin") if admin else "Unknown Admin"
+        admin_name = "Unknown Admin"
+        if admin:
+            full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            admin_name = (
+                admin.get("name")
+                or full_name
+                or admin.get("username")
+                or admin.get("email")
+                or "Unknown Admin"
+            )
         
         # Validate time formats if provided
         if edit_data.check_in_time:

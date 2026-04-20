@@ -2792,11 +2792,30 @@ async def delete_login_lead(
     
     # Check if user is the creator of the lead
     is_creator = lead.get("created_by") == user_id
-    
-    # Apply delete permission rule: Only creator or users with junior/all permissions can delete
+
+    # Check if user has explicit delete permission for login page
+    user_role_data = await users_db.get_user(user_id)
+    user_perms_list = []
+    if user_role_data:
+        role_id = user_role_data.get("role_id")
+        if role_id:
+            role_doc = await roles_db.get_role(str(role_id))
+            if role_doc:
+                user_perms_list = role_doc.get("permissions", [])
+    has_explicit_delete = any(
+        perm.get("page") in ("login", "Login") and (
+            perm.get("actions") == "*" or
+            (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
+            perm.get("actions") == "delete"
+        )
+        for perm in user_perms_list
+    )
+
+    # Apply delete permission rule: super admin, explicit delete permission, junior/all level, or creator
     has_delete_permission = (
-        is_super_admin or 
-        permission_level in ["all", "junior"] or 
+        is_super_admin or
+        has_explicit_delete or
+        permission_level in ["all", "junior"] or
         is_creator
     )
     

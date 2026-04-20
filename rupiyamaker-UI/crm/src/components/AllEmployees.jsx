@@ -5,7 +5,7 @@ import {
     Modal
 } from 'antd';
 import { PlusOutlined, UserOutlined, ExclamationCircleOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
-import { Search, Filter, User, Building, Calendar, Clock, Users, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, User, Building, Calendar, Clock, Users, X, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import EmployeeForm from '../components/hrms/EmployeeFormNew';
 import StatusModal from '../components/hrms/StatusModal';
 import PasswordManagementModal from '../components/hrms/PasswordManagementModal';
@@ -257,6 +257,7 @@ const AllEmployees = () => {
     const [masterAccessState, setMasterAccessState] = useState({ checked: false, label: 'Off' });
     const [masterOTPState, setMasterOTPState] = useState({ checked: false, label: 'Off' });
     const [createdEmpPopup, setCreatedEmpPopup] = useState(null); // custom popup after employee creation
+    const [hoveredPhoto, setHoveredPhoto] = useState(null); // {url, x, y} for photo hover popup
 
     // Add department and role mapping states
     const [departments, setDepartments] = useState({});
@@ -492,20 +493,14 @@ const AllEmployees = () => {
                 return true; // Show all if no specific tab
             });
 
-            // Sort employees: RM007 first, then others by employee_id
+            // Sort employees by employee_id in ascending order (RM001, RM002, RM003...)
             const sortedEmployees = filteredEmployees.sort((a, b) => {
-                // Check if either employee is RM007
-                const aIsRM007 = a.employee_id === '007' || a.employee_id === 7;
-                const bIsRM007 = b.employee_id === '007' || b.employee_id === 7;
-
-                // If one is RM007, put it first
-                if (aIsRM007 && !bIsRM007) return -1;
-                if (!aIsRM007 && bIsRM007) return 1;
-
-                // If both are RM007 or neither is RM007, sort by employee_id
-                const aId = parseInt(a.employee_id) || 0;
-                const bId = parseInt(b.employee_id) || 0;
-                return aId - bId;
+                const aStr = String(a.employee_id || '');
+                const bStr = String(b.employee_id || '');
+                // Strip "RM" prefix to get numeric part
+                const aNum = parseInt(aStr.startsWith('RM') ? aStr.slice(2) : aStr) || 0;
+                const bNum = parseInt(bStr.startsWith('RM') ? bStr.slice(2) : bStr) || 0;
+                return aNum - bNum;
             });
 
             // Always update counts from full dataset regardless of which tab is active
@@ -574,12 +569,19 @@ const AllEmployees = () => {
                         const parsedUser = JSON.parse(rawUserData);
                         const currentUserRoleId = parsedUser.role_id || parsedUser.role?._id || parsedUser.role?.id;
                         const userPerms = getUserPermissions();
-                        const isSA = Array.isArray(userPerms) && userPerms.some(p => p.page === '*');
+                        // Super admin check: both array format (new) and object format (legacy)
+                        const isSA = Array.isArray(userPerms)
+                            ? userPerms.some(p => p.page === '*')
+                            : (userPerms?.pages === '*' && userPerms?.actions === '*');
+                        console.log('🔒 AllEmployees Lock: currentUserRoleId =', currentUserRoleId, 'isSA =', isSA);
                         if (currentUserRoleId && !isSA) {
                             const currentUserRole = rawRolesData.find(r => typeof r === 'object' && (String(r._id || r.id) === String(currentUserRoleId)));
+                            console.log('🔒 AllEmployees Lock: Found current user role =', currentUserRole?.name || currentUserRole?.role_name, 'locked_roles =', currentUserRole?.locked_roles);
                             if (currentUserRole?.locked_roles?.length) {
                                 // Normalize to plain strings to avoid ObjectId mismatch
-                                setLockedRoleIds(currentUserRole.locked_roles.map(id => String(id)));
+                                const normalized = currentUserRole.locked_roles.map(id => String(id));
+                                console.log('🔒 AllEmployees Lock: Setting lockedRoleIds =', normalized);
+                                setLockedRoleIds(normalized);
                             }
                         }
                     }
@@ -764,7 +766,7 @@ const AllEmployees = () => {
                         <div>
                             <p>The employee data has been updated successfully.</p>
                             <p><strong>Employee:</strong> {employeeData.first_name} {employeeData.last_name}</p>
-                            <p><strong>Employee ID:</strong> {employeeData.employee_id ? `RM${employeeData.employee_id}` : 'N/A'}</p>
+                            <p><strong>Employee ID:</strong> {employeeData.employee_id ? employeeData.employee_id : 'N/A'}</p>
                             {photoFile && <p><strong>Profile picture:</strong> Updated</p>}
                         </div>
                     ),
@@ -819,7 +821,7 @@ const AllEmployees = () => {
                 // Show the custom creation success popup
                 setCreatedEmpPopup({
                     name: empName || '—',
-                    empId: resolvedEmpId ? `RM${resolvedEmpId}` : '—',
+                    empId: resolvedEmpId ? resolvedEmpId : '—',
                     phone: employeeData.phone || '—',
                     department: deptName,
                     role: roleName,
@@ -1961,11 +1963,7 @@ const AllEmployees = () => {
 
                                                 const searchLower = searchTerm.toLowerCase();
 
-                                                // Search in employee ID (with RM prefix)
-                                                const employeeIdWithRM = employee.employee_id ? `rm${employee.employee_id}` : '';
-                                                if (employeeIdWithRM.includes(searchLower)) return true;
-
-                                                // Search in employee ID (without RM prefix)
+                                                // Search in employee ID
                                                 const employeeId = employee.employee_id ? employee.employee_id.toString() : '';
                                                 if (employeeId.includes(searchLower)) return true;
 
@@ -1997,18 +1995,19 @@ const AllEmployees = () => {
                                                 const otpRequired = employee.otp_required === true;
                                                 const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
                                                 const isSuperAdminEmployee = employee.role_id === SUPER_ADMIN_ROLE_ID;
+                                                const isRoleLocked = lockedRoleIds.length > 0 && lockedRoleIds.includes(String(employee.role_id || ''));
 
                                                 return (
                                                     <tr
                                                         key={employee._id}
                                                         onClick={(e) => handleRowClick(employee, e)}
-                                                        className="hover:bg-gray-900/50 transition cursor-pointer"
+                                                        className={`hover:bg-gray-900/50 transition ${isRoleLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                                                     >
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             {index + 1}
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                                                            {employee.employee_id ? `RM${employee.employee_id}` : 'No ID'}
+                                                            {employee.employee_id ? employee.employee_id : 'No ID'}
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             {joinDate !== '-' ? (
@@ -2023,7 +2022,21 @@ const AllEmployees = () => {
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                                                <div
+                                                                    className="w-9 h-9 rounded-md overflow-hidden bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm relative"
+                                                                    onMouseEnter={(e) => {
+                                                                        if (employee.profile_photo) {
+                                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                                            setHoveredPhoto({
+                                                                                url: getProfilePictureUrlWithCacheBusting(employee.profile_photo),
+                                                                                name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+                                                                                x: rect.left + rect.width + 8,
+                                                                                y: rect.top - 40,
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                    onMouseLeave={() => setHoveredPhoto(null)}
+                                                                >
                                                                     {employee.profile_photo ? (
                                                                         <img
                                                                             src={getProfilePictureUrlWithCacheBusting(employee.profile_photo)}
@@ -2041,6 +2054,9 @@ const AllEmployees = () => {
                                                                     </span>
                                                                 </div>
                                                                 <span>{`${employee.first_name || ''} ${employee.last_name || ''}`}</span>
+                                                                {lockedRoleIds.length > 0 && lockedRoleIds.includes(String(employee.role_id || '')) && (
+                                                                    <Lock size={14} className="text-red-400 ml-1 flex-shrink-0" title="This employee's role is locked" />
+                                                                )}
                                                             </div>
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
@@ -2652,6 +2668,30 @@ const AllEmployees = () => {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+            {/* Photo hover popup */}
+            {hoveredPhoto && (
+                <div style={{
+                    position: 'fixed',
+                    left: hoveredPhoto.x,
+                    top: hoveredPhoto.y,
+                    zIndex: 9999,
+                    pointerEvents: 'none',
+                    background: '#1a1a2e',
+                    border: '2px solid #333',
+                    borderRadius: '8px',
+                    padding: '4px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,.6)',
+                }}>
+                    <img
+                        src={hoveredPhoto.url}
+                        alt={hoveredPhoto.name}
+                        style={{ width: 160, height: 160, objectFit: 'cover', borderRadius: '6px', display: 'block' }}
+                    />
+                    <div style={{ textAlign: 'center', color: '#e6edf3', fontSize: '0.75rem', fontWeight: 600, marginTop: 4, paddingBottom: 2 }}>
+                        {hoveredPhoto.name}
+                    </div>
                 </div>
             )}
         </>

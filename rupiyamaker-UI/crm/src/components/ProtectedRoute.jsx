@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
   hasPermission, 
@@ -26,6 +26,43 @@ const ProtectedRoute = ({
   const userPermissions = getUserPermissions();
   const token = localStorage.getItem('token');
   const userId = localStorage.getItem('userId');
+  const hasPermissionsKey = useMemo(() => localStorage.getItem('userPermissions') !== null, []);
+  const [isPermissionHydrating, setIsPermissionHydrating] = useState(
+    !hasPermissionsKey && !!(token && userId)
+  );
+
+  useEffect(() => {
+    if (!(token && userId)) {
+      setIsPermissionHydrating(false);
+      return;
+    }
+
+    // If permission key already exists, no hydration wait needed.
+    if (localStorage.getItem('userPermissions') !== null) {
+      setIsPermissionHydrating(false);
+      return;
+    }
+
+    setIsPermissionHydrating(true);
+
+    const intervalId = window.setInterval(() => {
+      if (localStorage.getItem('userPermissions') !== null) {
+        setIsPermissionHydrating(false);
+        window.clearInterval(intervalId);
+      }
+    }, 100);
+
+    // Fail-safe: avoid indefinite loading if permission key was never written.
+    const timeoutId = window.setTimeout(() => {
+      setIsPermissionHydrating(false);
+      window.clearInterval(intervalId);
+    }, 1200);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [token, userId]);
   
   console.log('==========================================');
   console.log('🔐 ProtectedRoute Check Started');
@@ -47,6 +84,14 @@ const ProtectedRoute = ({
   if (!isAuthenticated()) {
     console.log('🚫 Not authenticated - redirecting to login');
     return <Navigate to="/login" replace />;
+  }
+
+  if (isPermissionHydrating) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-white text-lg">Syncing permissions...</div>
+      </div>
+    );
   }
 
   // CRITICAL: Ensure we have valid permissions object BEFORE super admin check

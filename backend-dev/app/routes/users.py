@@ -169,59 +169,47 @@ async def list_users(
             pass
         elif permission_level == "junior":
             # Users with "junior" permission can see subordinates + themselves
-            print("Hierarchical user - showing subordinates only")
-            
-            # Get subordinate users using synchronous version
+            # PermissionManager.get_subordinate_users already handles peer_visibility
+            print("Hierarchical user - showing subordinates + peers (if peer_visibility ON)")
             try:
-                async def get_subordinate_users_sync(user_id: str) -> List[str]:
-                    """Asynchronous version of get_subordinate_users_for_warnings"""
-                    try:
-                        from app.database.Roles import RolesDB
-                        roles_db = RolesDB()
-                        
-                        user = await users_db.get_user(user_id)
-                        if not user or not user.get("role_id"):
-                            return []
-                            
-                        user_role_id = user["role_id"]
-                        
-                        # Get all subordinate roles
-                        subordinate_roles = await roles_db.get_all_subordinate_roles(user_role_id)
-                        
-                        if not subordinate_roles:
-                            return []
-                            
-                        subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
-                        
-                        # Get all users with these subordinate roles
-                        subordinate_users = await users_db.get_users_by_roles(subordinate_role_ids)
-                        
-                        if not subordinate_users:
-                            return []
-                            
-                        user_ids = [str(user["_id"]) for user in subordinate_users]
-                        return user_ids
-                    except Exception as e:
-                        print(f"Error getting subordinate users: {e}")
-                        return []
-                
-                subordinate_user_ids = await get_subordinate_users_sync(user_id)
-                
-                # Include user's own ID + subordinate IDs
-                allowed_user_ids = [user_id] + subordinate_user_ids
-                
-                # Convert to ObjectIds for filtering
+                from app.database.Roles import RolesDB
+                from app.utils.permissions import PermissionManager
+                roles_db_instance = RolesDB()
+                subordinate_user_ids = await PermissionManager.get_subordinate_users(
+                    user_id, users_db, roles_db_instance
+                )
+                # Include user's own ID + subordinate IDs (peers already merged inside get_subordinate_users)
+                allowed_user_ids = [user_id] + list(subordinate_user_ids)
                 allowed_object_ids = [ObjectId(uid) for uid in allowed_user_ids if ObjectId.is_valid(uid)]
                 filter_dict["_id"] = {"$in": allowed_object_ids}
-                
             except Exception as e:
                 print(f"Error getting subordinates: {e}")
-                # Fallback to showing only self
                 filter_dict["_id"] = ObjectId(user_id)
         else:  # permission_level == "own"
-            # Users with "own" permission can only see themselves
-            print("Regular user - showing only self")
-            filter_dict["_id"] = ObjectId(user_id)
+            # Users with "own" permission can see themselves.
+            # If their role has peer_visibility=True, they also see same-role colleagues.
+            print("Regular user - showing self + peers if peer_visibility ON")
+            try:
+                from app.database.Roles import RolesDB
+                from app.utils.permissions import PermissionManager
+                roles_db_instance = RolesDB()
+                current_user = await users_db.get_user(user_id)
+                user_role_id = current_user.get("role_id") if current_user else None
+                peer_user_ids = [user_id]
+                if user_role_id:
+                    user_role_doc = await roles_db_instance.get_role(user_role_id)
+                    if user_role_doc and user_role_doc.get("peer_visibility", False):
+                        print(f"DEBUG: peer_visibility ON for role {user_role_id}, adding same-role users")
+                        peer_users = await users_db.get_users_by_roles([str(user_role_id)])
+                        for pu in (peer_users or []):
+                            pid = str(pu["_id"])
+                            if pid not in peer_user_ids:
+                                peer_user_ids.append(pid)
+                allowed_object_ids = [ObjectId(uid) for uid in peer_user_ids if ObjectId.is_valid(uid)]
+                filter_dict["_id"] = {"$in": allowed_object_ids}
+            except Exception as e:
+                print(f"Error applying peer visibility: {e}")
+                filter_dict["_id"] = ObjectId(user_id)
         
         print(f"Filter applied: {filter_dict}")
         
@@ -1808,6 +1796,48 @@ async def upload_user_profile_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload profile photo: {str(e)}"
         )
+
+@router.get("/{user_id}/subordinates")
+async def get_subordinate_user_ids(
+    user_id: str,
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Return IDs of all users who are subordinate to the given user (for Team filter)."""
+    from app.utils.permissions import PermissionManager
+    try:
+        # Strict chain: reporting_manager/reporting_id graph traversal
+        discovered = set()
+        frontier = [str(user_id)]
+
+        while frontier:
+            manager_id = frontier.pop(0)
+            manager_keys = [manager_id]
+            if ObjectId.is_valid(manager_id):
+                manager_keys.append(ObjectId(manager_id))
+
+            direct_reports = await users_db.collection.find({
+                "$or": [
+                    {"reporting_manager_id": {"$in": manager_keys}},
+                    {"reporting_manager": {"$in": manager_keys}},
+                    {"reporting_id": {"$in": manager_keys}},
+                ]
+            }, {"_id": 1}).to_list(None)
+
+            for report in direct_reports:
+                report_id = str(report.get("_id"))
+                if report_id and report_id != str(user_id) and report_id not in discovered:
+                    discovered.add(report_id)
+                    frontier.append(report_id)
+
+        if discovered:
+            return {"subordinate_ids": list(discovered)}
+
+        # Fallback for older datasets where reporting links are missing.
+        subordinate_ids = await PermissionManager.get_subordinate_users(user_id, users_db, roles_db)
+        return {"subordinate_ids": subordinate_ids}
+    except Exception:
+        return {"subordinate_ids": []}
 
 @router.post("/bulk-update-status")
 async def bulk_update_user_status(

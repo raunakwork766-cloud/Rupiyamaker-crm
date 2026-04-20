@@ -117,23 +117,30 @@ async def get_dashboard_stats(
             effective_level = "all"
         else:
             # ─── Derive effective permission level ───
-            # Check across dashboard, leads (multiple page names), and login modules.
-            # Take the HIGHEST level found: all > junior > own.
-            # "view_team" action is semantically equivalent to "junior".
+            # Dashboard team visibility is gated by LEADS + DASHBOARD page permissions.
+            # Login page permissions control the Login CRM module only — they do NOT
+            # grant dashboard team visibility.  The highest level found wins:
+            # all > junior > own.  "view_team" action = "junior".
             #
-            # Pages to check for leads: "leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"
+            # Pages to check: "leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"
             # (different naming conventions exist in DB and code)
             LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
-            LOGIN_PAGES = ["login"]
             DASHBOARD_PAGES = ["dashboard"]
-            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+            # NOTE: LOGIN_PAGES intentionally excluded — login permissions do not
+            # control dashboard team view.  view_team / junior must be present
+            # in leads or dashboard pages for team data to appear.
+            TEAM_VIEW_PAGES = DASHBOARD_PAGES + LEADS_PAGES
 
             def _has_level(level: str) -> bool:
-                """Check if any module grants the given permission level."""
-                actions_to_check = [level]
+                """Check if leads/dashboard pages grant the given permission level."""
+                actions_to_check = []
                 if level == "junior":
-                    actions_to_check.append("view_team")  # view_team = junior
-                for page in ALL_PAGES:
+                    actions_to_check.append("view_team")
+                elif level == "all":
+                    actions_to_check.append("view_all")
+                else:
+                    actions_to_check.append(level)
+                for page in TEAM_VIEW_PAGES:
                     for action in actions_to_check:
                         if PermissionManager.has_permission(user_permissions, page, action):
                             return True
@@ -563,15 +570,18 @@ async def get_dashboard_teams(
             effective_level = "all"
         else:
             LEADS_PAGES = ["leads", "leads.pl_odd_leads", "leads.pl_&_odd_leads"]
-            LOGIN_PAGES = ["login"]
             DASHBOARD_PAGES = ["dashboard"]
-            ALL_PAGES = DASHBOARD_PAGES + LEADS_PAGES + LOGIN_PAGES
+            TEAM_VIEW_PAGES = DASHBOARD_PAGES + LEADS_PAGES
 
             def _has_level(level: str) -> bool:
-                actions_to_check = [level]
+                actions_to_check = []
                 if level == "junior":
                     actions_to_check.append("view_team")
-                for page in ALL_PAGES:
+                elif level == "all":
+                    actions_to_check.append("view_all")
+                else:
+                    actions_to_check.append(level)
+                for page in TEAM_VIEW_PAGES:
                     for action in actions_to_check:
                         if PermissionManager.has_permission(user_permissions, page, action):
                             return True

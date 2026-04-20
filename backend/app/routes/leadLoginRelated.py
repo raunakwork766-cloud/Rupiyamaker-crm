@@ -704,7 +704,11 @@ async def check_login_phone_number(
             fin = lead.get("financial_details", {}) or {}
             bank_name = fin.get("bank_name", "") or ""
         if not bank_name:
-            # Check dynamic_fields.process.processing_bank (set by HowToProcessSection)
+            # Check process_data.processing_bank (saved by HowToProcessSection)
+            pd = lead.get("process_data", {}) or {}
+            bank_name = pd.get("processing_bank", "") or ""
+        if not bank_name:
+            # Check dynamic_fields.process.processing_bank (legacy fallback)
             dyn = lead.get("dynamic_fields", {}) or {}
             bank_name = (
                 dyn.get("process", {}).get("processing_bank", "")
@@ -2043,9 +2047,9 @@ async def get_hierarchical_permissions(user_id: str, module: str = "login") -> D
                 if isinstance(actions, str):
                     actions = [actions]
                 
-                if "all" in actions or "*" in actions:
+                if "view_all" in actions or "*" in actions:
                     has_all = True
-                elif "junior" in actions or "view_team" in actions:
+                elif "view_team" in actions:
                     has_junior = True
         
         # Determine permission level
@@ -2313,6 +2317,8 @@ async def get_login_department_leads(
         print(f"⚡ Login department leads processed in {time.time() - start_time:.3f}s")
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Login department leads error: {e} - Time: {time.time() - start_time:.3f}s")
         raise HTTPException(status_code=500, detail=f"Failed to fetch leads: {e}")
@@ -2793,9 +2799,28 @@ async def delete_login_lead(
     # Check if user is the creator of the lead
     is_creator = lead.get("created_by") == user_id
     
-    # Apply delete permission rule: Only creator or users with junior/all permissions can delete
+    # Check if user has explicit delete permission for login page
+    user_role_data = await users_db.get_user(user_id)
+    user_perms_list = []
+    if user_role_data:
+        role_id = user_role_data.get("role_id")
+        if role_id:
+            role_doc = await roles_db.get_role(str(role_id))
+            if role_doc:
+                user_perms_list = role_doc.get("permissions", [])
+    has_explicit_delete = any(
+        perm.get("page") in ("login", "Login") and (
+            perm.get("actions") == "*" or
+            (isinstance(perm.get("actions"), list) and ("delete" in perm.get("actions") or "*" in perm.get("actions"))) or
+            perm.get("actions") == "delete"
+        )
+        for perm in user_perms_list
+    )
+
+    # Apply delete permission rule: super admin, explicit delete permission, junior/all level, or creator
     has_delete_permission = (
-        is_super_admin or 
+        is_super_admin or
+        has_explicit_delete or
         permission_level in ["all", "junior"] or 
         is_creator
     )

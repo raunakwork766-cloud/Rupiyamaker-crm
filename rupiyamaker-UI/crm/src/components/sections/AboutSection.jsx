@@ -796,9 +796,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     
     setIsUserSuperAdmin(isSuperAdminUser);
     
-    // Only Super Admin can edit mobile number and alternate number
+    // Only Super Admin can edit mobile number and alternate number (still requires canEdit prop)
     if (isSuperAdminUser) {
-      setCanEditAlternateNumber(true);
+      setCanEditAlternateNumber(canEdit);
       return;
     }
     
@@ -809,7 +809,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                                    originalAlternateNumber.toLowerCase() === 'none' ||
                                    originalAlternateNumber.toLowerCase() === 'null';
     
-    setCanEditAlternateNumber(isOriginalAlternateNumberEmpty);
+    // Also require canEdit prop — non-edit-permission users can never edit alternate number
+    setCanEditAlternateNumber(isOriginalAlternateNumberEmpty && canEdit);
   };
 
   // Check if user has permission to view the Data Code field (leads.pl_&_odd_leads → view_data_code)

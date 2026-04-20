@@ -500,8 +500,10 @@ const ChartPage = () => {
         formattedPermissions = response.data;
       }
       
-      // Store in localStorage for future use
-      localStorage.setItem('userPermissions', JSON.stringify(formattedPermissions));
+      // 🔒 DO NOT overwrite localStorage 'userPermissions' here.
+      // Login.jsx writes the canonical OBJECT format ({page: {action: true}}).
+      // Writing raw backend ARRAY format here would corrupt Sidebar / ProtectedRoute.
+      // Use the value only for this component's local state.
       
       console.log('Using formatted permissions:', formattedPermissions);
       setPermissions(formattedPermissions);

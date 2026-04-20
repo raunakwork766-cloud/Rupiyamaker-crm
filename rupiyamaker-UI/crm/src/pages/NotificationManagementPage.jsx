@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigationType } from 'react-router-dom';
 import { 
   Bell, 
   Plus, 
@@ -77,7 +78,11 @@ const NotificationManagementPage = () => {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('notifMgmtTab') || 'all');
+  // POP = browser back → restore tab; PUSH/REPLACE = sidebar click → always show default
+  const navigationType = useNavigationType();
+  const [activeTab, setActiveTab] = useState(() =>
+    navigationType === 'POP' ? (localStorage.getItem('notifMgmtTab') || 'all') : 'all'
+  );
   useEffect(() => { localStorage.setItem('notifMgmtTab', activeTab); }, [activeTab]);
 
   // Form state

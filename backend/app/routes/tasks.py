@@ -1039,9 +1039,8 @@ async def search_leads_for_task(
         
         base_query = {}
         
-        # Check if user has 'all'/'view_all' level access to leads
-        has_all = await PermissionManager.check_permission(user_id, "leads", "view_all", users_db, roles_db, raise_error=False) or \
-                  await PermissionManager.check_permission(user_id, "leads", "all", users_db, roles_db, raise_error=False)
+        # Check if user has 'view_all' level access to leads
+        has_all = await PermissionManager.check_permission(user_id, "leads", "view_all", users_db, roles_db, raise_error=False)
         has_junior = await PermissionManager.check_permission(user_id, "leads", "view_team", users_db, roles_db, raise_error=False)
         
         if has_all:
@@ -2353,13 +2352,13 @@ async def get_filter_options(
             for perm in user_permissions
         )
         
-        # Check if user has junior permission
+        # Check if user has team-visibility permission
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") in ("junior", "view_team") or
+              perm.get("actions") == "view_team" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions"))))))
+               ("*" in perm.get("actions") or "view_team" in perm.get("actions")))))
             for perm in user_permissions
         )
         
@@ -2473,12 +2472,13 @@ async def get_filtered_tasks(
             for perm in user_permissions
         )
         
+        # Check for view_team permission
         has_view_junior = any(
             (perm.get("page") in ["tasks", "*", "any"] and 
              (perm.get("actions") == "*" or 
-              perm.get("actions") in ("junior", "view_team") or
+              perm.get("actions") == "view_team" or
               (isinstance(perm.get("actions"), list) and 
-               ("*" in perm.get("actions") or any(a in ("junior", "view_team") for a in perm.get("actions"))))))
+               ("*" in perm.get("actions") or "view_team" in perm.get("actions")))))
             for perm in user_permissions
         )
         

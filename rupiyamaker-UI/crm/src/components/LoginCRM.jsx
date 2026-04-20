@@ -590,8 +590,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             // The API returns permissions directly as an array, not wrapped in an object
             const apiPermissions = Array.isArray(data) ? data : (data.permissions || data || []);
             
-            // Store permissions in localStorage for getUserPermissions() to use
-            localStorage.setItem('userPermissions', JSON.stringify(apiPermissions));
+            // 🔒 DO NOT overwrite localStorage 'userPermissions' here.
+            // Login.jsx writes the canonical OBJECT format ({page: {action: true}}).
+            // Writing raw backend ARRAY format here would corrupt Sidebar / ProtectedRoute.
+            // Use the value only for this component's local state.
             
             setPermissions(apiPermissions);
             setIsUserSuperAdmin(checkSuperAdmin(apiPermissions));
@@ -1326,14 +1328,20 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
         // Apply filter options with same logic as main filtering
         if (debouncedSearchTerm) {
-            const searchLower = debouncedSearchTerm.toLowerCase();
-            filtered = filtered.filter(lead =>
-                (lead.name && lead.name.toLowerCase().includes(searchLower)) ||
-                (lead.phone && lead.phone.toString().includes(searchLower)) ||
-                (lead.mobile_number && lead.mobile_number.toString().includes(searchLower)) ||
-                (lead.alternative_phone && lead.alternative_phone.toString().includes(searchLower)) ||
-                (lead.email && lead.email.toLowerCase().includes(searchLower))
-            );
+            // Split by commas for multiple search terms, trim each
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(t => t.length > 0);
+            filtered = filtered.filter(lead => {
+                return searchTerms.some(searchTerm => {
+                    const searchLower = searchTerm.toLowerCase();
+                    return (
+                        (lead.name && lead.name.toLowerCase().includes(searchLower)) ||
+                        (lead.phone && lead.phone.toString().includes(searchLower)) ||
+                        (lead.mobile_number && lead.mobile_number.toString().includes(searchLower)) ||
+                        (lead.alternative_phone && lead.alternative_phone.toString().includes(searchLower)) ||
+                        (lead.email && lead.email.toLowerCase().includes(searchLower))
+                    );
+                });
+            });
         }
 
         // Apply enhanced filters
@@ -2548,12 +2556,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         setLoadingEmployees(true);
         try {
             const apiBaseUrl = '/api';
-            // Try different possible endpoints for team leaders
+            // Try different possible endpoints — fetch all active users for name resolution
             const endpoints = [
-                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
                 `${apiBaseUrl}/users?user_id=${userId}&is_active=true`,
-                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader&employee_status=active`,
-                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader&employee_status=active`
+                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
+                `${apiBaseUrl}/hrms/employees?user_id=${userId}&employee_status=active`,
+                `${apiBaseUrl}/employees?user_id=${userId}&employee_status=active`
             ];
             
             let data = null;
@@ -2591,13 +2599,14 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     employees = data.employees;
                 }
                 
-                // Filter for team leaders - try different designation field names
-                const teamLeaders = employees.filter(emp => {
-                    const designation = emp.designation || emp.role || emp.position || emp.job_title;
-                    return designation && designation.toLowerCase().includes('team leader');
-                });
+                // Keep all active employees for name resolution in assign columns
+                const activeEmployees = employees.filter(emp =>
+                    emp.employee_status === 'active' ||
+                    emp.is_active === true ||
+                    emp.employee_status === undefined
+                );
                 
-                setEmployees(teamLeaders);
+                setEmployees(activeEmployees);
             } else {
                 setEmployees([]);
             }
@@ -2675,9 +2684,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
         }
 
-        // Filter by search term
+        // Filter by search term - split by commas for multiple terms
         if (debouncedSearchTerm) {
-            const term = debouncedSearchTerm.toLowerCase();
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(t => t.length > 0);
             filtered = filtered.filter(lead => {
                 // Get customer name from different possible fields
                 const customerName = getLeadField(lead, 'customer_name') || 
@@ -2692,22 +2701,22 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 // Get pincode from different possible fields
                 const pincode = getLeadField(lead, 'pincode') || '';
                 
-                return (
-                    customerName.toLowerCase().includes(term) ||
-                    (typeof lead.phone === 'string' && lead.phone.includes(term)) ||
-                    (typeof lead.alternative_phone === 'string' && lead.alternative_phone.includes(term)) ||
-                    (typeof lead.email === 'string' && lead.email.toLowerCase().includes(term)) ||
-                    companyName.toLowerCase().includes(term) ||
-                    (typeof lead.creator_name === 'string' && lead.creator_name.toLowerCase().includes(term)) ||
-                    (typeof lead.team_name === 'string' && lead.team_name.toLowerCase().includes(term)) ||
-                    (typeof lead.operations_channel_name === 'string' && lead.operations_channel_name.toLowerCase().includes(term)) ||
-                    city.toLowerCase().includes(term) ||
-                    (typeof pincode === 'string' && pincode.includes(term)) ||
-                    (typeof lead.status === 'string' && lead.status.toLowerCase().includes(term)) ||
-                    (typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(term)) ||
-                    (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(term)) ||
-                    (typeof lead.login === 'string' && lead.login.toLowerCase().includes(term))
-                );
+                return searchTerms.some(searchTerm => {
+                    const term = searchTerm.toLowerCase();
+                    return (
+                        customerName.toLowerCase().includes(term) ||
+                        (typeof lead.phone === 'string' && lead.phone.includes(term)) ||
+                        (typeof lead.alternative_phone === 'string' && lead.alternative_phone.includes(term)) ||
+                        (typeof lead.email === 'string' && lead.email.toLowerCase().includes(term)) ||
+                        companyName.toLowerCase().includes(term) ||
+                        (typeof lead.creator_name === 'string' && lead.creator_name.toLowerCase().includes(term)) ||
+                        (typeof lead.operations_channel_name === 'string' && lead.operations_channel_name.toLowerCase().includes(term)) ||
+                        city.toLowerCase().includes(term) ||
+                        (typeof pincode === 'string' && pincode.includes(term)) ||
+                        (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(term)) ||
+                        (typeof lead.login === 'string' && lead.login.toLowerCase().includes(term))
+                    );
+                });
             });
         }
 
@@ -3532,6 +3541,11 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     // Status dropdown handlers (similar to LeadCRM)
     const handleStatusDropdownClick = (rowIdx, event) => {
         event.stopPropagation(); // Prevent row click from opening lead details
+        
+        // Block status change if user doesn't have edit permission
+        if (!canEditLogin() && !isUserSuperAdmin) {
+            return;
+        }
         
         // If clicking the same dropdown, close it
         if (showStatusDropdown === rowIdx) {
@@ -5485,7 +5499,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                         <span className="text-white font-semibold">
                                             {checkedRows.length} row{checkedRows.length !== 1 ? "s" : ""} selected
                                         </span>
-                                        {isUserSuperAdmin && (
+                                        {(isUserSuperAdmin || canDeleteLogin()) && (
                                             <button
                                                 className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
                                                 onClick={handleDeleteSelected}

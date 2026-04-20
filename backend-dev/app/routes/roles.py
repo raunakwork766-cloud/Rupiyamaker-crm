@@ -214,6 +214,7 @@ async def list_roles(
             "is_active": role_dict.get("is_active", True),
             "permissions": role_dict.get("permissions", []),
             "locked_roles": role_dict.get("locked_roles", []),  # Role IDs locked for this role
+            "peer_visibility": role_dict.get("peer_visibility", False),  # Whether same-role users can see each other
             "created_at": role_dict.get("created_at"),
             "updated_at": role_dict.get("updated_at")
         }

@@ -323,6 +323,8 @@ class EmployeeAttendanceCalendar(BaseModel):
     employee_photo: Optional[str] = Field(None, description="Employee photo URL")
     department_name: str = Field(default="Unknown Department", description="Department name")
     role_name: Optional[str] = Field(None, description="Role name")
+    designation: Optional[str] = Field(None, description="Employee designation")
+    joining_date: Optional[str] = Field(None, description="Employee joining date")
     days: List[AttendanceCalendarDay] = Field(..., description="Attendance data for each day")
     stats: AttendanceStats = Field(..., description="Monthly attendance statistics")
 

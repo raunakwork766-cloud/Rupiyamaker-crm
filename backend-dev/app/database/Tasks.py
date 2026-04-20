@@ -668,37 +668,60 @@ class TasksDB:
     
     async def _get_all_subordinate_ids(self, manager_id: str, roles_db) -> Set[str]:
         """
-        Get all users who report to this manager (any level deep)
-        Reuses the same logic from LeadsDB
+        Get all users who report to this manager (any level deep).
+        Prefer direct reporting-manager chain; fall back to legacy role hierarchy.
         """
         from app.database.Users import UsersDB
         users_db = UsersDB()
-        
-        print(f"DEBUG: Looking for subordinates of user {manager_id}")
-        
-        # Get manager's role first
+
+        print(f"DEBUG: Looking for strict-reporting subordinates of user {manager_id}")
+
+        # Strict mode: traverse reporting_manager/reporting_id chain recursively.
+        discovered: Set[str] = set()
+        frontier = [str(manager_id)]
+        while frontier:
+            current_manager = frontier.pop(0)
+            manager_keys = [current_manager]
+            if ObjectId.is_valid(current_manager):
+                manager_keys.append(ObjectId(current_manager))
+
+            direct_reports = await users_db.collection.find({
+                "$or": [
+                    {"reporting_manager_id": {"$in": manager_keys}},
+                    {"reporting_manager": {"$in": manager_keys}},
+                    {"reporting_id": {"$in": manager_keys}},
+                ]
+            }, {"_id": 1}).to_list(None)
+
+            for user in direct_reports:
+                sub_id = str(user.get("_id"))
+                if sub_id and sub_id != str(manager_id) and sub_id not in discovered:
+                    discovered.add(sub_id)
+                    frontier.append(sub_id)
+
+        if discovered:
+            print(f"DEBUG: Strict-reporting subordinate users for {manager_id}: {discovered}")
+            return discovered
+
+        # Fallback mode: legacy role hierarchy (older data without reporting manager links).
+        print(f"DEBUG: No strict-reporting chain found, falling back to role hierarchy for {manager_id}")
         manager_user = await users_db.get_user(manager_id)
         if not manager_user or not manager_user.get("role_id"):
             print(f"DEBUG: Manager user {manager_id} not found or has no role")
             return set()
-            
+
         manager_role_id = manager_user.get("role_id")
-        print(f"DEBUG: Manager {manager_id} has role ID: {manager_role_id}")
-        
-        # Get all subordinate roles
         subordinate_roles = await roles_db.get_all_subordinate_roles(manager_role_id)
         subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
-        print(f"DEBUG: Found {len(subordinate_roles)} subordinate roles: {subordinate_role_ids}")
-        
-        # Get users with these roles
+        print(f"DEBUG: Found {len(subordinate_roles)} subordinate roles (fallback): {subordinate_role_ids}")
+
         subordinate_users = set()
         for role_id in subordinate_role_ids:
             users = await users_db.get_users_by_role(role_id)
             user_ids = [str(user["_id"]) for user in users]
-            print(f"DEBUG: Role {role_id} has {len(users)} users: {user_ids}")
             subordinate_users.update(user_ids)
-            
-        print(f"DEBUG: Total subordinate users for {manager_id}: {subordinate_users}")
+
+        print(f"DEBUG: Fallback subordinate users for {manager_id}: {subordinate_users}")
         return subordinate_users
     
     # ========= Task Attachments Management =========

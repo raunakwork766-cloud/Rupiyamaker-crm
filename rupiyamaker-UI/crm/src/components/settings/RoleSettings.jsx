@@ -138,8 +138,17 @@ const RoleSettings = () => {
     const checkRolePerm = (role, mod, action) => {
         if (!role.permissions || !Array.isArray(role.permissions)) return false;
         if (role.permissions.some(p => p.page === '*')) return true;
-        // Build aliases for backward compat: view_team ↔ junior, view_all ↔ all
-        const aliasMap = { view_team: ['view_team', 'junior'], view_all: ['view_all', 'all'] };
+        // Build aliases for backward compat: UI action name ↔ old DB action name(s)
+        const aliasMap = {
+            view_team: ['view_team', 'junior'],
+            view_all: ['view_all', 'all'],
+            status_change: ['status_change', 'status_update'],
+            interview_setting: ['interview_setting', 'settings'],
+            update_attendance: ['update_attendance', 'update'],
+            reset_password: ['reset_password', 'password'],
+            warning_setting: ['warning_setting', 'issue'],
+            delete_mistake: ['delete_mistake', 'view_mistakes'],
+        };
         const actionsToCheck = aliasMap[action] || [action];
         if (mod.isNested) {
             const dbModule = mod.originalModule === 'Leads CRM' ? 'leads' : mod.originalModule.toLowerCase();
@@ -1132,6 +1141,8 @@ const RoleSettings = () => {
                 newPermissions[module].push(action);
                 console.log(`Added ${action} to ${module}`);
             }
+            // view_all and view_team can coexist — no mutual exclusion
+            // view_all = see all records, view_team = see subordinates, peer_visibility = see same-role peers
         } else {
             // When unchecking, simply remove the permission
             newPermissions[module] = newPermissions[module].filter(a => a !== action);
@@ -1209,30 +1220,22 @@ const RoleSettings = () => {
                 actions: "*"
             });
         } else {
-            // Collect all Leads CRM permissions for backward compatibility
-            const leadsPermissions = new Set();
-            
-            // Handle regular and nested permissions
+            // Handle regular and nested permissions (no unified "leads" backward-compat entry)
             Object.keys(formData.permissions).forEach(module => {
                 const permissions = formData.permissions[module];
-                
+
                 // Check if it's a nested permission (e.g., "Leads CRM.Create LEAD")
                 if (module.includes('.')) {
                     const [parentModule, section] = module.split('.');
-                    
-                    // ALWAYS save nested permissions, even if empty (to indicate no permissions)
-                    // This is critical for permission checks to work correctly
                     const pageName = parentModule === 'Leads CRM' ? 'leads' : parentModule.toLowerCase();
                     const formattedPage = `${pageName}.${section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_')}`;
-                    
-                    permissionsArray.push({
-                        page: formattedPage,
-                        actions: permissions.length > 0 ? permissions : []
-                    });
-                    
-                    // Collect permissions for unified "leads" entry (only non-empty permissions)
-                    if (parentModule === 'Leads CRM' && permissions.length > 0) {
-                        permissions.forEach(perm => leadsPermissions.add(perm));
+
+                    // Only push when there is at least one action — never write ghost empty entries
+                    if (Array.isArray(permissions) && permissions.length > 0) {
+                        permissionsArray.push({
+                            page: formattedPage,
+                            actions: permissions
+                        });
                     }
                 } else if (permissions.length > 0) {
                     // Regular flat permissions (only save if not empty)
@@ -1242,16 +1245,6 @@ const RoleSettings = () => {
                     });
                 }
             });
-            
-            // Add unified "leads" permission for backward compatibility
-            // This combines ALL permissions from all Leads CRM sections
-            if (leadsPermissions.size > 0) {
-                const leadsArray = Array.from(leadsPermissions);
-                permissionsArray.push({
-                    page: "leads",
-                    actions: leadsArray
-                });
-            }
         }
         
         const submitData = {
@@ -1493,39 +1486,28 @@ const RoleSettings = () => {
             // Calculate permissions count for each role
             const getPermCount = (role) => {
                 if (!role.permissions || !Array.isArray(role.permissions)) return 0;
+                const validActionsMap = buildValidActionsMap();
+                const hasNestedLeads = role.permissions.some(p => typeof p?.page === 'string' && p.page.startsWith('leads.'));
                 return role.permissions.reduce((count, perm) => {
                     if (perm.page === '*') {
-                        // Super Admin - count ALL permissions properly
                         let total = 0;
                         Object.values(allPermissions).forEach(actions => {
-                            if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) {
-                                // Skip the SuperAdmin entry itself
-                                return;
-                            }
+                            if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) return;
                             if (typeof actions === 'object' && !Array.isArray(actions)) {
-                                // Nested module (Leads CRM) - count all sub-sections
                                 Object.values(actions).forEach(sectionActions => {
-                                    if (Array.isArray(sectionActions)) {
-                                        total += sectionActions.length;
-                                    }
+                                    if (Array.isArray(sectionActions)) total += sectionActions.length;
                                 });
                             } else if (Array.isArray(actions)) {
-                                // Simple module - count actions
                                 total += actions.length;
                             }
                         });
                         return total;
                     }
-                    
-                    // For regular roles - check if this is a nested permission (Leads CRM)
-                    // Nested permissions are stored like "leads.create_lead" or "leads.pl_odd_leads"
-                    if (perm.page && perm.page.includes('.')) {
-                        // This is a nested permission - count the actions in it
-                        return count + (perm.actions?.length || 0);
-                    }
-                    
-                    // For simple permissions, just count the actions
-                    return count + (perm.actions?.length || 0);
+                    if (!validActionsMap[perm.page]) return count;
+                    if (hasNestedLeads && perm.page === 'leads') return count;
+                    if (!Array.isArray(perm.actions) || perm.actions.length === 0) return count;
+                    const validSet = validActionsMap[perm.page];
+                    return count + perm.actions.filter(a => validSet.has(a)).length;
                 }, 0);
             };
             
@@ -2551,42 +2533,84 @@ const RoleSettings = () => {
         return dept ? dept.name : '-';
     };
 
+    // Build a map: DB page name → Set of valid action names (from allPermissions).
+    // Only actions that appear in this map for the given page are counted.
+    // This excludes legacy/renamed actions (e.g. 'add', 'edit', 'create',
+    // 'reassignment_popup', 'status_update', 'assign') that are no longer
+    // in the UI so the count matches exactly what the user sees in the tab.
+    const buildValidActionsMap = () => {
+        const map = {};
+        const allLeadsActions = new Set();
+        Object.entries(allPermissions).forEach(([mod, actions]) => {
+            if (mod === 'SuperAdmin') return;
+            if (typeof actions === 'object' && !Array.isArray(actions)) {
+                // Nested module (Leads CRM)
+                Object.entries(actions).forEach(([section, sectionActions]) => {
+                    if (!Array.isArray(sectionActions)) return;
+                    // Derive DB page key the same way handleSubmit does:
+                    // section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_')
+                    const pageKey = 'leads.' + section.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
+                    map[pageKey] = new Set(sectionActions);
+                    sectionActions.forEach(a => allLeadsActions.add(a));
+                });
+            } else {
+                map[mod] = new Set(actions);
+            }
+        });
+        // Legacy flat 'leads' entry — valid if the role only has the old-style flat entry.
+        // When nested entries exist this page is skipped entirely anyway.
+        map['leads'] = allLeadsActions;
+        return map;
+    };
+
     const getPermissionsCount = (permissions) => {
         if (!permissions || !Array.isArray(permissions)) return 0;
-        return permissions.reduce((count, perm) => {
-            if (perm.page === '*') {
-                // Super Admin - count ALL permissions properly
-                let total = 0;
-                Object.values(allPermissions).forEach(actions => {
-                    if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) {
-                        // Skip the SuperAdmin entry itself
-                        return;
-                    }
-                    if (typeof actions === 'object' && !Array.isArray(actions)) {
-                        // Nested module (Leads CRM) - count all sub-sections
-                        Object.values(actions).forEach(sectionActions => {
-                            if (Array.isArray(sectionActions)) {
-                                total += sectionActions.length;
-                            }
-                        });
-                    } else if (Array.isArray(actions)) {
-                        // Simple module - count actions
-                        total += actions.length;
-                    }
-                });
-                return total;
+        // Super Admin: count all UI-defined action columns
+        if (permissions.some(p => p.page === '*')) {
+            let total = 0;
+            Object.values(allPermissions).forEach(actions => {
+                if (actions === '*' || (Array.isArray(actions) && actions.includes('*'))) return;
+                if (typeof actions === 'object' && !Array.isArray(actions)) {
+                    Object.values(actions).forEach(sectionActions => {
+                        if (Array.isArray(sectionActions)) total += sectionActions.length;
+                    });
+                } else if (Array.isArray(actions)) {
+                    total += actions.length;
+                }
+            });
+            return total;
+        }
+        // Regular roles: count only UI-column checkmarks (alias-resolved).
+        // A DB permission action counts as 1 IF it corresponds to a valid UI column.
+        // Uses same alias map as checkRolePerm so count == number of green ticks in All Permissions tab.
+        const ALIAS_MAP = {
+            view_team: ['view_team', 'junior'],
+            view_all: ['view_all', 'all'],
+            status_change: ['status_change', 'status_update'],
+            interview_setting: ['interview_setting', 'settings'],
+            update_attendance: ['update_attendance', 'update'],
+            reset_password: ['reset_password', 'password'],
+            warning_setting: ['warning_setting', 'issue'],
+            delete_mistake: ['delete_mistake', 'view_mistakes'],
+        };
+        const validActionsMap = buildValidActionsMap(); // pageKey -> Set<UI action names>
+        const hasNestedLeads = permissions.some(p => typeof p?.page === 'string' && p.page.startsWith('leads.'));
+        let total = 0;
+        permissions.forEach(perm => {
+            if (!perm.page || !perm.actions) return;
+            if (!Array.isArray(perm.actions) || perm.actions.length === 0) return;
+            if (hasNestedLeads && perm.page === 'leads') return; // skip legacy flat leads
+            const validUIActions = validActionsMap[perm.page];
+            if (!validUIActions) return; // page not in UI (loan-types, hrms, etc.)
+            // For each UI action column, check if DB has a matching action (via alias)
+            for (const uiAction of validUIActions) {
+                const candidates = ALIAS_MAP[uiAction] || [uiAction];
+                if (candidates.some(c => perm.actions.includes(c))) {
+                    total++;
+                }
             }
-            
-            // For regular roles - check if this is a nested permission (Leads CRM)
-            // Nested permissions are stored like "leads.create_lead" or "leads.pl_odd_leads"
-            if (perm.page && perm.page.includes('.')) {
-                // This is a nested permission - count the actions in it
-                return count + (perm.actions?.length || 0);
-            }
-            
-            // For simple permissions, just count the actions
-            return count + (perm.actions?.length || 0);
-        }, 0);
+        });
+        return total;
     };
 
     // Check if a role has super admin permissions (all permissions)

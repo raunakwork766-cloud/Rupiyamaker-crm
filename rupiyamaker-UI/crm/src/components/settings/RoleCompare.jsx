@@ -109,15 +109,30 @@ const getPageKey = (mod) => {
     return mod.originalModule;
 };
 
+// Backward-compat alias: UI action name → old DB action name(s)
+const ACTION_ALIASES = {
+    view_team: ['view_team', 'junior'],
+    view_all: ['view_all', 'all'],
+    status_change: ['status_change', 'status_update'],
+    interview_setting: ['interview_setting', 'settings'],
+    update_attendance: ['update_attendance', 'update'],
+    reset_password: ['reset_password', 'password'],
+    warning_setting: ['warning_setting', 'issue'],
+    delete_mistake: ['delete_mistake', 'view_mistakes'],
+};
+
 const checkRolePerm = (role, mod, action) => {
     if (!role.permissions || !Array.isArray(role.permissions)) return false;
     if (role.permissions.some(p => p.page === '*')) return true;
     const perm = role.permissions.find(p => p.page === getPageKey(mod));
-    return !!(perm && perm.actions && perm.actions.includes(action));
+    if (!perm || !perm.actions) return false;
+    const candidates = ACTION_ALIASES[action] || [action];
+    return candidates.some(a => perm.actions.includes(a));
 };
 
 const getPermissionsCount = (permissions) => {
     if (!permissions || !Array.isArray(permissions)) return 0;
+    // Super Admin: count all UI-defined action columns
     if (permissions.some(p => p.page === '*')) {
         let total = 0;
         Object.values(allPermissions).forEach(actions => {
@@ -129,7 +144,30 @@ const getPermissionsCount = (permissions) => {
         });
         return total;
     }
-    return permissions.reduce((count, perm) => count + (perm.actions?.length || 0), 0);
+    // Regular roles: count only UI-column checkmarks (alias-resolved)
+    // Build pageKey -> Set<UI action names> map
+    const pageUIActions = {};
+    permissionModules.forEach(mod => {
+        const key = getPageKey(mod);
+        pageUIActions[key] = mod.actions; // array of UI action names
+    });
+    const hasNestedLeads = permissions.some(p => p.page && p.page.startsWith('leads.'));
+    let total = 0;
+    permissions.forEach(perm => {
+        if (!perm.page || !perm.actions) return;
+        if (!Array.isArray(perm.actions) || perm.actions.length === 0) return;
+        if (perm.page === 'leads' && hasNestedLeads) return; // skip legacy flat leads
+        const uiActions = pageUIActions[perm.page];
+        if (!uiActions) return; // page not in UI (loan-types, hrms, etc.)
+        // Count how many UI action columns are satisfied by this role's DB actions
+        for (const uiAction of uiActions) {
+            const candidates = ACTION_ALIASES[uiAction] || [uiAction];
+            if (candidates.some(c => perm.actions.includes(c))) {
+                total++;
+            }
+        }
+    });
+    return total;
 };
 
 // Column left offsets for sticky positioning
@@ -289,24 +327,46 @@ export default function RoleCompare({ embedded = false }) {
         const prevPerms = role.permissions || [];
         const pageKey = getPageKey(mod);
         const hasPerm = checkRolePerm(role, mod, action);
+        // All alias variants for this action (to remove old DB names too)
+        const aliasSet = new Set(ACTION_ALIASES[action] || [action]);
         let newPerms;
         if (hasPerm) {
-            // Remove
-            newPerms = prevPerms.map(p => {
-                if (p.page !== pageKey) return p;
-                const newActions = (p.actions || []).filter(a => a !== action);
-                return newActions.length ? { ...p, actions: newActions } : null;
-            }).filter(Boolean);
+            if (action === 'show') {
+                // CASCADE: Removing 'show' wipes ALL permissions for this page section.
+                // This ensures no orphan inner-permissions remain when sidebar access is revoked.
+                newPerms = prevPerms.filter(p => p.page !== pageKey);
+            } else {
+                // Remove only this action (and its aliases)
+                newPerms = prevPerms.map(p => {
+                    if (p.page !== pageKey) return p;
+                    const newActions = (p.actions || []).filter(a => !aliasSet.has(a));
+                    return newActions.length ? { ...p, actions: newActions } : null;
+                }).filter(Boolean);
+            }
         } else {
-            // Add
+            // Add — always use the canonical UI action name
             const existing = prevPerms.find(p => p.page === pageKey);
             if (existing) {
-                newPerms = prevPerms.map(p => p.page === pageKey ? { ...p, actions: [...(p.actions || []), action] } : p);
+                // Remove any old alias names first, then add the canonical name
+                const cleaned = (existing.actions || []).filter(a => !aliasSet.has(a));
+                newPerms = prevPerms.map(p => p.page === pageKey ? { ...p, actions: [...cleaned, action] } : p);
             } else {
                 newPerms = [...prevPerms, { page: pageKey, actions: [action] }];
             }
         }
-        saveRole(roleId, newPerms, prevPerms);
+
+        // Cleanup ghost entries before saving:
+        // 1) Drop any unified non-dotted "leads" entry when dotted leads.* entries exist
+        // 2) Drop any entry with empty actions array (ghost from older saves)
+        const hasDottedLeads = newPerms.some(p => p.page && typeof p.page === 'string' && p.page.startsWith('leads.'));
+        const cleanedPerms = newPerms.filter(p => {
+            if (!p || !p.page) return false;
+            if (p.page === 'leads' && hasDottedLeads) return false;
+            if (Array.isArray(p.actions) && p.actions.length === 0) return false;
+            return true;
+        });
+
+        saveRole(roleId, cleanedPerms, prevPerms);
     }, [roles, saveRole]);
 
     const togglePermission = useCallback((roleId, mod, action) => {
@@ -316,6 +376,12 @@ export default function RoleCompare({ embedded = false }) {
         if (action === 'lock_role' && getPageKey(mod) === 'employees') {
             const role = roles.find(r => (r.id || r._id) === roleId);
             if (!role) return;
+
+            // Show-first check also applies to lock_role
+            if (!checkRolePerm(role, mod, 'show')) {
+                setToast({ msg: '⚠ Enable "Show in Sidebar" for this section first', type: 'warning' });
+                return;
+            }
 
             const hasLockPermission = checkRolePerm(role, mod, action);
 
@@ -332,6 +398,16 @@ export default function RoleCompare({ embedded = false }) {
                 hasLockPermission: true,
             });
             return;
+        }
+
+        // SHOW-FIRST RULE: Non-show actions cannot be granted until 'show' is enabled.
+        // This ensures sidebar visibility is always explicitly set before inner permissions.
+        if (action !== 'show' && mod.actions.includes('show')) {
+            const role = roles.find(r => (r.id || r._id) === roleId);
+            if (role && !checkRolePerm(role, mod, 'show')) {
+                setToast({ msg: '⚠ Enable "Show in Sidebar" for this section first', type: 'warning' });
+                return;
+            }
         }
 
         doTogglePermission(roleId, mod, action);
@@ -598,9 +674,16 @@ ${actionHeaders}
                 </div>
             )}
 
-            {/* Toast */}
+            {/* Toast — supports success / error / warning */}
             {toast && (
-                <div style={{ position: 'fixed', top: 16, right: 20, zIndex: 9999, background: toast.type === 'success' ? '#1a3300' : '#3a0000', border: `1px solid ${toast.type === 'success' ? '#7fff00' : '#f44'}`, color: toast.type === 'success' ? '#7fff00' : '#f88', padding: '8px 16px', borderRadius: '8px', fontWeight: '700', fontSize: '13px', boxShadow: '0 4px 20px #0008' }}>
+                <div style={{
+                    position: 'fixed', top: 16, right: 20, zIndex: 9999,
+                    background: toast.type === 'success' ? '#1a3300' : toast.type === 'warning' ? '#2a1800' : '#3a0000',
+                    border: `1px solid ${toast.type === 'success' ? '#7fff00' : toast.type === 'warning' ? '#f59e0b' : '#f44'}`,
+                    color: toast.type === 'success' ? '#7fff00' : toast.type === 'warning' ? '#fbbf24' : '#f88',
+                    padding: '8px 16px', borderRadius: '8px', fontWeight: '700', fontSize: '13px',
+                    boxShadow: '0 4px 20px #0008'
+                }}>
                     {toast.msg}
                 </div>
             )}
@@ -830,25 +913,32 @@ ${actionHeaders}
                                     {permissionModules.map((mod, mi) =>
                                         mod.actions.map((action, ai) => {
                                             const has = checkRolePerm(role, mod, action);
+                                            // A non-show cell is "locked" when show is not yet enabled for this module
+                                            const isLocked = action !== 'show' && mod.actions.includes('show') && !checkRolePerm(role, mod, 'show');
                                             return (
                                                 <td key={`${mi}-${ai}`}
                                                     onClick={() => togglePermission(role.id || role._id, mod, action)}
-                                                    title={action === 'lock_role'
-                                                        ? `Lock Roles for ${role.name} — ${(role.locked_roles || []).length} locked`
-                                                        : `${has ? 'Remove' : 'Add'} "${ACTION_LABELS[action] || action}" for ${mod.label}`
+                                                    title={
+                                                        isLocked
+                                                            ? `Enable "Show in Sidebar" for ${mod.label} first`
+                                                            : action === 'lock_role'
+                                                                ? `Lock Roles for ${role.name} — ${(role.locked_roles || []).length} locked`
+                                                                : `${has ? 'Remove' : 'Add'} "${ACTION_LABELS[action] || action}" for ${mod.label}`
                                                     }
                                                     style={{
                                                         textAlign: 'center',
-                                                        padding: '8px 4px',
+                                                        padding: '7px 4px',
                                                         borderLeft: ai === 0 && mi > 0 ? '3px solid #1a1400' : '1px solid #111',
                                                         background: action === 'lock_role'
                                                             ? ((role.locked_roles || []).length > 0 ? '#200d00' : 'transparent')
-                                                            : (has ? '#001a00' : 'transparent'),
-                                                        cursor: 'pointer',
+                                                            : has ? '#001a00' : 'transparent',
+                                                        cursor: isLocked ? 'not-allowed' : 'pointer',
                                                         transition: 'background 0.15s',
+                                                        opacity: isLocked ? 0.38 : 1,
                                                     }}
                                                     onMouseEnter={e => {
-                                                        e.currentTarget.style.background = action === 'lock_role' ? '#2a1200' : (has ? '#002a00' : '#1a1a00');
+                                                        if (isLocked) return;
+                                                        e.currentTarget.style.background = action === 'lock_role' ? '#2a1200' : (has ? '#002a00' : '#181800');
                                                         e.currentTarget.style.outline = `1px solid ${action === 'lock_role' ? '#f59e0b66' : '#ffd70066'}`;
                                                     }}
                                                     onMouseLeave={e => {
@@ -863,9 +953,29 @@ ${actionHeaders}
                                                             ? <span style={{ color: '#f59e0b', fontSize: '11px', fontWeight: '700' }}>🔒 {role.locked_roles.length}</span>
                                                             : <span style={{ color: '#444', fontSize: '13px' }}>🔓</span>
                                                     ) : has ? (
-                                                        <span style={{ color: '#00e676', fontSize: '14px', fontWeight: '700' }}>✓</span>
+                                                        /* Enabled — green filled checkbox */
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            background: '#00c853', border: '1.5px solid #00e676',
+                                                            color: '#000', fontSize: '11px', fontWeight: '900',
+                                                            boxShadow: '0 0 6px #00c85366',
+                                                        }}>✓</span>
+                                                    ) : isLocked ? (
+                                                        /* Locked (show not enabled) — dim padlock */
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            border: '1.5px solid #333', color: '#444', fontSize: '10px',
+                                                            background: '#0a0a0a',
+                                                        }}>🔒</span>
                                                     ) : (
-                                                        <span style={{ color: '#444', fontSize: '12px' }}>○</span>
+                                                        /* Disabled — hollow white checkbox (classic unchecked look) */
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            border: '1.5px solid #aaa', background: '#fff',
+                                                        }} />
                                                     )}
                                                 </td>
                                             );

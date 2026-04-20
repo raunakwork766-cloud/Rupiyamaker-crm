@@ -118,8 +118,8 @@ class UsersDB:
         # Generate next ID
         next_id = max_id + 1
         
-        # Format as 3-digit string with leading zeros
-        return f"{next_id:03d}"
+        # Format as RM + 3-digit string with leading zeros
+        return f"RM{next_id:03d}"
         
     async def create_user(self, user_data: dict) -> str:
         """Create a new user with timestamps and hashed password"""

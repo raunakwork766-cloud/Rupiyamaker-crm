@@ -1,13 +1,6 @@
 /**
- * Session monitoring utility for handling login_enabled toggle
- * This checks periodically if the user's login status has been disabled
- * 
- * ULTRA-AGGRESSIVE: Now checks session in multiple scenarios:
- * 1. Every 1 SECOND (timer-based) - AGGRESSIVE!
- * 2. When page regains focus (user comes back to tab)
- * 3. When page becomes visible (tab switching)
- * 4. When user interacts with page (click, keypress)
- * 5. RequestAnimationFrame loop (prevents browser throttling)
+ * Session monitoring utility for handling login_enabled toggle.
+ * Uses conservative checks to avoid request storms and UI churn during auth hydration.
  */
 
 import { verifySession, forceLogout, isAuthenticated } from './auth';
@@ -15,13 +8,11 @@ import { verifySession, forceLogout, isAuthenticated } from './auth';
 class SessionMonitor {
   constructor() {
     this.intervalId = null;
-    this.animationFrameId = null; // For requestAnimationFrame loop
-    this.checkInterval = 30000; // Check every 30 seconds (reasonable for session monitoring)
+    this.checkInterval = 30000; // Check every 30 seconds
     this.isRunning = false;
     this.logoutCallback = null; // Callback to notify app of logout
     this.lastCheckTime = 0; // Track last check to prevent duplicate checks
-    this.minTimeBetweenChecks = 500; // Minimum 500ms between event-triggered checks
-    this.lastAnimationCheck = 0; // Track animation frame checks
+    this.minTimeBetweenChecks = 5000; // Debounce event-triggered checks
   }
 
   /**
@@ -50,54 +41,15 @@ class SessionMonitor {
       this.checkSession();
     }, this.checkInterval);
 
-    // 🔥 NEW: Animation frame loop to prevent browser throttling
-    // This ensures checks continue even when tab is "inactive" but visible
-    this.startAnimationLoop();
-
-    // 🔥 Check when page regains focus (user returns to tab)
+    // Check when page regains focus (user returns to tab)
     window.addEventListener('focus', this.handleFocus);
-    
-    // 🔥 Check when page becomes visible (tab switching)
+
+    // Check when page becomes visible (tab switching)
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
-    
-    // 🔥 Check on user interaction (click anywhere)
-    document.addEventListener('click', this.handleUserInteraction);
-    
-    // 🔥 Check on keypress (user typing)
-    document.addEventListener('keydown', this.handleUserInteraction);
 
-    console.log('🔒 Session monitoring started (30-second interval checks)');
+    console.log('🔒 Session monitoring started (conservative mode)');
   }
 
-  /**
-   * Animation frame loop - prevents browser throttling
-   */
-  startAnimationLoop = () => {
-    const loop = () => {
-      if (!this.isRunning) return;
-
-      const now = Date.now();
-      // Check every 1 second via animation frame (backup to setInterval)
-      if (now - this.lastAnimationCheck >= this.checkInterval) {
-        this.lastAnimationCheck = now;
-        this.checkSession();
-      }
-
-      this.animationFrameId = requestAnimationFrame(loop);
-    };
-    
-    loop();
-  }
-
-  /**
-   * Stop animation loop
-   */
-  stopAnimationLoop = () => {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-  }
 
   /**
    * Handle window focus event
@@ -117,17 +69,6 @@ class SessionMonitor {
     }
   }
 
-  /**
-   * Handle user interaction (click, keypress)
-   */
-  handleUserInteraction = () => {
-    // Only check if enough time has passed since last check
-    const now = Date.now();
-    if (now - this.lastCheckTime >= this.minTimeBetweenChecks) {
-      console.log('🔍 User interaction detected - checking session');
-      this.checkSession();
-    }
-  }
 
   /**
    * Stop monitoring session validity
@@ -138,14 +79,9 @@ class SessionMonitor {
       this.intervalId = null;
     }
     
-    // Stop animation loop
-    this.stopAnimationLoop();
-    
     // Remove event listeners
     window.removeEventListener('focus', this.handleFocus);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-    document.removeEventListener('click', this.handleUserInteraction);
-    document.removeEventListener('keydown', this.handleUserInteraction);
     
     this.isRunning = false;
     console.log('🔒 Session monitoring stopped');
@@ -160,7 +96,7 @@ class SessionMonitor {
       return;
     }
 
-    // Prevent duplicate checks within 1 second
+    // Prevent duplicate checks within debounce window
     const now = Date.now();
     if (now - this.lastCheckTime < this.minTimeBetweenChecks) {
       return;

@@ -90,19 +90,53 @@ const buildTree = (roles) => {
     return sort(roots);
 };
 
-// ─── Avatar circle ──────────────────────────────────────────────────────────
+// ─── Photo hover helpers (DOM-based, no state lifting needed) ──────────────
+const showPhotoPopup = (url, name, rect) => {
+    let el = document.getElementById('oc3-photo-popup');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'oc3-photo-popup';
+        Object.assign(el.style, {
+            position: 'fixed', zIndex: '99999', pointerEvents: 'none',
+            background: '#1a1a2e', border: '2px solid #333', borderRadius: '8px',
+            padding: '4px', boxShadow: '0 8px 32px rgba(0,0,0,.6)', display: 'none',
+        });
+        el.innerHTML = '<img style="width:160px;height:160px;object-fit:cover;border-radius:6px;display:block"/><div style="text-align:center;color:#e6edf3;font-size:.75rem;font-weight:600;margin-top:4px;padding-bottom:2px"></div>';
+        document.body.appendChild(el);
+    }
+    el.querySelector('img').src = url;
+    el.querySelector('img').alt = name;
+    el.querySelector('div').textContent = name;
+    el.style.left = `${rect.left + rect.width + 8}px`;
+    el.style.top = `${rect.top - 40}px`;
+    el.style.display = 'block';
+};
+const hidePhotoPopup = () => {
+    const el = document.getElementById('oc3-photo-popup');
+    if (el) el.style.display = 'none';
+};
+
+// ─── Avatar square ──────────────────────────────────────────────────────────
 const Av = ({ emp, idx, size }) => {
     const [err, setErr] = useState(false);
-    const url = !err ? getProfilePictureUrlWithCacheBusting(emp.profile_picture || emp.photo) : null;
+    const url = !err ? getProfilePictureUrlWithCacheBusting(emp.profile_photo || emp.profile_picture || emp.photo) : null;
     const S = size || 32;
     return (
-        <div style={{
-            width: S, height: S, borderRadius: '50%', flexShrink: 0,
-            background: url ? 'transparent' : clr(idx),
-            border: '2px solid #0d1117',
-            overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: S * 0.33, fontWeight: 700, color: '#fff',
-        }}>
+        <div
+            style={{
+                width: S, height: S, borderRadius: '4px', flexShrink: 0,
+                background: url ? 'transparent' : clr(idx),
+                border: '2px solid #0d1117',
+                overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: S * 0.33, fontWeight: 700, color: '#fff', cursor: url ? 'pointer' : 'default',
+            }}
+            onMouseEnter={(e) => {
+                if (url) {
+                    showPhotoPopup(url, `${emp.first_name || ''} ${emp.last_name || ''}`.trim(), e.currentTarget.getBoundingClientRect());
+                }
+            }}
+            onMouseLeave={hidePhotoPopup}
+        >
             {url
                 ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setErr(true)} />
                 : initials(emp.first_name, emp.last_name)
@@ -133,7 +167,7 @@ const MemberRow = ({ emp, idx }) => (
                 border: '1px solid rgba(96,165,250,.25)', borderRadius: 4,
                 padding: '1px 6px', fontFamily: 'monospace', letterSpacing: '.03em',
             }}>
-                RM{String(emp.employee_id || '').padStart(3, '0')}
+                {emp.employee_id || '—'}
             </div>
         </div>
     </div>

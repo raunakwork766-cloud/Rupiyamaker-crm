@@ -101,9 +101,9 @@ export default defineConfig({
     // Terser options for maximum compression
     terserOptions: {
       compress: {
-        drop_console: true, // Remove console.logs in production
+        drop_console: false, // Keep console.error/warn for debugging
         drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info'], // Remove specific console methods
+        pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove verbose console methods only
         passes: 2 // Multiple passes for better compression
       },
       mangle: {

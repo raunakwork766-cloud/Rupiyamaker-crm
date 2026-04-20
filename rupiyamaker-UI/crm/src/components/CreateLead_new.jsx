@@ -72,8 +72,10 @@ export const getUserId = () => {
       return parsedUser.id || parsedUser._id || parsedUser.user_id;
     }
 
+    console.error('[getUserId] No userId or user object found in localStorage');
     return null;
   } catch (error) {
+    console.error('[getUserId] Error:', error?.message || error);
     return null;
   }
 };
@@ -244,7 +246,10 @@ const fetchLoanTypes = async () => {
 const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
   try {
     const userId = getUserId();
-    if (!userId) return null;
+    if (!userId) {
+      console.error('[checkMobileNumber] No userId found in localStorage');
+      return { _error: true, _errorMsg: 'User session not found. Please re-login.' };
+    }
 
     let url = `${API_BASE_URL}/leads/check-phone/${encodeURIComponent(mobileNumber)}?user_id=${userId}`;
 
@@ -261,7 +266,14 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const statusCode = response.status;
+      let errText = '';
+      try { errText = await response.text(); } catch (_) { /* ignore */ }
+      console.error(`[checkMobileNumber] HTTP ${statusCode}`, errText);
+      if (statusCode === 403) {
+        return { _error: true, _errorMsg: 'Session expired or access denied. Please re-login.' };
+      }
+      return { _error: true, _errorMsg: `Server error (${statusCode}). Please try again.` };
     }
 
     const data = await response.json();
@@ -283,7 +295,8 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
 
     return data;
   } catch (error) {
-    return null;
+    console.error('[checkMobileNumber] Exception:', error?.message || error);
+    return { _error: true, _errorMsg: 'Network error. Please check your connection and try again.' };
   }
 };
 
@@ -1257,6 +1270,12 @@ function useCreateLeadLogic() {
       // First, check the primary mobile number
       const duplicateCheck = await checkMobileNumber(mobileNumber, productType);
       let leadFound = false;
+
+      // Handle API error
+      if (duplicateCheck && duplicateCheck._error) {
+        alert(duplicateCheck._errorMsg || 'Error checking mobile number. Please try again.');
+        return;
+      }
       
       // If primary number check found a lead, process it
       if (duplicateCheck && duplicateCheck.found) {
@@ -1279,6 +1298,12 @@ function useCreateLeadLogic() {
       else if (alternateNumber && alternateNumber.length === 10 && /^\d+$/.test(alternateNumber)) {
 
         const altNumberCheck = await checkMobileNumber(alternateNumber, productType);
+
+        // Handle API error for alternate number check
+        if (altNumberCheck && altNumberCheck._error) {
+          alert(altNumberCheck._errorMsg || 'Error checking alternate number. Please try again.');
+          return;
+        }
         
         // If duplicate found with alternate number, process that lead
         if (altNumberCheck && altNumberCheck.found) {
@@ -1319,7 +1344,7 @@ function useCreateLeadLogic() {
         }, 100);
       }
     } catch (error) {
-
+      console.error('[handleCheckMobile] Unexpected error:', error?.message || error);
       alert('Error checking mobile number. Please try again.');
     } finally {
       // Reset loading state
@@ -3532,44 +3557,65 @@ const checkUserHasReassignmentPopupPermission = () => {
   }
 };
 
+// Helper: check if a permission value (object or array) contains a specific action
+const _permHasAction = (permValue, action) => {
+  if (!permValue) return false;
+  // Wildcard string — all actions allowed
+  if (permValue === '*') return true;
+  // Object format: { show: true, duplicate_lead: true } (stored by Login.jsx)
+  if (typeof permValue === 'object' && !Array.isArray(permValue)) {
+    return permValue[action] === true || permValue['*'] === true;
+  }
+  // Array format: ["show", "duplicate_lead"]
+  if (Array.isArray(permValue)) {
+    return permValue.includes(action) || permValue.includes('*');
+  }
+  return false;
+};
+
 // Function to check if user has duplicate_lead permission
 const checkUserHasDuplicateLeadPermission = () => {
   try {
     if (checkUserIsSuperAdmin()) return true;
+
+    // Primary check: userPermissions in localStorage (set on login & refresh)
+    // Format stored by Login.jsx: { "leads.create_lead": { show: true, duplicate_lead: true } }
+    const userPermissions = localStorage.getItem('userPermissions');
+    if (userPermissions) {
+      try {
+        const permissions = JSON.parse(userPermissions);
+
+        // Super admin wildcard
+        if (permissions['*'] === '*') return true;
+
+        // Check leads.create_lead (primary page for create-lead section)
+        if (_permHasAction(permissions['leads.create_lead'], 'duplicate_lead')) return true;
+
+        // Backward compat: flat "leads" page
+        if (_permHasAction(permissions['leads'], 'duplicate_lead')) return true;
+
+        // Wildcard on leads or leads.create_lead
+        if (permissions['leads'] === '*' || permissions['leads.create_lead'] === '*') return true;
+      } catch (e) { /* ignore */ }
+    }
+
+    // Fallback: user.role.permissions array (raw backend format, if present)
     const userData = localStorage.getItem('user');
     if (userData) {
       try {
         const user = JSON.parse(userData);
         if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) return true;
         if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-          const createLeadPerm = user.role.permissions.find(p =>
-            p.page === 'leads.create_lead' || p.page === 'leads_create_lead'
-          );
-          if (createLeadPerm?.actions) {
-            const actions = Array.isArray(createLeadPerm.actions) ? createLeadPerm.actions : [createLeadPerm.actions];
-            if (actions.includes('duplicate_lead')) return true;
-          }
-          const leadsPerm = user.role.permissions.find(p => p.page === 'leads');
-          if (leadsPerm?.actions) {
-            const actions = Array.isArray(leadsPerm.actions) ? leadsPerm.actions : [leadsPerm.actions];
-            if (actions.includes('duplicate_lead')) return true;
+          for (const p of user.role.permissions) {
+            if (p.page === 'leads.create_lead' || p.page === 'leads_create_lead' || p.page === 'leads') {
+              const actions = Array.isArray(p.actions) ? p.actions : (p.actions ? [p.actions] : []);
+              if (actions.includes('duplicate_lead') || actions.includes('*')) return true;
+            }
           }
         }
       } catch (e) { /* ignore */ }
     }
-    const userPermissions = localStorage.getItem('userPermissions');
-    if (userPermissions) {
-      try {
-        const permissions = JSON.parse(userPermissions);
-        if (permissions['*'] === '*' || permissions.leads === '*' || permissions.Leads === '*') return true;
-        if (permissions['leads.create_lead'] && Array.isArray(permissions['leads.create_lead'])) {
-          if (permissions['leads.create_lead'].includes('duplicate_lead')) return true;
-        }
-        if (permissions.leads && Array.isArray(permissions.leads)) {
-          if (permissions.leads.includes('duplicate_lead')) return true;
-        }
-      } catch (e) { /* ignore */ }
-    }
+
     return false;
   } catch (error) {
     return false;

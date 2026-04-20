@@ -93,18 +93,41 @@ export const apiCall = async (endpoint, options = {}) => {
 
     const response = await throttledFetch(url, { ...defaultOptions, ...options });
 
-    // 🔥 NEW: Check for 403 errors which indicate session invalidation
+    // Handle 403 carefully: permission denied must NOT force logout.
+    // Only invalidate auth state when backend clearly indicates session issues.
     if (response.status === 403) {
-        const error = await response.json().catch(() => ({ detail: 'Session invalidated' }));
-        console.error('⚠️ 403 FORBIDDEN - Session invalidated:', error.detail);
-        
-        // Import forceLogout dynamically to avoid circular dependency
-        import('../utils/auth.js').then(({ forceLogout }) => {
-            forceLogout(error.detail || 'Your session is no longer valid');
-        });
-        
-        // Throw error to stop the API call
-        const apiError = new Error(error.detail || 'Session invalidated');
+        const error = await response.json().catch(() => ({ detail: 'Forbidden' }));
+        const detailText = (
+            typeof error?.detail === 'string'
+                ? error.detail
+                : JSON.stringify(error?.detail || error || '')
+        ).toLowerCase();
+
+        const isSessionInvalidation = [
+            'session invalid',
+            'session expired',
+            'session is no longer valid',
+            'displaced',
+            'another device',
+            'login disabled',
+            'inactive session',
+            'token expired',
+            'token invalid',
+            'token revoked'
+        ].some(fragment => detailText.includes(fragment));
+
+        if (isSessionInvalidation) {
+            console.error('⚠️ 403 FORBIDDEN - Session invalidation detected:', error.detail);
+
+            // Import forceLogout dynamically to avoid circular dependency
+            import('../utils/auth.js').then(({ forceLogout }) => {
+                forceLogout(error.detail || 'Your session is no longer valid');
+            });
+        } else {
+            console.warn('⛔ 403 FORBIDDEN - Permission denied (no forced logout):', error.detail);
+        }
+
+        const apiError = new Error(error.detail || 'Forbidden');
         apiError.response = { status: 403, data: error };
         throw apiError;
     }

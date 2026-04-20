@@ -658,7 +658,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                     />
                                 </div>
 
-                                {/* How to Process Section */}
+                                {/* How to Process Section — hidden in reassignment context */}
+                                {saveContext !== 'reassignment' && (
                                 <div className="mb-6">
                                     <h3 className="text-lg font-bold text-[#03B0F5] mb-4">How to Process</h3>
                                     <HowToProcessSection
@@ -668,7 +669,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         canEdit={!effectiveReadOnly}
                                     />
                                 </div>
+                                )}
 
+                                {/* Applicant Form, Important Questions, Operations, Reassignment — hidden in reassignment context */}
+                                {saveContext !== 'reassignment' && (
+                                <>
                                 {/* Applicant Form Section */}
                                 <div className="mb-6">
                                     <h3 className="text-lg font-bold text-[#03B0F5] mb-4">APPLICANT FORM</h3>
@@ -787,6 +792,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         }}
                                     />
                                 </div>
+                                )}
+                                </>
                                 )}
                             </div>
                         )}

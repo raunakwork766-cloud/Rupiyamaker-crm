@@ -52,7 +52,7 @@ async def list_loan_types(
     - Optimized for 1ms response with proper async/await
     """
     # Check user permissions async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Build dynamic filter based on query parameters
     filter_dict = {}
@@ -138,7 +138,7 @@ async def create_loan_type(
 ):
     """Create a new loan type with full async database operations"""
     # Check permission async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Validate input data
     name = name.strip()
@@ -185,7 +185,7 @@ async def create_bulk_loan_types(
 ):
     """Create multiple loan types in bulk with async operations"""
     # Check permission async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     created_count = 0
     errors = []
@@ -237,7 +237,7 @@ async def get_loan_type(
 ):
     """Get a specific loan type by ID with optional statistics"""
     # Check permission async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Validate ObjectId
     if not ObjectId.is_valid(loan_type_id):
@@ -280,7 +280,7 @@ async def update_loan_type(
 ):
     """Update a loan type with async operations"""
     # Check permission async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Validate ObjectId
     if not ObjectId.is_valid(loan_type_id):
@@ -362,7 +362,7 @@ async def delete_loan_type(
 ):
     """Delete a loan type with safety checks"""
     # Check permission async
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Validate ObjectId
     if not ObjectId.is_valid(loan_type_id):
@@ -414,7 +414,7 @@ async def get_leads_by_loan_type(
 ):
     """Get leads filtered by loan type"""
     # Check permission
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Verify loan type exists
     loan_type = await loan_types_db.get_loan_type(loan_type_id)

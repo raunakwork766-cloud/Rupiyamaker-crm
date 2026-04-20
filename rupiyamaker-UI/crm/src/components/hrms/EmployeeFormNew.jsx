@@ -79,6 +79,7 @@ const EmployeeForm = ({
     const [successData, setSuccessData] = useState(null);
     const [createdPassword, setCreatedPassword] = useState(null);
     const [currentPassword, setCurrentPassword] = useState('');
+    const [passwordLoading, setPasswordLoading] = useState(false);
     const [validationErrors, setValidationErrors] = useState({});
     const [forceRender, setForceRender] = useState(0); // Force re-render counter
     const [phoneCheckTimeout, setPhoneCheckTimeout] = useState(null);
@@ -97,8 +98,9 @@ const EmployeeForm = ({
                     const data = await resp.json();
                     if (Array.isArray(data) && data.length > 0) {
                         setLivePermissions(data);
-                        // Keep localStorage in sync
-                        localStorage.setItem('userPermissions', JSON.stringify(data));
+                        // 🔒 DO NOT overwrite localStorage 'userPermissions' here.
+                        // Login.jsx writes the canonical OBJECT format ({page: {action: true}}).
+                        // Writing raw backend ARRAY format here would corrupt Sidebar / ProtectedRoute.
                     }
                 }
             } catch (e) {
@@ -124,7 +126,7 @@ const EmployeeForm = ({
                 profile_photo: employee?.profile_photo || '',
                 
                 // Employee Information
-                employee_id: employee?.employee_id ? `RM${employee.employee_id}` : '',
+                employee_id: employee?.employee_id || '',
                 first_name: employee?.first_name || '',
                 last_name: employee?.last_name || '',
                 phone: employee?.phone || '',
@@ -214,6 +216,7 @@ const EmployeeForm = ({
     const joiningDateRef = useRef(null);
     const usernameRef = useRef(null);
     const passwordRef = useRef(null);
+    const fileInputRef = useRef(null);
     const isUserSuperAdmin = isSuperAdmin(userPermissions);
     
     // Helper: check if a specific action is granted for a page in the permissions data
@@ -242,13 +245,14 @@ const EmployeeForm = ({
     // Check if user has permission to view/edit employee passwords
     const hasPasswordPermission = () => {
         if (isUserSuperAdmin) return true;
-        return hasEmployeesAction('password');
+        return hasEmployeesAction('reset_password') || hasEmployeesAction('password');
     };
     
-    // Check if user has permission to view/edit employee roles
+    // Keep the role dropdown visible and rely on filteredRoles to hide only locked roles.
+    // The current role settings model has lock_role + locked_roles, but no dedicated
+    // employees.role action, so hiding the whole field blocks the intended workflow.
     const hasRolePermission = () => {
-        if (isUserSuperAdmin) return true;
-        return hasEmployeesAction('role');
+        return true;
     };
 
     // Get the list of BLOCKED/LOCKED role IDs configured in settings for this user's role.
@@ -276,6 +280,9 @@ const EmployeeForm = ({
     // Combine both block-lists: roles locked via RoleSettings permission config + roles locked via RoleCompare
     const settingsLockedIds = getLockedRoleFieldIds();
     const allLockedIds = [...new Set([...settingsLockedIds, ...lockedRoleIds].map(id => String(id)))];
+    if (allLockedIds.length > 0) {
+        console.log('🔒 EmployeeFormNew: allLockedIds =', allLockedIds, 'settingsLockedIds =', settingsLockedIds, 'lockedRoleIds =', lockedRoleIds);
+    }
     const filteredRoles = roles.filter(r => {
         const rid = String(r._id || r.id || '');
         // Always keep the currently-assigned role so the field isn't broken while editing
@@ -327,6 +334,7 @@ const EmployeeForm = ({
 
     // Function to fetch employee password (for users with password permission)
     const fetchEmployeePassword = async (employeeId) => {
+        setPasswordLoading(true);
         try {
             console.log('🔐 Fetching employee password for authorized user...', { employeeId });
             const response = await hrmsService.getEmployeePassword(employeeId);
@@ -374,6 +382,8 @@ const EmployeeForm = ({
                 ...prev,
                 password: ''
             }));
+        } finally {
+            setPasswordLoading(false);
         }
     };
 
@@ -454,7 +464,7 @@ const EmployeeForm = ({
                 profile_photo: employee?.profile_photo || '',
                 
                 // Employee Information
-                employee_id: employee?.employee_id ? `RM${employee.employee_id}` : '',
+                employee_id: employee?.employee_id || '',
                 first_name: employee?.first_name || '',
                 last_name: employee?.last_name || '',
                 phone: employee?.phone || '',
@@ -559,15 +569,18 @@ const EmployeeForm = ({
                 let maxId = 0;
                 response.data.forEach(emp => {
                     if (emp.employee_id) {
-                        const numericId = parseInt(emp.employee_id);
+                        // Handle both formats: "RM123" and "123"
+                        const idStr = String(emp.employee_id);
+                        const numericPart = idStr.startsWith('RM') ? idStr.slice(2) : idStr;
+                        const numericId = parseInt(numericPart);
                         if (!isNaN(numericId) && numericId > maxId) {
                             maxId = numericId;
                         }
                     }
                 });
                 
-                // Next ID
-                const nextId = (maxId + 1).toString().padStart(3, '0');
+                // Next ID with RM prefix
+                const nextId = 'RM' + (maxId + 1).toString().padStart(3, '0');
                 
                 setFormData({
                     profile_photo: '',
@@ -613,10 +626,10 @@ const EmployeeForm = ({
                     password: ''
                 });
             } else {
-                // If no employees exist, start with 001
+                // If no employees exist, start with RM001
                 setFormData({
                     profile_photo: '',
-                    employee_id: '001',
+                    employee_id: 'RM001',
                     first_name: '',
                     last_name: '',
                     phone: '',
@@ -751,10 +764,14 @@ const EmployeeForm = ({
                 if (rawUserData) {
                     const parsedUser = JSON.parse(rawUserData);
                     const currentUserRoleId = parsedUser.role_id || parsedUser.role?._id || parsedUser.role?.id;
+                    console.log('🔒 EmployeeFormNew Lock: currentUserRoleId =', currentUserRoleId);
                     if (currentUserRoleId && !isSuperAdmin(getUserPermissions())) {
                         const currentUserRole = filteredRolesData.find(r => String(r._id || r.id) === String(currentUserRoleId));
+                        console.log('🔒 EmployeeFormNew Lock: Found current user role =', currentUserRole?.name, 'locked_roles =', currentUserRole?.locked_roles);
                         if (currentUserRole?.locked_roles?.length) {
-                            setLockedRoleIds(currentUserRole.locked_roles.map(id => String(id)));
+                            const normalized = currentUserRole.locked_roles.map(id => String(id));
+                            console.log('🔒 EmployeeFormNew Lock: Setting lockedRoleIds =', normalized);
+                            setLockedRoleIds(normalized);
                         }
                     }
                 }
@@ -857,12 +874,14 @@ const EmployeeForm = ({
             setFormData(prev => {
                 const newData = { ...prev, [name]: processedValue };
                 
-                // Auto-generate username when employee_id or first_name changes
-                if ((name === 'employee_id' || name === 'first_name') && !isEditing) {
+                // Auto-generate username when employee_id or first_name changes (both add & edit)
+                if (name === 'employee_id' || name === 'first_name') {
                     const empId = name === 'employee_id' ? processedValue : prev.employee_id;
                     const firstName = name === 'first_name' ? processedValue : prev.first_name;
                     if (empId && firstName) {
-                        newData.username = `${empId}${firstName.toLowerCase().replace(/[^a-z]/g, '')}`;
+                        // Extract numeric part from employee_id (strip RM prefix if present)
+                        const numericPart = String(empId).startsWith('RM') ? String(empId).slice(2) : String(empId).replace(/[^0-9]/g, '');
+                        newData.username = `${firstName.toLowerCase().replace(/[^a-z]/g, '')}${numericPart}`;
                     }
                 }
                 
@@ -1438,7 +1457,14 @@ const EmployeeForm = ({
             } else {
                 // For editing existing employees, be flexible - only update fields that have values
                 console.log('✅ Updating existing employee - only sending fields with values');
-                if (formData.username && formData.username.trim()) {
+                // Always send auto-generated username on edit
+                const editEmpId = formData.employee_id || '';
+                const editFirstName = formData.first_name || '';
+                if (editEmpId && editFirstName) {
+                    // Extract numeric part from employee_id (strip RM prefix if present)
+                    const numericPart = String(editEmpId).startsWith('RM') ? String(editEmpId).slice(2) : String(editEmpId).replace(/[^0-9]/g, '');
+                    submissionData.username = `${editFirstName.toLowerCase().replace(/[^a-z]/g, '')}${numericPart}`;
+                } else if (formData.username && formData.username.trim()) {
                     submissionData.username = formData.username.trim();
                 }
             }
@@ -1816,84 +1842,81 @@ const EmployeeForm = ({
                         {console.log('🎯 FORM RENDER - Employee data:', employee)}
                         {console.log('🎯 FORM RENDER - Force render key:', forceRender)}
                     </div>
-                    {/* Profile Photo */}
-                    <div className="section">
-                        <div className="form-row">
-                            <div>
-                                <label>Profile Photo</label>
-                                <div className="photo-upload">
-                                    <div className="photo-circle">
-                                        {imageUrl ? (
-                                            <img src={imageUrl} alt="Profile" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
-                                        ) : (
-                                            <span>👤</span>
-                                        )}
-                                    </div>
-                                    <input 
-                                        type="file" 
-                                        accept="image/png, image/jpeg"
-                                        onChange={handleFileChange}
-                                    />
-                                </div>
+                    {/* Profile Header — Photo + Key Info */}
+                    <div className="profile-header">
+                        <div className="profile-photo-wrapper">
+                            <div className="photo-circle">
+                                {imageUrl ? (
+                                    <img src={imageUrl} alt="Profile" style={{width: '100%', height: '100%', borderRadius: '14px', objectFit: 'cover'}} />
+                                ) : (
+                                    <span>👤</span>
+                                )}
                             </div>
-                            <div></div>
-                            <div></div>
+                            <button
+                                type="button"
+                                className="photo-change-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                📷 {imageUrl ? 'Change' : 'Upload'} Photo
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/png, image/jpeg"
+                                onChange={handleFileChange}
+                                style={{ display: 'none' }}
+                            />
                         </div>
-                    </div>
-
-                    {/* Employee Information */}
-                    <div className="section">
-                        <div className="section-title">
-                            <span>👤</span>Employee Information
-                        </div>
-                        
-                        <div className="form-row">
+                        <div className="profile-info-grid">
                             <div>
                                 <label>Employee ID</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     name="employee_id"
                                     value={formData.employee_id}
                                     readOnly
-                                    style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed', color: '#666' }}
+                                    style={{ fontWeight: 700, fontSize: '1rem', color: '#4f46e5' }}
                                 />
                             </div>
                             <div>
                                 <label className={validationErrors.first_name ? 'required-field-label' : ''}>First Name *</label>
-                                <input      
+                                <input
                                     ref={firstNameRef}
-                                    type="text" 
+                                    type="text"
                                     name="first_name"
                                     value={formData.first_name}
                                     onChange={handleInputChange}
-                                    placeholder="First Name" 
+                                    placeholder="First Name"
                                     required
                                     className={`form-input ${validationErrors.first_name ? 'required-field-error' : ''}`}
                                 />
                                 {validationErrors.first_name && (
-                                    <div className="error-message">
-                                        {validationErrors.first_name}
-                                    </div>
+                                    <div className="error-message">{validationErrors.first_name}</div>
                                 )}
                             </div>
                             <div>
                                 <label className={validationErrors.last_name ? 'required-field-label' : ''}>Last Name *</label>
-                                <input 
+                                <input
                                     ref={lastNameRef}
-                                    type="text" 
+                                    type="text"
                                     name="last_name"
                                     value={formData.last_name}
                                     onChange={handleInputChange}
-                                    placeholder="Last Name" 
+                                    placeholder="Last Name"
                                     required
                                     className={`form-input ${validationErrors.last_name ? 'required-field-error' : ''}`}
                                 />
                                 {validationErrors.last_name && (
-                                    <div className="error-message">
-                                        {validationErrors.last_name}
-                                    </div>
+                                    <div className="error-message">{validationErrors.last_name}</div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Contact & Personal Details */}
+                    <div className="section">
+                        <div className="section-title">
+                            <span>📱</span>Contact & Personal Details
                         </div>
 
                         <div className="form-row">
@@ -2101,12 +2124,6 @@ const EmployeeForm = ({
                             </div>
                         </div>
 
-                        <div className="form-row">
-                           
-                            <div></div>
-                            <div></div>
-                        </div>
-
                         <div className="form-row full">
                             <div>
                                 <label>Current Address</label>
@@ -2274,41 +2291,21 @@ const EmployeeForm = ({
                                     ))}
                                 </select>
                             </div>
-                            {/* Role field - only show if user has role permission */}
-                            {shouldShowRoleField && (
-                                <div>
-                                    <label>Role</label>
-                                    <select 
-                                        name="role_id"
-                                        value={formData.role_id}
-                                        onChange={handleInputChange}
-                                    >
-                                        <option value="" disabled>Select Role</option>
-                                        {filteredRoles.map(role => (
-                                            <option key={role._id || role.id} value={role._id || role.id}>
-                                                {role.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-                            {/* Show message if role field is hidden due to permissions */}
-                            {!shouldShowRoleField && (
-                                <div>
-                                    <label>Role</label>
-                                    <div style={{
-                                        padding: '8px 12px',
-                                        backgroundColor: '#f5f5f5',
-                                        border: '1px solid #d9d9d9',
-                                        borderRadius: '4px',
-                                        color: '#666',
-                                        fontStyle: 'italic',
-                                        fontSize: '14px'
-                                    }}>
-                                        For Role Update, Contact your senior.
-                                    </div>
-                                </div>
-                            )}
+                            <div>
+                                <label>Role</label>
+                                <select 
+                                    name="role_id"
+                                    value={formData.role_id}
+                                    onChange={handleInputChange}
+                                >
+                                    <option value="" disabled>Select Role</option>
+                                    {filteredRoles.map(role => (
+                                        <option key={role._id || role.id} value={role._id || role.id}>
+                                            {role.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="form-row">
@@ -2379,19 +2376,16 @@ const EmployeeForm = ({
                                     type="text" 
                                     name="username"
                                     value={formData.username}
-                                    onChange={handleInputChange}
-                                    placeholder={isEditing ? "Username" : "Auto-generated from Employee ID + First Name"}
+                                    readOnly
+                                    disabled
+                                    placeholder="Auto-generated: First Name + Employee ID"
                                     required
-                                    readOnly={!isEditing}
-                                    disabled={!isEditing}
                                     className={`form-input ${validationErrors.username ? 'required-field-error' : ''}`}
-                                    style={!isEditing ? { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } : {}}
+                                    style={{ backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
                                 />
-                                {!isEditing && (
-                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                                        ℹ️ Auto-generated: Employee ID + First Name
-                                    </div>
-                                )}
+                                <div className="field-hint">
+                                    ℹ️ Auto-generated: First Name + Employee Number (not editable)
+                                </div>
                                 {validationErrors.username && (
                                     <div className="error-message">
                                         {validationErrors.username}
@@ -2455,11 +2449,13 @@ const EmployeeForm = ({
                                 <div>
                                     <label>
                                         Current Password {
-                                            currentPassword 
-                                                ? currentPassword.startsWith('[') 
-                                                    ? `(${currentPassword})` 
-                                                    : '(Loaded - Decrypted)'
-                                                : '(Loading...)'
+                                            passwordLoading
+                                                ? '(Loading...)'
+                                                : currentPassword 
+                                                    ? currentPassword.startsWith('[') 
+                                                        ? `(${currentPassword})` 
+                                                        : ''
+                                                    : '(Not Available)'
                                         }
                                     </label>
                                     <div style={{ position: 'relative' }}>
@@ -2469,11 +2465,13 @@ const EmployeeForm = ({
                                             value={formData.password}
                                             onChange={handleInputChange}
                                             placeholder={
-                                                currentPassword 
-                                                    ? currentPassword.startsWith('[')
-                                                        ? "Enter new password "
-                                                        : "Current password shown - modify to change"
-                                                    : "Loading current password..."
+                                                passwordLoading
+                                                    ? "Loading current password..."
+                                                    : currentPassword 
+                                                        ? currentPassword.startsWith('[')
+                                                            ? "Enter new password"
+                                                            : "Current password shown - modify to change"
+                                                        : "No password found - enter new password"
                                             }
                                             minLength="3"
                                             style={{ paddingRight: '40px' }}

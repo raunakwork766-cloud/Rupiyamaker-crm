@@ -214,6 +214,7 @@ async def list_roles(
             "is_active": role_dict.get("is_active", True),
             "permissions": role_dict.get("permissions", []),
             "locked_roles": role_dict.get("locked_roles", []),  # Role IDs locked for this role
+            "peer_visibility": role_dict.get("peer_visibility", False),  # Whether same-role users can see each other
             "created_at": role_dict.get("created_at"),
             "updated_at": role_dict.get("updated_at")
         }
@@ -372,8 +373,9 @@ async def update_role(
     if "permissions" in update_data:
         try:
             await users_db.invalidate_sessions_by_role(role_id)
-        except Exception:
-            pass  # Don't fail the update if session invalidation fails
+        except Exception as e:
+            print(f"WARNING: Failed to invalidate sessions for role {role_id}: {e}")
+            # Don't fail the update if session invalidation fails
     
     return {"message": "Role updated successfully"}
 

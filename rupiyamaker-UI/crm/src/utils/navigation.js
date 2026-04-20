@@ -5,6 +5,7 @@
 import { hasPermission, getUserPermissions, canViewLoginCRM, canViewNotifications } from './permissions';
 import { useNavigate } from 'react-router-dom';
 import { useCallback } from 'react';
+import { clearModalEntryFlag } from '../hooks/useModalHistory';
 
 /**
  * Checks if a navigation item should be visible based on user permissions
@@ -43,7 +44,9 @@ export const useAppNavigation = () => {
   const navigate = useNavigate();
 
   // Navigate to route and update selected label
-  const navigateToRoute = useCallback((path, selectedLabel) => {
+  const navigateToRoute = useCallback((path, selectedLabel, options = {}) => {
+    const { replace = false } = options;
+
     // Check for unsaved changes in LoginCRM before navigating
     if (window.checkLoginCrmUnsavedChanges && window.checkLoginCrmUnsavedChanges()) {
       console.log('🚫 Navigation: Blocking navigation due to unsaved changes in LoginCRM');
@@ -71,8 +74,12 @@ export const useAppNavigation = () => {
           });
           window.dispatchEvent(selectionEvent);
         }
-        
-        navigate(path, { replace: false });
+
+        if (replace) {
+          clearModalEntryFlag();
+        }
+
+        navigate(path, { replace });
       };
       
       window.addEventListener('loginCrmNavigationConfirmed', handleNavigationConfirmed);
@@ -91,7 +98,11 @@ export const useAppNavigation = () => {
     }
     
     // Navigate without page reload
-    navigate(path, { replace: false });
+    if (replace) {
+      clearModalEntryFlag();
+    }
+
+    navigate(path, { replace });
   }, [navigate]);
 
   // Navigate and replace current history entry

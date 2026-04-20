@@ -558,61 +558,43 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   // Permission check function for download obligation button
   const hasDownloadObligationPermission = () => {
     try {
-      console.log('🔐 Checking DOWNLOAD OBLIGATION permission...');
-      
-      // Get user data from localStorage
-      const userData = localStorage.getItem('user');
+      // Check super admin via user data
+      const userData = localStorage.getItem('user') || localStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
-        
-        // Check if super admin
-        if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) {
-          console.log('✅ User is Super Admin - has DOWNLOAD permission');
+        if (user.is_super_admin || (user.role?.name && user.role.name.toLowerCase().includes('super admin'))) {
           return true;
         }
-        
-        // Check nested format: leads.pl_&_odd_leads or leads.pl_odd_leads
-        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-          const plOddPermission = user.role.permissions.find(p => 
-            p.page === 'leads.pl_&_odd_leads' || 
-            p.page === 'leads.pl_odd_leads' ||
-            p.page === 'leads_pl_&_odd_leads' ||
-            p.page === 'leads_pl_odd_leads'
-          );
-          
-          if (plOddPermission && plOddPermission.actions) {
-            const actions = Array.isArray(plOddPermission.actions) ? 
-              plOddPermission.actions : [plOddPermission.actions];
-            
-            const hasDownload = actions.includes('download_obligation') || actions.includes('download');
-            console.log('🔍 PL & ODD LEADS permission check:', {
-              page: plOddPermission.page,
-              actions: actions,
-              hasDownload: hasDownload
-            });
-            
-            if (hasDownload) {
-              console.log('✅ User has DOWNLOAD OBLIGATION permission');
-              return true;
-            }
-          }
-          
-          // Check for general leads permission (backward compatibility)
-          const leadsPermission = user.role.permissions.find(p => p.page === 'leads' || p.page === 'Leads');
-          if (leadsPermission && leadsPermission.actions) {
-            const actions = Array.isArray(leadsPermission.actions) ? 
-              leadsPermission.actions : [leadsPermission.actions];
-            
-            const hasDownload = actions.includes('download_obligation') || actions.includes('download');
-            if (hasDownload) {
-              console.log('✅ User has DOWNLOAD permission (unified format)');
-              return true;
-            }
-          }
+      }
+
+      // Check normalized object-format permissions from Login.jsx (primary source of truth)
+      const storedPerms = localStorage.getItem('userPermissions');
+      if (storedPerms) {
+        const perms = JSON.parse(storedPerms);
+
+        // Super admin wildcard
+        if (perms['*'] === '*' || perms['Global'] === '*' || perms['global'] === '*') {
+          return true;
+        }
+
+        // Check all PL & ODD leads page keys
+        const PLOD_KEYS = ['leads.pl_&_odd_leads', 'leads.pl_odd_leads',
+                           'leads_pl_&_odd_leads', 'leads_pl_odd_leads'];
+        for (const key of PLOD_KEYS) {
+          const p = perms[key];
+          if (!p) continue;
+          if (p === '*') return true;
+          if (typeof p === 'object' && (p['download_obligation'] === true || p['*'] === true)) return true;
+        }
+
+        // Backward compat: general leads key
+        const leads = perms['leads'] || perms['Leads'];
+        if (leads) {
+          if (leads === '*') return true;
+          if (typeof leads === 'object' && (leads['download_obligation'] === true || leads['*'] === true)) return true;
         }
       }
-      
-      console.log('❌ User does NOT have DOWNLOAD OBLIGATION permission');
+
       return false;
     } catch (error) {
       console.error('❌ Error checking download obligation permission:', error);

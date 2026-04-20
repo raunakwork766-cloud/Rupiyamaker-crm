@@ -171,21 +171,31 @@ const Login = ({ onLogin }) => {
             const data = await response.json();
 
             if (response.ok) {
-                // 🔒 Clear old localStorage before storing new login data to prevent quota exceeded
-                try {
-                    localStorage.clear();
-                } catch (e) {
-                    // If clear fails too, try removing items one by one
-                    try {
-                        const keysToRemove = [];
-                        for (let i = 0; i < localStorage.length; i++) {
-                            keysToRemove.push(localStorage.key(i));
-                        }
-                        keysToRemove.forEach(k => localStorage.removeItem(k));
-                    } catch (e2) {
-                        console.error('Could not clear localStorage:', e2);
-                    }
-                }
+                // Reset only auth/session keys. Avoid full clear to prevent transient
+                // app-wide state loss and permission hydration races on first render.
+                const authKeysToReset = [
+                    'token',
+                    'sessionToken',
+                    'userId',
+                    'user_id',
+                    'userName',
+                    'userUsername',
+                    'userEmail',
+                    'userRole',
+                    'department_id',
+                    'department_name',
+                    'designation_name',
+                    'userProfilePhoto',
+                    'profile_photo',
+                    'employee_id',
+                    'userData',
+                    'user',
+                    'isAuthenticated',
+                    'cached_permissions',
+                    'cachedSidebarMenuData_v1',
+                    'sidebarMenuData'
+                ];
+                authKeysToReset.forEach((key) => localStorage.removeItem(key));
 
                 // Store essential user data in localStorage
                 localStorage.setItem('userId', data.user._id || data.user.id);
@@ -294,31 +304,8 @@ const Login = ({ onLogin }) => {
                                 }
                                 permissions[perm.page][perm.actions] = true;
                             }
-
-                            // PARENT KEY PROPAGATION: If page uses dot-notation (e.g. "leads.create_lead"),
-                            // also set the parent page key so route guards & sidebar can find it.
-                            if (perm.page.includes('.')) {
-                                const parentPage = perm.page.split('.')[0];
-                                if (!permissions[parentPage]) {
-                                    permissions[parentPage] = {};
-                                }
-                                if (typeof permissions[parentPage] === 'object') {
-                                    const actions = Array.isArray(perm.actions) ? perm.actions : [perm.actions];
-                                    if (actions.includes('show') || actions.includes('*') || actions.includes('all')) {
-                                        permissions[parentPage]['show'] = true;
-                                    }
-                                }
-                            }
                         }
                     });
-                }
-
-                // Set default show permission for feeds if not explicitly set by the role
-                if (!permissions.feeds) {
-                    permissions.feeds = { show: true, view: true };
-                } else if (typeof permissions.feeds === 'object' && !permissions.feeds.show) {
-                    // If feeds object exists but show is not explicitly set, grant show by default
-                    permissions.feeds.show = true;
                 }
 
                 // Store permissions in localStorage

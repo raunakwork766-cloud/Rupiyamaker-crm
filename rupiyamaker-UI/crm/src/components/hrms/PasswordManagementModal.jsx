@@ -97,7 +97,7 @@ const PasswordManagementModal = ({
         >
             <div style={{ marginBottom: 16 }}>
                 <Text type="secondary">
-                    Employee ID: {employee?.employee_id ? `RM${employee.employee_id}` : 'No ID'} | Email: {employee?.email}
+                    Employee ID: {employee?.employee_id ? employee.employee_id : 'No ID'} | Email: {employee?.email}
                 </Text>
             </div>
 

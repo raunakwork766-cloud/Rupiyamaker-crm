@@ -9,30 +9,31 @@ import { setUserPermissions } from './permissions.js';
 const API_BASE_URL = '/api';
 
 /**
- * Clear all permission-related caches
+ * Clear permission-related derived caches.
+ * Keeps the current `userPermissions` key intact until fresh permissions are ready
+ * so route guards never see a temporary null state.
  */
 export const clearPermissionCaches = () => {
-    console.log('🧹 Clearing all permission caches...');
-    
-    // Clear localStorage caches
-    localStorage.removeItem('userPermissions');
-    
+    console.log('🧹 Clearing derived permission caches...');
+
     // Clear cached sidebar data that includes permissions
     localStorage.removeItem('cachedSidebarMenuData_v1');
-    
-    // Clear any cached API responses for permissions
-    const cacheKeys = Object.keys(localStorage).filter(key => 
-        key.includes('user_permissions_') || 
-        key.includes('permissions') ||
-        key.includes('sidebar')
+
+    // Clear derived permission/sidebar caches but keep canonical userPermissions
+    const cacheKeys = Object.keys(localStorage).filter((key) =>
+        key !== 'userPermissions' && (
+            key.includes('user_permissions_') ||
+            key.includes('cached_permissions') ||
+            key.includes('sidebar')
+        )
     );
-    
-    cacheKeys.forEach(key => {
+
+    cacheKeys.forEach((key) => {
         console.log(`🗑️ Removing cache key: ${key}`);
         localStorage.removeItem(key);
     });
-    
-    console.log('✅ Permission caches cleared');
+
+    console.log('✅ Derived permission caches cleared');
 };
 
 /**
@@ -81,16 +82,6 @@ export const fetchFreshPermissions = async (userId) => {
                         normalized[perm.page][action] = true;
                     });
                 }
-                // Propagate parent key for dot-notation sub-pages (e.g. leads.create_lead → leads.show)
-                if (perm.page.includes('.')) {
-                    const parentPage = perm.page.split('.')[0];
-                    if (!normalized[parentPage]) normalized[parentPage] = {};
-                    if (typeof normalized[parentPage] === 'object') {
-                        if (actions.includes('show') || actions.includes('*') || actions.includes('all')) {
-                            normalized[parentPage]['show'] = true;
-                        }
-                    }
-                }
             });
         }
         
@@ -119,28 +110,27 @@ export const refreshCurrentUserPermissions = async () => {
             throw new Error('No user ID found in user data');
         }
         
-        // Step 1: Clear all caches
-        clearPermissionCaches();
-        
-        // Step 2: Fetch fresh permissions
+        // Step 1: Fetch fresh permissions first (no temporary key deletion)
         const freshPermissions = await fetchFreshPermissions(user_id);
-        
-        // Step 3: Update localStorage with fresh data
+
+        // Step 2: Clear derived caches, then atomically replace canonical permissions
+        clearPermissionCaches();
         console.log('💾 Storing fresh permissions in localStorage...');
         localStorage.setItem('userPermissions', JSON.stringify(freshPermissions));
-        
-        // Step 4: Update permissions utility
+
+        // Step 3: Update permissions utility
         setUserPermissions(freshPermissions);
-        
-        // Step 5: Update userData in localStorage
-        const currentUserData = JSON.parse(localStorage.getItem('userData'));
+
+        // Step 4: Update userData in localStorage
+        const currentUserDataRaw = localStorage.getItem('userData');
+        const currentUserData = currentUserDataRaw ? JSON.parse(currentUserDataRaw) : {};
         const updatedUserData = {
             ...currentUserData,
             permissions: freshPermissions
         };
         localStorage.setItem('userData', JSON.stringify(updatedUserData));
-        
-        // Step 6: Trigger custom events to notify all components
+
+        // Step 5: Trigger custom events to notify all components
         console.log('📡 Broadcasting permission update events...');
         
         // Event 1: permissionsUpdated (existing system)
@@ -232,10 +222,12 @@ export const updateRoleWithImmediateRefresh = async (roleData, roleId = null) =>
         
         // Step 2: Check if current user's role was affected
         // userData already retrieved earlier in the function
-        const { role_id } = JSON.parse(userData);
+        const parsedUserData = JSON.parse(userData);
+        // Support both flat role_id and nested role._id (Login.jsx stores as role: {_id: ...})
+        const currentRoleId = parsedUserData.role_id || parsedUserData.role?._id || parsedUserData.role?.id;
         const updatedRoleId = roleId || result.id || result._id;
         
-        if (role_id === updatedRoleId || role_id === roleId) {
+        if (currentRoleId && (currentRoleId === updatedRoleId || currentRoleId === roleId)) {
             console.log('🎯 Current user\'s role was updated - refreshing permissions immediately');
             
             // Wait a brief moment for backend to process the role update

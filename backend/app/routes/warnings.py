@@ -143,9 +143,9 @@ async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, s
         # Check module-specific "all" permission (page="module" with actions="all"/"view_all"/"*")
         has_all_permission = any(
             perm.get("page") == module and 
-            (perm.get("actions") in ("all", "view_all", "*") or 
+            (perm.get("actions") in ("view_all", "*") or 
              (isinstance(perm.get("actions"), list) and any(
-                 a in ("all", "view_all", "*") for a in perm.get("actions", []))))
+                 a in ("view_all", "*") for a in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -158,9 +158,9 @@ async def get_hierarchical_permissions(user_id: str, module: str) -> Dict[str, s
         # Check module-specific "junior" permission (page="module" with actions="junior"/"view_team")
         has_junior_permission = any(
             perm.get("page") == module and 
-            (perm.get("actions") in ("junior", "view_team") or
+            (perm.get("actions") == "view_team" or
              (isinstance(perm.get("actions"), list) and any(
-                 a in ("junior", "view_team") for a in perm.get("actions", []))))
+                 a == "view_team" for a in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -226,35 +226,16 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
                 can_delete_mistake_category=True
             )
         
-        # Check for warnings admin permissions (supports both old 'warnings_admin' and new 'warning_setting'/'view_all')
+        # Check for warnings admin permissions
         has_warnings_admin = any(
-            perm.get("page") == "warnings" and (
-                "warnings_admin" in str(perm.get("actions", "")) or
-                perm.get("actions") == "*" or
-                (isinstance(perm.get("actions"), list) and (
-                    "warning_setting" in perm.get("actions", []) or
-                    "view_all" in perm.get("actions", []) or
-                    "*" in perm.get("actions", [])
-                ))
-            )
-            for perm in permissions
-        )
-        
-        # Check for view_team permission (junior/manager level)
-        has_view_team = any(
-            perm.get("page") == "warnings" and (
-                isinstance(perm.get("actions"), list) and (
-                    "view_team" in perm.get("actions", []) or
-                    "junior" in perm.get("actions", [])
-                ) or perm.get("actions") in ("view_team", "junior")
-            )
+            perm.get("page") == "warnings" and ("warnings_admin" in str(perm.get("actions", "")) or perm.get("actions") == "*")
             for perm in permissions
         )
         
         # Define permission mapping for warnings - updated to new permission structure
         warning_permissions = WarningPermissions(
             can_view_own=True,  # All users can view their own warnings
-            can_view_all=has_warnings_admin or has_view_team,  # Admin and team managers can view beyond own
+            can_view_all=has_warnings_admin,  # Only admin can view all warnings
             can_add=has_warnings_admin,  # Only admin can add warnings
             can_edit=has_warnings_admin,  # Only admin can edit warnings
             can_delete=has_warnings_admin,  # Only admin can delete warnings
@@ -423,11 +404,12 @@ async def get_user_warnings(
             for perm in permissions
         )
         
-        # Check if requesting user has junior permission for hierarchical access
+        # Check if requesting user has team-visibility permission
         has_view_junior = any(
             perm.get("page") == "warnings" and 
-            (perm.get("actions") in ("junior", "view_team") or
-             (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))))
+            (perm.get("actions") == "view_team" or
+             (isinstance(perm.get("actions"), list) and (
+                 "view_team" in perm.get("actions", []))))
             for perm in permissions
         )
         
@@ -1294,11 +1276,12 @@ async def get_employee_warning_ranking(
         # Check if user has warnings_admin permission
         has_warnings_admin = permissions.can_view_all
         
-        # Check if requesting user has junior permission for hierarchical access
+        # Check if requesting user has team-visibility permission
         has_view_junior = any(
             perm.get("page") == "warnings" and 
-            (perm.get("actions") in ("junior", "view_team") or
-             (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", []))))
+            (perm.get("actions") == "view_team" or
+             (isinstance(perm.get("actions"), list) and (
+                 "view_team" in perm.get("actions", []))))
             for perm in user_permissions
         )
         

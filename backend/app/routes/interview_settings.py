@@ -34,12 +34,7 @@ async def require_interview_setting_permission(user_id: str):
         from app.database import get_database_instances
         db = get_database_instances()
         perms = await PermissionManager.get_user_permissions(user_id, db['users'], db['roles'])
-        has_perm = (
-            PermissionManager.has_permission(perms, "interview", "interview_setting") or
-            PermissionManager.has_permission(perms, "interview", "settings") or
-            PermissionManager.has_permission(perms, "interview", "view_all") or
-            PermissionManager.has_permission(perms, "interview", "all")
-        )
+        has_perm = PermissionManager.has_permission(perms, "interview", "interview_setting")
         if not has_perm:
             raise HTTPException(status_code=403, detail="Interview settings permission required")
     except HTTPException:

@@ -5,6 +5,7 @@ import { cn } from "../lib/utils.js";
 import { hasPermission, getUserPermissions, isSuperAdmin, canViewLoginCRM, canViewInterviewPanel, canViewReports, canViewNotifications } from '../utils/permissions';
 import { useAppNavigation, getRouteByLabel, ROUTES } from '../utils/navigation';
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
+import { hasActiveModalEntry } from '../hooks/useModalHistory';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -62,15 +63,6 @@ const icons = {
     <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <path d="M8 2v4M16 2v4" />
-    </svg>
-  ),
-  "Offer Letter": (
-    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
   "Offer Letter": (
@@ -448,38 +440,39 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       console.log('🔐 INIT: Loading initial permissions...');
       
       // Source 1: Direct localStorage read (most reliable)
+      // IMPORTANT: If the key EXISTS in localStorage (even as empty {}),
+      // use it EXACTLY as stored. {} means the user has 0 permissions — do
+      // NOT fall through to Source 3 cache (could have old user's data).
       const directPerms = localStorage.getItem('userPermissions');
-      if (directPerms) {
+      if (directPerms !== null && directPerms !== undefined) {
         try {
           const parsed = JSON.parse(directPerms);
-          if (parsed && Object.keys(parsed).length > 0) {
-            console.log('✅ INIT: Loaded permissions from localStorage', Object.keys(parsed).length, 'keys');
-            return parsed;
-          }
+          console.log('✅ INIT: Loaded permissions from localStorage', Object.keys(parsed || {}).length, 'keys');
+          return parsed || {};
         } catch (e) {
           console.warn('⚠️ INIT: Failed to parse userPermissions from localStorage');
         }
       }
       
-      // Source 2: getUserPermissions utility
+      // Source 2: getUserPermissions utility (only if key absent from localStorage)
       const utilPerms = getUserPermissions();
       if (utilPerms && Object.keys(utilPerms).length > 0) {
         console.log('✅ INIT: Loaded permissions from getUserPermissions()', Object.keys(utilPerms).length, 'keys');
         return utilPerms;
       }
       
-      // Source 3: Cached sidebar data
+      // Source 3: Cached sidebar data (last resort when localStorage has no key at all)
       if (sidebarMenuData.permissions && Object.keys(sidebarMenuData.permissions).length > 0) {
         console.log('✅ INIT: Loaded permissions from cached sidebar data', Object.keys(sidebarMenuData.permissions).length, 'keys');
         return sidebarMenuData.permissions;
       }
       
-      // Fallback: Default permissions (Feed only)
-      console.warn('⚠️ INIT: No permissions found, using default (Feed only)');
-      return { feeds: { show: true } };
+      // STRICT: No permissions found -> empty object so nothing renders.
+      console.warn('⚠️ INIT: No permissions found, denying all sidebar items');
+      return {};
     } catch (error) {
       console.error('❌ INIT: Error loading initial permissions:', error);
-      return { feeds: { show: true } };
+      return {};
     }
   });
   
@@ -593,8 +586,41 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       else if (currentPath.includes('/performance')) {
         urlBasedLabel = 'Daily Performance';
       }
+      else if (currentPath === '/dashboard') {
+        urlBasedLabel = 'Dashboard';
+      }
+      else if (currentPath.includes('/feed-home') || currentPath === '/' || currentPath.includes('/feed')) {
+        urlBasedLabel = 'Feed';
+      }
+      else if (currentPath.includes('/task')) {
+        urlBasedLabel = 'Task';
+      }
+      else if (currentPath.includes('/ticket')) {
+        urlBasedLabel = 'Ticket';
+      }
+      else if (currentPath.includes('/notifications') || currentPath.includes('/notification')) {
+        urlBasedLabel = 'Announcement';
+      }
+      else if (currentPath.includes('/app')) {
+        urlBasedLabel = 'Apps';
+      }
+      else if (currentPath.includes('/setting')) {
+        urlBasedLabel = 'Settings';
+      }
+      else if (currentPath.includes('/report')) {
+        urlBasedLabel = 'Reports';
+      }
+      else if (currentPath.includes('/knowledge-base')) {
+        urlBasedLabel = 'Knowledge Base';
+      }
+      else if (currentPath.includes('/offer-letter')) {
+        urlBasedLabel = 'Offer Letter';
+      }
+      else if (currentPath.includes('/transfer-requests')) {
+        urlBasedLabel = 'Transfer Requests';
+      }
       
-      // Use URL-based label if it's different from persisted or if no persisted label
+      // Use URL-based label if available, otherwise fallback to persisted value
       const targetLabel = urlBasedLabel || persistedLabel;
       
       if (targetLabel && targetLabel !== selectedLabel) {
@@ -643,15 +669,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       }
     };
 
-    // Check for component load periodically to maintain state
-    const intervalId = setInterval(handleComponentLoad, 1000);
-
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('selectedLabelChanged', handleLabelChange);
     window.addEventListener('DOMContentLoaded', handleComponentLoad);
     window.addEventListener('load', handleComponentLoad);
-    
-    // Also listen for page navigation events
+
+    // Listen for browser history navigation events
     window.addEventListener('popstate', handleComponentLoad);
     window.addEventListener('pushstate', handleComponentLoad);
     window.addEventListener('replacestate', handleComponentLoad);
@@ -667,7 +690,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       window.removeEventListener('popstate', handleComponentLoad);
       window.removeEventListener('pushstate', handleComponentLoad);
       window.removeEventListener('replacestate', handleComponentLoad);
-      clearInterval(intervalId);
     };
   }, [selectedLabel, parentSetSelectedLabel, itemToParentMap, loanTypes]);
 
@@ -785,11 +807,16 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           fullRoute = `${route}?loan_type_name=${encodeURIComponent(baseLoanTypeName)}`;
         }
         
-        // Clear logincrm_restore so navigating back to LoginCRM shows the list, not a stale lead
+        // Clear restore state so sidebar navigation opens the module's main screen.
         sessionStorage.removeItem('logincrm_restore');
+        sessionStorage.removeItem('leadcrm_restore');
         
-        // Navigate with the full URL (including query parameters)
-        navigateToRoute(fullRoute, label);
+        // Avoid duplicate history entries when the user clicks the same sidebar item again.
+        const currentFullUrl = window.location.pathname + window.location.search;
+        if (currentFullUrl !== fullRoute) {
+          const shouldReplace = hasActiveModalEntry();
+          navigateToRoute(fullRoute, label, { replace: shouldReplace });
+        }
         
         // Final highlight confirmation after navigation
         setTimeout(() => {
@@ -880,16 +907,16 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
             }
           }
           
-          // If still empty, set default permissions
+          // STRICT: If still empty, leave empty so nothing shows in sidebar
           if (!loadedPermissions || Object.keys(loadedPermissions).length === 0) {
-            console.warn('⚠️ No permissions found, using default permissions');
-            loadedPermissions = { feeds: { show: true } };
+            console.warn('⚠️ No permissions found - sidebar will be empty');
+            loadedPermissions = {};
           }
           
           console.log('✅ Final loaded permissions:', loadedPermissions);
         } catch (error) {
           console.error('❌ Error loading permissions:', error);
-          loadedPermissions = { feeds: { show: true } };
+          loadedPermissions = {};
         }
         
         // Set permissions IMMEDIATELY before any other operations
@@ -976,25 +1003,25 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
             
             // Only set permissions if not already set
             if (!permissionsLoaded) {
-              const cachedPerms = cachedData.permissions || { feeds: { show: true } };
+              const cachedPerms = cachedData.permissions || {};
               console.log('📦 Using cached permissions:', cachedPerms);
               setUserPermissions(cachedPerms);
               setPermissionsLoaded(true);
             }
             console.log('✅ Cached data loaded successfully');
           } else {
-            console.warn('⚠️ No cached data available, using fallback permissions');
+            console.warn('⚠️ No cached data available - sidebar will be empty until permissions load');
             if (!permissionsLoaded) {
-              setUserPermissions({ feeds: { show: true } });
+              setUserPermissions({});
               setPermissionsLoaded(true);
             }
           }
         } catch (cacheError) {
           console.error('❌ Error loading cached data:', cacheError);
-          // Final fallback
+          // STRICT: deny by default on error
           if (!permissionsLoaded) {
-            console.log('📦 Using final fallback permissions');
-            setUserPermissions({ feeds: { show: true } });
+            console.log('📦 No fallback - denying all permissions');
+            setUserPermissions({});
             setPermissionsLoaded(true);
           }
           setLoanTypes([]);
@@ -1311,9 +1338,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       const urlParams = new URLSearchParams(window.location.search);
       const loanTypeName = urlParams.get('loan_type_name');
       
-      // If no persisted label or if URL suggests different selection, derive from URL
-      if (!persistedLabel || 
+      // If no persisted label or URL indicates a different page, derive from URL
+      if (!persistedLabel ||
           (loanTypeName && !persistedLabel.includes(loanTypeName)) ||
+          (currentPath === '/dashboard' && persistedLabel !== 'Dashboard') ||
+          ((currentPath.includes('/feed-home') || currentPath.includes('/feed') || currentPath === '/') && persistedLabel !== 'Feed') ||
+          (currentPath.includes('/task') && persistedLabel !== 'Task') ||
+          (currentPath.includes('/ticket') && persistedLabel !== 'Ticket') ||
+          ((currentPath.includes('/notifications') || currentPath.includes('/notification')) && persistedLabel !== 'Announcement') ||
           (currentPath.includes('/employees') && persistedLabel !== 'Employees') ||
           (currentPath.includes('/attendance') && persistedLabel !== 'Attendance') ||
           (currentPath.includes('/leave') && persistedLabel !== 'Leave') ||
@@ -1326,6 +1358,21 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
           } else if (currentPath.includes('/login-crm') || currentPath.includes('/login')) {
             persistedLabel = `${loanTypeName} Login`;
           }
+        }
+        else if (currentPath === '/dashboard') {
+          persistedLabel = 'Dashboard';
+        }
+        else if (currentPath.includes('/feed-home') || currentPath.includes('/feed') || currentPath === '/') {
+          persistedLabel = 'Feed';
+        }
+        else if (currentPath.includes('/task')) {
+          persistedLabel = 'Task';
+        }
+        else if (currentPath.includes('/ticket')) {
+          persistedLabel = 'Ticket';
+        }
+        else if (currentPath.includes('/notifications') || currentPath.includes('/notification')) {
+          persistedLabel = 'Announcement';
         }
         else if (currentPath.includes('/employees')) {
           persistedLabel = 'Employees';
@@ -1431,27 +1478,13 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     };
   }, [itemToParentMap, parentSetSelectedLabel, loanTypes]);
 
-  // Permission check helper - Enhanced with comprehensive fallback logic
+  // Permission check helper - STRICT: only grants access when explicitly permitted
   const checkPermission = useCallback((page, action) => {
     try {
       if (!userPermissions || Object.keys(userPermissions).length === 0) {
-        console.warn(`⚠️ No permissions loaded yet for ${page}.${action}`);
-        
-        // CRITICAL FIX: Check if user is logged in - if yes, and permissions are
-        // empty, likely a race condition. Be permissive (backend will still enforce).
-        const userId = localStorage.getItem('userId');
-        const token = localStorage.getItem('token');
-        const isLoggedIn = !!(userId && token);
-        if (isLoggedIn && action === 'show') {
-          const coreItems = ['feeds', 'leads', 'tasks', 'tickets', 'login', 'logins'];
-          if (coreItems.includes(page.toLowerCase())) {
-            console.log(`✅ Permissive access granted for core item ${page}.${action} (logged in, permissions loading)`);
-            return true;
-          }
-        }
-        
-        // Always allow Feed
-        return page === 'feeds' && action === 'show';
+        // No permissions loaded / assigned -> deny everything.
+        // Sidebar items must NOT show by default for any role.
+        return false;
       }
       
       // Check if user is super admin first - highest priority
@@ -1520,18 +1553,13 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         return true;
       }
       
-      // Fallback for critical pages - everyone should see Feed
-      if (page === 'feeds' && action === 'show') {
-        console.log(`✅ Default Feed access`);
-        return true;
-      }
-      
+      // STRICT: no fallbacks. If permission is not explicitly granted, deny.
       console.log(`❌ No permission found for ${page}.${action}`);
       return false;
     } catch (error) {
       console.error(`❌ Error checking permission for ${page}.${action}:`, error);
-      // Fallback for feeds
-      return page === 'feeds' && action === 'show';
+      // STRICT: deny on error so nothing leaks into sidebar without permission
+      return false;
     }
   }, [userPermissions]);
 
@@ -1569,162 +1597,118 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     console.log('🔐 ========================================');
     
     const perms = {
-      // LEAD CRM - show if user has show OR view_team OR view_all OR any leads sub-permission
-      canShowLeads: checkPermission('leads', 'show') ||
-                    checkPermission('leads', 'view_team') ||
-                    checkPermission('leads', 'view_all') ||
-                    checkPermission('Leads', 'show') ||
-                    checkPermission('LEADS', 'show') ||
-                    checkPermission('lead', 'show') ||
+      // STRICT POLICY: Sidebar visibility is controlled ONLY by the explicit
+      // `show` action ("Show in Sidebar" checkbox in RoleSettings). Other
+      // actions like view_team/view_all/delete/create grant page-level access
+      // but do NOT make the item appear in the sidebar. Super admins always
+      // see everything.
+
+      // LEAD CRM: Show if user has nested show permission OR legacy flat leads.show
+      // Many existing roles still have: leads:[show,...] + leads.pl_odd_leads:[assign,status_update]
+      // (without a show action on the nested entry). We must support both formats.
+      canShowLeads: isSuperAdmin(userPermissions) ||
                     checkPermission('leads.create_lead', 'show') ||
                     checkPermission('leads.pl_odd_leads', 'show') ||
-                    hasAnyAccess('leads') ||
-                    isSuperAdmin(userPermissions),
-      
-      // Feed - Show only if user has feeds.show permission (or any feeds action, or super admin)
-      canShowFeeds: checkPermission('feeds', 'show') ||
-                    checkPermission('feeds', 'view') ||
-                    checkPermission('Feeds', 'show') ||
-                    hasAnyAccess('feeds') ||
-                    isSuperAdmin(userPermissions),
-      
-      // Tasks - show if user has show OR any task action (view_team, view_all, delete)
-      canShowTasks: checkPermission('tasks', 'show') ||
-                    checkPermission('tasks', 'view_team') ||
-                    checkPermission('tasks', 'view_all') ||
+                    checkPermission('leads', 'show'),
+
+      // Feed
+      canShowFeeds: isSuperAdmin(userPermissions) ||
+                    checkPermission('feeds', 'show') ||
+                    checkPermission('Feeds', 'show'),
+
+      // Tasks
+      canShowTasks: isSuperAdmin(userPermissions) ||
+                    checkPermission('tasks', 'show') ||
                     checkPermission('Tasks', 'show') ||
-                    checkPermission('task', 'show') ||
-                    hasAnyAccess('tasks') ||
-                    isSuperAdmin(userPermissions),
-      
-      // Tickets - show if user has show OR any ticket action (view_team, view_all, delete)
-      canShowTickets: checkPermission('tickets', 'show') ||
-                      checkPermission('tickets', 'view_team') ||
-                      checkPermission('tickets', 'view_all') ||
+                    checkPermission('task', 'show'),
+
+      // Tickets
+      canShowTickets: isSuperAdmin(userPermissions) ||
+                      checkPermission('tickets', 'show') ||
                       checkPermission('Tickets', 'show') ||
-                      checkPermission('ticket', 'show') ||
-                      hasAnyAccess('tickets') ||
-                      isSuperAdmin(userPermissions),
-      
-      // HRMS - show if ANY HRMS sub-module has ANY permission
-      canShowHRMS: checkPermission('employees', 'show') ||
-                   checkPermission('employees', 'view_team') ||
-                   checkPermission('employees', 'view_all') ||
-                   hasAnyAccess('employees') ||
+                      checkPermission('ticket', 'show'),
+
+      // HRMS parent - visible if ANY HRMS sub-module's `show` is granted
+      canShowHRMS: isSuperAdmin(userPermissions) ||
+                   checkPermission('employees', 'show') ||
+                   checkPermission('Employees', 'show') ||
                    checkPermission('attendance', 'show') ||
-                   checkPermission('attendance', 'view_team') ||
-                   checkPermission('attendance', 'view_all') ||
-                   checkPermission('attendance', 'leave_management') ||
-                   checkPermission('attendance', 'update_attendance') ||
-                   hasAnyAccess('attendance') ||
+                   checkPermission('Attendance', 'show') ||
                    checkPermission('leaves', 'show') ||
-                   checkPermission('leaves', 'view_team') ||
-                   checkPermission('leaves', 'view_all') ||
-                   checkPermission('leaves', 'leave_setting') ||
-                   hasAnyAccess('leaves') ||
+                   checkPermission('Leaves', 'show') ||
+                   checkPermission('leave', 'show') ||
                    checkPermission('offer_letter', 'show') ||
-                   checkPermission('dialer_report', 'show') ||
-                   isSuperAdmin(userPermissions),
-      
-      // Employees - show if user has show OR any employee action
-      canShowEmployees: checkPermission('employees', 'show') ||
-                        checkPermission('employees', 'view_team') ||
-                        checkPermission('employees', 'view_all') ||
-                        checkPermission('Employees', 'show') ||
-                        hasAnyAccess('employees') ||
-                        isSuperAdmin(userPermissions),
+                   checkPermission('Offer Letter', 'show') ||
+                   checkPermission('offerLetter', 'show') ||
+                   checkPermission('dialer_report', 'show'),
+
+      // Employees
+      canShowEmployees: isSuperAdmin(userPermissions) ||
+                        checkPermission('employees', 'show') ||
+                        checkPermission('Employees', 'show'),
 
       // Dialer Report
-      canShowDialerReport: checkPermission('dialer_report', 'show') ||
-                           hasAnyAccess('dialer_report') ||
-                           isSuperAdmin(userPermissions),
-      
-      // Apps - show if user has show or any app action (create_app, edit_app, share_app)
-      canShowApps: checkPermission('apps', 'show') ||
-                   checkPermission('apps', 'create_app') ||
-                   checkPermission('Apps', 'show') ||
-                   hasAnyAccess('apps') ||
-                   isSuperAdmin(userPermissions),
-      
+      canShowDialerReport: isSuperAdmin(userPermissions) ||
+                           checkPermission('dialer_report', 'show'),
+
+      // Apps
+      canShowApps: isSuperAdmin(userPermissions) ||
+                   checkPermission('apps', 'show') ||
+                   checkPermission('Apps', 'show'),
+
       // Settings
-      canShowSettings: checkPermission('settings', 'show') ||
-                       checkPermission('Settings', 'show') ||
-                       isSuperAdmin(userPermissions),
-      
-      // Login CRM - show if user has show OR view_team OR view_all OR any login action
-      canViewLoginCRM: canViewLoginCRM(userPermissions) ||
+      canShowSettings: isSuperAdmin(userPermissions) ||
+                       checkPermission('settings', 'show') ||
+                       checkPermission('Settings', 'show'),
+
+      // Login CRM
+      canViewLoginCRM: isSuperAdmin(userPermissions) ||
                        checkPermission('login', 'show') ||
-                       checkPermission('login', 'view_team') ||
-                       checkPermission('login', 'view_all') ||
                        checkPermission('Login', 'show') ||
-                       checkPermission('logins', 'show') ||
-                       hasAnyAccess('login') ||
-                       isSuperAdmin(userPermissions),
-      
-      // Interview Panel - show if user has show OR view_team OR view_all OR interview_setting
-      canViewInterviewPanel: canViewInterviewPanel(userPermissions) ||
+                       checkPermission('logins', 'show'),
+
+      // Interview Panel
+      canViewInterviewPanel: isSuperAdmin(userPermissions) ||
                              checkPermission('interview', 'show') ||
-                             checkPermission('interview', 'view_team') ||
-                             checkPermission('interview', 'view_all') ||
-                             checkPermission('interview', 'interview_setting') ||
                              checkPermission('Interview', 'show') ||
-                             checkPermission('interviews', 'show') ||
-                             hasAnyAccess('interview') ||
-                             isSuperAdmin(userPermissions),
-      
-      // Reports - Check using utility and fallbacks
-      canViewReports: canViewReports(userPermissions) ||
+                             checkPermission('interviews', 'show'),
+
+      // Reports
+      canViewReports: isSuperAdmin(userPermissions) ||
                       checkPermission('reports', 'show') ||
                       checkPermission('Reports', 'show') ||
-                      checkPermission('report', 'show') ||
-                      isSuperAdmin(userPermissions),
-      
-      // Notifications/Announcement - show if user has show OR create OR delete
-      canViewNotifications: canViewNotifications(userPermissions) ||
+                      checkPermission('report', 'show'),
+
+      // Notifications / Announcement
+      canViewNotifications: isSuperAdmin(userPermissions) ||
                             checkPermission('notification', 'show') ||
-                            checkPermission('notification', 'create') ||
                             checkPermission('notifications', 'show') ||
                             checkPermission('Notifications', 'show') ||
                             checkPermission('announcement', 'show') ||
-                            checkPermission('Announcement', 'show') ||
-                            hasAnyAccess('notification') ||
-                            isSuperAdmin(userPermissions),
+                            checkPermission('Announcement', 'show'),
 
-      // Warnings - show if user has show OR any warning action (view_team, view_all, warning_setting, delete_mistake)
-      canShowWarnings: checkPermission('warnings', 'show') ||
-                       checkPermission('warnings', 'view_team') ||
-                       checkPermission('warnings', 'view_all') ||
-                       checkPermission('warnings', 'warning_setting') ||
+      // Warnings
+      canShowWarnings: isSuperAdmin(userPermissions) ||
+                       checkPermission('warnings', 'show') ||
                        checkPermission('Warnings', 'show') ||
-                       checkPermission('warning', 'show') ||
-                       hasAnyAccess('warnings') ||
-                       isSuperAdmin(userPermissions),
+                       checkPermission('warning', 'show'),
 
-      // Attendance - show if user has show OR any attendance action
-      canShowAttendance: checkPermission('attendance', 'show') ||
-                         checkPermission('attendance', 'view_team') ||
-                         checkPermission('attendance', 'view_all') ||
-                         checkPermission('attendance', 'leave_management') ||
-                         checkPermission('attendance', 'update_attendance') ||
-                         checkPermission('Attendance', 'show') ||
-                         hasAnyAccess('attendance') ||
-                         isSuperAdmin(userPermissions),
+      // Attendance
+      canShowAttendance: isSuperAdmin(userPermissions) ||
+                         checkPermission('attendance', 'show') ||
+                         checkPermission('Attendance', 'show'),
 
-      // Leaves - show if user has show OR any leaves action
-      canShowLeaves: checkPermission('leaves', 'show') ||
-                     checkPermission('leaves', 'view_team') ||
-                     checkPermission('leaves', 'view_all') ||
-                     checkPermission('leaves', 'leave_setting') ||
+      // Leaves
+      canShowLeaves: isSuperAdmin(userPermissions) ||
+                     checkPermission('leaves', 'show') ||
                      checkPermission('Leaves', 'show') ||
-                     checkPermission('leave', 'show') ||
-                     hasAnyAccess('leaves') ||
-                     isSuperAdmin(userPermissions),
+                     checkPermission('leave', 'show'),
 
       // Offer Letter
-      canShowOfferLetter: checkPermission('offer_letter', 'show') ||
+      canShowOfferLetter: isSuperAdmin(userPermissions) ||
+                          checkPermission('offer_letter', 'show') ||
                           checkPermission('Offer Letter', 'show') ||
-                          checkPermission('offerLetter', 'show') ||
-                          isSuperAdmin(userPermissions),
+                          checkPermission('offerLetter', 'show'),
 
       // Knowledge Base
       canShowKnowledgeBase: isSuperAdmin(userPermissions) ||
@@ -1732,7 +1716,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                             checkPermission('Knowledge Base', 'show') ||
                             checkPermission('knowledgebase', 'show'),
 
-      // Dashboard - STRICT: Only show if user has explicit dashboard.show permission
+      // Dashboard
       canShowDashboard: isSuperAdmin(userPermissions) ||
                         checkPermission('dashboard', 'show') ||
                         checkPermission('Dashboard', 'show')

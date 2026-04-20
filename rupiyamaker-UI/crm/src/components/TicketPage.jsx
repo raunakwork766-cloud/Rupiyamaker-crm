@@ -94,9 +94,12 @@ export default function TicketPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useTabWithHistory('status', 'open', { localStorageKey: 'ticketActiveFilter' });
+  const [assignmentFilter, setAssignmentFilter] = useTabWithHistory('assignment', 'me', { localStorageKey: 'ticketAssignmentFilter' });
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [subordinateUserIds, setSubordinateUserIds] = useState([]);
   
   // Browser back button closes ticket edit modal
   useModalHistory(!!selectedTicket, () => {
@@ -118,6 +121,20 @@ export default function TicketPage() {
   const [isUpdatingTicketStatus, setIsUpdatingTicketStatus] = useState(false);
   
   // Removed pagination state as we now show all tickets at once
+
+  const userIdentity = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('userData');
+      const parsed = raw ? JSON.parse(raw) : {};
+      const currentUserName = (currentUser || '').toLowerCase().trim();
+      return {
+        id: parsed.user_id || parsed._id || parsed.id || '',
+        name: currentUserName,
+      };
+    } catch (error) {
+      return { id: '', name: (currentUser || '').toLowerCase().trim() };
+    }
+  }, [currentUser]);
 
   // Permission management
   const [permissions, setPermissions] = useState({
@@ -218,6 +235,20 @@ export default function TicketPage() {
   };
 
   useEffect(() => {
+    // Get current user ID from localStorage
+    try {
+      const userId = localStorage.getItem('userId');
+      if (userId) {
+        setCurrentUserId(userId);
+      } else {
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          setCurrentUserId(parsed.user_id || parsed._id || parsed.id || '');
+        }
+      }
+    } catch (e) {}
+
     // Get current user from localStorage
     try {
       const userName = localStorage.getItem('userName');
@@ -492,6 +523,38 @@ export default function TicketPage() {
     }
   }, [activeFilter, isInitialLoad, permissions.show, permissions.junior, permissions.all, isUpdatingTicketStatus]); // Include permissions.all to refetch when it changes
 
+  useEffect(() => {
+    const isSuperAdminUser = isSuperAdmin(getUserPermissions());
+    if (assignmentFilter === 'team' && !permissions.junior && !permissions.all && !isSuperAdminUser) {
+      setAssignmentFilter('me');
+    }
+    if (assignmentFilter === 'all' && !permissions.all && !isSuperAdminUser) {
+      setAssignmentFilter('me');
+    }
+  }, [assignmentFilter, permissions.junior, permissions.all]);
+
+  // Load strict subordinate IDs for Team filter (reporting-chain based)
+  useEffect(() => {
+    if (!currentUserId) return;
+    const loadSubordinates = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/users/${currentUserId}/subordinates`, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+        });
+        const data = await response.json();
+        const ids = Array.isArray(data?.subordinate_ids)
+          ? data.subordinate_ids.map((id) => String(id))
+          : [];
+        setSubordinateUserIds(ids);
+      } catch (error) {
+        console.warn('Failed to load subordinate IDs for Team filter:', error);
+        setSubordinateUserIds([]);
+      }
+    };
+    loadSubordinates();
+  }, [currentUserId]);
+
   // Calculate dynamic counts for OpenTicket, CloseTicket, All from ALL tickets (not filtered by active filter)
   
   // Fetch all tickets for counting purposes (regardless of status filter)
@@ -543,44 +606,45 @@ export default function TicketPage() {
     }
   };
 
-  // Calculate counts from all tickets (not just the currently filtered ones)
-  const openCount = allTicketsForCounting.filter((t) => t.status === "open").length;
-  const closedCount = allTicketsForCounting.filter((t) => t.status === "closed").length;
-  const failedCount = allTicketsForCounting.filter((t) => t.status === "failed").length;
-  const allCount = allTicketsForCounting.length;
+  // Apply assignment filter to the counting pool first, then derive status counts
+  const assignmentFilteredCounting = useMemo(() => {
+    const source = allTicketsForCounting.length > 0 ? allTicketsForCounting : tickets;
+    if (!source.length) return source;
 
-  // Also try to get a simple count from the regular tickets array as fallback
-  const fallbackOpenCount = tickets.filter((t) => t.status === "open").length;
-  const fallbackClosedCount = tickets.filter((t) => t.status === "closed").length;
-  const fallbackFailedCount = tickets.filter((t) => t.status === "failed").length;
-  const fallbackAllCount = tickets.length;
+    const normalizeStr = (val) => String(val || '').toLowerCase().trim();
+    const currentUserIdStr = normalizeStr(userIdentity.id);
+    const currentUserNameStr = normalizeStr(userIdentity.name);
+    const subordinateIdSet = new Set(subordinateUserIds.map((id) => String(id)));
 
-  // Use the counting tickets if available, otherwise use fallback from regular tickets
-  const displayOpenCount = allTicketsForCounting.length > 0 ? openCount : fallbackOpenCount;
-  const displayClosedCount = allTicketsForCounting.length > 0 ? closedCount : fallbackClosedCount;
-  const displayFailedCount = allTicketsForCounting.length > 0 ? failedCount : fallbackFailedCount;
-  const displayAllCount = allTicketsForCounting.length > 0 ? allCount : fallbackAllCount;
-
-  // For initial load, if both arrays are empty, try to use a basic count from tickets array
-  const finalOpenCount = displayOpenCount > 0 ? displayOpenCount : fallbackOpenCount;
-  const finalClosedCount = displayClosedCount > 0 ? displayClosedCount : fallbackClosedCount;
-  const finalFailedCount = displayFailedCount > 0 ? displayFailedCount : fallbackFailedCount;
-  const finalAllCount = displayAllCount > 0 ? displayAllCount : fallbackAllCount;
-
-  useEffect(() => {
-    if (allTicketsForCounting.length > 0) {
-    }
-  }, [allTicketsForCounting, tickets, finalOpenCount, finalClosedCount, finalFailedCount, finalAllCount]);
-
-  // Memoized filter counts for better performance
-  const filterCounts = useMemo(() => {
-    return {
-      open: finalOpenCount,
-      closed: finalClosedCount,
-      failed: finalFailedCount,
-      all: finalAllCount
+    const isMyTicket = (ticket) => {
+      const createdById = normalizeStr(ticket.created_by);
+      const createdByName = normalizeStr(ticket.created_by_name);
+      const assignedIds = Array.isArray(ticket.assigned_users) ? ticket.assigned_users.map(normalizeStr) : [];
+      const assignedNames = Array.isArray(ticket.assigned_users_details)
+        ? ticket.assigned_users_details.map((u) => normalizeStr(u?.name))
+        : [];
+      return (!!currentUserIdStr && (createdById === currentUserIdStr || assignedIds.includes(currentUserIdStr))) ||
+             (!!currentUserNameStr && (createdByName === currentUserNameStr || assignedNames.includes(currentUserNameStr)));
     };
-  }, [finalOpenCount, finalClosedCount, finalFailedCount, finalAllCount]);
+
+    const isTeamTicket = (ticket) => {
+      const createdById = String(ticket.created_by || '');
+      const assignedIds = Array.isArray(ticket.assigned_users) ? ticket.assigned_users.map((id) => String(id)) : [];
+      return subordinateIdSet.has(createdById) || assignedIds.some((id) => subordinateIdSet.has(id));
+    };
+
+    if (assignmentFilter === 'me') return source.filter(isMyTicket);
+    if (assignmentFilter === 'team') return source.filter(isTeamTicket);
+    return source; // 'all'
+  }, [allTicketsForCounting, tickets, assignmentFilter, userIdentity, subordinateUserIds]);
+
+  // Memoized filter counts — always respect the active assignment filter
+  const filterCounts = useMemo(() => ({
+    open: assignmentFilteredCounting.filter((t) => t.status === "open").length,
+    closed: assignmentFilteredCounting.filter((t) => t.status === "closed").length,
+    failed: assignmentFilteredCounting.filter((t) => t.status === "failed").length,
+    all: assignmentFilteredCounting.length,
+  }), [assignmentFilteredCounting]);
 
   // Memoized filters with counts
   const FILTERS_WITH_COUNTS = useMemo(() => [
@@ -593,16 +657,55 @@ export default function TicketPage() {
   // Memoized filtered tickets for better search performance
   const filteredTickets = useMemo(() => {
     let baseTickets = tickets;
-    
-    // Apply status filtering as a safety check (server should already do this, but ensure consistency)
-    if (activeFilter === 'open') {
-      baseTickets = tickets.filter(ticket => ticket.status === 'open');
-    } else if (activeFilter === 'closed') {
-      baseTickets = tickets.filter(ticket => ticket.status === 'closed');
-    } else if (activeFilter === 'failed') {
-      baseTickets = tickets.filter(ticket => ticket.status === 'failed');
+
+    const normalize = (val) => String(val || '').toLowerCase().trim();
+    const currentUserIdStr = normalize(userIdentity.id);
+    const currentUserName = normalize(userIdentity.name);
+    const subordinateIdSet = new Set(subordinateUserIds.map((id) => String(id)));
+
+    const isMyTicket = (ticket) => {
+      const createdById = normalize(ticket.created_by);
+      const createdByName = normalize(ticket.created_by_name);
+      const assignedUserIds = Array.isArray(ticket.assigned_users) ? ticket.assigned_users.map(normalize) : [];
+      const assignedUserNames = Array.isArray(ticket.assigned_users_details)
+        ? ticket.assigned_users_details.map((user) => normalize(user?.name))
+        : [];
+
+      const matchesById = !!currentUserIdStr && (
+        createdById === currentUserIdStr || assignedUserIds.includes(currentUserIdStr)
+      );
+
+      const matchesByName = !!currentUserName && (
+        createdByName === currentUserName || assignedUserNames.includes(currentUserName)
+      );
+
+      return matchesById || matchesByName;
+    };
+
+    const isTeamTicket = (ticket) => {
+      const createdById = String(ticket.created_by || '');
+      const assignedUserIds = Array.isArray(ticket.assigned_users)
+        ? ticket.assigned_users.map((id) => String(id))
+        : [];
+      return subordinateIdSet.has(createdById) || assignedUserIds.some((id) => subordinateIdSet.has(id));
+    };
+
+    // Step 1: Apply assignment filter
+    if (assignmentFilter === 'me') {
+      baseTickets = baseTickets.filter(isMyTicket);
+    } else if (assignmentFilter === 'team') {
+      baseTickets = baseTickets.filter(isTeamTicket);
     }
-    // For 'all' filter, use all tickets
+    // 'all' → no assignment filter
+
+    // Step 2: Apply status filter on top of assignment-filtered set
+    if (activeFilter === 'open') {
+      baseTickets = baseTickets.filter(ticket => ticket.status === 'open');
+    } else if (activeFilter === 'closed') {
+      baseTickets = baseTickets.filter(ticket => ticket.status === 'closed');
+    } else if (activeFilter === 'failed') {
+      baseTickets = baseTickets.filter(ticket => ticket.status === 'failed');
+    }
     
     // Apply search filtering if there's a search term
     if (!search.trim()) return baseTickets;
@@ -619,7 +722,7 @@ export default function TicketPage() {
          ))
       );
     });
-  }, [tickets, search, activeFilter]);
+  }, [tickets, search, activeFilter, assignmentFilter, userIdentity, subordinateUserIds]);
 
   // Handle row click to show EditTicket
   const handleRowClick = useCallback(async (ticket) => {
@@ -1205,6 +1308,36 @@ export default function TicketPage() {
 
       {/* Filters — Row 1: status pills | Row 2: search */}
       <div className="px-7 mt-4 mb-6">
+            {/* Row 0: assignment filter */}
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <div style={{ display: 'flex', background: '#1a1a1a', border: '1px solid #333', borderRadius: 30, padding: 3, gap: 2 }}>
+              {[
+                { key: 'me', label: '👤 My', visible: true },
+                { key: 'team', label: '👥 Team', visible: permissions.junior || permissions.all || isSuperAdmin(getUserPermissions()) },
+                { key: 'all', label: '📋 All', visible: permissions.all || isSuperAdmin(getUserPermissions()) },
+              ].filter((tab) => tab.visible).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setAssignmentFilter(tab.key)}
+                  style={{
+                    padding: '6px 16px',
+                    border: 'none',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: assignmentFilter === tab.key ? '#00aaff' : 'transparent',
+                    color: assignmentFilter === tab.key ? '#fff' : '#666',
+                    boxShadow: assignmentFilter === tab.key ? '0 2px 8px rgba(0,170,255,0.3)' : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              </div>
+            </div>
+
             {/* Row 1: status filter pills */}
             <div className="flex flex-wrap items-center gap-3 mb-3">
               {FILTERS_WITH_COUNTS.map((f) => (

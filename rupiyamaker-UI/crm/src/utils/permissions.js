@@ -221,10 +221,16 @@ export const canEdit = (module, recordOwnerId = null, userPermissions = null) =>
 
 /**
  * Check if user can delete records in a module
+ * Requires explicit 'delete' action permission
  */
 export const canDelete = (module, recordOwnerId = null, userPermissions = null) => {
-  // Same logic as edit for now
-  return canEdit(module, recordOwnerId, userPermissions);
+  if (!userPermissions) {
+    userPermissions = getUserPermissions();
+  }
+  // Super admin can delete anything
+  if (isSuperAdmin(userPermissions)) return true;
+  // Check explicit 'delete' action permission
+  return hasPermission(userPermissions, module, 'delete');
 };
 
 /**

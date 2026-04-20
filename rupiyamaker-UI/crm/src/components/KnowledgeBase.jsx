@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigationType } from 'react-router-dom';
 import {
   Search, FileText, X, Folder, FolderOpen, Plus, Play, Pause,
   Headphones, AlignLeft, ChevronRight, ChevronDown, CircleCheck,
@@ -593,7 +594,11 @@ export default function KnowledgeBase() {
   const [adminMode,   setAdminMode]   = useState(true);
   const [gSearch,     setGSearch]     = useState('');
   const [sSearch,     setSSearch]     = useState('');
-  const [folder,      setFolder]      = useState(() => localStorage.getItem('kbFolder') || 'recent');
+  // POP = browser back → restore; PUSH/REPLACE = fresh sidebar nav → always show default
+  const navigationType = useNavigationType();
+  const [folder,      setFolder]      = useState(() =>
+    navigationType === 'POP' ? (localStorage.getItem('kbFolder') || 'recent') : 'recent'
+  );
   useEffect(() => { localStorage.setItem('kbFolder', folder); }, [folder]);
   const [expanded,    setExpanded]    = useState(['c1', 'c1a', 'c2']);
   const [viewed,      setViewed]      = useState([5, 9]);

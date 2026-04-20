@@ -543,7 +543,21 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             (leadsLower?.[permission] === true || leadsLower?.['*'] === true);
 
         const hasPermission = hasPermInUpper || hasPermInLower || hasPermInUpperObj || hasPermInLowerObj;
-        return hasPermission;
+        if (hasPermission) return true;
+
+        // Also check nested leads page keys in object format
+        // (e.g. leads.pl_odd_leads, leads.create_lead store permissions as {action: true})
+        const NESTED_LEADS_KEYS = ['leads.pl_&_odd_leads', 'leads.pl_odd_leads', 'leads.create_lead'];
+        for (const key of NESTED_LEADS_KEYS) {
+            const nestedPerms = permissions[key];
+            if (!nestedPerms) continue;
+            if (nestedPerms === '*') return true;
+            if (Array.isArray(nestedPerms) &&
+                (nestedPerms.includes('*') || permAliases.some(a => nestedPerms.includes(a)))) return true;
+            if (typeof nestedPerms === 'object' && !Array.isArray(nestedPerms) &&
+                (nestedPerms['*'] === true || permAliases.some(a => nestedPerms[a] === true))) return true;
+        }
+        return false;
     };
 
     const canCreateLead = () => hasLeadsPermission('create');
@@ -896,8 +910,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 formattedPermissions = data;
             }
 
-            // Store in localStorage for future use
-            localStorage.setItem('userPermissions', JSON.stringify(formattedPermissions));
+            // 🔒 DO NOT overwrite localStorage 'userPermissions' here.
+            // Login.jsx writes the canonical OBJECT format ({page: {action: true}}).
+            // Writing raw backend ARRAY format here would corrupt Sidebar / ProtectedRoute.
+            // Use the value only for this component's local state.
             if (roleId) {
                 localStorage.setItem('userRoleId', roleId);
                 setUserRoleId(roleId);
@@ -2771,10 +2787,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for performance
-        // Support multiple search terms separated by spaces (same as main filter)
+        // Support multiple search terms separated by commas
         if (debouncedSearchTerm) {
-            // Split search term by spaces and filter out empty strings
-            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
+            // Split search term by commas, trim each, filter out empty strings
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
             
             filtered = filtered.filter(lead => {
                 // Lead matches if ANY of the search terms match ANY of the fields
@@ -2795,10 +2811,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
                         (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
-                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
-                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
-                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
-                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
                     );
                 });
@@ -3195,10 +3207,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for smooth typing
-        // Support multiple search terms separated by spaces
+        // Support multiple search terms separated by commas
         if (debouncedSearchTerm) {
-            // Split search term by spaces and filter out empty strings
-            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
+            // Split search term by commas, trim each, filter out empty strings
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
             
             if (process.env.NODE_ENV === 'development') {
                 console.log('🔍 Multi-Search Active:', { 
@@ -3227,10 +3239,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ((typeof lead.created_by === 'string' && lead.created_by.toLowerCase().includes(searchLower)) || 
                         (typeof lead.created_by === 'object' && lead.created_by?.name && lead.created_by.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.created_by_name === 'string' && lead.created_by_name.toLowerCase().includes(searchLower)) ||
-                        ((typeof lead.status === 'string' && lead.status.toLowerCase().includes(searchLower)) || 
-                        (typeof lead.status === 'object' && lead.status.name && lead.status.name.toLowerCase().includes(searchLower))) ||
-                        ((typeof lead.sub_status === 'string' && lead.sub_status.toLowerCase().includes(searchLower)) || 
-                        (typeof lead.sub_status === 'object' && lead.sub_status?.name && lead.sub_status.name.toLowerCase().includes(searchLower))) ||
                         (typeof lead.custom_lead_id === 'string' && lead.custom_lead_id.toLowerCase().includes(searchLower))
                     );
                 });
@@ -6476,12 +6484,12 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const fetchEmployees = async () => {
         setLoadingEmployees(true);
         try {
-            // Try different possible endpoints
+            // Try different possible endpoints — fetch ALL users (including inactive) for name resolution
             const endpoints = [
-                `${apiBaseUrl}/users?user_id=${userId}&designation=team leader&is_active=true`,
+                `${apiBaseUrl}/users?user_id=${userId}&include_all=true`,
                 `${apiBaseUrl}/users?user_id=${userId}&is_active=true`,
-                `${apiBaseUrl}/hrms/employees?user_id=${userId}&designation=team leader&employee_status=active`,
-                `${apiBaseUrl}/employees?user_id=${userId}&designation=team leader&employee_status=active`
+                `${apiBaseUrl}/hrms/employees?user_id=${userId}&employee_status=active`,
+                `${apiBaseUrl}/employees?user_id=${userId}&employee_status=active`
             ];
             
             let data = null;
@@ -6519,14 +6527,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     employees = data.employees;
                 }
                 
-                // Filter for active employees
-                const activeEmployees = employees.filter(emp => 
-                    emp.employee_status === 'active' || 
-                    emp.is_active === true || 
-                    emp.employee_status === undefined
-                );
-                
-                setEmployees(activeEmployees);
+                // Use all returned employees (including inactive) for name resolution
+                // include_all=true is passed to the API so all users are available
+                setEmployees(employees);
                 
             } else {
                 setEmployees([]);
@@ -7371,7 +7374,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             <div className="relative w-[320px]">
                                 <input
                                     type="text"
-                                    placeholder="Search leads (use spaces for multiple terms)..."
+                                    placeholder="Search leads (use commas for multiple terms)..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full py-3 pl-10 pr-10 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-base placeholder-gray-500 transition-all duration-200 ease-in-out"

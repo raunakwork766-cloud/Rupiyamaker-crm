@@ -1,6 +1,21 @@
 import { useEffect, useRef } from 'react';
 
 /**
+ * Module-level flag tracking whether a modal history entry is active.
+ * Sidebar navigation uses this to decide whether it should replace the
+ * current history entry instead of pushing another one.
+ */
+let _hasActiveModalEntry = false;
+
+export function hasActiveModalEntry() {
+  return _hasActiveModalEntry;
+}
+
+export function clearModalEntryFlag() {
+  _hasActiveModalEntry = false;
+}
+
+/**
  * Hook that adds browser back-button support for modals/overlays.
  * When the modal opens, it pushes a history entry.
  * When the user presses back, it closes the modal instead of navigating away.
@@ -21,13 +36,18 @@ export default function useModalHistory(isOpen, onClose) {
     if (!wasOpen && isOpen) {
       // Modal just opened — push a history entry
       closedByPopstateRef.current = false;
+      _hasActiveModalEntry = true;
       window.history.pushState({ modalOpen: true }, '');
     }
 
-    if (wasOpen && !isOpen && !closedByPopstateRef.current) {
-      // Modal closed programmatically (e.g. save button, X button) — NOT by back button
-      // Go back to remove the history entry we pushed
-      window.history.back();
+    if (wasOpen && !isOpen) {
+      _hasActiveModalEntry = false;
+
+      if (!closedByPopstateRef.current) {
+        // Modal closed programmatically (e.g. save button, X button) — NOT by back button.
+        // Remove the history entry we pushed for the modal.
+        window.history.back();
+      }
     }
 
     closedByPopstateRef.current = false;
@@ -39,6 +59,7 @@ export default function useModalHistory(isOpen, onClose) {
         // Modal is open and user pressed back — close it
         closedByPopstateRef.current = true;
         wasOpenRef.current = false;
+        _hasActiveModalEntry = false;
         onCloseRef.current();
       }
     };

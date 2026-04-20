@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigationType } from 'react-router-dom';
 import { isSuperAdmin } from '../utils/permissions';
 
 const API_BASE = '/api';
@@ -221,7 +222,11 @@ export default function FAQPage({ user }) {
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCat, setActiveCat] = useState(() => localStorage.getItem('faqActiveCat') || null);
+  // POP = browser back → restore; PUSH/REPLACE = fresh sidebar nav → always show default
+  const navigationType = useNavigationType();
+  const [activeCat, setActiveCat] = useState(() =>
+    navigationType === 'POP' ? (localStorage.getItem('faqActiveCat') || null) : null
+  );
   useEffect(() => { if (activeCat) localStorage.setItem('faqActiveCat', activeCat); else localStorage.removeItem('faqActiveCat'); }, [activeCat]);
   const [search, setSearch] = useState('');
   const [openItems, setOpenItems] = useState({});

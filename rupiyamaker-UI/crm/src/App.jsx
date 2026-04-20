@@ -21,6 +21,48 @@ import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils'
 import { API_BASE_URL } from './config/api'
 
 /**
+ * computeStartPath — Priority-based redirect: finds the FIRST page a user
+ * has "show" permission for and returns { path, label }.
+ * Priority order matches the allPermissions order in RoleCompare.
+ */
+const computeStartPath = (perms) => {
+  if (!perms) return { path: '/unauthorized', label: '' };
+
+  // Super admin: check all three storage formats written by Login.jsx
+  const isAdmin =
+    perms['*'] === '*' ||
+    (perms?.pages === '*' && perms?.actions === '*') ||
+    perms?.Global === '*';
+  if (isAdmin) return { path: '/dashboard', label: 'Dashboard' };
+
+  // Priority list — Dashboard first so users land on their main work page,
+  // not the Feed (which has a dark theme and may appear empty on first load).
+  const priorities = [
+    { check: () => perms?.dashboard?.show || perms?.dashboard === '*', path: '/dashboard',      label: 'Dashboard' },
+    { check: () => perms?.feeds?.show     || perms?.feeds     === '*', path: '/feed',           label: 'Feed' },
+    // Leads sub-sections checked separately (create_lead → /create-lead, pl_odd_leads → /lead-crm)
+    { check: () => perms?.['leads.create_lead']?.show  || perms?.['leads.create_lead']  === '*', path: '/create-lead', label: 'Create LEAD' },
+    { check: () => perms?.['leads.pl_odd_leads']?.show || perms?.['leads.pl_odd_leads'] === '*', path: '/lead-crm',    label: 'Lead CRM' },
+    // Login CRM (PLOD) — comes BEFORE tasks/tickets per sidebar order
+    { check: () => perms?.login?.show      || perms?.login      === '*', path: '/login-crm',      label: 'Login CRM' },
+    { check: () => perms?.tasks?.show      || perms?.tasks      === '*', path: '/tasks',           label: 'Tasks' },
+    { check: () => perms?.tickets?.show    || perms?.tickets    === '*', path: '/tickets',         label: 'Tickets' },
+    { check: () => perms?.warnings?.show   || perms?.warnings   === '*', path: '/warnings',        label: 'Warning Management' },
+    { check: () => perms?.interview?.show  || perms?.interview  === '*', path: '/interview-panel', label: 'Interview Panel' },
+    { check: () => perms?.employees?.show  || perms?.employees  === '*', path: '/employees',       label: 'Employees' },
+    { check: () => perms?.leaves?.show     || perms?.leaves     === '*', path: '/leaves',          label: 'Leave' },
+    { check: () => perms?.attendance?.show || perms?.attendance === '*', path: '/attendance',      label: 'Attendance' },
+    { check: () => perms?.apps?.show       || perms?.apps       === '*', path: '/apps',            label: 'Apps' },
+    { check: () => perms?.settings?.show   || perms?.settings   === '*', path: '/settings',        label: 'Settings' },
+  ];
+
+  for (const { check, path, label } of priorities) {
+    if (check()) return { path, label };
+  }
+  return { path: '/unauthorized', label: '' };
+};
+
+/**
  * AppAuthGuard — defined OUTSIDE App so its function reference stays stable
  * across App re-renders.  If defined inside App, React sees a new component
  * type on every render and force-remounts the entire child tree (Sidebar,
@@ -112,7 +154,7 @@ function App() {
   const skipNextRouteEffect = useRef(false)
   // Ref to skip mobile-redirect on the very first render (page load/refresh)
   const isInitialMobileCheck = useRef(true)
-  
+
   // Initialize selectedLabel based on current URL on first load
   useEffect(() => {
     const currentPath = location.pathname
@@ -240,9 +282,18 @@ function App() {
       const isPublicRoute = location.pathname.includes('/public/') || location.pathname.includes('/login-form/');
       
       if (!isInitialMobileCheck.current && !wasMobile && isMobile && location.pathname !== '/feed' && location.pathname !== '/' && !isPublicRoute) {
-        // User switched from desktop to mobile view
-        navigate('/feed', { replace: true });
-        setSelectedLabel('Feed');
+        // User switched from desktop to mobile view — only redirect to Feed if they have permission
+        const mobilePerms = (() => {
+          try { return JSON.parse(localStorage.getItem('userPermissions') || '{}'); } catch { return {}; }
+        })();
+        const hasFeedPerm = mobilePerms?.['*'] === '*' ||
+          mobilePerms?.pages === '*' ||
+          mobilePerms?.feeds?.show === true ||
+          mobilePerms?.feeds === '*';
+        if (hasFeedPerm) {
+          navigate('/feed', { replace: true });
+          setSelectedLabel('Feed');
+        }
       }
     };
 
@@ -280,6 +331,10 @@ function App() {
         localStorage.setItem('profile_photo', parsedUser.profile_photo)
         localStorage.setItem('userProfilePhoto', parsedUser.profile_photo)
       }
+
+      // NOTE: No manual redirect needed here. The root '/' route is now handled by
+      // SmartRootRedirect in OptimizedAppRoutes which reads permissions and navigates
+      // to the first accessible page without going through ProtectedRoute.
       
       // Start session monitoring when user is authenticated
       // console.log('Starting session monitoring for authenticated user')
@@ -504,12 +559,29 @@ function App() {
   const handleLogin = useCallback((userData) => {
     setUser(userData)
     setIsAuthenticated(true)
-    
-    // Always open Feed page on login
-    setSelectedLabel('Feed')
-    localStorage.setItem('selectedLabel', 'Feed')
-    navigate('/', { replace: true })
-    
+
+    // Compute the first route this user actually has permission to access.
+    const perms = (() => {
+      try { return JSON.parse(localStorage.getItem('userPermissions') || '{}'); }
+      catch { return {}; }
+    })();
+
+    const { path: startPath, label: startLabel } = computeStartPath(perms);
+
+    if (startLabel) {
+      setSelectedLabel(startLabel);
+      localStorage.setItem('selectedLabel', startLabel);
+    }
+
+    // Navigate directly to the computed start path.
+    // Login.jsx writes all localStorage keys (token, userId, userPermissions) BEFORE
+    // calling onLogin, so ProtectedRoute's localStorage-based checks will pass on the
+    // very first render. With React 18 automatic batching, setIsAuthenticated(true)
+    // and navigate() are committed in a SINGLE render flush, which means
+    // SmartRootRedirect (on '/') never fires — the router already sees the target
+    // path — eliminating the Feed→Dashboard double-navigation flicker.
+    navigate(startPath, { replace: true });
+
     // Start session monitoring when user logs in
     sessionMonitor.start()
   }, [navigate])

@@ -4,10 +4,52 @@
  */
 
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import DetailedErrorBoundary from '../components/DetailedErrorBoundary.jsx';
 import NotFoundPage from '../components/NotFoundPage.jsx';
+import Unauthorized from '../pages/Unauthorized.jsx';
 import ProtectedRoute from '../components/ProtectedRoute';
+
+/**
+ * SmartRootRedirect — priority-based redirect from root '/'. 
+ * Replaces the old ProtectedRoute-on-root which always showed /unauthorized
+ * for users who don't have feeds access.
+ * Priority order mirrors allPermissions in RoleCompare.jsx.
+ */
+const SmartRootRedirect = () => {
+  const hasAuth = !!(localStorage.getItem('token') && localStorage.getItem('userId'));
+  const rawPermissions = localStorage.getItem('userPermissions');
+
+  // During auth-hydration window, permission key can be temporarily unavailable.
+  // Avoid redirecting to /unauthorized in that transient state to prevent flicker.
+  if (hasAuth && rawPermissions === null) {
+    return <RouteLoader route="permissions" />;
+  }
+
+  let perms = {};
+  try { perms = JSON.parse(rawPermissions || '{}'); } catch {}
+
+  // Super admin — any of the three formats written by Login.jsx
+  if (perms['*'] === '*' || (perms?.pages === '*' && perms?.actions === '*') || perms?.Global === '*') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  // Dashboard first — ensures users land on their primary work page, not the dark-themed Feed
+  if (perms?.dashboard?.show   || perms?.dashboard   === '*') return <Navigate to="/dashboard"      replace />;
+  if (perms?.feeds?.show       || perms?.feeds       === '*') return <Navigate to="/feed"           replace />;
+  if (perms?.['leads.create_lead']?.show  || perms?.['leads.create_lead']  === '*') return <Navigate to="/create-lead" replace />;
+  if (perms?.['leads.pl_odd_leads']?.show || perms?.['leads.pl_odd_leads'] === '*') return <Navigate to="/lead-crm"    replace />;
+  if (perms?.login?.show       || perms?.login       === '*') return <Navigate to="/login-crm"      replace />;
+  if (perms?.tasks?.show       || perms?.tasks       === '*') return <Navigate to="/tasks"          replace />;
+  if (perms?.tickets?.show     || perms?.tickets     === '*') return <Navigate to="/tickets"        replace />;
+  if (perms?.warnings?.show    || perms?.warnings    === '*') return <Navigate to="/warnings"       replace />;
+  if (perms?.interview?.show   || perms?.interview   === '*') return <Navigate to="/interview-panel" replace />;
+  if (perms?.employees?.show   || perms?.employees   === '*') return <Navigate to="/employees"      replace />;
+  if (perms?.leaves?.show      || perms?.leaves      === '*') return <Navigate to="/leaves"         replace />;
+  if (perms?.attendance?.show  || perms?.attendance  === '*') return <Navigate to="/attendance"     replace />;
+  if (perms?.apps?.show        || perms?.apps        === '*') return <Navigate to="/apps"           replace />;
+  if (perms?.settings?.show    || perms?.settings    === '*') return <Navigate to="/settings"       replace />;
+  return <Navigate to="/unauthorized" replace />;
+};
 
 // Lazy load components for better performance - using direct import functions
 const createLazyComponent = (importFunc, componentName) => {
@@ -65,7 +107,7 @@ const LazyDashboardPage = createLazyComponent(() => import('../components/Dashbo
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
-  <div className="flex items-center justify-center min-h-[400px] w-full">
+  <div className="flex items-center justify-center min-h-[400px] w-full bg-white">
     <div className="flex flex-col items-center space-y-4">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       <div className="text-sm text-gray-600">
@@ -146,18 +188,17 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         } 
       />
 
-      {/* Lead Routes - PROTECTED */}
+      {/* Lead Routes - PROTECTED: requires nested leads.create_lead or leads.pl_odd_leads show,
+           OR legacy flat leads.show for older roles not yet migrated to new format */}
       <Route 
         path="/lead-crm" 
         element={
           <ProtectedRoute 
-            requiredPage="leads" 
+            requiredPage="leads.create_lead" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'show' },
-              { page: 'LEADS', action: 'show' },
-              { page: 'leads.create_lead', action: 'show' },
-              { page: 'leads.pl_odd_leads', action: 'show' }
+              { page: 'leads.pl_odd_leads', action: 'show' },
+              { page: 'leads', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -173,12 +214,11 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/leads" 
         element={
           <ProtectedRoute 
-            requiredPage="leads" 
+            requiredPage="leads.create_lead" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'show' },
-              { page: 'leads.create_lead', action: 'show' },
-              { page: 'leads.pl_odd_leads', action: 'show' }
+              { page: 'leads.pl_odd_leads', action: 'show' },
+              { page: 'leads', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -194,11 +234,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/leads-report" 
         element={
           <ProtectedRoute 
-            requiredPage="leads" 
+            requiredPage="reports" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'show' },
-              { page: 'reports', action: 'show' }
+              { page: 'Reports', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -214,11 +253,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/reports" 
         element={
           <ProtectedRoute 
-            requiredPage="leads" 
+            requiredPage="reports" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'show' },
-              { page: 'reports', action: 'show' }
+              { page: 'Reports', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -234,11 +272,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/create-lead" 
         element={
           <ProtectedRoute 
-            requiredPage="leads" 
-            requiredAction="create"
+            requiredPage="leads.create_lead" 
+            requiredAction="show"
             alternativeChecks={[
-              { page: 'Leads', action: 'create' },
-              { page: 'leads', action: 'show' }
+              { page: 'leads', action: 'create' }
             ]}
           >
             <RouteWithSuspense 
@@ -316,8 +353,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="tasks" 
             requiredAction="create"
             alternativeChecks={[
-              { page: 'Tasks', action: 'create' },
-              { page: 'tasks', action: 'show' }
+              { page: 'Tasks', action: 'create' }
             ]}
           >
             <RouteWithSuspense 
@@ -334,8 +370,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="tasks" 
             requiredAction="edit"
             alternativeChecks={[
-              { page: 'Tasks', action: 'edit' },
-              { page: 'tasks', action: 'show' }
+              { page: 'Tasks', action: 'edit' }
             ]}
           >
             <RouteWithSuspense 
@@ -442,11 +477,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/interview-panel" 
         element={
           <ProtectedRoute 
-            requiredPage="interviews" 
+            requiredPage="interview" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Interviews', action: 'show' },
-              { page: 'interview', action: 'show' }
+              { page: 'Interview', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -462,10 +496,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/interviews" 
         element={
           <ProtectedRoute 
-            requiredPage="interviews" 
+            requiredPage="interview" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Interviews', action: 'show' }
+              { page: 'Interview', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -480,11 +514,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/interview-settings" 
         element={
           <ProtectedRoute 
-            requiredPage="interviews" 
-            requiredAction="show"
+            requiredPage="interview" 
+            requiredAction="interview_setting"
             alternativeChecks={[
-              { page: 'Interviews', action: 'show' },
-              { page: 'settings', action: 'show' }
+              { page: 'Interview', action: 'interview_setting' }
             ]}
           >
             <RouteWithSuspense 
@@ -520,9 +553,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="attendance" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Attendance', action: 'show' },
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
+              { page: 'Attendance', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -540,9 +571,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="leaves" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Leaves', action: 'show' },
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
+              { page: 'Leaves', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -575,8 +604,7 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
             requiredPage="warnings" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Warnings', action: 'show' },
-              { page: 'hrms', action: 'show' }
+              { page: 'Warnings', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -591,11 +619,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/offer-letter" 
         element={
           <ProtectedRoute 
-            requiredPage="offer-letter" 
+            requiredPage="offer_letter" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
+              { page: 'Offer_Letter', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -609,21 +636,34 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
       <Route 
         path="/transfer-requests" 
         element={
-          <RouteWithSuspense 
-            component={LazyTransferRequestsPage} 
-            routeName="Transfer Requests"
-            user={user}
-          />
+          <ProtectedRoute 
+            requiredPage="settings" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'Settings', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyTransferRequestsPage} 
+              routeName="Transfer Requests"
+              user={user}
+            />
+          </ProtectedRoute>
         } 
       />
       <Route 
         path="/permission-test" 
         element={
-          <RouteWithSuspense 
-            component={LazyPermissionTest} 
-            routeName="Permission Test"
-            user={user}
-          />
+          <ProtectedRoute 
+            requiredPage="settings" 
+            requiredAction="show"
+          >
+            <RouteWithSuspense 
+              component={LazyPermissionTest} 
+              routeName="Permission Test"
+              user={user}
+            />
+          </ProtectedRoute>
         } 
       />
       
@@ -632,11 +672,10 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         path="/notifications" 
         element={
           <ProtectedRoute 
-            requiredPage="notifications" 
+            requiredPage="notification" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'Notifications', action: 'show' },
-              { page: 'notification', action: 'show' }
+              { page: 'Notification', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
@@ -650,11 +689,19 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
       <Route 
         path="/notification" 
         element={
-          <RouteWithSuspense 
-            component={LazyNotificationManagementPage} 
-            routeName="Announcement"
-            user={user}
-          />
+          <ProtectedRoute 
+            requiredPage="notification" 
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'Notification', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense 
+              component={LazyNotificationManagementPage} 
+              routeName="Announcement"
+              user={user}
+            />
+          </ProtectedRoute>
         } 
       />
       <Route 
@@ -668,40 +715,29 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         } 
       />
 
-      {/* Offer Letter Generator Route */}
+      {/* Offer Letter Generator Route - duplicate removed; primary route defined above */}
+
+      {/* Knowledge Base Route */}
       <Route 
-        path="/offer-letter" 
+        path="/knowledge-base" 
         element={
           <ProtectedRoute 
-            requiredPage="offer-letter" 
+            requiredPage="knowledge_base" 
             requiredAction="show"
             alternativeChecks={[
-              { page: 'hrms', action: 'show' },
-              { page: 'HRMS', action: 'show' }
+              { page: 'settings', action: 'show' }
             ]}
           >
             <RouteWithSuspense 
-              component={LazyOfferLetterGenerator} 
-              routeName="Offer Letter"
+              component={LazyKnowledgeBase} 
+              routeName="Knowledge Base"
               user={user}
             />
           </ProtectedRoute>
         } 
       />
 
-      {/* Knowledge Base Route */}
-      <Route 
-        path="/knowledge-base" 
-        element={
-          <RouteWithSuspense 
-            component={LazyKnowledgeBase} 
-            routeName="Knowledge Base"
-            user={user}
-          />
-        } 
-      />
-
-      {/* FAQ Route */}
+      {/* FAQ Route - intentionally unprotected; informational content for all authenticated users */}
       <Route 
         path="/faq" 
         element={
@@ -713,16 +749,27 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
         } 
       />
 
-      {/* Default redirect to feed */}
+      {/* Default landing route — SmartRootRedirect sends user to first accessible page.
+           No ProtectedRoute here; the target route's own ProtectedRoute handles auth. */}
+      <Route path="/" element={<SmartRootRedirect />} />
+      {/* Also serve /feed directly for users who DO have feeds access */}
       <Route 
-        path="/" 
+        path="/feed-home"
         element={
-          <RouteWithSuspense 
-            component={LazyFeed} 
-            routeName="Feed"
-            user={user}
-          />
-        } 
+          <ProtectedRoute
+            requiredPage="feeds"
+            requiredAction="show"
+            alternativeChecks={[{ page: 'Feeds', action: 'show' }, { page: 'feed', action: 'show' }]}
+          >
+            <RouteWithSuspense component={LazyFeed} routeName="Feed" user={user} />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Unauthorized page (shown when user lacks permission for a route) */}
+      <Route 
+        path="/unauthorized" 
+        element={<Unauthorized />}
       />
 
       {/* Catch all route for 404 */}

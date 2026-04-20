@@ -142,7 +142,7 @@ const EmployeeTable = ({
                     <div>
                         <Text strong style={{ color: 'white' }}>{`${record.first_name} ${record.last_name}`}</Text>
                         <div style={{ fontSize: '12px', color: '#a9a9a9' }}>
-                            {record.employee_id ? `RM${record.employee_id}` : 'No ID'}
+                            {record.employee_id ? record.employee_id : 'No ID'}
                         </div>
                     </div>
                 </Space>

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { ThumbsUp, MessageCircle, User, AlertCircle, Loader, Image, FileText, X, ChevronLeft, ChevronRight, MoreHorizontal, CornerDownRight } from "lucide-react";
+import { ThumbsUp, MessageCircle, User, AlertCircle, Loader, Image, FileText, X, ChevronLeft, ChevronRight, MoreHorizontal, CornerDownRight, Trash2 } from "lucide-react";
 import { hasPermission, canEditPost, canDeletePost, canDeleteComment, getUserPermissions, getUserId } from '../utils/permissions';
-import { API_BASE_URL, buildApiUrl, buildMediaUrl } from '../config/api';
+import { buildApiUrl, buildMediaUrl } from '../config/api';
+import { feedsAPI } from '../services/api';
 import { formatDateTime } from '../utils/dateUtils';
 
 // Helper function to format date and time in IST timezone
@@ -444,7 +445,6 @@ export default function FeedPage({ user }) {
   
   // New permission structure for feeds
   const canViewFeeds = hasPermission(userPermissions, 'feeds', 'show') || hasWildcardPermission;
-  const canManageFeeds = hasPermission(userPermissions, 'feeds', 'feeds') || hasWildcardPermission;
   const canCreatePost = hasPermission(userPermissions, 'feeds', 'post') || hasWildcardPermission;
   const canComment = true; // Comments are generally allowed for all users who can view feeds
   const canLike = true; // Likes are generally allowed for all users who can view feeds
@@ -1290,16 +1290,7 @@ export default function FeedPage({ user }) {
         return;
       }
       setFeeds(prevFeeds => prevFeeds.filter(feed => feed.id !== feedId));
-      const response = await fetch(buildApiUrl(`feeds/${feedId}/?user_id=${encodeURIComponent(currentUserId)}`), {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      if (!response.ok) {
-        throw new Error('Failed to delete post');
-      }
+      await feedsAPI.deleteFeed(feedId);
       // Optionally show a toast
     } catch (error) {
       setError('Failed to delete post. Please try again.');
@@ -1586,7 +1577,7 @@ export default function FeedPage({ user }) {
                         className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-800 rounded-full"
                         title="Delete Post"
                       >
-                        <X className="w-5 h-5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>

@@ -17,7 +17,7 @@ const CustomSuccessPopup = ({
 
     const formatEmployeeId = (employee) => {
         if (!employee) return 'N/A';
-        return employee.employee_id ? `RM${employee.employee_id}` : 'N/A';
+        return employee.employee_id ? employee.employee_id : 'N/A';
     };
 
     const getEmployeeInfo = () => {

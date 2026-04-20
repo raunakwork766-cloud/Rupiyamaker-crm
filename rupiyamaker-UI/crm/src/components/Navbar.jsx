@@ -1688,9 +1688,8 @@ export default function TopNavbar({
                         console.log('Selected employee ID:', rawEmployeeId);
                         
                         if (rawEmployeeId) {
-                          const formattedId = `RM${rawEmployeeId}`;
-                          console.log('Formatted employee ID:', formattedId);
-                          return formattedId;
+                          console.log('Employee ID:', rawEmployeeId);
+                          return rawEmployeeId;
                         }
                         
                         console.log('No employee ID found, showing Loading...');
