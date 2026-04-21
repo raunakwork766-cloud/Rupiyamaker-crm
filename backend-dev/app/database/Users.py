@@ -347,8 +347,12 @@ class UsersDB:
     async def invalidate_sessions_by_role(self, role_id: str) -> int:
         """Force logout all users with a specific role by setting session_invalidated_at"""
         now = get_ist_now()
+        # role_id can be stored as a string or ObjectId — query both to avoid misses
+        filter_conditions = [{"role_id": role_id}]
+        if ObjectId.is_valid(role_id):
+            filter_conditions.append({"role_id": ObjectId(role_id)})
         result = await self.collection.update_many(
-            {"role_id": role_id},
+            {"$or": filter_conditions},
             {"$set": {"session_invalidated_at": now}}
         )
         return result.modified_count

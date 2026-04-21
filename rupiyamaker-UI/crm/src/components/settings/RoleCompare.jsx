@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { refreshCurrentUserPermissions } from '../../utils/immediatePermissionRefresh';
 
 const API_BASE_URL = '/api';
 
@@ -294,6 +295,18 @@ export default function RoleCompare({ embedded = false }) {
             });
             if (!res.ok) throw new Error('Save failed');
             setToast({ msg: '✓ Saved', type: 'success' });
+
+            // If the saved role is the current user's role, refresh permissions immediately
+            try {
+                const userData = localStorage.getItem('userData');
+                if (userData) {
+                    const parsed = JSON.parse(userData);
+                    const currentRoleId = parsed.role_id || parsed.role?._id || parsed.role?.id;
+                    if (currentRoleId && currentRoleId === roleId) {
+                        await refreshCurrentUserPermissions();
+                    }
+                }
+            } catch (_) { /* non-critical */ }
         } catch (e) {
             setRoles(prev => prev.map(r => (r.id || r._id) === roleId ? { ...r, permissions: prevPermissions } : r));
             setToast({ msg: '✗ Save failed', type: 'error' });
