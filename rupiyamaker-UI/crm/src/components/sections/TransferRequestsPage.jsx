@@ -779,65 +779,7 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
 
                 {/* ── SCROLLABLE TIMELINE ── */}
                 <div className="flex-1 overflow-y-auto px-4 py-4">
-                  {/* ── OWNERSHIP HISTORY (activity-style flat view) ── */}
-                  {!historyLoading && history.length > 0 && (() => {
-                    // Build ownership change list from all history entries
-                    const ownerRows = history
-                      .filter(h => {
-                        const t = (h.assignment_type || '').toLowerCase();
-                        // Only show confirmed ownership changes (approved/direct), skip pending-request entries
-                        // to avoid showing the same transfer twice (once as request, once as approval)
-                        return t === 'approved' || t === 'direct_transfer' || t === 'approved_direct';
-                      })
-                      .sort((a, b) => new Date(a.assigned_date || 0) - new Date(b.assigned_date || 0));
-                    if (!ownerRows.length) return null;
-                    return (
-                      <div className="mb-4 rounded-xl overflow-hidden border border-blue-100">
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border-b border-blue-100">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">👤 Owner History</span>
-                          <span className="ml-auto text-[9px] font-bold bg-white border border-blue-200 text-blue-500 rounded-full px-1.5 py-0.5">{ownerRows.length}</span>
-                        </div>
-                        <div className="divide-y divide-gray-100 bg-white">
-                          {ownerRows.map((entry, i) => {
-                            const t = (entry.assignment_type || '').toLowerCase();
-                            const isPending = t.includes('request');
-                            const isDirect = t.includes('direct');
-                            const isRejected = t.includes('reject');
-                            const fromName = entry.from_user || 'Unassigned';
-                            // Normalized entries store to_user inside assigned_to_names array (not as to_user)
-                            const toName = (entry.assigned_to_names && entry.assigned_to_names[0]) || entry.to_user || '—';
-                            const byName = entry.assigned_by_name || '';
-                            const dateStr = (() => {
-                              if (!entry.assigned_date) return '';
-                              try { return new Date(entry.assigned_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }); }
-                              catch { return entry.assigned_date; }
-                            })();
-                            const dotColor = isPending ? '#f59e0b' : isDirect ? '#8b5cf6' : isRejected ? '#ef4444' : '#10b981';
-                            return (
-                              <div key={i} className="px-3 py-2 flex items-start gap-2">
-                                <div className="shrink-0 mt-1 w-2 h-2 rounded-full" style={{ background: dotColor }} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-[10px] font-semibold text-red-600">{fromName}</span>
-                                    <span className="text-gray-400 text-[10px] font-black">→</span>
-                                    <span className="text-[10px] font-semibold text-green-700">{toName}</span>
-                                    {isPending && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200 uppercase">Pending</span>}
-                                    {isDirect && !isPending && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-100 text-purple-600 border border-purple-200 uppercase">Direct</span>}
-                                    {isRejected && <span className="text-[8px] font-black px-1 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 uppercase">Rejected</span>}
-                                  </div>
-                                  <p className="text-[9px] text-gray-400 mt-0.5">
-                                    {byName ? `by ${byName}` : ''}
-                                    {byName && dateStr ? ' · ' : ''}
-                                    {dateStr}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
+
 
                   {historyLoading ? (
                     <div className="flex items-center justify-center py-12 text-gray-400">
