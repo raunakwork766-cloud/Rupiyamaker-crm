@@ -8,7 +8,7 @@ import { verifySession, forceLogout, isAuthenticated } from './auth';
 class SessionMonitor {
   constructor() {
     this.intervalId = null;
-    this.checkInterval = 30000; // Check every 30 seconds
+    this.checkInterval = 10000; // Check every 10 seconds
     this.isRunning = false;
     this.logoutCallback = null; // Callback to notify app of logout
     this.lastCheckTime = 0; // Track last check to prevent duplicate checks
