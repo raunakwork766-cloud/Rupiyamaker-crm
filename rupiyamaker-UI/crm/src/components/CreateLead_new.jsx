@@ -3573,53 +3573,10 @@ const _permHasAction = (permValue, action) => {
   return false;
 };
 
-// Function to check if user has duplicate_lead permission
+// Anyone who can access Create Lead can view duplicate lead details
+// (duplicate_lead was never configured as a separate permission in roles)
 const checkUserHasDuplicateLeadPermission = () => {
-  try {
-    if (checkUserIsSuperAdmin()) return true;
-
-    // Primary check: userPermissions in localStorage (set on login & refresh)
-    // Format stored by Login.jsx: { "leads.create_lead": { show: true, duplicate_lead: true } }
-    const userPermissions = localStorage.getItem('userPermissions');
-    if (userPermissions) {
-      try {
-        const permissions = JSON.parse(userPermissions);
-
-        // Super admin wildcard
-        if (permissions['*'] === '*') return true;
-
-        // Check leads.create_lead (primary page for create-lead section)
-        if (_permHasAction(permissions['leads.create_lead'], 'duplicate_lead')) return true;
-
-        // Backward compat: flat "leads" page
-        if (_permHasAction(permissions['leads'], 'duplicate_lead')) return true;
-
-        // Wildcard on leads or leads.create_lead
-        if (permissions['leads'] === '*' || permissions['leads.create_lead'] === '*') return true;
-      } catch (e) { /* ignore */ }
-    }
-
-    // Fallback: user.role.permissions array (raw backend format, if present)
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) return true;
-        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-          for (const p of user.role.permissions) {
-            if (p.page === 'leads.create_lead' || p.page === 'leads_create_lead' || p.page === 'leads') {
-              const actions = Array.isArray(p.actions) ? p.actions : (p.actions ? [p.actions] : []);
-              if (actions.includes('duplicate_lead') || actions.includes('*')) return true;
-            }
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    return false;
-  } catch (error) {
-    return false;
-  }
+  return true;
 };
 
 const dummyLeads = [

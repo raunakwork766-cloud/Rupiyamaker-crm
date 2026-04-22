@@ -602,54 +602,51 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                     </div>
                 )}
 
-                {/* Tab Navigation */}
-                <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
-                    {tabs.map((tab) => {
-                        // Check if user can view this tab
-                        const canViewTab = effectiveReadOnly ||
-                            leadData.can_view_all_tabs ||
-                            tab.id === 'details' || // Details tab always visible
-                            (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
-                            (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
-                            (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
-                            (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
-                            (tab.id === 'obligations' && (leadData.can_view_all_tabs || (Array.isArray(allowedTabs) && allowedTabs.includes('obligations'))));
+                {/* Tab Navigation - Segmented Control */}
+                <div className="px-3 sm:px-4 lg:px-5 py-2 bg-black border-b border-[#1a2332] w-full">
+                    <div className="flex w-full border border-[#2D3C56] rounded-md overflow-hidden bg-[#0d1520]">
+                        {tabs.map((tab) => {
+                            // Check if user can view this tab
+                            const canViewTab = effectiveReadOnly ||
+                                leadData.can_view_all_tabs ||
+                                tab.id === 'details' || // Details tab always visible
+                                (tab.id === 'remarks' && (leadData.can_add_notes || leadData.can_edit)) ||
+                                (tab.id === 'attachments' && (leadData.can_upload_attachments || leadData.can_edit)) ||
+                                (tab.id === 'tasks' && (leadData.can_add_tasks || leadData.can_edit)) ||
+                                (tab.id === 'activities' && (leadData.can_view_all_tabs || leadData.can_edit || leadData.can_view)) ||
+                                (tab.id === 'obligations' && (leadData.can_view_all_tabs || (Array.isArray(allowedTabs) && allowedTabs.includes('obligations'))));
 
-                        if (!canViewTab) return null;
+                            if (!canViewTab) return null;
 
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`
-                                    flex items-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-base lg:text-[1.05rem] transition whitespace-nowrap
-                                    ${activeTab === tab.id
-                                        ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
-                                        : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
-                                    }
-                                    focus:outline-none
-                                `}
-                                style={{
-                                    boxShadow: activeTab === tab.id ? "0 4px 16px 0 #1cb5e080" : undefined,
-                                    cursor: "pointer",
-                                    letterSpacing: "0.01em"
-                                }}
-                            >
-                                {tab.icon && <span className="mr-1">{tab.icon}</span>}
-                                {tab.label}
-                            </button>
-                        );
-                    })}
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex-1 flex items-center justify-center px-2 py-2 text-[0.7rem] font-bold border-r border-[#2D3C56] last:border-r-0 transition-all whitespace-nowrap focus:outline-none
+                                        ${activeTab === tab.id
+                                            ? "bg-[#03B0F5] text-white"
+                                            : "bg-transparent text-gray-400 hover:bg-[#03B0F5]/10 hover:text-[#03B0F5]"
+                                        }
+                                    `}
+                                >
+                                    {tab.icon && <span className="mr-1">{tab.icon}</span>}
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
                 
                 {/* Tab Content Container */}
-                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-4 lg:px-6 py-6' : (effectiveReadOnly ? '' : ' flex-1 min-h-0')}`}>
+                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-3 lg:px-4 py-3' : (effectiveReadOnly ? '' : ' flex-1 min-h-0')}`}>
                     <div className={`w-full${activeTab === 'obligations' && !effectiveReadOnly ? ' h-full' : ''}`}>
                         {activeTab === 'details' && (
-                            <div className="space-y-6">
+                            <div className="flex gap-4">
+                                {/* Left: Main sections */}
+                                <div className="flex-1 min-w-0 space-y-3">
                                 {/* About Section */}
-                                <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">About</h3>
+                                <div className="mb-3">
+                                    <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">About</h3>
                                     <AboutSection
                                         key={`about-${leadData._id}`}
                                         lead={leadData}
@@ -660,8 +657,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
 
                                 {/* How to Process Section — hidden in reassignment context */}
                                 {saveContext !== 'reassignment' && (
-                                <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">How to Process</h3>
+                                <div className="mb-3">
+                                    <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">How to Process</h3>
                                     <HowToProcessSection
                                         lead={leadData}
                                         process={leadData.process}
@@ -675,14 +672,14 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 {saveContext !== 'reassignment' && (
                                 <>
                                 {/* Applicant Form Section */}
-                                <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">APPLICANT FORM</h3>
-                                    <div className="space-y-6">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h4 className="text-md font-semibold text-[#03B0F5]">Primary Applicant</h4>
+                                <div className="mb-3">
+                                    <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">APPLICANT FORM</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="text-sm font-semibold text-[#03B0F5]">Primary Applicant</h4>
                                             {!showCoApplicant && !effectiveReadOnly && (
                                                 <button
-                                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-lg"
+                                                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-sm"
                                                     onClick={() => setShowCoApplicant(true)}
                                                 >
                                                     + Add Co-Applicant
@@ -704,11 +701,11 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                         
                                         {/* Co-Applicant Form */}
                                         {showCoApplicant && (
-                                            <div className="mt-8 pt-6 border-t-2 border-cyan-400">
-                                                <div className="flex justify-between items-center mb-4">
-                                                    <h4 className="text-md font-semibold text-[#03B0F5]">Co-Applicant</h4>
+                                            <div className="mt-4 pt-4 border-t-2 border-cyan-400">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="text-sm font-semibold text-[#03B0F5]">Co-Applicant</h4>
                                                     <button
-                                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-lg"
+                                                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-sm"
                                                         onClick={() => {
                                                             updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
                                                             setShowCoApplicant(false);
@@ -735,8 +732,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 </div>
 
                                 {/* Important Questions Section */}
-                                <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-[#03B0F5] mb-4">Important Questions</h3>
+                                <div className="mb-3">
+                                    <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">Important Questions</h3>
                                     <ImportantQuestionsSection
                                         leadData={leadData}
                                         canEdit={!effectiveReadOnly}
@@ -766,8 +763,8 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
 
                                 {/* Operations Section - Show for login department or leads sent to login */}
                                 {(userDepartment === 'login' || leadData.file_sent_to_login) && (
-                                    <div className="mb-6">
-                                        <h3 className="text-lg font-bold text-[#03B0F5] mb-4">Operations</h3>
+                                    <div className="mb-3">
+                                        <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">Operations</h3>
                                         <OperationsSection
                                             lead={leadData}
                                             onUpdate={updateLead}
@@ -777,7 +774,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 )}
                                 
                                 {!readOnly && (
-                                <div className="mt-6">
+                                <div className="mt-3">
                                     <RequestReassignmentButton
                                         leadId={leadData._id}
                                         assignableUsers={assignableUsers}
@@ -794,8 +791,25 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 </div>
                                 )}
                                 </>
-                                )}
-                            </div>
+                                )}                                </div>
+
+                                {/* Right: Activity & Comments Sidebar */}
+                                <div className="w-72 xl:w-80 flex-shrink-0 hidden lg:block">
+                                    <div className="sticky top-2 bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+                                        <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                                            <svg className="w-4 h-4 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                                            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Activity & Comments</h3>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto">
+                                            <Remarks
+                                                leadId={lead._id}
+                                                userId={userId}
+                                                formatDate={formatDate}
+                                                canEdit={!effectiveReadOnly}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>                            </div>
                         )}
 
                         {activeTab === 'obligations' && (
