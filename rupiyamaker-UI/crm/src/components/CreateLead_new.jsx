@@ -829,6 +829,8 @@ function useCreateLeadLogic() {
   const [status, setStatus] = useState("not_a_lead"); // Set default status to enable Create Lead button
   const [customerName, setCustomerName] = useState("");
   const [alternateNumber, setAlternateNumber] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [city, setCity] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [salary, setSalary] = useState("");
@@ -2487,6 +2489,8 @@ const handleMobileNumberChange = (e) => {
         mobileNumber,
         customerName,
         alternateNumber,
+        pincode,
+        city,
         companyName,
         companyType,
         companyCategory,
@@ -2805,6 +2809,8 @@ const handleMobileNumberChange = (e) => {
           mobileNumber: '',
           customerName: '',
           alternateNumber: '',
+          pincode: '',
+          city: '',
           companyName: '',
           companyType: '',
           campaignName: '',
@@ -2847,6 +2853,8 @@ const handleMobileNumberChange = (e) => {
         setMobileValidationError(""); // Reset mobile validation error
         setCustomerName(initialState.customerName);
         setAlternateNumber(initialState.alternateNumber);
+        setPincode(initialState.pincode);
+        setCity(initialState.city);
         setCompanyName(initialState.companyName);
         setCompanyType(initialState.companyType);
         setCampaignName(initialState.campaignName);
@@ -2964,6 +2972,7 @@ const handleMobileNumberChange = (e) => {
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
     alternateNumber, setAlternateNumber, handleAlternateNumberChange,
+    pincode, setPincode, city, setCity,
     companyName, setCompanyName, companyType, setCompanyType,
     salary, handleSalaryChange, partnerSalary, handlePartnerSalaryChange, yearlyBonus, handleYearlyBonusChange,
     bonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
@@ -3576,10 +3585,46 @@ const _permHasAction = (permValue, action) => {
   return false;
 };
 
+// Function to check if user has duplicate_lead permission
+// Function to check if user has duplicate_lead permission
 // Anyone who can access Create Lead can view duplicate lead details
-// (duplicate_lead was never configured as a separate permission in roles)
+// (no separate duplicate_lead action needed - it was never defined in roles)
 const checkUserHasDuplicateLeadPermission = () => {
-  return true;
+  try {
+    // If user is logged in and can access this page, they can see duplicate leads
+    if (checkUserIsSuperAdmin()) return true;
+
+    const userPermissions = localStorage.getItem('userPermissions');
+    if (userPermissions) {
+      try {
+        const permissions = JSON.parse(userPermissions);
+
+        // Super admin wildcard
+        if (permissions['*'] === '*') return true;
+
+        // If user has any leads-related permission, allow duplicate lead view
+        if (permissions['leads'] || permissions['leads.create_lead'] ||
+            permissions['leads_create_lead'] || permissions['create_lead']) return true;
+
+        // Wildcard on leads
+        if (permissions['leads'] === '*' || permissions['leads.create_lead'] === '*') return true;
+      } catch (e) { /* ignore */ }
+    }
+
+    // Fallback: if user data exists, they are authenticated
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user && (user.id || user._id || user.user_id)) return true;
+      } catch (e) { /* ignore */ }
+    }
+
+    // Default: allow access (duplicate_lead was never configured as a permission)
+    return true;
+  } catch (error) {
+    return true;
+  }
 };
 
 const dummyLeads = [
@@ -4531,6 +4576,7 @@ function CreateLead() {
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
     alternateNumber, setAlternateNumber, handleAlternateNumberChange,
+    pincode, setPincode, city, setCity,
     companyName, setCompanyName, companyType, setCompanyType,
     salary, setSalary, partnerSalary, setPartnerSalary, yearlyBonus, setYearlyBonus,
     bonusDivision, setBonusDivision, loanRequired, setLoanRequired,
@@ -5767,43 +5813,8 @@ function CreateLead() {
                 </div>
 
                 <div className="p-8">
-                  {/* Row 1: Lead ID, Date, Created By */}
+                  {/* Row 1: Source Name, Customer Name, Mobile Number */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>LEAD ID</label>
-                      <input
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-                        value="Auto-generated"
-                        readOnly
-                        title="Lead ID will be auto-generated after creation"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>LEAD DATE & TIME</label>
-                      <input
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-                        value={currentDateTime}
-                        readOnly
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CREATED BY</label>
-                      <input
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
-                        value={(() => { try { return localStorage.getItem('userName') || localStorage.getItem('userFullName') || 'Current User'; } catch { return 'Current User'; } })()}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 2: Product Name (read-only from top), Source Name, Data Code */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PRODUCT NAME</label>
-                      <div className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed select-none">
-                        {productType || "—"}
-                      </div>
-                    </div>
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>SOURCE NAME <span className="text-red-500">*</span></label>
                       <div ref={sourceDropdownRef} className="relative w-full">
@@ -5866,84 +5877,6 @@ function CreateLead() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>DATA CODE</label>
-                      <div ref={dataCodeDropdownRef} className="relative w-full">
-                        <div
-                          className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
-                          onClick={() => !loadingSettings && setShowDataCodePopup(prev => !prev)}
-                        >
-                          {selectedDataCodes.length === 0 && (
-                            <span className="text-gray-400 font-normal text-sm">Click to select data code(s)</span>
-                          )}
-                          {selectedDataCodes.map(code => (
-                            <div key={code} className="flex items-center gap-1.5 bg-[#03B0F5] text-white pl-2 pr-1 py-1 rounded-md text-sm">
-                              <span>{code}</span>
-                              <button
-                                type="button"
-                                className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-colors text-xs font-bold"
-                                onClick={(e) => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}
-                              >×</button>
-                            </div>
-                          ))}
-                          <div className="ml-auto flex-shrink-0">
-                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showDataCodePopup ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                          </div>
-                        </div>
-                        {showDataCodePopup && (
-                          <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
-                            <div className="p-2 border-b border-gray-100">
-                              <div className="relative">
-                                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                                <input
-                                  autoFocus
-                                  type="text"
-                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
-                                  placeholder="Search data codes..."
-                                  value={dataCodePopupSearch}
-                                  onChange={e => setDataCodePopupSearch(e.target.value)}
-                                  onClick={e => e.stopPropagation()}
-                                />
-                              </div>
-                            </div>
-                            <div className="max-h-52 overflow-y-auto">
-                              {dataCodes.filter(d =>
-                                !selectedDataCodes.includes(d.name) &&
-                                (d.name || '').toLowerCase().includes((dataCodePopupSearch || '').toLowerCase())
-                              ).length > 0 ? (
-                                dataCodes.filter(d =>
-                                  !selectedDataCodes.includes(d.name) &&
-                                  (d.name || '').toLowerCase().includes((dataCodePopupSearch || '').toLowerCase())
-                                ).map(d => (
-                                  <div
-                                    key={d.name}
-                                    onClick={() => { setSelectedDataCodes(prev => [...prev, d.name]); }}
-                                    className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] text-black transition-colors"
-                                  >
-                                    <div className="w-4 h-4 rounded border-2 border-gray-400 bg-white flex-shrink-0"></div>
-                                    <span className="text-sm font-medium">{d.name}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="text-center py-5 text-gray-400 text-sm">
-                                  {dataCodePopupSearch ? `No results for "${dataCodePopupSearch}"` : (selectedDataCodes.length > 0 ? 'All data codes selected' : 'No data codes available')}
-                                </div>
-                              )}
-                            </div>
-                            {selectedDataCodes.length > 0 && (
-                              <div className="px-3 py-2 border-t border-gray-100 flex justify-between items-center">
-                                <span className="text-xs text-gray-400">{selectedDataCodes.length} selected</span>
-                                <button type="button" onClick={() => setSelectedDataCodes([])} className="text-xs text-red-400 hover:text-red-600 font-medium">Clear all</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Customer Name, Mobile Number (read-only), Alternate Number */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CUSTOMER NAME <span className="text-red-500">*</span></label>
                       <input
                         type="text"
@@ -5968,6 +5901,10 @@ function CreateLead() {
                         title="Mobile number cannot be changed here"
                       />
                     </div>
+                  </div>
+
+                  {/* Row 2: Alternate Number, Pincode, City */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ALTERNATE NUMBER</label>
                       <input
@@ -5982,9 +5919,31 @@ function CreateLead() {
                         <p className="text-red-500 text-xs mt-1">Must be different from mobile number</p>
                       )}
                     </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PINCODE</label>
+                      <input
+                        type="text"
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
+                        placeholder="Enter pincode"
+                        value={pincode}
+                        onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        maxLength="6"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CITY</label>
+                      <input
+                        type="text"
+                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
+                        placeholder="Enter city"
+                        value={city}
+                        onChange={e => setCity(e.target.value)}
+                      />
+                    </div>
                   </div>
 
-                  {/* Row 4: Assigned Lead */}
+                  {/* Row 3: Assigned Lead */}
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ASSIGNED LEAD <span className="text-red-500">*</span></label>
@@ -6098,6 +6057,8 @@ function CreateLead() {
                         setObligationHasUnsavedChanges(false);
                         setObligationIsSaving(false);
                         setPincodeError('');
+                        setPincode('');
+                        setCity('');
                       }}
                     >
                       Cancel
