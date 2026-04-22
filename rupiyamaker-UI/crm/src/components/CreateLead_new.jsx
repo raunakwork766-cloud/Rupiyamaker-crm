@@ -270,8 +270,11 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
       let errText = '';
       try { errText = await response.text(); } catch (_) { /* ignore */ }
       console.error(`[checkMobileNumber] HTTP ${statusCode}`, errText);
+      if (statusCode === 401) {
+        return { _error: true, _errorMsg: 'Session expired. Please re-login.' };
+      }
       if (statusCode === 403) {
-        return { _error: true, _errorMsg: 'Session expired or access denied. Please re-login.' };
+        return { _error: true, _errorMsg: 'You do not have permission to check mobile numbers. Please contact your admin.' };
       }
       return { _error: true, _errorMsg: `Server error (${statusCode}). Please try again.` };
     }
